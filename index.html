@@ -278,9 +278,12 @@ const DEFAULT_CFG = {
   setters:["Twyla","Gianna","Raiz"],
   products:["Retainer","DWY","DFY","Partnership","Other"],
   goal:2000000, closerRate:7, setterRate:3,
-  endpoint:"", adminCode:"tsaboss"
+  endpoint:"https://script.google.com/macros/s/AKfycbzOjSVJ7gj4V6kcrbiAodGmoA884imoyvD9j-teTlxMZgGH9OYcR3q7pXUAeqCYGeS1/exec",
+  adminCode:"tsaboss"
 };
 let CFG = Object.assign({}, DEFAULT_CFG, load(LS.cfg, {}));
+// Always use the built-in backend URL unless a non-empty override was saved
+if(!CFG.endpoint) CFG.endpoint = DEFAULT_CFG.endpoint;
 let SESSION = null; // {username, name, role}  role: admin|closer|setter
 let LOCAL_USERS = load(LS.users, []); // used only when no backend endpoint
 
