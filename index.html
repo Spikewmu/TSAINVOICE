@@ -1,0 +1,506 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TSA Sales Tracking + Invoicing</title>
+<style>
+  :root{
+    --navy:#1F3864; --navy-2:#16294a; --gold:#C6A24A; --gold-soft:#F5EEDC;
+    --ground:#F4F6FA; --surface:#FFFFFF; --surface-2:#EDF1F7;
+    --ink:#191E28; --muted:#5B6675; --border:#E1E6EF;
+    --good:#0F6E56; --good-soft:#E1F1EB; --warn:#B44E1E; --warn-soft:#F7EBE3;
+    --shadow:0 1px 2px rgba(25,30,40,.05),0 6px 20px rgba(25,30,40,.07);
+    --radius:12px;
+  }
+  @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+    --navy:#8AAAD9; --navy-2:#0f1626; --gold:#D8BC6E; --gold-soft:#241f14;
+    --ground:#0F1219; --surface:#191F2A; --surface-2:#212734;
+    --ink:#E8ECF3; --muted:#98A3B3; --border:#2A313F;
+    --good:#5FC1A2; --good-soft:#15271F; --warn:#E5895D; --warn-soft:#2C2018;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.35);
+  }}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--ground);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.5}
+  header.app{background:var(--navy-2);color:#fff;padding:14px 20px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+  header.app .brand{font-weight:700;letter-spacing:.02em;font-size:17px;display:flex;align-items:center;gap:9px}
+  header.app .brand .dot{width:11px;height:11px;border-radius:3px;background:var(--gold)}
+  header.app .sub{color:#b9c4d8;font-size:12.5px}
+  header.app .spacer{flex:1}
+  nav.tabs{display:flex;gap:6px;background:var(--surface);border-bottom:1px solid var(--border);padding:0 12px;overflow-x:auto}
+  nav.tabs button{appearance:none;border:none;background:none;font:inherit;color:var(--muted);padding:13px 15px;cursor:pointer;border-bottom:2.5px solid transparent;white-space:nowrap;font-weight:500}
+  nav.tabs button.active{color:var(--navy);border-bottom-color:var(--gold)}
+  main{max-width:1120px;margin:0 auto;padding:22px 18px 60px}
+  h2.section{font-size:19px;margin:4px 0 2px;letter-spacing:-.01em}
+  .hint{color:var(--muted);font-size:13px;margin:0 0 16px}
+  .filters{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 18px;align-items:end}
+  .field{display:flex;flex-direction:column;gap:4px}
+  .field label{font-size:12px;color:var(--muted);font-weight:600;letter-spacing:.01em}
+  input,select,textarea{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:9px 11px;outline:none;min-width:0}
+  input:focus,select:focus,textarea:focus{border-color:var(--navy);box-shadow:0 0 0 3px var(--gold-soft)}
+  .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(178px,1fr));gap:12px;margin-bottom:22px}
+  .kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 15px;box-shadow:var(--shadow)}
+  .kpi .lbl{font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;font-weight:600}
+  .kpi .val{font-size:25px;font-weight:700;margin-top:5px;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+  .kpi .val.small{font-size:20px}
+  .kpi.goal{background:linear-gradient(160deg,var(--navy),var(--navy-2));color:#fff;border:none}
+  .kpi.goal .lbl{color:#c9d4e8}
+  .kpi .bar{height:6px;border-radius:4px;background:rgba(255,255,255,.2);margin-top:9px;overflow:hidden}
+  .kpi .bar > i{display:block;height:100%;background:var(--gold)}
+  .panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);margin-bottom:22px;overflow:hidden}
+  .panel > h3{margin:0;padding:13px 16px;font-size:14px;border-bottom:1px solid var(--border);background:var(--surface-2);letter-spacing:.01em}
+  .tablewrap{overflow-x:auto}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{padding:9px 12px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap}
+  th{font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:600;cursor:pointer}
+  td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+  tbody tr:hover{background:var(--surface-2)}
+  tr.rank1 td:first-child{font-weight:700;color:var(--gold)}
+  .pill{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;background:var(--surface-2);color:var(--muted)}
+  .pill.good{background:var(--good-soft);color:var(--good)}
+  .pill.warn{background:var(--warn-soft);color:var(--warn)}
+  form.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow)}
+  form.grid .full{grid-column:1/-1}
+  form.grid .field{display:flex;flex-direction:column;gap:5px}
+  .btn{appearance:none;border:1px solid var(--navy);background:var(--navy);color:#fff;font:inherit;font-weight:600;padding:11px 20px;border-radius:9px;cursor:pointer}
+  .btn:hover{background:var(--navy-2)}
+  .btn.ghost{background:transparent;color:var(--navy);}
+  .btn.gold{background:var(--gold);border-color:var(--gold);color:#3a2f10}
+  .btn.sm{padding:7px 13px;font-size:13px}
+  .row-actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:6px}
+  .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--good);color:#fff;padding:11px 20px;border-radius:10px;box-shadow:var(--shadow);opacity:0;transition:opacity .2s, transform .2s;pointer-events:none;font-weight:600;z-index:50}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(-4px)}
+  .split{display:flex;gap:10px;flex-wrap:wrap}
+  .seg{display:inline-flex;border:1px solid var(--border);border-radius:9px;overflow:hidden}
+  .seg button{appearance:none;border:none;background:var(--surface);font:inherit;padding:9px 16px;cursor:pointer;color:var(--muted);font-weight:600}
+  .seg button.on{background:var(--navy);color:#fff}
+  .muted{color:var(--muted)}
+  .gate{max-width:380px;margin:9vh auto;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:26px;box-shadow:var(--shadow);text-align:center}
+  .gate .dot{width:38px;height:38px;border-radius:10px;background:var(--navy);display:inline-flex;align-items:center;justify-content:center;color:var(--gold);font-weight:800;font-size:20px;margin-bottom:10px}
+  .tag{font-size:11px;color:var(--muted)}
+  .settings-list{display:flex;flex-direction:column;gap:8px}
+  .chiprow{display:flex;gap:8px;flex-wrap:wrap}
+  .chip{display:inline-flex;align-items:center;gap:6px;background:var(--surface-2);border-radius:20px;padding:4px 6px 4px 12px;font-size:13px}
+  .chip button{border:none;background:none;cursor:pointer;color:var(--muted);font-size:15px;line-height:1}
+  [hidden]{display:none !important}
+  @media(max-width:560px){.kpi .val{font-size:21px}}
+</style>
+</head>
+<body>
+
+<!-- ============ GATE ============ -->
+<div id="gate" class="gate">
+  <div class="dot">TSA</div>
+  <h2 style="margin:.2em 0">Sales Tracking + Invoicing</h2>
+  <p class="hint" style="margin:.3em 0 16px">Enter your access code. Reps get the submit code, leadership gets the admin code.</p>
+  <div class="field" style="text-align:left">
+    <label for="pass">Access code</label>
+    <input id="pass" type="password" placeholder="code" autocomplete="off">
+  </div>
+  <div class="row-actions" style="justify-content:center;margin-top:14px">
+    <button class="btn" onclick="tryGate()">Enter</button>
+  </div>
+  <p id="gateErr" class="pill warn" hidden style="margin-top:12px">Wrong code</p>
+  <p class="tag" style="margin-top:18px">Light gate only. Real logins come with Sales Team HQ. Do not treat this as secure storage.</p>
+</div>
+
+<!-- ============ APP ============ -->
+<div id="app" hidden>
+<header class="app">
+  <div class="brand"><span class="dot"></span> TSA Sales Tracking + Invoicing</div>
+  <div class="sub" id="modeTag"></div>
+  <div class="spacer"></div>
+  <div class="sub" id="storeTag"></div>
+</header>
+
+<nav class="tabs" id="tabs">
+  <button data-tab="dash" class="active">Dashboard</button>
+  <button data-tab="deal">Log Closed Deal</button>
+  <button data-tab="eod">End of Day</button>
+  <button data-tab="data">Data + Export</button>
+  <button data-tab="settings">Settings</button>
+</nav>
+
+<main>
+  <!-- ===== DASHBOARD ===== -->
+  <section id="tab-dash">
+    <h2 class="section">Dashboard</h2>
+    <p class="hint">Live view of everything submitted. Filter by month, client, and role.</p>
+    <div class="filters">
+      <div class="field"><label>Month</label><select id="fMonth"></select></div>
+      <div class="field"><label>Client</label><select id="fClient"></select></div>
+      <div class="field"><label>Role</label><select id="fRole"><option value="">All</option><option>Closer</option><option>Setter</option></select></div>
+      <button class="btn ghost sm" onclick="renderDash()">Refresh</button>
+    </div>
+    <div class="cards" id="kpis"></div>
+    <div class="panel"><h3>Team leaderboard (by cash collected)</h3><div class="tablewrap"><table id="lbTable"></table></div></div>
+    <div class="panel"><h3>By client (invoicing view)</h3><div class="tablewrap"><table id="clientTable"></table></div></div>
+    <div class="panel"><h3>Closed deals</h3><div class="tablewrap"><table id="dealTable"></table></div></div>
+  </section>
+
+  <!-- ===== CLOSED DEAL ===== -->
+  <section id="tab-deal" hidden>
+    <h2 class="section">Log a Closed Deal</h2>
+    <p class="hint">Submit this the moment a deal closes. It feeds the invoicing view and pre-fills your end-of-day numbers.</p>
+    <form class="grid" id="dealForm" onsubmit="submitDeal(event)">
+      <div class="field"><label>Date *</label><input type="date" name="date" required></div>
+      <div class="field"><label>Client *</label><select name="client" data-list="clients" required></select></div>
+      <div class="field"><label>Closer *</label><select name="rep" data-list="closers" required></select></div>
+      <div class="field"><label>Setter (who set it)</label><select name="setter" data-list="setters"></select></div>
+      <div class="field"><label>Product sold</label><select name="product" data-list="products"></select></div>
+      <div class="field"><label>Call type</label><select name="callType"><option value="">-</option><option>First-call close</option><option>Second-call close</option><option>Follow-up close</option></select></div>
+      <div class="field"><label>Contract value ($) *</label><input type="number" name="contractValue" min="0" step="0.01" required></div>
+      <div class="field"><label>Cash collected ($) *</label><input type="number" name="cashCollected" min="0" step="0.01" required></div>
+      <div class="field"><label>Deposit collected ($)</label><input type="number" name="depositCollected" min="0" step="0.01"></div>
+      <div class="field full"><label>Notes</label><input type="text" name="notes" placeholder="anything the invoice or team should know"></div>
+      <div class="full row-actions"><button class="btn gold" type="submit">Submit closed deal</button></div>
+    </form>
+  </section>
+
+  <!-- ===== END OF DAY ===== -->
+  <section id="tab-eod" hidden>
+    <h2 class="section">End of Day Checkout</h2>
+    <p class="hint">One per rep per day. Closers and setters have slightly different fields. Closed-deal totals below can be left blank if you already logged them as closed deals.</p>
+    <div class="split" style="margin-bottom:14px">
+      <div class="seg" id="roleSeg">
+        <button class="on" data-role="Closer" onclick="setEodRole('Closer')">Closer</button>
+        <button data-role="Setter" onclick="setEodRole('Setter')">Setter</button>
+      </div>
+    </div>
+    <form class="grid" id="eodForm" onsubmit="submitEod(event)">
+      <input type="hidden" name="role" value="Closer">
+      <div class="field"><label>Date *</label><input type="date" name="date" required></div>
+      <div class="field"><label>Client *</label><select name="client" data-list="clients" required></select></div>
+      <div class="field"><label>Rep name *</label><select name="rep" data-list="reps" required></select></div>
+
+      <div class="field"><label>Follow-up outreach</label><input type="number" name="followUpOutreach" min="0" step="1"></div>
+      <div class="field"><label>New outreach</label><input type="number" name="newOutreach" min="0" step="1"></div>
+      <div class="field"><label>Sales calls offered</label><input type="number" name="callsOffered" min="0" step="1"></div>
+      <div class="field"><label>Sales calls set</label><input type="number" name="callsSet" min="0" step="1"></div>
+
+      <div class="field closerOnly"><label>Call capacity (calls you could take)</label><input type="number" name="callCapacity" min="0" step="1"></div>
+      <div class="field setterOnly" hidden><label>Speed to lead (min, optional)</label><input type="number" name="speedToLead" min="0" step="0.1"></div>
+
+      <div class="field"><label>New meetings today</label><input type="number" name="newMeetings" min="0" step="1"></div>
+      <div class="field"><label>Connected meetings (calls taken)</label><input type="number" name="connectedMeetings" min="0" step="1"></div>
+      <div class="field"><label>Follow-up meetings today</label><input type="number" name="followUpMeetings" min="0" step="1"></div>
+      <div class="field"><label>Advanced sales calls</label><input type="number" name="advancedCalls" min="0" step="1"></div>
+      <div class="field"><label>No shows</label><input type="number" name="noShows" min="0" step="1"></div>
+
+      <div class="field"><label>Closed deals</label><input type="number" name="closedDeals" min="0" step="1"></div>
+      <div class="field"><label>Contracts signed</label><input type="number" name="contractsSigned" min="0" step="1"></div>
+      <div class="field"><label>Contract value ($)</label><input type="number" name="contractValue" min="0" step="0.01"></div>
+      <div class="field"><label>Cash collected ($)</label><input type="number" name="cashCollected" min="0" step="0.01"></div>
+      <div class="field"><label>Deposits collected ($)</label><input type="number" name="depositCollected" min="0" step="0.01"></div>
+      <div class="field"><label>AOSi sold</label><input type="number" name="aosiSold" min="0" step="1"></div>
+      <div class="field"><label>Product B sold</label><input type="number" name="productBSold" min="0" step="1"></div>
+      <div class="field full"><label>Notes</label><input type="text" name="notes"></div>
+      <div class="full row-actions"><button class="btn gold" type="submit">Submit end of day</button></div>
+    </form>
+  </section>
+
+  <!-- ===== DATA ===== -->
+  <section id="tab-data" hidden>
+    <h2 class="section">Data + Export</h2>
+    <p class="hint">Everything submitted lives here. Export for invoicing or backup. Import merges a JSON backup.</p>
+    <div class="row-actions" style="margin-bottom:16px">
+      <button class="btn sm" onclick="exportCSV('deal')">Export closed deals (CSV)</button>
+      <button class="btn sm" onclick="exportCSV('eod')">Export end-of-day (CSV)</button>
+      <button class="btn sm ghost" onclick="exportJSON()">Backup all (JSON)</button>
+      <label class="btn sm ghost" style="cursor:pointer">Import JSON<input type="file" accept="application/json" hidden onchange="importJSON(event)"></label>
+      <button class="btn sm ghost" onclick="wipe()" style="color:var(--warn);border-color:var(--warn)">Clear all</button>
+    </div>
+    <div class="panel"><h3>All records</h3><div class="tablewrap"><table id="allTable"></table></div></div>
+  </section>
+
+  <!-- ===== SETTINGS ===== -->
+  <section id="tab-settings" hidden>
+    <h2 class="section">Settings</h2>
+    <p class="hint">Manage clients, reps, products, goals, commission rates, and the shared-data endpoint. Saved to this browser.</p>
+    <div class="cards" style="grid-template-columns:repeat(auto-fill,minmax(300px,1fr))">
+      <div class="panel" style="margin:0"><h3>Clients</h3><div style="padding:14px"><div class="chiprow" id="clientsChips"></div><div class="row-actions"><input id="clientAdd" placeholder="Add client"><button class="btn sm" onclick="addItem('clients','clientAdd')">Add</button></div></div></div>
+      <div class="panel" style="margin:0"><h3>Closers</h3><div style="padding:14px"><div class="chiprow" id="closersChips"></div><div class="row-actions"><input id="closerAdd" placeholder="Add closer"><button class="btn sm" onclick="addItem('closers','closerAdd')">Add</button></div></div></div>
+      <div class="panel" style="margin:0"><h3>Setters</h3><div style="padding:14px"><div class="chiprow" id="settersChips"></div><div class="row-actions"><input id="setterAdd" placeholder="Add setter"><button class="btn sm" onclick="addItem('setters','setterAdd')">Add</button></div></div></div>
+      <div class="panel" style="margin:0"><h3>Products</h3><div style="padding:14px"><div class="chiprow" id="productsChips"></div><div class="row-actions"><input id="productAdd" placeholder="Add product"><button class="btn sm" onclick="addItem('products','productAdd')">Add</button></div></div></div>
+    </div>
+    <div class="panel"><h3>Targets + payout rates</h3><div style="padding:16px" class="cards" >
+      <div class="field"><label>Monthly cash-collected goal ($)</label><input type="number" id="setGoal" step="1000"></div>
+      <div class="field"><label>Closer payout rate (%)</label><input type="number" id="setCloser" step="0.1"></div>
+      <div class="field"><label>Setter payout rate (%)</label><input type="number" id="setSetter" step="0.1"></div>
+    </div></div>
+    <div class="panel"><h3>Shared data (optional)</h3><div style="padding:16px">
+      <p class="hint">By default data is saved to this browser only. To share across the team, deploy the Google Apps Script backend (see README) and paste its URL here. Then every submit and dashboard reads from one shared sheet.</p>
+      <div class="field full"><label>Apps Script Web App URL</label><input type="url" id="setEndpoint" placeholder="https://script.google.com/macros/s/..../exec"></div>
+    </div></div>
+    <div class="panel"><h3>Access codes</h3><div style="padding:16px" class="cards">
+      <div class="field"><label>Submit code (reps)</label><input id="setSubmit" ></div>
+      <div class="field"><label>Admin code (leadership)</label><input id="setAdmin" ></div>
+    </div></div>
+    <div class="row-actions"><button class="btn gold" onclick="saveSettings()">Save settings</button></div>
+  </section>
+</main>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ---------------- config + store ---------------- */
+const LS = {
+  cfg:'tsa_inv_cfg', data:'tsa_inv_data', auth:'tsa_inv_auth'
+};
+const DEFAULT_CFG = {
+  clients:["Prime (Billy)","Social Revelation (Ryan)","MSP","DAB","Eight-Figure Sales"],
+  closers:["Bree","Carolina","Josh"],
+  setters:["Twyla","Gianna","Raiz"],
+  products:["Retainer","DWY","DFY","Partnership","Other"],
+  goal:2000000, closerRate:7, setterRate:3,
+  endpoint:"", submitCode:"tsa2026", adminCode:"tsaboss"
+};
+let CFG = load(LS.cfg, DEFAULT_CFG);
+CFG = Object.assign({}, DEFAULT_CFG, CFG);
+let ROLE = 'guest'; // 'submit' | 'admin'
+
+function load(k,f){ try{return JSON.parse(localStorage.getItem(k))||f}catch(e){return f} }
+function save(k,v){ localStorage.setItem(k, JSON.stringify(v)); }
+function toast(m){ const t=document.getElementById('toast'); t.textContent=m; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2200); }
+function money(n){ return (n||0).toLocaleString('en-US',{style:'currency',currency:'USD',maximumFractionDigits:0}); }
+function pct(n){ return (isFinite(n)?Math.round(n*100):0)+'%'; }
+function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
+
+/* ---------------- remote (optional Apps Script) ---------------- */
+async function remoteGet(){
+  if(!CFG.endpoint) return null;
+  try{ const r = await fetch(CFG.endpoint,{method:'GET'}); const j = await r.json(); return Array.isArray(j)?j:(j.records||[]); }
+  catch(e){ console.warn('remote get failed',e); return null; }
+}
+async function remotePost(rec){
+  if(!CFG.endpoint) return false;
+  try{ await fetch(CFG.endpoint,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(rec)}); return true; }
+  catch(e){ console.warn('remote post failed',e); return false; }
+}
+let RECORDS = load(LS.data, []);
+async function syncRecords(){
+  const r = await remoteGet();
+  if(r){ RECORDS = r; save(LS.data, RECORDS); }
+}
+async function addRecord(rec){
+  rec.id = uid(); rec.submittedAt = new Date().toISOString();
+  RECORDS.push(rec); save(LS.data, RECORDS);
+  const ok = await remotePost(rec);
+  return ok;
+}
+
+/* ---------------- gate ---------------- */
+function tryGate(){
+  const v = document.getElementById('pass').value.trim();
+  if(v===CFG.adminCode){ ROLE='admin'; }
+  else if(v===CFG.submitCode){ ROLE='submit'; }
+  else { document.getElementById('gateErr').hidden=false; return; }
+  save(LS.auth, ROLE);
+  startApp();
+}
+function startApp(){
+  document.getElementById('gate').hidden=true;
+  document.getElementById('app').hidden=false;
+  document.getElementById('modeTag').textContent = ROLE==='admin' ? 'Leadership view' : 'Rep view';
+  document.getElementById('storeTag').textContent = CFG.endpoint ? 'Shared data' : 'Local data (this browser)';
+  // reps do not see settings; only admin sees full dashboard money by default (kept visible for now)
+  document.querySelector('[data-tab="settings"]').hidden = (ROLE!=='admin');
+  fillLists(); wireTabs(); presetDates();
+  syncRecords().then(()=>{ renderDash(); renderAll(); });
+  if(ROLE==='submit'){ showTab('deal'); }
+}
+
+/* ---------------- tabs ---------------- */
+function wireTabs(){
+  document.querySelectorAll('#tabs button').forEach(b=>{
+    b.onclick=()=>showTab(b.dataset.tab);
+  });
+}
+function showTab(t){
+  document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
+  ['dash','deal','eod','data','settings'].forEach(x=>{ document.getElementById('tab-'+x).hidden = (x!==t); });
+  if(t==='dash'){ syncRecords().then(renderDash); }
+  if(t==='data'){ syncRecords().then(renderAll); }
+  if(t==='settings'){ loadSettingsForm(); }
+}
+
+/* ---------------- populate selects ---------------- */
+function fillLists(){
+  document.querySelectorAll('select[data-list]').forEach(sel=>{
+    const key = sel.dataset.list;
+    let items = key==='reps' ? [...CFG.closers,...CFG.setters] : (CFG[key]||[]);
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">-</option>'+items.map(i=>`<option>${esc(i)}</option>`).join('');
+    if(cur) sel.value=cur;
+  });
+}
+function esc(s){ return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function presetDates(){ const t=new Date().toISOString().slice(0,10); document.querySelectorAll('input[type=date]').forEach(d=>{ if(!d.value) d.value=t; }); }
+
+/* ---------------- EOD role toggle ---------------- */
+function setEodRole(r){
+  document.querySelectorAll('#roleSeg button').forEach(b=>b.classList.toggle('on',b.dataset.role===r));
+  document.querySelector('#eodForm [name=role]').value=r;
+  document.querySelectorAll('#eodForm .closerOnly').forEach(e=>e.hidden = r!=='Closer');
+  document.querySelectorAll('#eodForm .setterOnly').forEach(e=>e.hidden = r!=='Setter');
+  const repSel = document.querySelector('#eodForm [name=rep]');
+  const items = r==='Closer'?CFG.closers:CFG.setters;
+  repSel.innerHTML='<option value="">-</option>'+items.map(i=>`<option>${esc(i)}</option>`).join('');
+}
+
+/* ---------------- submit ---------------- */
+function formObj(form){ const o={}; new FormData(form).forEach((v,k)=>o[k]=v); return o; }
+function num(o){ ['contractValue','cashCollected','depositCollected','followUpOutreach','newOutreach','callsOffered','callsSet','callCapacity','speedToLead','newMeetings','connectedMeetings','followUpMeetings','advancedCalls','noShows','closedDeals','contractsSigned','aosiSold','productBSold'].forEach(k=>{ if(k in o) o[k]=parseFloat(o[k])||0; }); return o; }
+
+async function submitDeal(e){
+  e.preventDefault();
+  const o = num(formObj(e.target)); o.type='deal';
+  o.role = 'Closer'; o.closedDeals = 1;
+  await addRecord(o);
+  e.target.reset(); presetDates();
+  toast('Closed deal logged. Nice.');
+  renderDash();
+}
+async function submitEod(e){
+  e.preventDefault();
+  const o = num(formObj(e.target)); o.type='eod';
+  await addRecord(o);
+  e.target.reset(); presetDates(); setEodRole(document.querySelector('#eodForm [name=role]').value);
+  toast('End of day submitted.');
+  renderDash();
+}
+
+/* ---------------- filters + aggregation ---------------- */
+function monthKey(d){ return (d||'').slice(0,7); }
+function filtered(){
+  const m=document.getElementById('fMonth').value, c=document.getElementById('fClient').value, r=document.getElementById('fRole').value;
+  return RECORDS.filter(x=>(!m||monthKey(x.date)===m)&&(!c||x.client===c)&&(!r||x.role===r));
+}
+function buildFilterOptions(){
+  const months=[...new Set(RECORDS.map(x=>monthKey(x.date)).filter(Boolean))].sort().reverse();
+  const fm=document.getElementById('fMonth'); const cur=fm.value;
+  fm.innerHTML='<option value="">All months</option>'+months.map(m=>`<option>${m}</option>`).join('');
+  if(cur) fm.value=cur; else if(months[0]) fm.value=months[0];
+  const fc=document.getElementById('fClient'); const cc=fc.value;
+  fc.innerHTML='<option value="">All clients</option>'+CFG.clients.map(c=>`<option>${esc(c)}</option>`).join('');
+  if(cc) fc.value=cc;
+}
+function agg(recs){
+  const s={contractValue:0,cashCollected:0,depositCollected:0,closedDeals:0,connectedMeetings:0,noShows:0,callCapacity:0,callsSet:0,inputs:0};
+  recs.forEach(x=>{
+    s.contractValue+=x.contractValue||0; s.cashCollected+=x.cashCollected||0; s.depositCollected+=x.depositCollected||0;
+    s.closedDeals+=x.closedDeals||0; s.connectedMeetings+=x.connectedMeetings||0; s.noShows+=x.noShows||0;
+    s.callCapacity+=x.callCapacity||0; s.callsSet+=x.callsSet||0; s.inputs+=(x.followUpOutreach||0)+(x.newOutreach||0);
+  });
+  s.closeRate = s.connectedMeetings? s.closedDeals/s.connectedMeetings : 0;
+  s.showRate = (s.connectedMeetings+s.noShows)? s.connectedMeetings/(s.connectedMeetings+s.noShows) : 0;
+  s.cashPct = s.contractValue? s.cashCollected/s.contractValue : 0;
+  s.utilization = s.callCapacity? s.connectedMeetings/s.callCapacity : 0;
+  return s;
+}
+
+/* ---------------- dashboard render ---------------- */
+function renderDash(){
+  buildFilterOptions();
+  const recs=filtered(); const s=agg(recs);
+  const goalMonthly = CFG.goal/12;
+  const gpc = goalMonthly? Math.min(100, Math.round(s.cashCollected/goalMonthly*100)) : 0;
+  document.getElementById('kpis').innerHTML = `
+    <div class="kpi goal"><div class="lbl">Cash collected</div><div class="val">${money(s.cashCollected)}</div><div class="bar"><i style="width:${gpc}%"></i></div><div class="lbl" style="margin-top:6px">${gpc}% of ${money(goalMonthly)} monthly</div></div>
+    <div class="kpi"><div class="lbl">Contract value</div><div class="val small">${money(s.contractValue)}</div></div>
+    <div class="kpi"><div class="lbl">Closed deals</div><div class="val">${s.closedDeals}</div></div>
+    <div class="kpi"><div class="lbl">Cash collected %</div><div class="val">${pct(s.cashPct)}</div></div>
+    <div class="kpi"><div class="lbl">Close %</div><div class="val">${pct(s.closeRate)}</div></div>
+    <div class="kpi"><div class="lbl">Show rate</div><div class="val">${pct(s.showRate)}</div></div>
+    <div class="kpi"><div class="lbl">Call capacity used</div><div class="val">${pct(s.utilization)}</div></div>
+    <div class="kpi"><div class="lbl">Deposits collected</div><div class="val small">${money(s.depositCollected)}</div></div>`;
+  renderLeaderboard(recs); renderClients(recs); renderDeals(recs);
+}
+function renderLeaderboard(recs){
+  const byRep={};
+  recs.forEach(x=>{ if(!x.rep) return; const k=x.rep+'|'+(x.role||''); byRep[k]=byRep[k]||{rep:x.rep,role:x.role,recs:[]}; byRep[k].recs.push(x); });
+  const rows=Object.values(byRep).map(o=>{ const a=agg(o.recs); const rate=(o.role==='Setter'?CFG.setterRate:CFG.closerRate)/100; return {...o,a,payout:a.cashCollected*rate}; })
+    .sort((x,y)=>y.a.cashCollected-x.a.cashCollected);
+  document.getElementById('lbTable').innerHTML =
+    `<thead><tr><th>#</th><th>Rep</th><th>Role</th><th class="num">Cash collected</th><th class="num">Deals</th><th class="num">Close %</th><th class="num">Est. payout</th></tr></thead><tbody>`+
+    (rows.length?rows.map((r,i)=>`<tr class="${i===0?'rank1':''}"><td>${i+1}</td><td>${esc(r.rep)}</td><td><span class="pill">${esc(r.role||'')}</span></td><td class="num">${money(r.a.cashCollected)}</td><td class="num">${r.a.closedDeals}</td><td class="num">${pct(r.a.closeRate)}</td><td class="num">${money(r.payout)}</td></tr>`).join('')
+     :`<tr><td colspan="7" class="muted" style="padding:16px">No data yet.</td></tr>`)+`</tbody>`;
+}
+function renderClients(recs){
+  const byC={};
+  recs.forEach(x=>{ if(!x.client) return; byC[x.client]=byC[x.client]||[]; byC[x.client].push(x); });
+  const rows=Object.entries(byC).map(([c,rs])=>({c,a:agg(rs)})).sort((x,y)=>y.a.cashCollected-x.a.cashCollected);
+  document.getElementById('clientTable').innerHTML =
+    `<thead><tr><th>Client</th><th class="num">Cash collected</th><th class="num">Contract value</th><th class="num">Deals</th><th class="num">Cash %</th></tr></thead><tbody>`+
+    (rows.length?rows.map(r=>`<tr><td>${esc(r.c)}</td><td class="num">${money(r.a.cashCollected)}</td><td class="num">${money(r.a.contractValue)}</td><td class="num">${r.a.closedDeals}</td><td class="num">${pct(r.a.cashPct)}</td></tr>`).join('')
+     :`<tr><td colspan="5" class="muted" style="padding:16px">No data yet.</td></tr>`)+`</tbody>`;
+}
+function renderDeals(recs){
+  const deals=recs.filter(x=>x.type==='deal').sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  document.getElementById('dealTable').innerHTML =
+    `<thead><tr><th>Date</th><th>Client</th><th>Closer</th><th>Setter</th><th>Product</th><th class="num">Contract</th><th class="num">Cash</th><th class="num">Deposit</th></tr></thead><tbody>`+
+    (deals.length?deals.map(d=>`<tr><td>${esc(d.date)}</td><td>${esc(d.client)}</td><td>${esc(d.rep||'')}</td><td>${esc(d.setter||'')}</td><td>${esc(d.product||'')}</td><td class="num">${money(d.contractValue)}</td><td class="num">${money(d.cashCollected)}</td><td class="num">${money(d.depositCollected)}</td></tr>`).join('')
+     :`<tr><td colspan="8" class="muted" style="padding:16px">No closed deals yet.</td></tr>`)+`</tbody>`;
+}
+
+/* ---------------- data tab ---------------- */
+function renderAll(){
+  const rows=[...RECORDS].sort((a,b)=>(b.submittedAt||'').localeCompare(a.submittedAt||''));
+  document.getElementById('allTable').innerHTML =
+    `<thead><tr><th>Date</th><th>Type</th><th>Role</th><th>Client</th><th>Rep</th><th class="num">Cash</th><th class="num">Deals</th><th></th></tr></thead><tbody>`+
+    (rows.length?rows.map(r=>`<tr><td>${esc(r.date||'')}</td><td><span class="pill ${r.type==='deal'?'good':''}">${r.type}</span></td><td>${esc(r.role||'')}</td><td>${esc(r.client||'')}</td><td>${esc(r.rep||'')}</td><td class="num">${money(r.cashCollected)}</td><td class="num">${r.closedDeals||0}</td><td><button class="btn sm ghost" style="color:var(--warn);border-color:var(--warn)" onclick="delRec('${r.id}')">Delete</button></td></tr>`).join('')
+     :`<tr><td colspan="8" class="muted" style="padding:16px">No records.</td></tr>`)+`</tbody>`;
+}
+function delRec(id){ RECORDS=RECORDS.filter(r=>r.id!==id); save(LS.data,RECORDS); renderAll(); renderDash(); toast('Deleted'); }
+
+/* ---------------- export ---------------- */
+const DEAL_COLS=['date','client','rep','setter','product','callType','contractValue','cashCollected','depositCollected','notes','submittedAt'];
+const EOD_COLS=['date','client','rep','role','followUpOutreach','newOutreach','callsOffered','callsSet','callCapacity','speedToLead','newMeetings','connectedMeetings','followUpMeetings','advancedCalls','noShows','closedDeals','contractsSigned','contractValue','cashCollected','depositCollected','aosiSold','productBSold','notes','submittedAt'];
+function exportCSV(type){
+  const cols = type==='deal'?DEAL_COLS:EOD_COLS;
+  const rows = RECORDS.filter(r=>r.type===type);
+  if(!rows.length){ toast('Nothing to export'); return; }
+  const head=cols.join(',');
+  const body=rows.map(r=>cols.map(c=>csvCell(r[c])).join(',')).join('\n');
+  download(`tsa_${type}_${new Date().toISOString().slice(0,10)}.csv`, head+'\n'+body, 'text/csv');
+}
+function csvCell(v){ if(v==null) return ''; const s=String(v); return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; }
+function exportJSON(){ download('tsa_invoice_backup.json', JSON.stringify(RECORDS,null,2), 'application/json'); }
+function download(name,text,mime){ const b=new Blob([text],{type:mime}); const u=URL.createObjectURL(b); const a=document.createElement('a'); a.href=u; a.download=name; a.click(); URL.revokeObjectURL(u); }
+function importJSON(e){ const f=e.target.files[0]; if(!f) return; const rd=new FileReader(); rd.onload=()=>{ try{ const arr=JSON.parse(rd.result); if(!Array.isArray(arr)) throw 0; const ids=new Set(RECORDS.map(r=>r.id)); arr.forEach(r=>{ if(!ids.has(r.id)) RECORDS.push(r); }); save(LS.data,RECORDS); renderAll(); renderDash(); toast('Imported '+arr.length+' records'); }catch(x){ toast('Bad JSON'); } }; rd.readAsText(f); e.target.value=''; }
+function wipe(){ if(confirm('Clear ALL local records? Export a backup first. This does not touch shared data.')){ RECORDS=[]; save(LS.data,RECORDS); renderAll(); renderDash(); toast('Cleared'); } }
+
+/* ---------------- settings ---------------- */
+function loadSettingsForm(){
+  ['clients','closers','setters','products'].forEach(renderChips);
+  document.getElementById('setGoal').value=CFG.goal;
+  document.getElementById('setCloser').value=CFG.closerRate;
+  document.getElementById('setSetter').value=CFG.setterRate;
+  document.getElementById('setEndpoint').value=CFG.endpoint;
+  document.getElementById('setSubmit').value=CFG.submitCode;
+  document.getElementById('setAdmin').value=CFG.adminCode;
+}
+function renderChips(key){
+  const el=document.getElementById(key+'Chips');
+  el.innerHTML=(CFG[key]||[]).map((v,i)=>`<span class="chip">${esc(v)}<button onclick="rmItem('${key}',${i})">&times;</button></span>`).join('');
+}
+function addItem(key,inputId){ const inp=document.getElementById(inputId); const v=inp.value.trim(); if(!v) return; CFG[key]=CFG[key]||[]; CFG[key].push(v); inp.value=''; renderChips(key); }
+function rmItem(key,i){ CFG[key].splice(i,1); renderChips(key); }
+function saveSettings(){
+  CFG.goal=parseFloat(document.getElementById('setGoal').value)||0;
+  CFG.closerRate=parseFloat(document.getElementById('setCloser').value)||0;
+  CFG.setterRate=parseFloat(document.getElementById('setSetter').value)||0;
+  CFG.endpoint=document.getElementById('setEndpoint').value.trim();
+  CFG.submitCode=document.getElementById('setSubmit').value.trim()||DEFAULT_CFG.submitCode;
+  CFG.adminCode=document.getElementById('setAdmin').value.trim()||DEFAULT_CFG.adminCode;
+  save(LS.cfg,CFG); fillLists(); document.getElementById('storeTag').textContent=CFG.endpoint?'Shared data':'Local data (this browser)';
+  toast('Settings saved'); syncRecords().then(renderDash);
+}
+
+/* ---------------- boot ---------------- */
+document.getElementById('pass').addEventListener('keydown',e=>{ if(e.key==='Enter') tryGate(); });
+(function boot(){ const a=load(LS.auth,null); if(a){ ROLE=a; startApp(); } })();
+</script>
+</body>
+</html>
