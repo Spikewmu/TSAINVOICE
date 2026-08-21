@@ -9,7 +9,13 @@ Built to match the `[TEMPLATE] Sales Team Tracking Sheet` fields exactly: follow
 - **Two submission forms:** Closed Deal (submit at close) and End of Day (daily activity, closer or setter).
 - **Dashboard:** filter by month / client / role. KPI cards, leaderboard, by-client invoicing table, closed-deals table.
 - **Export:** closed deals CSV, end-of-day CSV, full JSON backup, JSON import.
-- **Light access gate:** a submit code for reps and an admin code for leadership. This is a soft gate, not real security (the code ships in the page). Real logins come with HQ. Do not put anything you would not want a viewer to see in the code itself.
+- **Per-user accounts with roles:** the admin (username `tsaboss`) creates a login for each rep in the **Users** tab and picks their role:
+  - **Admin** sees everything (dashboard, forms, data, users, settings).
+  - **Closer** sees only Log Closed Deal + the closer End of Day form (their name locked in).
+  - **Setter** sees only the setter End of Day form (their name locked in).
+  Every screen has a **Sign out** button (top right) so people can switch accounts.
+  With the Apps Script backend deployed, accounts and passwords live in the shared Google Sheet (hashed, never plain text) and work on every device. Without it, accounts are stored per-browser. This is a light internal gate, not bank-grade security. Enterprise logins come with HQ.
+- **Master admin (break-glass):** sign in as `tsaboss` with the master admin password (set in Settings, default `tsaboss`) to manage everything even before the backend is wired. Change it immediately.
 
 ## Data: local vs shared
 - **Default (works instantly):** data is saved in the browser (localStorage). Great for a single-machine demo. Each browser has its own copy.
