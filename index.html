@@ -462,7 +462,7 @@ function renderDeals(recs){
   const deals=recs.filter(x=>x.type==='deal').sort((a,b)=>(b.date||'').localeCompare(a.date||''));
   document.getElementById('dealTable').innerHTML=
     `<thead><tr><th>Date</th><th>Client</th><th>Closer</th><th>Setter</th><th>Product</th><th class="num">Contract</th><th class="num">Cash</th><th class="num">Deposit</th></tr></thead><tbody>`+
-    (deals.length?deals.map(d=>`<tr><td>${esc(d.date)}</td><td>${esc(d.client)}</td><td>${esc(d.rep)}</td><td>${esc(d.setter)}</td><td>${esc(d.product)}</td><td class="num">${money(d.contractValue)}</td><td class="num">${money(d.cashCollected)}</td><td class="num">${money(d.depositCollected)}</td></tr>`).join('')
+    (deals.length?deals.map(d=>`<tr><td>${esc((d.date||'').slice(0,10))}</td><td>${esc(d.client)}</td><td>${esc(d.rep)}</td><td>${esc(d.setter)}</td><td>${esc(d.product)}</td><td class="num">${money(d.contractValue)}</td><td class="num">${money(d.cashCollected)}</td><td class="num">${money(d.depositCollected)}</td></tr>`).join('')
      :`<tr><td colspan="8" class="muted" style="padding:16px">No closed deals yet.</td></tr>`)+`</tbody>`;
 }
 
@@ -471,7 +471,7 @@ function renderAll(){
   const rows=[...RECORDS].sort((a,b)=>(b.submittedAt||'').localeCompare(a.submittedAt||''));
   document.getElementById('allTable').innerHTML=
     `<thead><tr><th>Date</th><th>Type</th><th>Role</th><th>Client</th><th>Rep</th><th class="num">Cash</th><th class="num">Deals</th><th></th></tr></thead><tbody>`+
-    (rows.length?rows.map(r=>`<tr><td>${esc(r.date)}</td><td><span class="pill ${r.type==='deal'?'good':''}">${esc(r.type)}</span></td><td>${esc(r.role)}</td><td>${esc(r.client)}</td><td>${esc(r.rep)}</td><td class="num">${money(r.cashCollected)}</td><td class="num">${r.closedDeals||0}</td><td><button class="btn sm ghost" style="color:var(--warn);border-color:var(--warn)" onclick="delRec('${r.id}')">Delete</button></td></tr>`).join('')
+    (rows.length?rows.map(r=>`<tr><td>${esc((r.date||'').slice(0,10))}</td><td><span class="pill ${r.type==='deal'?'good':''}">${esc(r.type)}</span></td><td>${esc(r.role)}</td><td>${esc(r.client)}</td><td>${esc(r.rep)}</td><td class="num">${money(r.cashCollected)}</td><td class="num">${r.closedDeals||0}</td><td><button class="btn sm ghost" style="color:var(--warn);border-color:var(--warn)" onclick="delRec('${r.id}')">Delete</button></td></tr>`).join('')
      :`<tr><td colspan="8" class="muted" style="padding:16px">No records.</td></tr>`)+`</tbody>`;
 }
 function delRec(id){ RECORDS=RECORDS.filter(r=>r.id!==id); save(LS.data,RECORDS); renderAll(); renderDash(); toast('Deleted'); }
