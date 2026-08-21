@@ -106,7 +106,8 @@
   <div class="field"><label for="gPass">Password</label><input id="gPass" type="password" autocomplete="current-password" placeholder="password"></div>
   <button class="btn" style="width:100%" onclick="tryGate()">Sign in</button>
   <p id="gateErr" class="pill warn" hidden style="margin-top:12px">Wrong username or password</p>
-  <p class="tag" style="margin-top:16px">Light gate for an internal tool, not bank-grade security. Full enterprise logins come with Sales Team HQ.</p>
+  <p class="tag" style="margin-top:14px"><a href="#" onclick="resetDevice();return false;" style="color:var(--navy);font-weight:600">Locked out? Reset this device</a></p>
+  <p class="tag" style="margin-top:8px">Light gate for an internal tool, not bank-grade security. Full enterprise logins come with Sales Team HQ.</p>
 </div>
 
 <!-- ============ APP ============ -->
@@ -335,6 +336,7 @@ async function tryGate(){
 }
 function setSession(s){ SESSION=s; save(LS.auth,s); startApp(); }
 function logout(){ SESSION=null; localStorage.removeItem(LS.auth); location.reload(); }
+function resetDevice(){ if(confirm('Reset this device? Clears the saved login and settings on THIS browser only. Your data and accounts in the shared Google Sheet are untouched. You will sign in again with tsaboss / tsaboss and re-enter the backend URL in Settings.')){ localStorage.clear(); location.reload(); } }
 
 /* ---------------- start ---------------- */
 function startApp(){
