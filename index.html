@@ -160,7 +160,7 @@
   <!-- ===== END OF DAY ===== -->
   <section id="tab-eod" hidden>
     <h2 class="section">End of Day Checkout</h2>
-    <p class="hint">One per rep per day. Closers and setters have slightly different fields. Closed-deal totals below can be left blank if you already logged them as closed deals.</p>
+    <p class="hint">One per rep per day. Pick your role: <b>setters</b> log activity (dials, appointments set, connected, no-shows, speed-to-lead), <b>closers</b> log the closing numbers. Setter cash and commission come automatically from the "Setter who set it" field on each closed deal, so setters never enter cash here.</p>
     <div class="split" style="margin-bottom:14px">
       <div class="seg" id="roleSeg">
         <button class="on" data-role="Closer" onclick="setEodRole('Closer')">Closer</button>
@@ -184,16 +184,17 @@
       <div class="field"><label>New meetings today</label><input type="number" name="newMeetings" min="0" step="1"></div>
       <div class="field"><label>Connected meetings (calls taken)</label><input type="number" name="connectedMeetings" min="0" step="1"></div>
       <div class="field"><label>Follow-up meetings today</label><input type="number" name="followUpMeetings" min="0" step="1"></div>
-      <div class="field"><label>Advanced sales calls</label><input type="number" name="advancedCalls" min="0" step="1"></div>
+      <div class="field closerOnly"><label>Advanced sales calls</label><input type="number" name="advancedCalls" min="0" step="1"></div>
       <div class="field"><label>No shows</label><input type="number" name="noShows" min="0" step="1"></div>
 
-      <div class="field"><label>Closed deals</label><input type="number" name="closedDeals" min="0" step="1"></div>
-      <div class="field"><label>Contracts signed</label><input type="number" name="contractsSigned" min="0" step="1"></div>
-      <div class="field"><label>Contract value ($)</label><input type="number" name="contractValue" min="0" step="0.01"></div>
-      <div class="field"><label>Cash collected ($)</label><input type="number" name="cashCollected" min="0" step="0.01"></div>
-      <div class="field"><label>Deposits collected ($)</label><input type="number" name="depositCollected" min="0" step="0.01"></div>
-      <div class="field"><label>AOSi sold</label><input type="number" name="aosiSold" min="0" step="1"></div>
-      <div class="field"><label>Product B sold</label><input type="number" name="productBSold" min="0" step="1"></div>
+      <div class="field full closerOnly" style="margin-top:2px"><span class="pill" style="background:var(--gold-soft);color:var(--warn)">Closing numbers (closers) - log each deal on the Closed Deal tab too</span></div>
+      <div class="field closerOnly"><label>Closed deals</label><input type="number" name="closedDeals" min="0" step="1"></div>
+      <div class="field closerOnly"><label>Contracts signed</label><input type="number" name="contractsSigned" min="0" step="1"></div>
+      <div class="field closerOnly"><label>Contract value ($)</label><input type="number" name="contractValue" min="0" step="0.01"></div>
+      <div class="field closerOnly"><label>Cash collected ($)</label><input type="number" name="cashCollected" min="0" step="0.01"></div>
+      <div class="field closerOnly"><label>Deposits collected ($)</label><input type="number" name="depositCollected" min="0" step="0.01"></div>
+      <div class="field closerOnly"><label>AOSi sold</label><input type="number" name="aosiSold" min="0" step="1"></div>
+      <div class="field closerOnly"><label>Product B sold</label><input type="number" name="productBSold" min="0" step="1"></div>
       <div class="field full"><label>Notes</label><input type="text" name="notes"></div>
       <div class="full row-actions"><button class="btn gold" type="submit">Submit end of day</button></div>
     </form>
@@ -309,7 +310,7 @@ function startApp(){
   document.querySelectorAll('#tabs button').forEach(b=>{
     b.hidden = (ROLE!=='admin' && !REP_TABS.includes(b.dataset.tab));
   });
-  fillLists(); wireTabs(); presetDates();
+  fillLists(); wireTabs(); presetDates(); setEodRole('Closer');
   if(ROLE==='admin'){ syncRecords().then(()=>{ renderDash(); renderAll(); }); showTab('dash'); }
   else { syncRecords(); showTab('deal'); }
 }
@@ -421,13 +422,21 @@ function renderDash(){
   renderLeaderboard(recs); renderClients(recs); renderDeals(recs);
 }
 function renderLeaderboard(recs){
+  // Credit each rep for their own record. Additionally credit the SETTER named on a
+  // closed deal with that deal's cash, since setters do not enter cash themselves.
   const byRep={};
-  recs.forEach(x=>{ if(!x.rep) return; const k=x.rep+'|'+(x.role||''); byRep[k]=byRep[k]||{rep:x.rep,role:x.role,recs:[]}; byRep[k].recs.push(x); });
-  const rows=Object.values(byRep).map(o=>{ const a=agg(o.recs); const rate=(o.role==='Setter'?CFG.setterRate:CFG.closerRate)/100; return {...o,a,payout:a.cashCollected*rate}; })
-    .sort((x,y)=>y.a.cashCollected-x.a.cashCollected);
+  function bucket(name, role){ const k=name+'|'+role; if(!byRep[k]) byRep[k]={rep:name,role:role,cash:0,deals:0,connected:0}; return byRep[k]; }
+  recs.forEach(x=>{
+    if(x.rep){ const b=bucket(x.rep, x.role||'Closer'); b.cash+=x.cashCollected||0; b.deals+=x.closedDeals||0; b.connected+=x.connectedMeetings||0; }
+    if(x.type==='deal' && x.setter){ const s=bucket(x.setter,'Setter'); s.cash+=x.cashCollected||0; s.deals+=x.closedDeals||0; }
+  });
+  const rows=Object.values(byRep).map(o=>{
+    const rate=(o.role==='Setter'?CFG.setterRate:CFG.closerRate)/100;
+    return {...o, closeRate:o.connected?o.deals/o.connected:0, payout:o.cash*rate};
+  }).sort((x,y)=>y.cash-x.cash);
   document.getElementById('lbTable').innerHTML =
     `<thead><tr><th>#</th><th>Rep</th><th>Role</th><th class="num">Cash collected</th><th class="num">Deals</th><th class="num">Close %</th><th class="num">Est. payout</th></tr></thead><tbody>`+
-    (rows.length?rows.map((r,i)=>`<tr class="${i===0?'rank1':''}"><td>${i+1}</td><td>${esc(r.rep)}</td><td><span class="pill">${esc(r.role||'')}</span></td><td class="num">${money(r.a.cashCollected)}</td><td class="num">${r.a.closedDeals}</td><td class="num">${pct(r.a.closeRate)}</td><td class="num">${money(r.payout)}</td></tr>`).join('')
+    (rows.length?rows.map((r,i)=>`<tr class="${i===0?'rank1':''}"><td>${i+1}</td><td>${esc(r.rep)}</td><td><span class="pill">${esc(r.role||'')}</span></td><td class="num">${money(r.cash)}</td><td class="num">${r.deals}</td><td class="num">${pct(r.closeRate)}</td><td class="num">${money(r.payout)}</td></tr>`).join('')
      :`<tr><td colspan="7" class="muted" style="padding:16px">No data yet.</td></tr>`)+`</tbody>`;
 }
 function renderClients(recs){
