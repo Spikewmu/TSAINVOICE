@@ -304,11 +304,14 @@ function startApp(){
   document.getElementById('app').hidden=false;
   document.getElementById('modeTag').textContent = ROLE==='admin' ? 'Leadership view' : 'Rep view';
   document.getElementById('storeTag').textContent = CFG.endpoint ? 'Shared data' : 'Local data (this browser)';
-  // reps do not see settings; only admin sees full dashboard money by default (kept visible for now)
-  document.querySelector('[data-tab="settings"]').hidden = (ROLE!=='admin');
+  // Reps (submit code) only see the submission forms. Leadership (admin) sees everything.
+  const REP_TABS = ['deal','eod'];
+  document.querySelectorAll('#tabs button').forEach(b=>{
+    b.hidden = (ROLE!=='admin' && !REP_TABS.includes(b.dataset.tab));
+  });
   fillLists(); wireTabs(); presetDates();
-  syncRecords().then(()=>{ renderDash(); renderAll(); });
-  if(ROLE==='submit'){ showTab('deal'); }
+  if(ROLE==='admin'){ syncRecords().then(()=>{ renderDash(); renderAll(); }); showTab('dash'); }
+  else { syncRecords(); showTab('deal'); }
 }
 
 /* ---------------- tabs ---------------- */
