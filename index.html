@@ -269,6 +269,13 @@
       </div>
       <div style="padding:8px 16px 16px"><div id="onbSteps"></div></div>
     </div>
+    <div class="panel" id="stepEditorPanel" hidden><h3>Manage checklist steps (admin)</h3>
+      <div style="padding:14px">
+        <p class="hint">Reorder with the arrows, rename, reassign the owner, add or remove steps. This applies to every client. Save when done.</p>
+        <div id="stepEditor"></div>
+        <div class="row-actions"><button class="btn ghost sm" onclick="addStep()">+ Add step</button><button class="btn gold sm" onclick="saveSteps()">Save step order</button></div>
+      </div>
+    </div>
   </section>
 
   <!-- ===== SETTINGS ===== -->
@@ -609,7 +616,7 @@ function renderClientOverview(){
 }
 
 /* ---------------- onboarding checklist ---------------- */
-const ONB_STEPS=[
+const DEFAULT_ONB_STEPS=[
   {step:'Contract signed', owner:'Robb'},
   {step:'Welcome email sent', owner:'Auto / Steve'},
   {step:'Onboarding call booked', owner:'Client'},
@@ -625,12 +632,17 @@ const ONB_STEPS=[
   {step:'Launched', owner:'Manager'}
 ];
 const ONB_STATUSES=['Not started','In progress','Done'];
+// steps are editable by admins; the latest saved order is stored as an 'onbconfig' record
+function latestOnbConfig(){ let best=null; RECORDS.filter(x=>x.type==='onbconfig').forEach(x=>{ if(!best||(x.submittedAt||'')>(best.submittedAt||'')) best=x; }); if(best&&best.steps){ try{ var a=JSON.parse(best.steps); if(Array.isArray(a)&&a.length) return a; }catch(e){} } return null; }
+function onbSteps(){ return latestOnbConfig() || DEFAULT_ONB_STEPS; }
 function latestOnb(client){ const m={}; RECORDS.filter(x=>x.type==='onboard'&&x.client===client).forEach(x=>{ if(!m[x.step]||(x.submittedAt||'')>(m[x.step].submittedAt||'')) m[x.step]=x; }); return m; }
-function onbProgress(client){ const st=latestOnb(client); let done=0,bn=null; ONB_STEPS.forEach(s=>{ const r=st[s.step]; if(r&&r.status==='Done') done++; else if(!bn) bn=s.step; }); return {done,total:ONB_STEPS.length,pct:Math.round(done/ONB_STEPS.length*100),bottleneck:bn}; }
+function onbProgress(client){ const steps=onbSteps(); const st=latestOnb(client); let done=0,bn=null; steps.forEach(s=>{ const r=st[s.step]; if(r&&r.status==='Done') done++; else if(!bn) bn=s.step; }); return {done,total:steps.length,pct:steps.length?Math.round(done/steps.length*100):0,bottleneck:bn}; }
 function renderOnboarding(){
   const sel=document.getElementById('onbClient'); const cur=sel.value; const names=clientNames();
   sel.innerHTML=names.map(n=>`<option>${esc(n)}</option>`).join('');
   if(cur&&names.includes(cur)) sel.value=cur;
+  const isAdmin = SESSION && SESSION.role==='admin';
+  const ep=document.getElementById('stepEditorPanel'); if(ep){ ep.hidden=!isAdmin; if(isAdmin) renderStepEditor(); }
   const rows=names.map(n=>({n,p:onbProgress(n)}));
   document.getElementById('onbOverview').innerHTML=
     `<thead><tr><th>Client</th><th>Progress</th><th class="num">%</th><th>Current step (bottleneck)</th></tr></thead><tbody>`+
@@ -643,7 +655,7 @@ function renderOnbChecklist(){
   const box=document.getElementById('onbSteps');
   if(!client){ box.innerHTML='<p class="muted">No client selected.</p>'; return; }
   const st=latestOnb(client);
-  box.innerHTML=ONB_STEPS.map((s,i)=>{
+  box.innerHTML=onbSteps().map((s,i)=>{
     const rec=st[s.step]; const status=rec?rec.status:'Not started';
     return `<div style="display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--border)">
       <span style="width:22px;color:var(--muted);font-variant-numeric:tabular-nums">${i+1}</span>
@@ -653,9 +665,27 @@ function renderOnbChecklist(){
   }).join('');
 }
 async function setOnbStatus(client, step, status){
-  await addRecord({type:'onboard', client, step, status, owner:(ONB_STEPS.find(s=>s.step===step)||{}).owner||''});
+  await addRecord({type:'onboard', client, step, status, owner:(onbSteps().find(s=>s.step===step)||{}).owner||''});
   toast('Updated'); renderOnboarding();
 }
+// admin step editor (reorder / rename / reassign / add / remove)
+let EDIT_STEPS=null;
+function renderStepEditor(){
+  if(!EDIT_STEPS) EDIT_STEPS = onbSteps().map(s=>({step:s.step, owner:s.owner||''}));
+  document.getElementById('stepEditor').innerHTML = EDIT_STEPS.map((s,i)=>`
+    <div style="display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)">
+      <span style="color:var(--muted);width:20px;font-variant-numeric:tabular-nums">${i+1}</span>
+      <button class="btn sm ghost" style="padding:2px 8px" onclick="moveStep(${i},-1)">&uarr;</button>
+      <button class="btn sm ghost" style="padding:2px 8px" onclick="moveStep(${i},1)">&darr;</button>
+      <input value="${esc(s.step)}" oninput="EDIT_STEPS[${i}].step=this.value" style="flex:1">
+      <input value="${esc(s.owner)}" oninput="EDIT_STEPS[${i}].owner=this.value" placeholder="owner" style="width:130px">
+      <button class="btn sm ghost" style="color:var(--warn);border-color:var(--warn);padding:2px 9px" onclick="delStep(${i})">&times;</button>
+    </div>`).join('');
+}
+function moveStep(i,dir){ const j=i+dir; if(j<0||j>=EDIT_STEPS.length) return; const t=EDIT_STEPS[i]; EDIT_STEPS[i]=EDIT_STEPS[j]; EDIT_STEPS[j]=t; renderStepEditor(); }
+function delStep(i){ if(EDIT_STEPS.length<=1){toast('Keep at least one step',true);return;} EDIT_STEPS.splice(i,1); renderStepEditor(); }
+function addStep(){ EDIT_STEPS.push({step:'New step', owner:''}); renderStepEditor(); }
+async function saveSteps(){ const clean=EDIT_STEPS.map(s=>({step:(s.step||'').trim(),owner:(s.owner||'').trim()})).filter(s=>s.step); await addRecord({type:'onbconfig', steps:JSON.stringify(clean)}); toast('Step order saved for all clients'); EDIT_STEPS=null; renderOnboarding(); }
 
 /* ---------------- settings ---------------- */
 function loadSettingsForm(){
