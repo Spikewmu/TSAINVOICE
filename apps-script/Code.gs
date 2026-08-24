@@ -25,6 +25,14 @@ var ADMIN_PASS = 'tsaboss';                 // must match the app's master admin
 var MANAGER_PASS = 'TSAmgr2026';            // must match the app's managerCode; lets Sales Managers create closers/setters
 var SALT = 'tsa-sales-salt-change-me';      // change once, before creating users
 
+// ---- Automation: paste a Slack Incoming Webhook URL to turn on onboarding pings ----
+// Slack: create an app > Incoming Webhooks > add to your onboarding channel > copy the URL.
+var SLACK_WEBHOOK = '';   // e.g. 'https://hooks.slack.com/services/T000/B000/xxxx'  (empty = off)
+// Optional: also POST every record to an external webhook (Zapier/Make/n8n). Empty = off.
+var OUT_WEBHOOK = '';
+// Optional: map an owner name to a Slack member ID so it @-pings them. e.g. {'Keithen':'U12345'}
+var SLACK_IDS = {};
+
 var REC_TAB = 'records';
 var USR_TAB = 'users';
 var REC_COLS = [
@@ -95,7 +103,41 @@ function appendRecord_(rec){
   var head = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0];
   Object.keys(rec).forEach(function(k){ if(head.indexOf(k)===-1){ sh.getRange(1,head.length+1).setValue(k); head.push(k); } });
   sh.appendRow(head.map(function(k){ return rec[k]!=null?rec[k]:''; }));
+  try { automate_(rec); } catch(e) {}
   return json_({ ok:true, id:rec.id });
+}
+
+/* ---------- automation: Slack pings + optional outbound webhook ---------- */
+function slack_(text){
+  if(!SLACK_WEBHOOK) return;
+  UrlFetchApp.fetch(SLACK_WEBHOOK, { method:'post', contentType:'application/json', payload:JSON.stringify({text:text}), muteHttpExceptions:true });
+}
+function mention_(name){ var id = SLACK_IDS[name]; return id ? ('<@'+id+'>') : (name||''); }
+function onbOrder_(){
+  var rows = rowsAsObjects_(tab_(REC_TAB, REC_COLS)); var best=null;
+  for(var i=0;i<rows.length;i++){ if(rows[i].type==='onbconfig'){ if(!best || String(rows[i].submittedAt) > String(best.submittedAt)) best=rows[i]; } }
+  if(best && best.steps){ try{ var a=JSON.parse(best.steps); if(a && a.length) return a; }catch(e){} }
+  return null;
+}
+function automate_(rec){
+  if(OUT_WEBHOOK){ try{ UrlFetchApp.fetch(OUT_WEBHOOK, {method:'post', contentType:'application/json', payload:JSON.stringify(rec), muteHttpExceptions:true}); }catch(e){} }
+  if(rec.type==='onboard'){
+    var msg = ':bell: *'+rec.client+'*  —  "'+rec.step+'" set to *'+rec.status+'*';
+    if(rec.status==='Done'){
+      var order = onbOrder_();
+      if(order){
+        for(var i=0;i<order.length;i++){ if(order[i].step===rec.step){
+          var nx = order[i+1];
+          if(nx){ msg += '\n:arrow_right: Next up: *'+nx.step+'*  '+mention_(nx.owner); }
+          else { msg += '\n:tada: Onboarding complete for '+rec.client+'.'; }
+          break;
+        } }
+      }
+    }
+    slack_(msg);
+  } else if(rec.type==='client'){
+    slack_(':new: New client: *'+rec.name+'*  ('+(rec.status||'')+')'+(rec.manager?'  —  manager '+mention_(rec.manager):''));
+  }
 }
 
 /* ---------- users ---------- */
