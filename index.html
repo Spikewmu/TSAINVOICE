@@ -566,7 +566,7 @@ async function saveUser(e){
     if(i>=0) LOCAL_USERS[i]=rec; else LOCAL_USERS.push(rec);
     save(LS.users,LOCAL_USERS);
   }
-  e.target.reset(); toast('User saved'); renderUsers();
+  e.target.reset(); toast('User saved'); renderUsers(); setTimeout(renderUsers, 2500);
 }
 async function delUser(username){
   if(!confirm('Remove user '+username+'?')) return;
