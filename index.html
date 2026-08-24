@@ -359,14 +359,14 @@ async function tryGate(){
   // 1) backend accounts
   if(CFG.endpoint){
     const res=await api({action:'login', username:u, password:p});
-    if(res && res.ok){ setSession({username:u, name:res.name||u, role:res.role}); return; }
+    if(res && res.ok){ setSession({username:u, name:res.name||u, role:res.role, pw:p}); return; }
   }
   // 2) master admin break-glass
-  if((u==='tsaboss') && p===CFG.adminCode){ setSession({username:'tsaboss', name:'Admin', role:'admin'}); return; }
+  if((u==='tsaboss') && p===CFG.adminCode){ setSession({username:'tsaboss', name:'Admin', role:'admin', pw:p}); return; }
   // 3) local users (no backend configured)
   if(!CFG.endpoint){
     const lu=LOCAL_USERS.find(x=>x.username===u);
-    if(lu){ const h=await sha(p); if(h===lu.passHash){ setSession({username:lu.username, name:lu.name, role:lu.role}); return; } }
+    if(lu){ const h=await sha(p); if(h===lu.passHash){ setSession({username:lu.username, name:lu.name, role:lu.role, pw:p}); return; } }
   }
   document.getElementById('gateErr').hidden=false;
 }
@@ -534,13 +534,16 @@ function wipe(){ if(confirm('Clear ALL local records? Export a backup first. Thi
 
 /* ---------------- users ---------------- */
 function mgmtPass(){ return (SESSION && SESSION.role==='manager') ? CFG.managerCode : CFG.adminCode; }
+// Authorize account management by the logged-in account (actorUser/actorPass) with the
+// master password as a fallback. This is why no per-browser password setup is needed.
+function authFields(){ return { adminPass: mgmtPass(), actorUser:(SESSION&&SESSION.username)||'', actorPass:(SESSION&&SESSION.pw)||'' }; }
 async function renderUsers(){
   const isAdmin = SESSION.role==='admin';
   // managers can only create closer/setter; admins can also create manager/admin
   const roleSel=document.querySelector('#userForm [name=role]');
   if(roleSel) roleSel.innerHTML = '<option value="closer">Closer</option><option value="setter">Setter</option>'+(isAdmin?'<option value="manager">Sales Manager</option><option value="admin">Admin</option>':'');
   let users=[];
-  if(CFG.endpoint){ const res=await api({action:'listUsers', adminPass:mgmtPass()}); users=(res&&res.users)||[]; }
+  if(CFG.endpoint){ const res=await api({action:'listUsers', ...authFields()}); users=(res&&res.users)||[]; }
   else { users=LOCAL_USERS.map(u=>({username:u.username,name:u.name,role:u.role})); }
   users.push({username:'tsaboss',name:'Admin (master)',role:'admin',master:true});
   document.getElementById('usersTable').innerHTML=
@@ -554,7 +557,7 @@ async function saveUser(e){
   if(o.username==='tsaboss'){ toast('tsaboss is the master admin, change it in Settings',true); return; }
   if(SESSION.role==='manager' && !['closer','setter'].includes(o.role)){ toast('Managers can only create closers and setters',true); return; }
   if(CFG.endpoint){
-    const res=await api({action:'saveUser', adminPass:mgmtPass(), user:o});
+    const res=await api({action:'saveUser', ...authFields(), user:o});
     if(!res||!res.ok){ toast('Save failed (check backend)',true); return; }
   } else {
     const passHash=await sha(o.password);
@@ -567,7 +570,7 @@ async function saveUser(e){
 }
 async function delUser(username){
   if(!confirm('Remove user '+username+'?')) return;
-  if(CFG.endpoint){ const res=await api({action:'deleteUser', adminPass:CFG.adminCode, username}); if(!res||!res.ok){ toast('Delete failed',true); return; } }
+  if(CFG.endpoint){ const res=await api({action:'deleteUser', ...authFields(), username}); if(!res||!res.ok){ toast('Delete failed',true); return; } }
   else { LOCAL_USERS=LOCAL_USERS.filter(x=>x.username!==username); save(LS.users,LOCAL_USERS); }
   toast('Removed'); renderUsers();
 }

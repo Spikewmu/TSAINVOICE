@@ -70,15 +70,24 @@ function doPost(e){
   return appendRecord_(body);
 }
 
-function requireAdmin_(body, fn){
-  if(body.adminPass !== ADMIN_PASS) return json_({ ok:false, error:'not authorized' });
-  return fn(body);
+// Authorize account management by the caller's own logged-in account (actorUser/actorPass),
+// with the master ADMIN_PASS / MANAGER_PASS as a fallback. This is what lets multiple admins
+// on different computers manage accounts with no per-browser password setup.
+function actorRole_(body){
+  var u = String(body.actorUser||'').trim().toLowerCase(); if(!u) return null;
+  var rows = rowsAsObjects_(usersSheet_());
+  for(var i=0;i<rows.length;i++){
+    if(String(rows[i].username).toLowerCase()===u && rows[i].passHash===hash_(body.actorPass)) return rows[i].role;
+  }
+  return null;
 }
-// admin OR manager (managers can list + create closers/setters, not delete)
-function requireManager_(body, fn){
-  if(body.adminPass !== ADMIN_PASS && body.adminPass !== MANAGER_PASS) return json_({ ok:false, error:'not authorized' });
-  return fn(body);
+function isAdmin_(body){ return body.adminPass===ADMIN_PASS || actorRole_(body)==='admin'; }
+function isManager_(body){
+  if(body.adminPass===ADMIN_PASS || body.adminPass===MANAGER_PASS) return true;
+  var r = actorRole_(body); return r==='admin' || r==='manager';
 }
+function requireAdmin_(body, fn){ if(!isAdmin_(body)) return json_({ ok:false, error:'not authorized' }); return fn(body); }
+function requireManager_(body, fn){ if(!isManager_(body)) return json_({ ok:false, error:'not authorized' }); return fn(body); }
 
 /* ---------- records ---------- */
 function appendRecord_(rec){
@@ -109,8 +118,8 @@ function listUsers_(){
 }
 function saveUser_(body){
   var u = body.user; if(!u || !u.username) return json_({ ok:false, error:'missing user' });
-  // managers (MANAGER_PASS) can only create closers/setters, never admins/managers
-  if(body.adminPass !== ADMIN_PASS && u.role !== 'closer' && u.role !== 'setter') u.role = 'closer';
+  // non-admin callers (managers) can only create closers/setters, never admins/managers
+  if(!isAdmin_(body) && u.role !== 'closer' && u.role !== 'setter') u.role = 'closer';
   var uname = String(u.username).trim().toLowerCase();
   var sh = usersSheet_();
   var data = sh.getDataRange().getValues(); // [head, ...]
