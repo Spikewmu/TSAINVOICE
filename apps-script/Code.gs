@@ -22,6 +22,7 @@
 
 var SHEET_ID  = 'PASTE_YOUR_SHEET_ID_HERE';
 var ADMIN_PASS = 'tsaboss';                 // must match the app's master admin password
+var MANAGER_PASS = 'TSAmgr2026';            // must match the app's managerCode; lets Sales Managers create closers/setters
 var SALT = 'tsa-sales-salt-change-me';      // change once, before creating users
 
 var REC_TAB = 'records';
@@ -61,8 +62,8 @@ function doPost(e){
   var action = body.action;
 
   if(action === 'login')      return login_(body);
-  if(action === 'listUsers')  return requireAdmin_(body, listUsers_);
-  if(action === 'saveUser')   return requireAdmin_(body, saveUser_);
+  if(action === 'listUsers')  return requireManager_(body, listUsers_);
+  if(action === 'saveUser')   return requireManager_(body, saveUser_);
   if(action === 'deleteUser') return requireAdmin_(body, deleteUser_);
 
   // no action -> it is a data record
@@ -71,6 +72,11 @@ function doPost(e){
 
 function requireAdmin_(body, fn){
   if(body.adminPass !== ADMIN_PASS) return json_({ ok:false, error:'not authorized' });
+  return fn(body);
+}
+// admin OR manager (managers can list + create closers/setters, not delete)
+function requireManager_(body, fn){
+  if(body.adminPass !== ADMIN_PASS && body.adminPass !== MANAGER_PASS) return json_({ ok:false, error:'not authorized' });
   return fn(body);
 }
 
@@ -103,6 +109,8 @@ function listUsers_(){
 }
 function saveUser_(body){
   var u = body.user; if(!u || !u.username) return json_({ ok:false, error:'missing user' });
+  // managers (MANAGER_PASS) can only create closers/setters, never admins/managers
+  if(body.adminPass !== ADMIN_PASS && u.role !== 'closer' && u.role !== 'setter') u.role = 'closer';
   var uname = String(u.username).trim().toLowerCase();
   var sh = usersSheet_();
   var data = sh.getDataRange().getValues(); // [head, ...]

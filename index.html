@@ -120,6 +120,8 @@
 
 <nav class="tabs" id="tabs">
   <button data-tab="dash" class="active">Dashboard</button>
+  <button data-tab="clients">Client Overview</button>
+  <button data-tab="onboarding">Onboarding</button>
   <button data-tab="deal">Log Closed Deal</button>
   <button data-tab="eod">End of Day</button>
   <button data-tab="data">Data + Export</button>
@@ -237,6 +239,38 @@
     <div class="panel"><h3>Current users</h3><div class="tablewrap"><table id="usersTable"></table></div></div>
   </section>
 
+  <!-- ===== CLIENT OVERVIEW ===== -->
+  <section id="tab-clients" hidden>
+    <h2 class="section">Client Overview</h2>
+    <p class="hint">Every client at a glance: status, manager, existing monthly, cash collected this month, and the next step. Add or update a client below.</p>
+    <div class="cards" id="clientKpis"></div>
+    <div class="panel"><h3>Clients</h3><div class="tablewrap"><table id="overviewTable"></table></div></div>
+    <div class="panel"><h3>Add or update a client</h3>
+      <form class="grid" id="clientForm" onsubmit="saveClient(event)" style="box-shadow:none;border:none">
+        <div class="field"><label>Client name *</label><input name="name" required placeholder="Prime (Billy)"></div>
+        <div class="field"><label>Status *</label><select name="status" required><option>Active</option><option>Onboarding</option><option>Prospect</option><option>Inactive</option><option>Dropped</option></select></div>
+        <div class="field"><label>Manager</label><input name="manager" placeholder="Khadija"></div>
+        <div class="field"><label>Service line</label><input name="serviceLine" placeholder="TakeOver + Webinar"></div>
+        <div class="field"><label>Existing monthly ($)</label><input name="monthly" type="number" min="0" step="100"></div>
+        <div class="field full"><label>Next step</label><input name="nextStep" placeholder="Dial no-shows; fix deliverability"></div>
+        <div class="full row-actions"><button class="btn gold" type="submit">Save client</button><span class="tag">Re-saving the same name updates it.</span></div>
+      </form>
+    </div>
+  </section>
+
+  <!-- ===== ONBOARDING ===== -->
+  <section id="tab-onboarding" hidden>
+    <h2 class="section">Onboarding Checklist</h2>
+    <p class="hint">Track each new client through the launch steps. Advance a step and everyone sees where each client stands and where it is stuck.</p>
+    <div class="panel"><h3>All clients - progress</h3><div class="tablewrap"><table id="onbOverview"></table></div></div>
+    <div class="panel"><h3>Client checklist</h3>
+      <div class="filters" style="padding:14px 14px 0;margin-bottom:0">
+        <div class="field"><label>Client</label><select id="onbClient" onchange="renderOnbChecklist()"></select></div>
+      </div>
+      <div style="padding:8px 16px 16px"><div id="onbSteps"></div></div>
+    </div>
+  </section>
+
   <!-- ===== SETTINGS ===== -->
   <section id="tab-settings" hidden>
     <h2 class="section">Settings</h2>
@@ -277,7 +311,8 @@ const DEFAULT_CFG = {
   products:["Retainer","DWY","DFY","Partnership","Other"],
   goal:2000000, closerRate:7, setterRate:3,
   endpoint:"https://script.google.com/macros/s/AKfycbzOjSVJ7gj4V6kcrbiAodGmoA884imoyvD9j-teTlxMZgGH9OYcR3q7pXUAeqCYGeS1/exec",
-  adminCode:"tsaboss"
+  adminCode:"tsaboss",
+  managerCode:"TSAmgr2026"
 };
 let CFG = Object.assign({}, DEFAULT_CFG, load(LS.cfg, {}));
 // Always use the built-in backend URL unless a non-empty override was saved
@@ -345,10 +380,16 @@ function startApp(){
   const role=SESSION.role;
   document.getElementById('whoTag').textContent = SESSION.name+' ('+role+')';
   document.getElementById('storeTag').textContent = CFG.endpoint ? 'Shared data' : 'Local data (this browser)';
-  const allow = { admin:['dash','deal','eod','data','users','settings'], closer:['deal','eod'], setter:['eod'] }[role] || ['eod'];
+  const allow = {
+    admin:['dash','clients','onboarding','deal','eod','data','users','settings'],
+    manager:['dash','clients','onboarding','users'],
+    closer:['deal','eod'],
+    setter:['eod']
+  }[role] || ['eod'];
   document.querySelectorAll('#tabs button').forEach(b=>{ b.hidden = !allow.includes(b.dataset.tab); });
   fillLists(); wireTabs(); presetDates();
-  if(role==='admin'){ setEodRole('Closer'); syncRecords().then(()=>{ renderDash(); renderAll(); }); showTab('dash'); }
+  if(role==='admin'){ setEodRole('Closer'); syncRecords().then(()=>{ fillLists(); renderDash(); renderAll(); }); showTab('dash'); }
+  else if(role==='manager'){ syncRecords().then(()=>{ fillLists(); renderDash(); }); showTab('clients'); }
   else { applyIdentity(); syncRecords(); showTab(allow[0]); }
 }
 // lock a rep's identity into the forms
@@ -366,8 +407,10 @@ function applyIdentity(){
 function wireTabs(){ document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>showTab(b.dataset.tab)); }
 function showTab(t){
   document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
-  ['dash','deal','eod','data','users','settings'].forEach(x=>{ document.getElementById('tab-'+x).hidden = (x!==t); });
+  ['dash','clients','onboarding','deal','eod','data','users','settings'].forEach(x=>{ document.getElementById('tab-'+x).hidden = (x!==t); });
   if(t==='dash'){ syncRecords().then(renderDash); }
+  if(t==='clients'){ syncRecords().then(renderClientOverview); }
+  if(t==='onboarding'){ syncRecords().then(renderOnboarding); }
   if(t==='data'){ syncRecords().then(renderAll); }
   if(t==='users'){ renderUsers(); }
   if(t==='settings'){ loadSettingsForm(); }
@@ -377,7 +420,7 @@ function showTab(t){
 function fillLists(){
   document.querySelectorAll('select[data-list]').forEach(sel=>{
     const key=sel.dataset.list;
-    let items = key==='reps' ? [...CFG.closers,...CFG.setters] : (CFG[key]||[]);
+    let items = key==='reps' ? [...CFG.closers,...CFG.setters] : (key==='clients' ? clientNames() : (CFG[key]||[]));
     const cur=sel.value;
     sel.innerHTML='<option value="">-</option>'+items.map(i=>`<option>${esc(i)}</option>`).join('');
     if(cur) sel.value=cur;
@@ -406,7 +449,8 @@ async function submitEod(e){ e.preventDefault(); const o=num(formObj(e.target));
 
 /* ---------------- aggregation + dashboard ---------------- */
 function monthKey(d){ return (d||'').slice(0,7); }
-function filtered(){ const m=document.getElementById('fMonth').value,c=document.getElementById('fClient').value,r=document.getElementById('fRole').value; return RECORDS.filter(x=>(!m||monthKey(x.date)===m)&&(!c||x.client===c)&&(!r||x.role===r)); }
+function activityRecords(){ return RECORDS.filter(x=>x.type==='deal'||x.type==='eod'||!x.type); }
+function filtered(){ const m=document.getElementById('fMonth').value,c=document.getElementById('fClient').value,r=document.getElementById('fRole').value; return activityRecords().filter(x=>(!m||monthKey(x.date)===m)&&(!c||x.client===c)&&(!r||x.role===r)); }
 function buildFilterOptions(){
   const months=[...new Set(RECORDS.map(x=>monthKey(x.date)).filter(Boolean))].sort().reverse();
   const fm=document.getElementById('fMonth'),cur=fm.value;
@@ -470,7 +514,7 @@ function renderDeals(recs){
 
 /* ---------------- data tab ---------------- */
 function renderAll(){
-  const rows=[...RECORDS].sort((a,b)=>(b.submittedAt||'').localeCompare(a.submittedAt||''));
+  const rows=activityRecords().sort((a,b)=>(b.submittedAt||'').localeCompare(a.submittedAt||''));
   document.getElementById('allTable').innerHTML=
     `<thead><tr><th>Date</th><th>Type</th><th>Role</th><th>Client</th><th>Rep</th><th class="num">Cash</th><th class="num">Deals</th><th></th></tr></thead><tbody>`+
     (rows.length?rows.map(r=>`<tr><td>${esc((r.date||'').slice(0,10))}</td><td><span class="pill ${r.type==='deal'?'good':''}">${esc(r.type)}</span></td><td>${esc(r.role)}</td><td>${esc(r.client)}</td><td>${esc(r.rep)}</td><td class="num">${money(r.cashCollected)}</td><td class="num">${r.closedDeals||0}</td><td><button class="btn sm ghost" style="color:var(--warn);border-color:var(--warn)" onclick="delRec('${r.id}')">Delete</button></td></tr>`).join('')
@@ -489,22 +533,28 @@ function importJSON(e){ const f=e.target.files[0]; if(!f)return; const rd=new Fi
 function wipe(){ if(confirm('Clear ALL local records? Export a backup first. This does not touch shared data.')){ RECORDS=[]; save(LS.data,RECORDS); renderAll(); renderDash(); toast('Cleared'); } }
 
 /* ---------------- users ---------------- */
+function mgmtPass(){ return (SESSION && SESSION.role==='manager') ? CFG.managerCode : CFG.adminCode; }
 async function renderUsers(){
+  const isAdmin = SESSION.role==='admin';
+  // managers can only create closer/setter; admins can also create manager/admin
+  const roleSel=document.querySelector('#userForm [name=role]');
+  if(roleSel) roleSel.innerHTML = '<option value="closer">Closer</option><option value="setter">Setter</option>'+(isAdmin?'<option value="manager">Sales Manager</option><option value="admin">Admin</option>':'');
   let users=[];
-  if(CFG.endpoint){ const res=await api({action:'listUsers', adminPass:CFG.adminCode}); users=(res&&res.users)||[]; }
+  if(CFG.endpoint){ const res=await api({action:'listUsers', adminPass:mgmtPass()}); users=(res&&res.users)||[]; }
   else { users=LOCAL_USERS.map(u=>({username:u.username,name:u.name,role:u.role})); }
   users.push({username:'tsaboss',name:'Admin (master)',role:'admin',master:true});
   document.getElementById('usersTable').innerHTML=
     `<thead><tr><th>Name</th><th>Username</th><th>Role</th><th></th></tr></thead><tbody>`+
-    users.map(u=>`<tr><td>${esc(u.name)}</td><td>${esc(u.username)}</td><td><span class="pill">${esc(u.role)}</span></td><td>${u.master?'<span class="tag">master, set in Settings</span>':`<button class="btn sm ghost" style="color:var(--warn);border-color:var(--warn)" onclick="delUser('${esc(u.username)}')">Remove</button>`}</td></tr>`).join('')
+    users.map(u=>`<tr><td>${esc(u.name)}</td><td>${esc(u.username)}</td><td><span class="pill">${esc(u.role)}</span></td><td>${(u.master||!isAdmin)?(u.master?'<span class="tag">master, set in Settings</span>':''):`<button class="btn sm ghost" style="color:var(--warn);border-color:var(--warn)" onclick="delUser('${esc(u.username)}')">Remove</button>`}</td></tr>`).join('')
     +`</tbody>`;
 }
 async function saveUser(e){
   e.preventDefault();
   const o=formObj(e.target); o.username=o.username.trim().toLowerCase();
   if(o.username==='tsaboss'){ toast('tsaboss is the master admin, change it in Settings',true); return; }
+  if(SESSION.role==='manager' && !['closer','setter'].includes(o.role)){ toast('Managers can only create closers and setters',true); return; }
   if(CFG.endpoint){
-    const res=await api({action:'saveUser', adminPass:CFG.adminCode, user:o});
+    const res=await api({action:'saveUser', adminPass:mgmtPass(), user:o});
     if(!res||!res.ok){ toast('Save failed (check backend)',true); return; }
   } else {
     const passHash=await sha(o.password);
@@ -520,6 +570,88 @@ async function delUser(username){
   if(CFG.endpoint){ const res=await api({action:'deleteUser', adminPass:CFG.adminCode, username}); if(!res||!res.ok){ toast('Delete failed',true); return; } }
   else { LOCAL_USERS=LOCAL_USERS.filter(x=>x.username!==username); save(LS.users,LOCAL_USERS); }
   toast('Removed'); renderUsers();
+}
+
+/* ---------------- client overview ---------------- */
+function latestClients(){
+  const m={};
+  RECORDS.filter(x=>x.type==='client').forEach(x=>{ const k=(x.name||'').toLowerCase(); if(!k)return; if(!m[k]||(x.submittedAt||'')>(m[k].submittedAt||'')) m[k]=x; });
+  return Object.values(m).filter(x=>x.status!=='__DELETED__');
+}
+function clientNames(){ const s=new Set(CFG.clients||[]); latestClients().forEach(c=>s.add(c.name)); return [...s]; }
+function thisMonth(){ return new Date().toISOString().slice(0,7); }
+function cashThisMonth(name){ const m=thisMonth(); return RECORDS.filter(x=>x.client===name && monthKey(x.date)===m).reduce((s,x)=>s+(x.cashCollected||0),0); }
+async function saveClient(e){
+  e.preventDefault();
+  const o=formObj(e.target); o.type='client'; o.monthly=parseFloat(o.monthly)||0;
+  await addRecord(o);
+  e.target.reset(); toast('Client saved'); fillLists(); renderClientOverview();
+}
+function renderClientOverview(){
+  const cs=latestClients();
+  const active=cs.filter(c=>c.status==='Active').length;
+  const monthly=cs.reduce((s,c)=>s+(c.monthly||0),0);
+  const cash=cs.reduce((s,c)=>s+cashThisMonth(c.name),0);
+  document.getElementById('clientKpis').innerHTML=`
+    <div class="kpi goal"><div class="lbl">Active clients</div><div class="val">${active}<span style="font-size:15px;color:#c9d4e8"> / ${cs.length}</span></div></div>
+    <div class="kpi"><div class="lbl">Existing monthly (reported)</div><div class="val small">${money(monthly)}</div></div>
+    <div class="kpi"><div class="lbl">Cash collected this month</div><div class="val small">${money(cash)}</div></div>`;
+  const order={Active:0,Onboarding:1,Prospect:2,Inactive:3,Dropped:4};
+  const rows=cs.slice().sort((a,b)=>(order[a.status]??9)-(order[b.status]??9)||String(a.name).localeCompare(b.name));
+  const pc=s=>s==='Active'?'good':((s==='Dropped'||s==='Inactive')?'warn':'');
+  document.getElementById('overviewTable').innerHTML=
+    `<thead><tr><th>Client</th><th>Status</th><th>Manager</th><th>Service line</th><th class="num">Existing/mo</th><th class="num">Cash this mo</th><th>Next step</th></tr></thead><tbody>`+
+    (rows.length?rows.map(c=>`<tr><td><b>${esc(c.name)}</b></td><td><span class="pill ${pc(c.status)}">${esc(c.status)}</span></td><td>${esc(c.manager)}</td><td>${esc(c.serviceLine)}</td><td class="num">${money(c.monthly)}</td><td class="num">${money(cashThisMonth(c.name))}</td><td>${esc(c.nextStep)}</td></tr>`).join('')
+     :`<tr><td colspan="7" class="muted" style="padding:16px">No clients yet. Add one below.</td></tr>`)+`</tbody>`;
+}
+
+/* ---------------- onboarding checklist ---------------- */
+const ONB_STEPS=[
+  {step:'Contract signed', owner:'Robb'},
+  {step:'Welcome email sent', owner:'Auto / Steve'},
+  {step:'Onboarding call booked', owner:'Client'},
+  {step:'Recruiting form completed', owner:'Client'},
+  {step:'Intake form completed', owner:'Client'},
+  {step:'$1 test wire cleared', owner:'Client'},
+  {step:'Access verified (CRM/Drive/Slack)', owner:'Steve'},
+  {step:'Drive folder set up', owner:'Steve'},
+  {step:'Kickoff call done', owner:'Manager'},
+  {step:'CRM / systems build', owner:'Steve'},
+  {step:'Sales assets + scripts', owner:'Manager'},
+  {step:'Reps onboarded + dialing', owner:'Manager'},
+  {step:'Launched', owner:'Manager'}
+];
+const ONB_STATUSES=['Not started','In progress','Done'];
+function latestOnb(client){ const m={}; RECORDS.filter(x=>x.type==='onboard'&&x.client===client).forEach(x=>{ if(!m[x.step]||(x.submittedAt||'')>(m[x.step].submittedAt||'')) m[x.step]=x; }); return m; }
+function onbProgress(client){ const st=latestOnb(client); let done=0,bn=null; ONB_STEPS.forEach(s=>{ const r=st[s.step]; if(r&&r.status==='Done') done++; else if(!bn) bn=s.step; }); return {done,total:ONB_STEPS.length,pct:Math.round(done/ONB_STEPS.length*100),bottleneck:bn}; }
+function renderOnboarding(){
+  const sel=document.getElementById('onbClient'); const cur=sel.value; const names=clientNames();
+  sel.innerHTML=names.map(n=>`<option>${esc(n)}</option>`).join('');
+  if(cur&&names.includes(cur)) sel.value=cur;
+  const rows=names.map(n=>({n,p:onbProgress(n)}));
+  document.getElementById('onbOverview').innerHTML=
+    `<thead><tr><th>Client</th><th>Progress</th><th class="num">%</th><th>Current step (bottleneck)</th></tr></thead><tbody>`+
+    (rows.length?rows.map(r=>`<tr><td><b>${esc(r.n)}</b></td><td><div style="width:160px;height:8px;border-radius:4px;background:var(--surface-2);overflow:hidden"><i style="display:block;height:100%;background:var(--gold);width:${r.p.pct}%"></i></div></td><td class="num">${r.p.pct}%</td><td>${r.p.bottleneck?esc(r.p.bottleneck):'<span class="pill good">Complete</span>'}</td></tr>`).join('')
+     :`<tr><td colspan="4" class="muted" style="padding:16px">Add clients on the Client Overview tab first.</td></tr>`)+`</tbody>`;
+  renderOnbChecklist();
+}
+function renderOnbChecklist(){
+  const client=document.getElementById('onbClient').value;
+  const box=document.getElementById('onbSteps');
+  if(!client){ box.innerHTML='<p class="muted">No client selected.</p>'; return; }
+  const st=latestOnb(client);
+  box.innerHTML=ONB_STEPS.map((s,i)=>{
+    const rec=st[s.step]; const status=rec?rec.status:'Not started';
+    return `<div style="display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--border)">
+      <span style="width:22px;color:var(--muted);font-variant-numeric:tabular-nums">${i+1}</span>
+      <span style="flex:1"><b>${esc(s.step)}</b> <span class="tag">- ${esc(s.owner)}</span></span>
+      <select onchange="setOnbStatus('${esc(client).replace(/'/g,"\\'")}','${esc(s.step).replace(/'/g,"\\'")}',this.value)">${ONB_STATUSES.map(o=>`<option${o===status?' selected':''}>${o}</option>`).join('')}</select>
+    </div>`;
+  }).join('');
+}
+async function setOnbStatus(client, step, status){
+  await addRecord({type:'onboard', client, step, status, owner:(ONB_STEPS.find(s=>s.step===step)||{}).owner||''});
+  toast('Updated'); renderOnboarding();
 }
 
 /* ---------------- settings ---------------- */
