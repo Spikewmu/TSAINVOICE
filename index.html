@@ -332,9 +332,9 @@
     <h2 class="section">Settings</h2>
     <p class="hint">Manage clients, reps, products, goals, commission rates, the shared-data endpoint, and the master admin password.</p>
     <div class="cards" style="grid-template-columns:repeat(auto-fill,minmax(300px,1fr))">
-      <div class="panel" style="margin:0"><h3>Clients</h3><div style="padding:14px"><div class="chiprow" id="clientsChips"></div><div class="row-actions"><input id="clientAdd" placeholder="Add client"><button class="btn sm" onclick="addItem('clients','clientAdd')">Add</button></div></div></div>
+      <div class="panel" style="margin:0"><h3>Clients</h3><div style="padding:14px"><p class="hint" style="margin:0">Clients are managed on the <b>Client Overview</b> tab now (status, manager, offers, cash). Add or edit them there - this list is retired to avoid two places to keep in sync.</p></div></div>
       <div class="panel" style="margin:0"><h3>Closers &amp; setters</h3><div style="padding:14px"><p class="hint" style="margin:0">Reps come from the <b>Users</b> tab. Create a login there with their role and team, and they'll appear automatically in the Log Closed Deal and End of Day dropdowns - no separate list to maintain here.</p></div></div>
-      <div class="panel" style="margin:0"><h3>Products</h3><div style="padding:14px"><div class="chiprow" id="productsChips"></div><div class="row-actions"><input id="productAdd" placeholder="Add product"><button class="btn sm" onclick="addItem('products','productAdd')">Add</button></div></div></div>
+      <div class="panel" style="margin:0"><h3>Default offers</h3><div style="padding:14px"><div class="chiprow" id="productsChips"></div><div class="row-actions"><input id="productAdd" placeholder="Add offer"><button class="btn sm" onclick="addItem('products','productAdd')">Add</button></div><p class="fieldhelp" style="margin-top:8px">The master offer list. New clients start with these (you trim per client on Client Overview), and it's the fallback when a client has none set.</p></div></div>
     </div>
     <div class="panel"><h3>Targets + payout rates</h3><div style="padding:16px" class="cards">
       <div class="field"><label>Monthly cash-collected goal ($)</label><input type="number" id="setGoal" step="1000"></div>
@@ -562,7 +562,7 @@ function buildFilterOptions(){
   fm.innerHTML='<option value="">All months</option>'+months.map(m=>`<option>${m}</option>`).join('');
   if(cur)fm.value=cur; else if(months[0])fm.value=months[0];
   const fc=document.getElementById('fClient'),cc=fc.value;
-  fc.innerHTML='<option value="">All clients</option>'+CFG.clients.map(c=>`<option>${esc(c)}</option>`).join('');
+  fc.innerHTML='<option value="">All clients</option>'+clientNames().map(c=>`<option>${esc(c)}</option>`).join('');
   if(cc)fc.value=cc;
 }
 function agg(recs){
@@ -636,7 +636,7 @@ function buildRepFilters(){
   fm.innerHTML='<option value="">All months</option>'+months.map(m=>`<option>${m}</option>`).join('');
   if(cur)fm.value=cur; else if(months[0])fm.value=months[0];
   const fc=document.getElementById('rClient'),cc=fc.value;
-  const clients=REP_SCOPE?REP_SCOPE:CFG.clients;
+  const clients=REP_SCOPE?REP_SCOPE:clientNames();
   fc.innerHTML='<option value="">All'+(REP_SCOPE?' my accounts':' clients')+'</option>'+clients.map(c=>`<option>${esc(c)}</option>`).join('');
   if(cc&&clients.includes(cc))fc.value=cc;
 }
@@ -752,7 +752,7 @@ function teamsFor(username){
   return [];
 }
 function teamBoxesHtml(checked){
-  const clients=CFG.clients||[]; checked=checked||[];
+  const clients=clientNames(); checked=checked||[];
   return clients.length ? clients.map(c=>`<label><input type="checkbox" value="${esc(c)}" ${checked.includes(c)?'checked':''}>${esc(c)}</label>`).join('')
     : '<span class="muted">Add clients on the Client Overview / Settings tab first.</span>';
 }
@@ -971,7 +971,7 @@ async function saveSteps(){ const clean=EDIT_STEPS.map(s=>({step:(s.step||'').tr
 
 /* ---------------- settings ---------------- */
 function loadSettingsForm(){
-  ['clients','products'].forEach(renderChips);
+  ['products'].forEach(renderChips);
   document.getElementById('setGoal').value=CFG.goal;
   document.getElementById('setCloser').value=CFG.closerRate;
   document.getElementById('setSetter').value=CFG.setterRate;
