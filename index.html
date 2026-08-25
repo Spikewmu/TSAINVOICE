@@ -329,8 +329,7 @@
     <p class="hint">Manage clients, reps, products, goals, commission rates, the shared-data endpoint, and the master admin password.</p>
     <div class="cards" style="grid-template-columns:repeat(auto-fill,minmax(300px,1fr))">
       <div class="panel" style="margin:0"><h3>Clients</h3><div style="padding:14px"><div class="chiprow" id="clientsChips"></div><div class="row-actions"><input id="clientAdd" placeholder="Add client"><button class="btn sm" onclick="addItem('clients','clientAdd')">Add</button></div></div></div>
-      <div class="panel" style="margin:0"><h3>Closers</h3><div style="padding:14px"><div class="chiprow" id="closersChips"></div><div class="row-actions"><input id="closerAdd" placeholder="Add closer"><button class="btn sm" onclick="addItem('closers','closerAdd')">Add</button></div></div></div>
-      <div class="panel" style="margin:0"><h3>Setters</h3><div style="padding:14px"><div class="chiprow" id="settersChips"></div><div class="row-actions"><input id="setterAdd" placeholder="Add setter"><button class="btn sm" onclick="addItem('setters','setterAdd')">Add</button></div></div></div>
+      <div class="panel" style="margin:0"><h3>Closers &amp; setters</h3><div style="padding:14px"><p class="hint" style="margin:0">Reps come from the <b>Users</b> tab. Create a login there with their role and team, and they'll appear automatically in the Log Closed Deal and End of Day dropdowns - no separate list to maintain here.</p></div></div>
       <div class="panel" style="margin:0"><h3>Products</h3><div style="padding:14px"><div class="chiprow" id="productsChips"></div><div class="row-actions"><input id="productAdd" placeholder="Add product"><button class="btn sm" onclick="addItem('products','productAdd')">Add</button></div></div></div>
     </div>
     <div class="panel"><h3>Targets + payout rates</h3><div style="padding:16px" class="cards">
@@ -461,8 +460,8 @@ function startApp(){
   }[role] || ['eod'];
   document.querySelectorAll('#tabs button').forEach(b=>{ b.hidden = !allow.includes(b.dataset.tab); });
   fillLists(); wireTabs(); presetDates();
-  if(role==='admin'){ setEodRole('Closer'); syncRecords().then(()=>{ fillLists(); renderDash(); renderAll(); }); showTab('dash'); }
-  else if(role==='manager'){ syncRecords().then(()=>{ fillLists(); renderDash(); }); showTab('clients'); }
+  if(role==='admin'){ setEodRole('Closer'); Promise.all([syncRecords(),loadUsers()]).then(()=>{ fillLists(); setEodRole('Closer'); renderDash(); renderAll(); }); showTab('dash'); }
+  else if(role==='manager'){ Promise.all([syncRecords(),loadUsers()]).then(()=>{ fillLists(); renderDash(); }); showTab('clients'); }
   else { applyIdentity(); syncRecords(); showTab(allow[0]); }
 }
 // lock a rep's identity into the forms
@@ -491,10 +490,26 @@ function showTab(t){
 }
 
 /* ---------------- selects ---------------- */
+// Rep dropdowns come from the actual user accounts (Users tab), so there's no separate list to maintain.
+let USERS_CACHE=[];
+async function loadUsers(){
+  if(CFG.endpoint){ try{ const res=await api({action:'listUsers', ...authFields()}); if(res&&res.users) USERS_CACHE=res.users; }catch(e){} }
+  else { USERS_CACHE=LOCAL_USERS.map(u=>({username:u.username,name:u.name,role:u.role})); }
+  return USERS_CACHE;
+}
+function repNames(role){
+  const fromUsers=[...new Set(USERS_CACHE.filter(u=>u.role===role).map(u=>String(u.name||'').trim()).filter(Boolean))];
+  if(fromUsers.length) return fromUsers.sort((a,b)=>a.localeCompare(b));
+  return (role==='closer'?CFG.closers:CFG.setters)||[]; // fallback until accounts exist
+}
 function fillLists(){
   document.querySelectorAll('select[data-list]').forEach(sel=>{
     const key=sel.dataset.list;
-    let items = key==='reps' ? [...CFG.closers,...CFG.setters] : (key==='clients' ? clientNames() : (CFG[key]||[]));
+    let items = key==='reps' ? [...repNames('closer'),...repNames('setter')]
+      : key==='clients' ? clientNames()
+      : key==='closers' ? repNames('closer')
+      : key==='setters' ? repNames('setter')
+      : (CFG[key]||[]);
     const cur=sel.value;
     sel.innerHTML='<option value="">-</option>'+items.map(i=>`<option>${esc(i)}</option>`).join('');
     if(cur) sel.value=cur;
@@ -518,7 +533,7 @@ function setEodRole(r){
     : "You're logging as a <b>Closer</b>. Fill in your dials, then the <b>meetings/calls</b> you took (including no-shows) and your <b>closing numbers</b>. Also log each individual deal on the <b>Log Closed Deal</b> tab so invoicing and setter credit stay accurate.";
   if(SESSION && SESSION.role!=='admin') return; // reps keep their locked rep list
   const repSel=document.querySelector('#eodForm [name=rep]');
-  const items=r==='Closer'?CFG.closers:CFG.setters;
+  const items=r==='Closer'?repNames('closer'):repNames('setter');
   repSel.innerHTML='<option value="">-</option>'+items.map(i=>`<option>${esc(i)}</option>`).join('');
 }
 
@@ -746,6 +761,7 @@ async function renderUsers(){
   let users=[];
   if(CFG.endpoint){ const res=await api({action:'listUsers', ...authFields()}); users=(res&&res.users)||[]; }
   else { users=LOCAL_USERS.map(u=>({username:u.username,name:u.name,role:u.role})); }
+  USERS_CACHE=users.slice(); fillLists(); // keep the form dropdowns in sync with accounts
   users.push({username:'tsaboss',name:'Admin (master)',role:'admin',master:true});
   document.getElementById('usersTable').innerHTML=
     `<thead><tr><th>Name</th><th>Username</th><th>Role</th><th>Teams / accounts</th><th></th></tr></thead><tbody>`+
@@ -908,7 +924,7 @@ async function saveSteps(){ const clean=EDIT_STEPS.map(s=>({step:(s.step||'').tr
 
 /* ---------------- settings ---------------- */
 function loadSettingsForm(){
-  ['clients','closers','setters','products'].forEach(renderChips);
+  ['clients','products'].forEach(renderChips);
   document.getElementById('setGoal').value=CFG.goal;
   document.getElementById('setCloser').value=CFG.closerRate;
   document.getElementById('setSetter').value=CFG.setterRate;
