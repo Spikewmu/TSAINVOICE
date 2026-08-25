@@ -199,6 +199,7 @@
       <div class="field"><label>Rep name *</label><select name="rep" data-list="reps" required></select><span class="fieldhelp">Your name (locked to your login).</span></div>
 
       <div class="formhead"><b>Outreach &amp; dials</b><span class="sub">how much you reached out today</span></div>
+      <div class="field"><label>Hours dialing today</label><input type="number" name="hoursDialing" min="0" step="0.25" placeholder="e.g. 4"><span class="fieldhelp">Total time on the phones today, in hours (e.g. 4 or 3.5).</span></div>
       <div class="field"><label>New outreach</label><input type="number" name="newOutreach" min="0" step="1"><span class="fieldhelp">Dials / messages to brand-new leads.</span></div>
       <div class="field"><label>Follow-up outreach</label><input type="number" name="followUpOutreach" min="0" step="1"><span class="fieldhelp">Dials / messages to leads you'd already contacted.</span></div>
       <div class="field"><label>Sales calls offered</label><input type="number" name="callsOffered" min="0" step="1"><span class="fieldhelp">Times you offered / pitched to book a call.</span></div>
@@ -517,7 +518,7 @@ function setEodRole(r){
 
 /* ---------------- submit ---------------- */
 function formObj(f){ const o={}; new FormData(f).forEach((v,k)=>o[k]=v); return o; }
-const NUMKEYS=['contractValue','cashCollected','depositCollected','followUpOutreach','newOutreach','callsOffered','callsSet','callCapacity','speedToLead','newMeetings','connectedMeetings','followUpMeetings','advancedCalls','noShows','closedDeals','contractsSigned','aosiSold','productBSold'];
+const NUMKEYS=['contractValue','cashCollected','depositCollected','followUpOutreach','newOutreach','callsOffered','callsSet','callCapacity','speedToLead','hoursDialing','newMeetings','connectedMeetings','followUpMeetings','advancedCalls','noShows','closedDeals','contractsSigned','aosiSold','productBSold'];
 function num(o){ NUMKEYS.forEach(k=>{ if(k in o) o[k]=parseFloat(o[k])||0; }); return o; }
 async function submitDeal(e){ e.preventDefault(); const btn=e.target.querySelector('[type=submit]'); if(btn&&btn.disabled) return; if(btn) btn.disabled=true;
   try{ const o=num(formObj(e.target)); o.type='deal'; o.role='Closer'; o.closedDeals=1; if(SESSION.role!=='admin') o.rep=SESSION.name; await addRecord(o); e.target.reset(); presetDates(); if(SESSION.role!=='admin') applyIdentity(); toast('Closed deal logged. Nice.'); if(SESSION.role==='admin') renderDash(); }
@@ -624,14 +625,14 @@ function renderReps(){
   buildRepFilters();
   const recs=repFiltered();
   const setters={}, closers={};
-  function b(map,name){ if(!map[name]) map[name]={rep:name,days:new Set(),newOut:0,fuOut:0,offered:0,set:0,connected:0,noShows:0,capacity:0,cash:0,deals:0,contract:0}; return map[name]; }
+  function b(map,name){ if(!map[name]) map[name]={rep:name,days:new Set(),hours:0,newOut:0,fuOut:0,offered:0,set:0,connected:0,noShows:0,capacity:0,cash:0,deals:0,contract:0}; return map[name]; }
   recs.forEach(x=>{
     const rep=(x.rep||'').trim(), setter=(x.setter||'').trim();
     // EOD activity, bucketed by the role the rep submitted as
     if((x.type==='eod'||!x.type) && rep){
       const o=b((x.role==='Setter')?setters:closers, rep);
       if(x.date) o.days.add(x.date.slice(0,10));
-      o.newOut+=x.newOutreach||0; o.fuOut+=x.followUpOutreach||0; o.offered+=x.callsOffered||0; o.set+=x.callsSet||0;
+      o.hours+=x.hoursDialing||0; o.newOut+=x.newOutreach||0; o.fuOut+=x.followUpOutreach||0; o.offered+=x.callsOffered||0; o.set+=x.callsSet||0;
       o.connected+=x.connectedMeetings||0; o.noShows+=x.noShows||0; o.capacity+=x.callCapacity||0;
       if(x.role!=='Setter'){ o.cash+=x.cashCollected||0; o.deals+=x.closedDeals||0; o.contract+=x.contractValue||0; }
     }
@@ -646,23 +647,24 @@ function renderReps(){
   const daysUnion=map=>{const s=new Set();Object.values(map).forEach(o=>o.days.forEach(d=>s.add(d)));return s.size;};
   const setRows=Object.values(setters).map(o=>({...o,days:o.days.size,showRate:(o.connected+o.noShows)?o.connected/(o.connected+o.noShows):0,payout:o.cash*sRate})).sort((a,b)=>b.cash-a.cash||b.set-a.set);
   const cloRows=Object.values(closers).map(o=>({...o,days:o.days.size,dials:o.newOut+o.fuOut,closeRate:o.connected?o.deals/o.connected:0,cashPct:o.contract?o.cash/o.contract:0,util:o.capacity?o.connected/o.capacity:0,payout:o.cash*cRate})).sort((a,b)=>b.cash-a.cash);
-  let sT=null; if(setRows.length){ sT={n:setRows.length,days:daysUnion(setters),newOut:sum(setRows,'newOut'),fuOut:sum(setRows,'fuOut'),offered:sum(setRows,'offered'),set:sum(setRows,'set'),cash:sum(setRows,'cash'),payout:sum(setRows,'payout')}; }
-  let cT=null; if(cloRows.length){ const c=sum(cloRows,'connected'),cap=sum(cloRows,'capacity'),d=sum(cloRows,'deals'),ct=sum(cloRows,'contract'),ca=sum(cloRows,'cash'); cT={n:cloRows.length,days:daysUnion(closers),dials:sum(cloRows,'dials'),set:sum(cloRows,'set'),connected:c,capacity:cap,util:cap?c/cap:0,deals:d,contract:ct,cash:ca,closeRate:c?d/c:0,cashPct:ct?ca/ct:0,payout:sum(cloRows,'payout')}; }
+  let sT=null; if(setRows.length){ sT={n:setRows.length,days:daysUnion(setters),hours:sum(setRows,'hours'),newOut:sum(setRows,'newOut'),fuOut:sum(setRows,'fuOut'),offered:sum(setRows,'offered'),set:sum(setRows,'set'),cash:sum(setRows,'cash'),payout:sum(setRows,'payout')}; }
+  let cT=null; if(cloRows.length){ const c=sum(cloRows,'connected'),cap=sum(cloRows,'capacity'),d=sum(cloRows,'deals'),ct=sum(cloRows,'contract'),ca=sum(cloRows,'cash'); cT={n:cloRows.length,days:daysUnion(closers),hours:sum(cloRows,'hours'),dials:sum(cloRows,'dials'),set:sum(cloRows,'set'),connected:c,capacity:cap,util:cap?c/cap:0,deals:d,contract:ct,cash:ca,closeRate:c?d/c:0,cashPct:ct?ca/ct:0,payout:sum(cloRows,'payout')}; }
+  const hrs=v=>v?(Math.round(v*10)/10):0;
   // payout column hidden from reps (teammates' commission is private); admins/managers see it
   const payH = rm?'':'<th class="num">Est. payout</th>';
   const payC = r => rm?'':`<td class="num">${money(r.payout)}</td>`;
   const sName = r => rm?esc(r.rep):`<button class="linklike" onclick="repDetail('${esc(r.rep)}','Setter')">${esc(r.rep)}</button>`;
   const cName = r => rm?esc(r.rep):`<button class="linklike" onclick="repDetail('${esc(r.rep)}','Closer')">${esc(r.rep)}</button>`;
   document.getElementById('setterTable').innerHTML=
-    `<thead><tr><th>Setter</th><th class="num">Days</th><th class="num">New outreach</th><th class="num">Follow-up</th><th class="num">Offered</th><th class="num">Calls set</th><th class="num">Cash set</th>${payH}</tr></thead><tbody>`+
-    (sT?`<tr class="totalrow"><td>TOTAL &middot; ${sT.n} setter${sT.n>1?'s':''}</td><td class="num">${sT.days}</td><td class="num">${sT.newOut}</td><td class="num">${sT.fuOut}</td><td class="num">${sT.offered}</td><td class="num">${sT.set}</td><td class="num">${money(sT.cash)}</td>${payC(sT)}</tr>`:'')+
-    (setRows.length?setRows.map(r=>`<tr><td>${sName(r)}</td><td class="num">${r.days}</td><td class="num">${r.newOut}</td><td class="num">${r.fuOut}</td><td class="num">${r.offered}</td><td class="num">${r.set}</td><td class="num">${money(r.cash)}</td>${payC(r)}</tr>`).join('')
-     :`<tr><td colspan="${rm?7:8}" class="muted" style="padding:16px">No setter data yet.</td></tr>`)+`</tbody>`;
+    `<thead><tr><th>Setter</th><th class="num">Days</th><th class="num">Hours</th><th class="num">New outreach</th><th class="num">Follow-up</th><th class="num">Offered</th><th class="num">Calls set</th><th class="num">Cash set</th>${payH}</tr></thead><tbody>`+
+    (sT?`<tr class="totalrow"><td>TOTAL &middot; ${sT.n} setter${sT.n>1?'s':''}</td><td class="num">${sT.days}</td><td class="num">${hrs(sT.hours)}</td><td class="num">${sT.newOut}</td><td class="num">${sT.fuOut}</td><td class="num">${sT.offered}</td><td class="num">${sT.set}</td><td class="num">${money(sT.cash)}</td>${payC(sT)}</tr>`:'')+
+    (setRows.length?setRows.map(r=>`<tr><td>${sName(r)}</td><td class="num">${r.days}</td><td class="num">${hrs(r.hours)}</td><td class="num">${r.newOut}</td><td class="num">${r.fuOut}</td><td class="num">${r.offered}</td><td class="num">${r.set}</td><td class="num">${money(r.cash)}</td>${payC(r)}</tr>`).join('')
+     :`<tr><td colspan="${rm?8:9}" class="muted" style="padding:16px">No setter data yet.</td></tr>`)+`</tbody>`;
   document.getElementById('closerTable').innerHTML=
-    `<thead><tr><th>Closer</th><th class="num">Days</th><th class="num">Dials</th><th class="num">Set</th><th class="num">Connected</th><th class="num">Capacity</th><th class="num">Cap used</th><th class="num">Deals</th><th class="num">Contract</th><th class="num">Cash</th><th class="num">Close %</th><th class="num">Cash %</th>${payH}</tr></thead><tbody>`+
-    (cT?`<tr class="totalrow"><td>TOTAL &middot; ${cT.n} closer${cT.n>1?'s':''}</td><td class="num">${cT.days}</td><td class="num">${cT.dials}</td><td class="num">${cT.set}</td><td class="num">${cT.connected}</td><td class="num">${cT.capacity}</td><td class="num">${pct(cT.util)}</td><td class="num">${cT.deals}</td><td class="num">${money(cT.contract)}</td><td class="num">${money(cT.cash)}</td><td class="num">${pct(cT.closeRate)}</td><td class="num">${pct(cT.cashPct)}</td>${payC(cT)}</tr>`:'')+
-    (cloRows.length?cloRows.map(r=>`<tr><td>${cName(r)}</td><td class="num">${r.days}</td><td class="num">${r.dials}</td><td class="num">${r.set}</td><td class="num">${r.connected}</td><td class="num">${r.capacity}</td><td class="num">${pct(r.util)}</td><td class="num">${r.deals}</td><td class="num">${money(r.contract)}</td><td class="num">${money(r.cash)}</td><td class="num">${pct(r.closeRate)}</td><td class="num">${pct(r.cashPct)}</td>${payC(r)}</tr>`).join('')
-     :`<tr><td colspan="${rm?12:13}" class="muted" style="padding:16px">No closer data yet.</td></tr>`)+`</tbody>`;
+    `<thead><tr><th>Closer</th><th class="num">Days</th><th class="num">Hours</th><th class="num">Dials</th><th class="num">Set</th><th class="num">Connected</th><th class="num">Capacity</th><th class="num">Cap used</th><th class="num">Deals</th><th class="num">Contract</th><th class="num">Cash</th><th class="num">Close %</th><th class="num">Cash %</th>${payH}</tr></thead><tbody>`+
+    (cT?`<tr class="totalrow"><td>TOTAL &middot; ${cT.n} closer${cT.n>1?'s':''}</td><td class="num">${cT.days}</td><td class="num">${hrs(cT.hours)}</td><td class="num">${cT.dials}</td><td class="num">${cT.set}</td><td class="num">${cT.connected}</td><td class="num">${cT.capacity}</td><td class="num">${pct(cT.util)}</td><td class="num">${cT.deals}</td><td class="num">${money(cT.contract)}</td><td class="num">${money(cT.cash)}</td><td class="num">${pct(cT.closeRate)}</td><td class="num">${pct(cT.cashPct)}</td>${payC(cT)}</tr>`:'')+
+    (cloRows.length?cloRows.map(r=>`<tr><td>${cName(r)}</td><td class="num">${r.days}</td><td class="num">${hrs(r.hours)}</td><td class="num">${r.dials}</td><td class="num">${r.set}</td><td class="num">${r.connected}</td><td class="num">${r.capacity}</td><td class="num">${pct(r.util)}</td><td class="num">${r.deals}</td><td class="num">${money(r.contract)}</td><td class="num">${money(r.cash)}</td><td class="num">${pct(r.closeRate)}</td><td class="num">${pct(r.cashPct)}</td>${payC(r)}</tr>`).join('')
+     :`<tr><td colspan="${rm?13:14}" class="muted" style="padding:16px">No closer data yet.</td></tr>`)+`</tbody>`;
   if(REP_SEL && !rm) repDetail(REP_SEL.rep, REP_SEL.role);
 }
 function repDetail(rep, role){
@@ -675,12 +677,12 @@ function repDetail(rep, role){
   document.getElementById('repDetailPanel').hidden=false;
   document.getElementById('repDetailTitle').innerHTML=`${esc(rep)} <span class="pill">${esc(role)}</span> - day-by-day`;
   const head = role==='Setter'
-    ? `<thead><tr><th>Date</th><th>Client</th><th>Type</th><th class="num">New out</th><th class="num">Follow-up</th><th class="num">Offered</th><th class="num">Set</th><th class="num">Cash set</th></tr></thead><tbody>`
+    ? `<thead><tr><th>Date</th><th>Client</th><th>Type</th><th class="num">Hours</th><th class="num">New out</th><th class="num">Follow-up</th><th class="num">Offered</th><th class="num">Set</th><th class="num">Cash set</th></tr></thead><tbody>`
     : `<thead><tr><th>Date</th><th>Client</th><th>Type</th><th class="num">Connected</th><th class="num">Capacity</th><th class="num">Deals</th><th class="num">Contract</th><th class="num">Cash</th></tr></thead><tbody>`;
   const body = recs.length ? recs.map(x=>{
     const t=x.type==='deal'?'<span class="pill good">deal</span>':'<span class="pill">eod</span>';
     return role==='Setter'
-      ? `<tr><td>${esc((x.date||'').slice(0,10))}</td><td>${esc(x.client)}</td><td>${t}</td><td class="num">${x.newOutreach||0}</td><td class="num">${x.followUpOutreach||0}</td><td class="num">${x.callsOffered||0}</td><td class="num">${x.callsSet||0}</td><td class="num">${x.type==='deal'?money(x.cashCollected):'-'}</td></tr>`
+      ? `<tr><td>${esc((x.date||'').slice(0,10))}</td><td>${esc(x.client)}</td><td>${t}</td><td class="num">${x.hoursDialing||0}</td><td class="num">${x.newOutreach||0}</td><td class="num">${x.followUpOutreach||0}</td><td class="num">${x.callsOffered||0}</td><td class="num">${x.callsSet||0}</td><td class="num">${x.type==='deal'?money(x.cashCollected):'-'}</td></tr>`
       : `<tr><td>${esc((x.date||'').slice(0,10))}</td><td>${esc(x.client)}</td><td>${t}</td><td class="num">${x.connectedMeetings||0}</td><td class="num">${x.callCapacity||0}</td><td class="num">${x.closedDeals||0}</td><td class="num">${money(x.contractValue)}</td><td class="num">${money(x.cashCollected)}</td></tr>`;
   }).join('') : `<tr><td colspan="8" class="muted" style="padding:16px">No submissions in this range.</td></tr>`;
   document.getElementById('repDetailTable').innerHTML=head+body+`</tbody>`;
