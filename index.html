@@ -199,7 +199,7 @@
       <div class="field"><label>Client / account *</label><select name="client" data-list="clients" required></select><span class="fieldhelp">Which account you worked today.</span></div>
       <div class="field"><label>Rep name *</label><select name="rep" data-list="reps" required></select><span class="fieldhelp">Your name (locked to your login).</span></div>
 
-      <div class="formhead"><b>Outreach &amp; dials</b><span class="sub">how much you reached out today - optional</span></div>
+      <div class="formhead"><b>Outreach &amp; dials</b><span class="sub">how much you reached out today</span></div>
       <div class="full fieldhelp" id="eodOutreachNote" style="margin:-4px 0 2px"></div>
       <div class="field"><label>Hours dialing today</label><input type="number" name="hoursDialing" min="0" step="0.25" placeholder="e.g. 4"><span class="fieldhelp">Total time on the phones today, in hours (e.g. 4 or 3.5).</span></div>
       <div class="field"><label>New outreach</label><input type="number" name="newOutreach" min="0" step="1"><span class="fieldhelp">Dials / messages to brand-new leads.</span></div>
@@ -510,8 +510,8 @@ function setEodRole(r){
   document.querySelectorAll('#eodForm .setterOnly').forEach(e=>e.hidden=r!=='Setter');
   const onote=document.getElementById('eodOutreachNote');
   if(onote) onote.textContent = r==='Setter'
-    ? "Only fill in what you actually did - it's fine to leave any of these blank. If you didn't dial today, just skip this section. You're not missing anything."
-    : "Closers: only fill this in if you ALSO did outbound dialing today (hybrid). If you just worked your booked calls, leave it all blank and skip to Meetings / calls - you're not missing anything.";
+    ? "This is the core of your day as a setter - log your hours on the phones, your dials/outreach, and the appointments you set."
+    : "Closers: you take the calls your setters booked. Only fill this in if you were slow and did outbound dialing to chase extra closes - otherwise leave it blank and skip to Meetings / calls. You're not missing anything.";
   const note=document.getElementById('eodRoleNote');
   if(note) note.innerHTML = r==='Setter'
     ? "You're logging as a <b>Setter</b>. Just log your <b>dials/outreach</b> and the <b>appointments you set</b> - that's it. Whether those calls connect, show, or close is reported by the <b>closer</b> who takes them, and your cash/commission is credited automatically from each deal's “Setter who set it” field. No need to re-enter any of that."
