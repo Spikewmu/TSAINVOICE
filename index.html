@@ -65,6 +65,7 @@
   .pill.warn{background:var(--warn-soft);color:var(--warn)}
   .linklike{background:none;border:none;padding:0;font:inherit;color:var(--gold,#b8860b);font-weight:600;cursor:pointer;text-align:left}
   .linklike:hover{text-decoration:underline}
+  tr.totalrow td{font-weight:700;background:var(--surface-2);border-bottom:2px solid var(--gold,#b8860b)}
   form.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow)}
   form.grid .full{grid-column:1/-1}
   form.grid .field{display:flex;flex-direction:column;gap:5px}
@@ -599,14 +600,20 @@ function renderReps(){
     }
   });
   const sRate=CFG.setterRate/100, cRate=CFG.closerRate/100;
+  const sum=(arr,k)=>arr.reduce((a,b)=>a+(b[k]||0),0);
+  const daysUnion=map=>{const s=new Set();Object.values(map).forEach(o=>o.days.forEach(d=>s.add(d)));return s.size;};
   const setRows=Object.values(setters).map(o=>({...o,days:o.days.size,showRate:(o.connected+o.noShows)?o.connected/(o.connected+o.noShows):0,payout:o.cash*sRate})).sort((a,b)=>b.cash-a.cash||b.set-a.set);
   const cloRows=Object.values(closers).map(o=>({...o,days:o.days.size,closeRate:o.connected?o.deals/o.connected:0,cashPct:o.contract?o.cash/o.contract:0,util:o.capacity?o.connected/o.capacity:0,payout:o.cash*cRate})).sort((a,b)=>b.cash-a.cash);
+  let sT=null; if(setRows.length){ const c=sum(setRows,'connected'),n=sum(setRows,'noShows'); sT={n:setRows.length,days:daysUnion(setters),newOut:sum(setRows,'newOut'),set:sum(setRows,'set'),connected:c,noShows:n,showRate:(c+n)?c/(c+n):0,cash:sum(setRows,'cash'),payout:sum(setRows,'payout')}; }
+  let cT=null; if(cloRows.length){ const c=sum(cloRows,'connected'),cap=sum(cloRows,'capacity'),d=sum(cloRows,'deals'),ct=sum(cloRows,'contract'),ca=sum(cloRows,'cash'); cT={n:cloRows.length,days:daysUnion(closers),connected:c,capacity:cap,util:cap?c/cap:0,deals:d,contract:ct,cash:ca,closeRate:c?d/c:0,cashPct:ct?ca/ct:0,payout:sum(cloRows,'payout')}; }
   document.getElementById('setterTable').innerHTML=
     `<thead><tr><th>Setter</th><th class="num">Days</th><th class="num">New outreach</th><th class="num">Calls set</th><th class="num">Connected</th><th class="num">No-shows</th><th class="num">Show %</th><th class="num">Cash set</th><th class="num">Est. payout</th></tr></thead><tbody>`+
+    (sT?`<tr class="totalrow"><td>TOTAL &middot; ${sT.n} setter${sT.n>1?'s':''}</td><td class="num">${sT.days}</td><td class="num">${sT.newOut}</td><td class="num">${sT.set}</td><td class="num">${sT.connected}</td><td class="num">${sT.noShows}</td><td class="num">${pct(sT.showRate)}</td><td class="num">${money(sT.cash)}</td><td class="num">${money(sT.payout)}</td></tr>`:'')+
     (setRows.length?setRows.map(r=>`<tr><td><button class="linklike" onclick="repDetail('${esc(r.rep)}','Setter')">${esc(r.rep)}</button></td><td class="num">${r.days}</td><td class="num">${r.newOut}</td><td class="num">${r.set}</td><td class="num">${r.connected}</td><td class="num">${r.noShows}</td><td class="num">${pct(r.showRate)}</td><td class="num">${money(r.cash)}</td><td class="num">${money(r.payout)}</td></tr>`).join('')
      :`<tr><td colspan="9" class="muted" style="padding:16px">No setter data yet.</td></tr>`)+`</tbody>`;
   document.getElementById('closerTable').innerHTML=
     `<thead><tr><th>Closer</th><th class="num">Days</th><th class="num">Connected</th><th class="num">Capacity</th><th class="num">Cap used</th><th class="num">Deals</th><th class="num">Contract</th><th class="num">Cash</th><th class="num">Close %</th><th class="num">Cash %</th><th class="num">Est. payout</th></tr></thead><tbody>`+
+    (cT?`<tr class="totalrow"><td>TOTAL &middot; ${cT.n} closer${cT.n>1?'s':''}</td><td class="num">${cT.days}</td><td class="num">${cT.connected}</td><td class="num">${cT.capacity}</td><td class="num">${pct(cT.util)}</td><td class="num">${cT.deals}</td><td class="num">${money(cT.contract)}</td><td class="num">${money(cT.cash)}</td><td class="num">${pct(cT.closeRate)}</td><td class="num">${pct(cT.cashPct)}</td><td class="num">${money(cT.payout)}</td></tr>`:'')+
     (cloRows.length?cloRows.map(r=>`<tr><td><button class="linklike" onclick="repDetail('${esc(r.rep)}','Closer')">${esc(r.rep)}</button></td><td class="num">${r.days}</td><td class="num">${r.connected}</td><td class="num">${r.capacity}</td><td class="num">${pct(r.util)}</td><td class="num">${r.deals}</td><td class="num">${money(r.contract)}</td><td class="num">${money(r.cash)}</td><td class="num">${pct(r.closeRate)}</td><td class="num">${pct(r.cashPct)}</td><td class="num">${money(r.payout)}</td></tr>`).join('')
      :`<tr><td colspan="11" class="muted" style="padding:16px">No closer data yet.</td></tr>`)+`</tbody>`;
   if(REP_SEL) repDetail(REP_SEL.rep, REP_SEL.role);
