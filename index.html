@@ -285,7 +285,7 @@
   <!-- ===== REP BREAKDOWN ===== -->
   <section id="tab-reps" hidden>
     <h2 class="section">Rep Breakdown</h2>
-    <p class="hint">Every setter and closer, split out. Click a rep's name to see their day-by-day submissions. Numbers reconcile with the Dashboard leaderboard.</p>
+    <p class="hint" id="repsHint">Every setter and closer, split out. Click a rep's name to see their day-by-day submissions. Numbers reconcile with the Dashboard leaderboard.</p>
     <div class="filters">
       <div class="field"><label>Month</label><select id="rMonth"></select></div>
       <div class="field"><label>Client</label><select id="rClient"></select></div>
@@ -429,8 +429,8 @@ function startApp(){
   const allow = {
     admin:['dash','reps','clients','onboarding','deal','eod','data','users','settings'],
     manager:['dash','reps','clients','onboarding','users'],
-    closer:['deal','eod'],
-    setter:['eod']
+    closer:['deal','eod','reps'],
+    setter:['eod','reps']
   }[role] || ['eod'];
   document.querySelectorAll('#tabs button').forEach(b=>{ b.hidden = !allow.includes(b.dataset.tab); });
   fillLists(); wireTabs(); presetDates();
@@ -564,21 +564,33 @@ function renderDeals(recs){
 }
 
 /* ---------------- rep breakdown tab ---------------- */
-let REP_SEL=null;
+let REP_SEL=null, REP_SCOPE=null;
+function repMode(){ return SESSION && (SESSION.role==='closer'||SESSION.role==='setter'); }
+// a rep's "team" = the client accounts they've worked (by rep or setter credit)
+function myTeamClients(){
+  const me=String(SESSION&&SESSION.name||'').trim(), set=new Set();
+  activityRecords().forEach(x=>{ if((String(x.rep||'').trim()===me)||(String(x.setter||'').trim()===me)){ if(x.client) set.add(x.client); } });
+  return [...set];
+}
 function buildRepFilters(){
   const months=[...new Set(RECORDS.map(x=>monthKey(x.date)).filter(Boolean))].sort().reverse();
   const fm=document.getElementById('rMonth'),cur=fm.value;
   fm.innerHTML='<option value="">All months</option>'+months.map(m=>`<option>${m}</option>`).join('');
   if(cur)fm.value=cur; else if(months[0])fm.value=months[0];
   const fc=document.getElementById('rClient'),cc=fc.value;
-  fc.innerHTML='<option value="">All clients</option>'+CFG.clients.map(c=>`<option>${esc(c)}</option>`).join('');
-  if(cc)fc.value=cc;
+  const clients=REP_SCOPE?REP_SCOPE:CFG.clients;
+  fc.innerHTML='<option value="">All'+(REP_SCOPE?' my accounts':' clients')+'</option>'+clients.map(c=>`<option>${esc(c)}</option>`).join('');
+  if(cc&&clients.includes(cc))fc.value=cc;
 }
 function repFiltered(){
   const m=document.getElementById('rMonth').value, c=document.getElementById('rClient').value;
-  return activityRecords().filter(x=>(!m||monthKey(x.date)===m)&&(!c||x.client===c));
+  return activityRecords().filter(x=>(!m||monthKey(x.date)===m)&&(!c||x.client===c)&&(!REP_SCOPE||REP_SCOPE.includes(x.client)));
 }
 function renderReps(){
+  const rm=repMode();
+  REP_SCOPE = rm ? myTeamClients() : null;
+  const hint=document.getElementById('repsHint');
+  if(hint) hint.textContent = rm ? 'Your team’s numbers, filtered to your account(s). See how you stack up against your teammates.' : 'Every setter and closer, split out. Click a rep’s name to see their day-by-day submissions. Numbers reconcile with the Dashboard leaderboard.';
   buildRepFilters();
   const recs=repFiltered();
   const setters={}, closers={};
@@ -603,20 +615,25 @@ function renderReps(){
   const sum=(arr,k)=>arr.reduce((a,b)=>a+(b[k]||0),0);
   const daysUnion=map=>{const s=new Set();Object.values(map).forEach(o=>o.days.forEach(d=>s.add(d)));return s.size;};
   const setRows=Object.values(setters).map(o=>({...o,days:o.days.size,showRate:(o.connected+o.noShows)?o.connected/(o.connected+o.noShows):0,payout:o.cash*sRate})).sort((a,b)=>b.cash-a.cash||b.set-a.set);
-  const cloRows=Object.values(closers).map(o=>({...o,days:o.days.size,closeRate:o.connected?o.deals/o.connected:0,cashPct:o.contract?o.cash/o.contract:0,util:o.capacity?o.connected/o.capacity:0,payout:o.cash*cRate})).sort((a,b)=>b.cash-a.cash);
+  const cloRows=Object.values(closers).map(o=>({...o,days:o.days.size,dials:o.newOut+o.fuOut,closeRate:o.connected?o.deals/o.connected:0,cashPct:o.contract?o.cash/o.contract:0,util:o.capacity?o.connected/o.capacity:0,payout:o.cash*cRate})).sort((a,b)=>b.cash-a.cash);
   let sT=null; if(setRows.length){ const c=sum(setRows,'connected'),n=sum(setRows,'noShows'); sT={n:setRows.length,days:daysUnion(setters),newOut:sum(setRows,'newOut'),set:sum(setRows,'set'),connected:c,noShows:n,showRate:(c+n)?c/(c+n):0,cash:sum(setRows,'cash'),payout:sum(setRows,'payout')}; }
-  let cT=null; if(cloRows.length){ const c=sum(cloRows,'connected'),cap=sum(cloRows,'capacity'),d=sum(cloRows,'deals'),ct=sum(cloRows,'contract'),ca=sum(cloRows,'cash'); cT={n:cloRows.length,days:daysUnion(closers),connected:c,capacity:cap,util:cap?c/cap:0,deals:d,contract:ct,cash:ca,closeRate:c?d/c:0,cashPct:ct?ca/ct:0,payout:sum(cloRows,'payout')}; }
+  let cT=null; if(cloRows.length){ const c=sum(cloRows,'connected'),cap=sum(cloRows,'capacity'),d=sum(cloRows,'deals'),ct=sum(cloRows,'contract'),ca=sum(cloRows,'cash'); cT={n:cloRows.length,days:daysUnion(closers),dials:sum(cloRows,'dials'),set:sum(cloRows,'set'),connected:c,capacity:cap,util:cap?c/cap:0,deals:d,contract:ct,cash:ca,closeRate:c?d/c:0,cashPct:ct?ca/ct:0,payout:sum(cloRows,'payout')}; }
+  // payout column hidden from reps (teammates' commission is private); admins/managers see it
+  const payH = rm?'':'<th class="num">Est. payout</th>';
+  const payC = r => rm?'':`<td class="num">${money(r.payout)}</td>`;
+  const sName = r => rm?esc(r.rep):`<button class="linklike" onclick="repDetail('${esc(r.rep)}','Setter')">${esc(r.rep)}</button>`;
+  const cName = r => rm?esc(r.rep):`<button class="linklike" onclick="repDetail('${esc(r.rep)}','Closer')">${esc(r.rep)}</button>`;
   document.getElementById('setterTable').innerHTML=
-    `<thead><tr><th>Setter</th><th class="num">Days</th><th class="num">New outreach</th><th class="num">Calls set</th><th class="num">Connected</th><th class="num">No-shows</th><th class="num">Show %</th><th class="num">Cash set</th><th class="num">Est. payout</th></tr></thead><tbody>`+
-    (sT?`<tr class="totalrow"><td>TOTAL &middot; ${sT.n} setter${sT.n>1?'s':''}</td><td class="num">${sT.days}</td><td class="num">${sT.newOut}</td><td class="num">${sT.set}</td><td class="num">${sT.connected}</td><td class="num">${sT.noShows}</td><td class="num">${pct(sT.showRate)}</td><td class="num">${money(sT.cash)}</td><td class="num">${money(sT.payout)}</td></tr>`:'')+
-    (setRows.length?setRows.map(r=>`<tr><td><button class="linklike" onclick="repDetail('${esc(r.rep)}','Setter')">${esc(r.rep)}</button></td><td class="num">${r.days}</td><td class="num">${r.newOut}</td><td class="num">${r.set}</td><td class="num">${r.connected}</td><td class="num">${r.noShows}</td><td class="num">${pct(r.showRate)}</td><td class="num">${money(r.cash)}</td><td class="num">${money(r.payout)}</td></tr>`).join('')
-     :`<tr><td colspan="9" class="muted" style="padding:16px">No setter data yet.</td></tr>`)+`</tbody>`;
+    `<thead><tr><th>Setter</th><th class="num">Days</th><th class="num">New outreach</th><th class="num">Calls set</th><th class="num">Connected</th><th class="num">No-shows</th><th class="num">Show %</th><th class="num">Cash set</th>${payH}</tr></thead><tbody>`+
+    (sT?`<tr class="totalrow"><td>TOTAL &middot; ${sT.n} setter${sT.n>1?'s':''}</td><td class="num">${sT.days}</td><td class="num">${sT.newOut}</td><td class="num">${sT.set}</td><td class="num">${sT.connected}</td><td class="num">${sT.noShows}</td><td class="num">${pct(sT.showRate)}</td><td class="num">${money(sT.cash)}</td>${payC(sT)}</tr>`:'')+
+    (setRows.length?setRows.map(r=>`<tr><td>${sName(r)}</td><td class="num">${r.days}</td><td class="num">${r.newOut}</td><td class="num">${r.set}</td><td class="num">${r.connected}</td><td class="num">${r.noShows}</td><td class="num">${pct(r.showRate)}</td><td class="num">${money(r.cash)}</td>${payC(r)}</tr>`).join('')
+     :`<tr><td colspan="${rm?8:9}" class="muted" style="padding:16px">No setter data yet.</td></tr>`)+`</tbody>`;
   document.getElementById('closerTable').innerHTML=
-    `<thead><tr><th>Closer</th><th class="num">Days</th><th class="num">Connected</th><th class="num">Capacity</th><th class="num">Cap used</th><th class="num">Deals</th><th class="num">Contract</th><th class="num">Cash</th><th class="num">Close %</th><th class="num">Cash %</th><th class="num">Est. payout</th></tr></thead><tbody>`+
-    (cT?`<tr class="totalrow"><td>TOTAL &middot; ${cT.n} closer${cT.n>1?'s':''}</td><td class="num">${cT.days}</td><td class="num">${cT.connected}</td><td class="num">${cT.capacity}</td><td class="num">${pct(cT.util)}</td><td class="num">${cT.deals}</td><td class="num">${money(cT.contract)}</td><td class="num">${money(cT.cash)}</td><td class="num">${pct(cT.closeRate)}</td><td class="num">${pct(cT.cashPct)}</td><td class="num">${money(cT.payout)}</td></tr>`:'')+
-    (cloRows.length?cloRows.map(r=>`<tr><td><button class="linklike" onclick="repDetail('${esc(r.rep)}','Closer')">${esc(r.rep)}</button></td><td class="num">${r.days}</td><td class="num">${r.connected}</td><td class="num">${r.capacity}</td><td class="num">${pct(r.util)}</td><td class="num">${r.deals}</td><td class="num">${money(r.contract)}</td><td class="num">${money(r.cash)}</td><td class="num">${pct(r.closeRate)}</td><td class="num">${pct(r.cashPct)}</td><td class="num">${money(r.payout)}</td></tr>`).join('')
-     :`<tr><td colspan="11" class="muted" style="padding:16px">No closer data yet.</td></tr>`)+`</tbody>`;
-  if(REP_SEL) repDetail(REP_SEL.rep, REP_SEL.role);
+    `<thead><tr><th>Closer</th><th class="num">Days</th><th class="num">Dials</th><th class="num">Set</th><th class="num">Connected</th><th class="num">Capacity</th><th class="num">Cap used</th><th class="num">Deals</th><th class="num">Contract</th><th class="num">Cash</th><th class="num">Close %</th><th class="num">Cash %</th>${payH}</tr></thead><tbody>`+
+    (cT?`<tr class="totalrow"><td>TOTAL &middot; ${cT.n} closer${cT.n>1?'s':''}</td><td class="num">${cT.days}</td><td class="num">${cT.dials}</td><td class="num">${cT.set}</td><td class="num">${cT.connected}</td><td class="num">${cT.capacity}</td><td class="num">${pct(cT.util)}</td><td class="num">${cT.deals}</td><td class="num">${money(cT.contract)}</td><td class="num">${money(cT.cash)}</td><td class="num">${pct(cT.closeRate)}</td><td class="num">${pct(cT.cashPct)}</td>${payC(cT)}</tr>`:'')+
+    (cloRows.length?cloRows.map(r=>`<tr><td>${cName(r)}</td><td class="num">${r.days}</td><td class="num">${r.dials}</td><td class="num">${r.set}</td><td class="num">${r.connected}</td><td class="num">${r.capacity}</td><td class="num">${pct(r.util)}</td><td class="num">${r.deals}</td><td class="num">${money(r.contract)}</td><td class="num">${money(r.cash)}</td><td class="num">${pct(r.closeRate)}</td><td class="num">${pct(r.cashPct)}</td>${payC(r)}</tr>`).join('')
+     :`<tr><td colspan="${rm?12:13}" class="muted" style="padding:16px">No closer data yet.</td></tr>`)+`</tbody>`;
+  if(REP_SEL && !rm) repDetail(REP_SEL.rep, REP_SEL.role);
 }
 function repDetail(rep, role){
   REP_SEL={rep,role};
