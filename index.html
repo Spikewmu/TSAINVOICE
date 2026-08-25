@@ -63,6 +63,8 @@
   .pill{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;background:var(--surface-2);color:var(--muted)}
   .pill.good{background:var(--good-soft);color:var(--good)}
   .pill.warn{background:var(--warn-soft);color:var(--warn)}
+  .linklike{background:none;border:none;padding:0;font:inherit;color:var(--gold,#b8860b);font-weight:600;cursor:pointer;text-align:left}
+  .linklike:hover{text-decoration:underline}
   form.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow)}
   form.grid .full{grid-column:1/-1}
   form.grid .field{display:flex;flex-direction:column;gap:5px}
@@ -120,6 +122,7 @@
 
 <nav class="tabs" id="tabs">
   <button data-tab="dash" class="active">Dashboard</button>
+  <button data-tab="reps">Rep Breakdown</button>
   <button data-tab="clients">Client Overview</button>
   <button data-tab="onboarding">Onboarding</button>
   <button data-tab="deal">Log Closed Deal</button>
@@ -278,6 +281,20 @@
     </div>
   </section>
 
+  <!-- ===== REP BREAKDOWN ===== -->
+  <section id="tab-reps" hidden>
+    <h2 class="section">Rep Breakdown</h2>
+    <p class="hint">Every setter and closer, split out. Click a rep's name to see their day-by-day submissions. Numbers reconcile with the Dashboard leaderboard.</p>
+    <div class="filters">
+      <div class="field"><label>Month</label><select id="rMonth"></select></div>
+      <div class="field"><label>Client</label><select id="rClient"></select></div>
+      <button class="btn ghost sm" onclick="renderReps()">Refresh</button>
+    </div>
+    <div class="panel"><h3>Setters</h3><div class="tablewrap"><table id="setterTable"></table></div></div>
+    <div class="panel"><h3>Closers</h3><div class="tablewrap"><table id="closerTable"></table></div></div>
+    <div class="panel" id="repDetailPanel" hidden><h3 id="repDetailTitle">Rep detail</h3><div class="tablewrap"><table id="repDetailTable"></table></div></div>
+  </section>
+
   <!-- ===== SETTINGS ===== -->
   <section id="tab-settings" hidden>
     <h2 class="section">Settings</h2>
@@ -388,8 +405,8 @@ function startApp(){
   document.getElementById('whoTag').textContent = SESSION.name+' ('+role+')';
   document.getElementById('storeTag').textContent = CFG.endpoint ? 'Shared data' : 'Local data (this browser)';
   const allow = {
-    admin:['dash','clients','onboarding','deal','eod','data','users','settings'],
-    manager:['dash','clients','onboarding','users'],
+    admin:['dash','reps','clients','onboarding','deal','eod','data','users','settings'],
+    manager:['dash','reps','clients','onboarding','users'],
     closer:['deal','eod'],
     setter:['eod']
   }[role] || ['eod'];
@@ -414,8 +431,9 @@ function applyIdentity(){
 function wireTabs(){ document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>showTab(b.dataset.tab)); }
 function showTab(t){
   document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
-  ['dash','clients','onboarding','deal','eod','data','users','settings'].forEach(x=>{ document.getElementById('tab-'+x).hidden = (x!==t); });
+  ['dash','reps','clients','onboarding','deal','eod','data','users','settings'].forEach(x=>{ document.getElementById('tab-'+x).hidden = (x!==t); });
   if(t==='dash'){ syncRecords().then(renderDash); }
+  if(t==='reps'){ syncRecords().then(renderReps); }
   if(t==='clients'){ syncRecords().then(renderClientOverview); }
   if(t==='onboarding'){ syncRecords().then(renderOnboarding); }
   if(t==='data'){ syncRecords().then(renderAll); }
@@ -517,6 +535,77 @@ function renderDeals(recs){
     `<thead><tr><th>Date</th><th>Client</th><th>Closer</th><th>Setter</th><th>Product</th><th class="num">Contract</th><th class="num">Cash</th><th class="num">Deposit</th></tr></thead><tbody>`+
     (deals.length?deals.map(d=>`<tr><td>${esc((d.date||'').slice(0,10))}</td><td>${esc(d.client)}</td><td>${esc(d.rep)}</td><td>${esc(d.setter)}</td><td>${esc(d.product)}</td><td class="num">${money(d.contractValue)}</td><td class="num">${money(d.cashCollected)}</td><td class="num">${money(d.depositCollected)}</td></tr>`).join('')
      :`<tr><td colspan="8" class="muted" style="padding:16px">No closed deals yet.</td></tr>`)+`</tbody>`;
+}
+
+/* ---------------- rep breakdown tab ---------------- */
+let REP_SEL=null;
+function buildRepFilters(){
+  const months=[...new Set(RECORDS.map(x=>monthKey(x.date)).filter(Boolean))].sort().reverse();
+  const fm=document.getElementById('rMonth'),cur=fm.value;
+  fm.innerHTML='<option value="">All months</option>'+months.map(m=>`<option>${m}</option>`).join('');
+  if(cur)fm.value=cur; else if(months[0])fm.value=months[0];
+  const fc=document.getElementById('rClient'),cc=fc.value;
+  fc.innerHTML='<option value="">All clients</option>'+CFG.clients.map(c=>`<option>${esc(c)}</option>`).join('');
+  if(cc)fc.value=cc;
+}
+function repFiltered(){
+  const m=document.getElementById('rMonth').value, c=document.getElementById('rClient').value;
+  return activityRecords().filter(x=>(!m||monthKey(x.date)===m)&&(!c||x.client===c));
+}
+function renderReps(){
+  buildRepFilters();
+  const recs=repFiltered();
+  const setters={}, closers={};
+  function b(map,name){ if(!map[name]) map[name]={rep:name,days:new Set(),newOut:0,fuOut:0,offered:0,set:0,connected:0,noShows:0,capacity:0,cash:0,deals:0,contract:0}; return map[name]; }
+  recs.forEach(x=>{
+    const rep=(x.rep||'').trim(), setter=(x.setter||'').trim();
+    // EOD activity, bucketed by the role the rep submitted as
+    if((x.type==='eod'||!x.type) && rep){
+      const o=b((x.role==='Setter')?setters:closers, rep);
+      if(x.date) o.days.add(x.date.slice(0,10));
+      o.newOut+=x.newOutreach||0; o.fuOut+=x.followUpOutreach||0; o.offered+=x.callsOffered||0; o.set+=x.callsSet||0;
+      o.connected+=x.connectedMeetings||0; o.noShows+=x.noShows||0; o.capacity+=x.callCapacity||0;
+      if(x.role!=='Setter'){ o.cash+=x.cashCollected||0; o.deals+=x.closedDeals||0; o.contract+=x.contractValue||0; }
+    }
+    // closed deals: credit the closer (rep) and attribute cash to the setter who set it
+    if(x.type==='deal'){
+      if(rep){ const o=b(closers,rep); if(x.date)o.days.add(x.date.slice(0,10)); o.cash+=x.cashCollected||0; o.deals+=x.closedDeals||0; o.contract+=x.contractValue||0; }
+      if(setter){ const o=b(setters,setter); o.cash+=x.cashCollected||0; o.deals+=x.closedDeals||0; }
+    }
+  });
+  const sRate=CFG.setterRate/100, cRate=CFG.closerRate/100;
+  const setRows=Object.values(setters).map(o=>({...o,days:o.days.size,showRate:(o.connected+o.noShows)?o.connected/(o.connected+o.noShows):0,payout:o.cash*sRate})).sort((a,b)=>b.cash-a.cash||b.set-a.set);
+  const cloRows=Object.values(closers).map(o=>({...o,days:o.days.size,closeRate:o.connected?o.deals/o.connected:0,cashPct:o.contract?o.cash/o.contract:0,util:o.capacity?o.connected/o.capacity:0,payout:o.cash*cRate})).sort((a,b)=>b.cash-a.cash);
+  document.getElementById('setterTable').innerHTML=
+    `<thead><tr><th>Setter</th><th class="num">Days</th><th class="num">New outreach</th><th class="num">Calls set</th><th class="num">Connected</th><th class="num">No-shows</th><th class="num">Show %</th><th class="num">Cash set</th><th class="num">Est. payout</th></tr></thead><tbody>`+
+    (setRows.length?setRows.map(r=>`<tr><td><button class="linklike" onclick="repDetail('${esc(r.rep)}','Setter')">${esc(r.rep)}</button></td><td class="num">${r.days}</td><td class="num">${r.newOut}</td><td class="num">${r.set}</td><td class="num">${r.connected}</td><td class="num">${r.noShows}</td><td class="num">${pct(r.showRate)}</td><td class="num">${money(r.cash)}</td><td class="num">${money(r.payout)}</td></tr>`).join('')
+     :`<tr><td colspan="9" class="muted" style="padding:16px">No setter data yet.</td></tr>`)+`</tbody>`;
+  document.getElementById('closerTable').innerHTML=
+    `<thead><tr><th>Closer</th><th class="num">Days</th><th class="num">Connected</th><th class="num">Capacity</th><th class="num">Cap used</th><th class="num">Deals</th><th class="num">Contract</th><th class="num">Cash</th><th class="num">Close %</th><th class="num">Cash %</th><th class="num">Est. payout</th></tr></thead><tbody>`+
+    (cloRows.length?cloRows.map(r=>`<tr><td><button class="linklike" onclick="repDetail('${esc(r.rep)}','Closer')">${esc(r.rep)}</button></td><td class="num">${r.days}</td><td class="num">${r.connected}</td><td class="num">${r.capacity}</td><td class="num">${pct(r.util)}</td><td class="num">${r.deals}</td><td class="num">${money(r.contract)}</td><td class="num">${money(r.cash)}</td><td class="num">${pct(r.closeRate)}</td><td class="num">${pct(r.cashPct)}</td><td class="num">${money(r.payout)}</td></tr>`).join('')
+     :`<tr><td colspan="11" class="muted" style="padding:16px">No closer data yet.</td></tr>`)+`</tbody>`;
+  if(REP_SEL) repDetail(REP_SEL.rep, REP_SEL.role);
+}
+function repDetail(rep, role){
+  REP_SEL={rep,role};
+  const recs=repFiltered().filter(x=>{
+    const xr=(x.rep||'').trim(), xs=(x.setter||'').trim();
+    if(role==='Setter') return (x.type==='deal'&&xs===rep) || ((x.type==='eod'||!x.type)&&xr===rep&&x.role==='Setter');
+    return (x.type==='deal'&&xr===rep) || ((x.type==='eod'||!x.type)&&xr===rep&&x.role!=='Setter');
+  }).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  document.getElementById('repDetailPanel').hidden=false;
+  document.getElementById('repDetailTitle').innerHTML=`${esc(rep)} <span class="pill">${esc(role)}</span> - day-by-day`;
+  const head = role==='Setter'
+    ? `<thead><tr><th>Date</th><th>Client</th><th>Type</th><th class="num">New out</th><th class="num">Set</th><th class="num">Connected</th><th class="num">No-shows</th><th class="num">Cash set</th></tr></thead><tbody>`
+    : `<thead><tr><th>Date</th><th>Client</th><th>Type</th><th class="num">Connected</th><th class="num">Capacity</th><th class="num">Deals</th><th class="num">Contract</th><th class="num">Cash</th></tr></thead><tbody>`;
+  const body = recs.length ? recs.map(x=>{
+    const t=x.type==='deal'?'<span class="pill good">deal</span>':'<span class="pill">eod</span>';
+    return role==='Setter'
+      ? `<tr><td>${esc((x.date||'').slice(0,10))}</td><td>${esc(x.client)}</td><td>${t}</td><td class="num">${x.newOutreach||0}</td><td class="num">${x.callsSet||0}</td><td class="num">${x.connectedMeetings||0}</td><td class="num">${x.noShows||0}</td><td class="num">${x.type==='deal'?money(x.cashCollected):'-'}</td></tr>`
+      : `<tr><td>${esc((x.date||'').slice(0,10))}</td><td>${esc(x.client)}</td><td>${t}</td><td class="num">${x.connectedMeetings||0}</td><td class="num">${x.callCapacity||0}</td><td class="num">${x.closedDeals||0}</td><td class="num">${money(x.contractValue)}</td><td class="num">${money(x.cashCollected)}</td></tr>`;
+  }).join('') : `<tr><td colspan="8" class="muted" style="padding:16px">No submissions in this range.</td></tr>`;
+  document.getElementById('repDetailTable').innerHTML=head+body+`</tbody>`;
+  document.getElementById('repDetailPanel').scrollIntoView({behavior:'smooth',block:'nearest'});
 }
 
 /* ---------------- data tab ---------------- */
