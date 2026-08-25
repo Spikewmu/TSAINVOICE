@@ -193,27 +193,27 @@
       <input type="hidden" name="role" value="Closer">
       <div class="rolenote" id="eodRoleNote"></div>
 
-      <div class="formhead"><b>1. Who &amp; when</b><span class="sub">the day and account these numbers are for</span></div>
+      <div class="formhead"><b>Who &amp; when</b><span class="sub">the day and account these numbers are for</span></div>
       <div class="field"><label>Date *</label><input type="date" name="date" required><span class="fieldhelp">The day these numbers cover (defaults to today).</span></div>
       <div class="field"><label>Client / account *</label><select name="client" data-list="clients" required></select><span class="fieldhelp">Which account you worked today.</span></div>
       <div class="field"><label>Rep name *</label><select name="rep" data-list="reps" required></select><span class="fieldhelp">Your name (locked to your login).</span></div>
 
-      <div class="formhead"><b>2. Outreach &amp; dials</b><span class="sub">how much you reached out today</span></div>
+      <div class="formhead"><b>Outreach &amp; dials</b><span class="sub">how much you reached out today</span></div>
       <div class="field"><label>New outreach</label><input type="number" name="newOutreach" min="0" step="1"><span class="fieldhelp">Dials / messages to brand-new leads.</span></div>
       <div class="field"><label>Follow-up outreach</label><input type="number" name="followUpOutreach" min="0" step="1"><span class="fieldhelp">Dials / messages to leads you'd already contacted.</span></div>
       <div class="field"><label>Sales calls offered</label><input type="number" name="callsOffered" min="0" step="1"><span class="fieldhelp">Times you offered / pitched to book a call.</span></div>
       <div class="field"><label>Sales calls set</label><input type="number" name="callsSet" min="0" step="1"><span class="fieldhelp">Appointments you actually booked.</span></div>
       <div class="field setterOnly" hidden><label>Speed to lead (min)</label><input type="number" name="speedToLead" min="0" step="0.1"><span class="fieldhelp">Avg minutes from a lead arriving to your first dial. Optional.</span></div>
 
-      <div class="formhead"><b>3. Meetings / calls</b><span class="sub">what happened on the calendar today</span></div>
-      <div class="field"><label>New meetings today</label><input type="number" name="newMeetings" min="0" step="1"><span class="fieldhelp">First-time calls that took place today.</span></div>
-      <div class="field"><label>Connected meetings</label><input type="number" name="connectedMeetings" min="0" step="1"><span class="fieldhelp">Calls where you actually reached the person (calls taken).</span></div>
-      <div class="field"><label>Follow-up meetings today</label><input type="number" name="followUpMeetings" min="0" step="1"><span class="fieldhelp">Repeat / second calls that took place today.</span></div>
-      <div class="field"><label>No shows</label><input type="number" name="noShows" min="0" step="1"><span class="fieldhelp">Booked calls where they didn't show up.</span></div>
+      <div class="formhead closerOnly"><b>Meetings / calls</b><span class="sub">the calls you took today (setters don't fill this - the closer reports call outcomes)</span></div>
+      <div class="field closerOnly"><label>New meetings today</label><input type="number" name="newMeetings" min="0" step="1"><span class="fieldhelp">First-time calls that took place today.</span></div>
+      <div class="field closerOnly"><label>Connected meetings</label><input type="number" name="connectedMeetings" min="0" step="1"><span class="fieldhelp">Calls where you actually reached the person (calls taken).</span></div>
+      <div class="field closerOnly"><label>Follow-up meetings today</label><input type="number" name="followUpMeetings" min="0" step="1"><span class="fieldhelp">Repeat / second calls that took place today.</span></div>
+      <div class="field closerOnly"><label>No shows</label><input type="number" name="noShows" min="0" step="1"><span class="fieldhelp">Booked calls where they didn't show up.</span></div>
       <div class="field closerOnly"><label>Call capacity</label><input type="number" name="callCapacity" min="0" step="1"><span class="fieldhelp">How many calls you had room to take today.</span></div>
       <div class="field closerOnly"><label>Advanced sales calls</label><input type="number" name="advancedCalls" min="0" step="1"><span class="fieldhelp">Calls you moved forward toward a close.</span></div>
 
-      <div class="formhead closerOnly"><b>4. Closing numbers</b><span class="sub">closers only - also log each deal on the "Log Closed Deal" tab</span></div>
+      <div class="formhead closerOnly"><b>Closing numbers</b><span class="sub">closers only - also log each deal on the "Log Closed Deal" tab</span></div>
       <div class="field closerOnly"><label>Closed deals</label><input type="number" name="closedDeals" min="0" step="1"><span class="fieldhelp">Deals you closed today.</span></div>
       <div class="field closerOnly"><label>Contracts signed</label><input type="number" name="contractsSigned" min="0" step="1"><span class="fieldhelp">Agreements signed today.</span></div>
       <div class="field closerOnly"><label>Contract value ($)</label><input type="number" name="contractValue" min="0" step="0.01"><span class="fieldhelp">Total contract value (before payment).</span></div>
@@ -222,7 +222,7 @@
       <div class="field closerOnly"><label>AOSi sold</label><input type="number" name="aosiSold" min="0" step="1"><span class="fieldhelp">Units of AOSi sold.</span></div>
       <div class="field closerOnly"><label>Product B sold</label><input type="number" name="productBSold" min="0" step="1"><span class="fieldhelp">Units of the secondary product sold.</span></div>
 
-      <div class="formhead"><b>5. Notes</b><span class="sub">optional</span></div>
+      <div class="formhead"><b>Notes</b><span class="sub">optional</span></div>
       <div class="field full"><label>Notes</label><input type="text" name="notes" placeholder="blockers, big wins, anything the team should know"><span class="fieldhelp">Context for your manager - wins, blockers, or why the numbers look how they do.</span></div>
       <div class="full row-actions"><button class="btn gold" type="submit">Submit end of day</button></div>
     </form>
@@ -507,8 +507,8 @@ function setEodRole(r){
   document.querySelectorAll('#eodForm .setterOnly').forEach(e=>e.hidden=r!=='Setter');
   const note=document.getElementById('eodRoleNote');
   if(note) note.innerHTML = r==='Setter'
-    ? "You're logging as a <b>Setter</b>. Fill in your outreach and the meetings you set. Your cash and commission are credited automatically from the closer's “Setter who set it” field, so there are no closing-number fields here."
-    : "You're logging as a <b>Closer</b>. Fill in your dials and meetings, then your closing numbers below. Also log each individual deal on the <b>Log Closed Deal</b> tab so invoicing and setter credit stay accurate.";
+    ? "You're logging as a <b>Setter</b>. Just log your <b>dials/outreach</b> and the <b>appointments you set</b> - that's it. Whether those calls connect, show, or close is reported by the <b>closer</b> who takes them, and your cash/commission is credited automatically from each deal's “Setter who set it” field. No need to re-enter any of that."
+    : "You're logging as a <b>Closer</b>. Fill in your dials, then the <b>meetings/calls</b> you took (including no-shows) and your <b>closing numbers</b>. Also log each individual deal on the <b>Log Closed Deal</b> tab so invoicing and setter credit stay accurate.";
   if(SESSION && SESSION.role!=='admin') return; // reps keep their locked rep list
   const repSel=document.querySelector('#eodForm [name=rep]');
   const items=r==='Closer'?CFG.closers:CFG.setters;
@@ -646,7 +646,7 @@ function renderReps(){
   const daysUnion=map=>{const s=new Set();Object.values(map).forEach(o=>o.days.forEach(d=>s.add(d)));return s.size;};
   const setRows=Object.values(setters).map(o=>({...o,days:o.days.size,showRate:(o.connected+o.noShows)?o.connected/(o.connected+o.noShows):0,payout:o.cash*sRate})).sort((a,b)=>b.cash-a.cash||b.set-a.set);
   const cloRows=Object.values(closers).map(o=>({...o,days:o.days.size,dials:o.newOut+o.fuOut,closeRate:o.connected?o.deals/o.connected:0,cashPct:o.contract?o.cash/o.contract:0,util:o.capacity?o.connected/o.capacity:0,payout:o.cash*cRate})).sort((a,b)=>b.cash-a.cash);
-  let sT=null; if(setRows.length){ const c=sum(setRows,'connected'),n=sum(setRows,'noShows'); sT={n:setRows.length,days:daysUnion(setters),newOut:sum(setRows,'newOut'),set:sum(setRows,'set'),connected:c,noShows:n,showRate:(c+n)?c/(c+n):0,cash:sum(setRows,'cash'),payout:sum(setRows,'payout')}; }
+  let sT=null; if(setRows.length){ sT={n:setRows.length,days:daysUnion(setters),newOut:sum(setRows,'newOut'),fuOut:sum(setRows,'fuOut'),offered:sum(setRows,'offered'),set:sum(setRows,'set'),cash:sum(setRows,'cash'),payout:sum(setRows,'payout')}; }
   let cT=null; if(cloRows.length){ const c=sum(cloRows,'connected'),cap=sum(cloRows,'capacity'),d=sum(cloRows,'deals'),ct=sum(cloRows,'contract'),ca=sum(cloRows,'cash'); cT={n:cloRows.length,days:daysUnion(closers),dials:sum(cloRows,'dials'),set:sum(cloRows,'set'),connected:c,capacity:cap,util:cap?c/cap:0,deals:d,contract:ct,cash:ca,closeRate:c?d/c:0,cashPct:ct?ca/ct:0,payout:sum(cloRows,'payout')}; }
   // payout column hidden from reps (teammates' commission is private); admins/managers see it
   const payH = rm?'':'<th class="num">Est. payout</th>';
@@ -654,10 +654,10 @@ function renderReps(){
   const sName = r => rm?esc(r.rep):`<button class="linklike" onclick="repDetail('${esc(r.rep)}','Setter')">${esc(r.rep)}</button>`;
   const cName = r => rm?esc(r.rep):`<button class="linklike" onclick="repDetail('${esc(r.rep)}','Closer')">${esc(r.rep)}</button>`;
   document.getElementById('setterTable').innerHTML=
-    `<thead><tr><th>Setter</th><th class="num">Days</th><th class="num">New outreach</th><th class="num">Calls set</th><th class="num">Connected</th><th class="num">No-shows</th><th class="num">Show %</th><th class="num">Cash set</th>${payH}</tr></thead><tbody>`+
-    (sT?`<tr class="totalrow"><td>TOTAL &middot; ${sT.n} setter${sT.n>1?'s':''}</td><td class="num">${sT.days}</td><td class="num">${sT.newOut}</td><td class="num">${sT.set}</td><td class="num">${sT.connected}</td><td class="num">${sT.noShows}</td><td class="num">${pct(sT.showRate)}</td><td class="num">${money(sT.cash)}</td>${payC(sT)}</tr>`:'')+
-    (setRows.length?setRows.map(r=>`<tr><td>${sName(r)}</td><td class="num">${r.days}</td><td class="num">${r.newOut}</td><td class="num">${r.set}</td><td class="num">${r.connected}</td><td class="num">${r.noShows}</td><td class="num">${pct(r.showRate)}</td><td class="num">${money(r.cash)}</td>${payC(r)}</tr>`).join('')
-     :`<tr><td colspan="${rm?8:9}" class="muted" style="padding:16px">No setter data yet.</td></tr>`)+`</tbody>`;
+    `<thead><tr><th>Setter</th><th class="num">Days</th><th class="num">New outreach</th><th class="num">Follow-up</th><th class="num">Offered</th><th class="num">Calls set</th><th class="num">Cash set</th>${payH}</tr></thead><tbody>`+
+    (sT?`<tr class="totalrow"><td>TOTAL &middot; ${sT.n} setter${sT.n>1?'s':''}</td><td class="num">${sT.days}</td><td class="num">${sT.newOut}</td><td class="num">${sT.fuOut}</td><td class="num">${sT.offered}</td><td class="num">${sT.set}</td><td class="num">${money(sT.cash)}</td>${payC(sT)}</tr>`:'')+
+    (setRows.length?setRows.map(r=>`<tr><td>${sName(r)}</td><td class="num">${r.days}</td><td class="num">${r.newOut}</td><td class="num">${r.fuOut}</td><td class="num">${r.offered}</td><td class="num">${r.set}</td><td class="num">${money(r.cash)}</td>${payC(r)}</tr>`).join('')
+     :`<tr><td colspan="${rm?7:8}" class="muted" style="padding:16px">No setter data yet.</td></tr>`)+`</tbody>`;
   document.getElementById('closerTable').innerHTML=
     `<thead><tr><th>Closer</th><th class="num">Days</th><th class="num">Dials</th><th class="num">Set</th><th class="num">Connected</th><th class="num">Capacity</th><th class="num">Cap used</th><th class="num">Deals</th><th class="num">Contract</th><th class="num">Cash</th><th class="num">Close %</th><th class="num">Cash %</th>${payH}</tr></thead><tbody>`+
     (cT?`<tr class="totalrow"><td>TOTAL &middot; ${cT.n} closer${cT.n>1?'s':''}</td><td class="num">${cT.days}</td><td class="num">${cT.dials}</td><td class="num">${cT.set}</td><td class="num">${cT.connected}</td><td class="num">${cT.capacity}</td><td class="num">${pct(cT.util)}</td><td class="num">${cT.deals}</td><td class="num">${money(cT.contract)}</td><td class="num">${money(cT.cash)}</td><td class="num">${pct(cT.closeRate)}</td><td class="num">${pct(cT.cashPct)}</td>${payC(cT)}</tr>`:'')+
@@ -675,12 +675,12 @@ function repDetail(rep, role){
   document.getElementById('repDetailPanel').hidden=false;
   document.getElementById('repDetailTitle').innerHTML=`${esc(rep)} <span class="pill">${esc(role)}</span> - day-by-day`;
   const head = role==='Setter'
-    ? `<thead><tr><th>Date</th><th>Client</th><th>Type</th><th class="num">New out</th><th class="num">Set</th><th class="num">Connected</th><th class="num">No-shows</th><th class="num">Cash set</th></tr></thead><tbody>`
+    ? `<thead><tr><th>Date</th><th>Client</th><th>Type</th><th class="num">New out</th><th class="num">Follow-up</th><th class="num">Offered</th><th class="num">Set</th><th class="num">Cash set</th></tr></thead><tbody>`
     : `<thead><tr><th>Date</th><th>Client</th><th>Type</th><th class="num">Connected</th><th class="num">Capacity</th><th class="num">Deals</th><th class="num">Contract</th><th class="num">Cash</th></tr></thead><tbody>`;
   const body = recs.length ? recs.map(x=>{
     const t=x.type==='deal'?'<span class="pill good">deal</span>':'<span class="pill">eod</span>';
     return role==='Setter'
-      ? `<tr><td>${esc((x.date||'').slice(0,10))}</td><td>${esc(x.client)}</td><td>${t}</td><td class="num">${x.newOutreach||0}</td><td class="num">${x.callsSet||0}</td><td class="num">${x.connectedMeetings||0}</td><td class="num">${x.noShows||0}</td><td class="num">${x.type==='deal'?money(x.cashCollected):'-'}</td></tr>`
+      ? `<tr><td>${esc((x.date||'').slice(0,10))}</td><td>${esc(x.client)}</td><td>${t}</td><td class="num">${x.newOutreach||0}</td><td class="num">${x.followUpOutreach||0}</td><td class="num">${x.callsOffered||0}</td><td class="num">${x.callsSet||0}</td><td class="num">${x.type==='deal'?money(x.cashCollected):'-'}</td></tr>`
       : `<tr><td>${esc((x.date||'').slice(0,10))}</td><td>${esc(x.client)}</td><td>${t}</td><td class="num">${x.connectedMeetings||0}</td><td class="num">${x.callCapacity||0}</td><td class="num">${x.closedDeals||0}</td><td class="num">${money(x.contractValue)}</td><td class="num">${money(x.cashCollected)}</td></tr>`;
   }).join('') : `<tr><td colspan="8" class="muted" style="padding:16px">No submissions in this range.</td></tr>`;
   document.getElementById('repDetailTable').innerHTML=head+body+`</tbody>`;
