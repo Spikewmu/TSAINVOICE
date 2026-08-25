@@ -166,9 +166,10 @@
     <p class="hint">Submit this the moment a deal closes. It feeds the invoicing view and credits the setter who set it.</p>
     <form class="grid" id="dealForm" onsubmit="submitDeal(event)">
       <div class="field"><label>Date *</label><input type="date" name="date" required></div>
-      <div class="field"><label>Client *</label><select name="client" data-list="clients" required></select></div>
-      <div class="field"><label>Closer *</label><select name="rep" data-list="closers" required></select></div>
-      <div class="field"><label>Setter (who set it)</label><select name="setter" data-list="setters"></select></div>
+      <div class="field"><label>Client / account *</label><select name="client" data-list="clients" required></select><span class="fieldhelp">Which account this deal is for.</span></div>
+      <div class="field"><label>Lead / prospect name *</label><input type="text" name="lead" required placeholder="the person who bought"><span class="fieldhelp">Who you closed - the customer's name.</span></div>
+      <div class="field"><label>Closer (who closed it) *</label><select name="rep" data-list="closers" required></select><span class="fieldhelp">The rep who ran the closing call.</span></div>
+      <div class="field"><label>Setter (who set the call) *</label><select name="setter" data-list="setters" required></select><span class="fieldhelp">The setter who booked this appointment - they get setter credit + commission.</span></div>
       <div class="field"><label>Product sold</label><select name="product" data-list="products"></select></div>
       <div class="field"><label>Call type</label><select name="callType"><option value="">-</option><option>First-call close</option><option>Second-call close</option><option>Follow-up close</option></select></div>
       <div class="field"><label>Contract value ($) *</label><input type="number" name="contractValue" min="0" step="0.01" required></div>
@@ -587,9 +588,9 @@ function renderClients(recs){
 function renderDeals(recs){
   const deals=recs.filter(x=>x.type==='deal').sort((a,b)=>(b.date||'').localeCompare(a.date||''));
   document.getElementById('dealTable').innerHTML=
-    `<thead><tr><th>Date</th><th>Client</th><th>Closer</th><th>Setter</th><th>Product</th><th class="num">Contract</th><th class="num">Cash</th><th class="num">Deposit</th></tr></thead><tbody>`+
-    (deals.length?deals.map(d=>`<tr><td>${esc((d.date||'').slice(0,10))}</td><td>${esc(d.client)}</td><td>${esc(d.rep)}</td><td>${esc(d.setter)}</td><td>${esc(d.product)}</td><td class="num">${money(d.contractValue)}</td><td class="num">${money(d.cashCollected)}</td><td class="num">${money(d.depositCollected)}</td></tr>`).join('')
-     :`<tr><td colspan="8" class="muted" style="padding:16px">No closed deals yet.</td></tr>`)+`</tbody>`;
+    `<thead><tr><th>Date</th><th>Client</th><th>Lead</th><th>Closer</th><th>Setter</th><th>Product</th><th class="num">Contract</th><th class="num">Cash</th><th class="num">Deposit</th></tr></thead><tbody>`+
+    (deals.length?deals.map(d=>`<tr><td>${esc((d.date||'').slice(0,10))}</td><td>${esc(d.client)}</td><td>${esc(d.lead)}</td><td>${esc(d.rep)}</td><td>${esc(d.setter)}</td><td>${esc(d.product)}</td><td class="num">${money(d.contractValue)}</td><td class="num">${money(d.cashCollected)}</td><td class="num">${money(d.depositCollected)}</td></tr>`).join('')
+     :`<tr><td colspan="9" class="muted" style="padding:16px">No closed deals yet.</td></tr>`)+`</tbody>`;
 }
 
 /* ---------------- rep breakdown tab ---------------- */
