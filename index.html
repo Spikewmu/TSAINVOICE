@@ -155,7 +155,10 @@
       <button class="btn ghost sm" onclick="renderDash()">Refresh</button>
     </div>
     <div class="cards" id="kpis"></div>
-    <div class="panel"><h3>Team leaderboard (by cash collected)</h3><div class="tablewrap"><table id="lbTable"></table></div></div>
+    <div class="cards" style="grid-template-columns:repeat(auto-fit,minmax(340px,1fr))">
+      <div class="panel" style="margin:0"><h3>Closer leaderboard <span style="font-weight:400;color:var(--muted);font-size:12px">- by cash collected</span></h3><div class="tablewrap"><table id="lbClosers"></table></div></div>
+      <div class="panel" style="margin:0"><h3>Setter leaderboard <span style="font-weight:400;color:var(--muted);font-size:12px">- by cash set</span></h3><div class="tablewrap"><table id="lbSetters"></table></div></div>
+    </div>
     <div class="panel"><h3>By client (invoicing view)</h3><div class="tablewrap"><table id="clientTable"></table></div></div>
     <div class="panel"><h3>Closed deals</h3><div class="tablewrap"><table id="dealTable"></table></div></div>
   </section>
@@ -601,16 +604,23 @@ function renderDash(){
 }
 function renderLeaderboard(recs){
   const byRep={};
-  function bucket(name,role){ const k=name+'|'+role; if(!byRep[k]) byRep[k]={rep:name,role:role,cash:0,deals:0,connected:0}; return byRep[k]; }
+  function bucket(name,role){ const k=name+'|'+role; if(!byRep[k]) byRep[k]={rep:name,role:role,cash:0,deals:0,connected:0,set:0}; return byRep[k]; }
   recs.forEach(x=>{
-    if(x.rep){ const b=bucket(x.rep,x.role||'Closer'); b.cash+=x.cashCollected||0; b.deals+=x.closedDeals||0; b.connected+=x.connectedMeetings||0; }
-    if(x.type==='deal'&&x.setter){ const s=bucket(x.setter,'Setter'); s.cash+=x.cashCollected||0; s.deals+=x.closedDeals||0; }
+    const rep=(x.rep||'').trim(), setter=(x.setter||'').trim();
+    if(rep){ const b=bucket(rep,x.role||'Closer'); b.cash+=x.cashCollected||0; b.deals+=x.closedDeals||0; if(x.role!=='Setter') b.connected+=x.connectedMeetings||0; b.set+=x.callsSet||0; }
+    if(x.type==='deal'&&setter){ const s=bucket(setter,'Setter'); s.cash+=x.cashCollected||0; s.deals+=x.closedDeals||0; }
   });
-  const rows=Object.values(byRep).map(o=>{ const rate=(o.role==='Setter'?CFG.setterRate:CFG.closerRate)/100; return {...o,closeRate:o.connected?o.deals/o.connected:0,payout:o.cash*rate}; }).sort((a,b)=>b.cash-a.cash);
-  document.getElementById('lbTable').innerHTML=
-    `<thead><tr><th>#</th><th>Rep</th><th>Role</th><th class="num">Cash collected</th><th class="num">Deals</th><th class="num">Close %</th><th class="num">Est. payout</th></tr></thead><tbody>`+
-    (rows.length?rows.map((r,i)=>`<tr class="${i===0?'rank1':''}"><td>${i+1}</td><td>${esc(r.rep)}</td><td><span class="pill">${esc(r.role)}</span></td><td class="num">${money(r.cash)}</td><td class="num">${r.deals}</td><td class="num">${pct(r.closeRate)}</td><td class="num">${money(r.payout)}</td></tr>`).join('')
-     :`<tr><td colspan="7" class="muted" style="padding:16px">No data yet.</td></tr>`)+`</tbody>`;
+  const all=Object.values(byRep);
+  const closers=all.filter(o=>o.role!=='Setter').map(o=>({...o,closeRate:o.connected?o.deals/o.connected:0,payout:o.cash*CFG.closerRate/100})).sort((a,b)=>b.cash-a.cash||b.deals-a.deals);
+  const setters=all.filter(o=>o.role==='Setter').map(o=>({...o,payout:o.cash*CFG.setterRate/100})).sort((a,b)=>b.cash-a.cash||b.set-a.set);
+  document.getElementById('lbClosers').innerHTML=
+    `<thead><tr><th>#</th><th>Closer</th><th class="num">Cash collected</th><th class="num">Deals</th><th class="num">Close %</th><th class="num">Est. payout</th></tr></thead><tbody>`+
+    (closers.length?closers.map((r,i)=>`<tr class="${i===0?'rank1':''}"><td>${i+1}</td><td>${esc(r.rep)}</td><td class="num">${money(r.cash)}</td><td class="num">${r.deals}</td><td class="num">${pct(r.closeRate)}</td><td class="num">${money(r.payout)}</td></tr>`).join('')
+     :`<tr><td colspan="6" class="muted" style="padding:16px">No closer data yet.</td></tr>`)+`</tbody>`;
+  document.getElementById('lbSetters').innerHTML=
+    `<thead><tr><th>#</th><th>Setter</th><th class="num">Calls set</th><th class="num">Cash set</th><th class="num">Est. payout</th></tr></thead><tbody>`+
+    (setters.length?setters.map((r,i)=>`<tr class="${i===0?'rank1':''}"><td>${i+1}</td><td>${esc(r.rep)}</td><td class="num">${r.set}</td><td class="num">${money(r.cash)}</td><td class="num">${money(r.payout)}</td></tr>`).join('')
+     :`<tr><td colspan="5" class="muted" style="padding:16px">No setter data yet.</td></tr>`)+`</tbody>`;
 }
 function renderClients(recs){
   const byC={}; recs.forEach(x=>{ if(!x.client)return; (byC[x.client]=byC[x.client]||[]).push(x); });
