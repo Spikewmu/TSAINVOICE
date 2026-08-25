@@ -166,11 +166,11 @@
     <p class="hint">Submit this the moment a deal closes. It feeds the invoicing view and credits the setter who set it.</p>
     <form class="grid" id="dealForm" onsubmit="submitDeal(event)">
       <div class="field"><label>Date *</label><input type="date" name="date" required></div>
-      <div class="field"><label>Client / account *</label><select name="client" data-list="clients" required></select><span class="fieldhelp">Which account this deal is for.</span></div>
+      <div class="field"><label>Client / account *</label><select name="client" data-list="clients" required onchange="dealClientChanged()"></select><span class="fieldhelp">Which account this deal is for.</span></div>
       <div class="field"><label>Lead / prospect name *</label><input type="text" name="lead" required placeholder="the person who bought"><span class="fieldhelp">Who you closed - the customer's name.</span></div>
       <div class="field"><label>Closer (who closed it) *</label><select name="rep" data-list="closers" required></select><span class="fieldhelp">The rep who ran the closing call.</span></div>
       <div class="field"><label>Setter (who set the call) *</label><select name="setter" data-list="setters" required></select><span class="fieldhelp">The setter who booked this appointment - they get setter credit + commission.</span></div>
-      <div class="field"><label>Product sold</label><select name="product" data-list="products"></select></div>
+      <div class="field"><label>Product sold</label><select name="product" data-list="products"></select><span class="fieldhelp">Filters to the selected client's offers (set on Client Overview).</span></div>
       <div class="field"><label>Call type</label><select name="callType"><option value="">-</option><option>First-call close</option><option>Second-call close</option><option>Follow-up close</option></select></div>
       <div class="field"><label>Contract value ($) *</label><input type="number" name="contractValue" min="0" step="0.01" required></div>
       <div class="field"><label>Cash collected ($) *</label><input type="number" name="cashCollected" min="0" step="0.01" required></div>
@@ -283,6 +283,7 @@
         <div class="field"><label>Manager</label><input name="manager" placeholder="Khadija"></div>
         <div class="field"><label>Service line</label><input name="serviceLine" placeholder="TakeOver + Webinar"></div>
         <div class="field"><label>Existing monthly ($)</label><input name="monthly" type="number" min="0" step="100"></div>
+        <div class="field full"><label>Products / offers</label><input name="products" placeholder="DWY, DFY, Partnership"><span class="fieldhelp">This client's offers, comma-separated. These become the Product choices when logging a deal for this client.</span></div>
         <div class="field full"><label>Next step</label><input name="nextStep" placeholder="Dial no-shows; fix deliverability"></div>
         <div class="full row-actions"><button class="btn gold" type="submit">Save client</button><span class="tag">Re-saving the same name updates it.</span></div>
       </form>
@@ -824,11 +825,27 @@ function latestClients(){
   return Object.values(m).filter(x=>x.status!=='__DELETED__');
 }
 function clientNames(){ const s=new Set(CFG.clients||[]); latestClients().forEach(c=>s.add(c.name)); return [...s]; }
+// each client can have its own offers; fall back to the global Products list if none set
+function productsForClient(name){
+  if(name){
+    const c=latestClients().find(x=>String(x.name).toLowerCase()===String(name).toLowerCase());
+    if(c&&c.products){ const arr=String(c.products).split(',').map(s=>s.trim()).filter(Boolean); if(arr.length) return arr; }
+  }
+  return CFG.products||[];
+}
+function dealClientChanged(){
+  const c=document.querySelector('#dealForm [name=client]').value;
+  const sel=document.querySelector('#dealForm [name=product]'); if(!sel) return;
+  const items=productsForClient(c), cur=sel.value;
+  sel.innerHTML='<option value="">-</option>'+items.map(i=>`<option>${esc(i)}</option>`).join('');
+  if(cur&&items.includes(cur)) sel.value=cur;
+}
 function thisMonth(){ return new Date().toISOString().slice(0,7); }
 function cashThisMonth(name){ const m=thisMonth(); return RECORDS.filter(x=>x.client===name && monthKey(x.date)===m).reduce((s,x)=>s+(x.cashCollected||0),0); }
 async function saveClient(e){
   e.preventDefault();
   const o=formObj(e.target); o.type='client'; o.monthly=parseFloat(o.monthly)||0;
+  o.products=(o.products||'').split(',').map(s=>s.trim()).filter(Boolean).join(', '); // normalize
   await addRecord(o);
   e.target.reset(); toast('Client saved'); fillLists(); renderClientOverview();
 }
@@ -845,9 +862,13 @@ function renderClientOverview(){
   const rows=cs.slice().sort((a,b)=>(order[a.status]??9)-(order[b.status]??9)||String(a.name).localeCompare(b.name));
   const pc=s=>s==='Active'?'good':((s==='Dropped'||s==='Inactive')?'warn':'');
   document.getElementById('overviewTable').innerHTML=
-    `<thead><tr><th>Client</th><th>Status</th><th>Manager</th><th>Service line</th><th class="num">Existing/mo</th><th class="num">Cash this mo</th><th>Next step</th></tr></thead><tbody>`+
-    (rows.length?rows.map(c=>`<tr><td><b>${esc(c.name)}</b></td><td><span class="pill ${pc(c.status)}">${esc(c.status)}</span></td><td>${esc(c.manager)}</td><td>${esc(c.serviceLine)}</td><td class="num">${money(c.monthly)}</td><td class="num">${money(cashThisMonth(c.name))}</td><td>${esc(c.nextStep)}</td></tr>`).join('')
-     :`<tr><td colspan="7" class="muted" style="padding:16px">No clients yet. Add one below.</td></tr>`)+`</tbody>`;
+    `<thead><tr><th>Client</th><th>Status</th><th>Manager</th><th>Service line</th><th>Offers</th><th class="num">Existing/mo</th><th class="num">Cash this mo</th><th>Next step</th></tr></thead><tbody>`+
+    (rows.length?rows.map(c=>{
+      const offers=productsForClient(c.name);
+      const offerCell=(c.products&&offers.length)?offers.map(p=>`<span class="teamtag">${esc(p)}</span>`).join(''):'<span class="muted">global default</span>';
+      return `<tr><td><b>${esc(c.name)}</b></td><td><span class="pill ${pc(c.status)}">${esc(c.status)}</span></td><td>${esc(c.manager)}</td><td>${esc(c.serviceLine)}</td><td>${offerCell}</td><td class="num">${money(c.monthly)}</td><td class="num">${money(cashThisMonth(c.name))}</td><td>${esc(c.nextStep)}</td></tr>`;
+    }).join('')
+     :`<tr><td colspan="8" class="muted" style="padding:16px">No clients yet. Add one below.</td></tr>`)+`</tbody>`;
 }
 
 /* ---------------- onboarding checklist ---------------- */
