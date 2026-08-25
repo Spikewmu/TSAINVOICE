@@ -369,7 +369,28 @@ async function remoteGet(){
 
 /* ---------------- records ---------------- */
 let RECORDS = load(LS.data, []);
-async function syncRecords(){ const r=await remoteGet(); if(r){ RECORDS=r; save(LS.data,RECORDS); } }
+async function syncRecords(){ const r=await remoteGet(); if(r){ RECORDS=dedupeRecords(r); save(LS.data,RECORDS); } }
+// Collapse accidental double-submits: same rep/client/date/role and identical values,
+// submitted within 2 minutes of each other, count once. (Physical rows stay in the sheet.)
+function recSig(r){
+  const parts=[r.type||'',(r.role||'').trim(),(r.rep||'').trim(),(r.setter||'').trim(),(r.client||'').trim(),(r.date||'').slice(0,10),(r.notes||'').trim()];
+  NUMKEYS.forEach(k=>parts.push(String(r[k]!=null?r[k]:'')));
+  return parts.join('|');
+}
+function dedupeRecords(list){
+  const seen={}, out=[];
+  for(const r of list){
+    if(r.type!=='eod' && r.type!=='deal'){ out.push(r); continue; }
+    const sig=recSig(r), prev=seen[sig];
+    if(prev){
+      const t1=Date.parse(prev.submittedAt||''), t2=Date.parse(r.submittedAt||'');
+      const within=(isNaN(t1)||isNaN(t2))?true:Math.abs(t2-t1)<=120000;
+      if(within) continue; // drop the duplicate
+    }
+    seen[sig]=r; out.push(r);
+  }
+  return out;
+}
 async function addRecord(rec){
   rec.id=uid(); rec.submittedAt=new Date().toISOString();
   RECORDS.push(rec); save(LS.data,RECORDS);
@@ -469,8 +490,12 @@ function setEodRole(r){
 function formObj(f){ const o={}; new FormData(f).forEach((v,k)=>o[k]=v); return o; }
 const NUMKEYS=['contractValue','cashCollected','depositCollected','followUpOutreach','newOutreach','callsOffered','callsSet','callCapacity','speedToLead','newMeetings','connectedMeetings','followUpMeetings','advancedCalls','noShows','closedDeals','contractsSigned','aosiSold','productBSold'];
 function num(o){ NUMKEYS.forEach(k=>{ if(k in o) o[k]=parseFloat(o[k])||0; }); return o; }
-async function submitDeal(e){ e.preventDefault(); const o=num(formObj(e.target)); o.type='deal'; o.role='Closer'; o.closedDeals=1; if(SESSION.role!=='admin') o.rep=SESSION.name; await addRecord(o); e.target.reset(); presetDates(); if(SESSION.role!=='admin') applyIdentity(); toast('Closed deal logged. Nice.'); if(SESSION.role==='admin') renderDash(); }
-async function submitEod(e){ e.preventDefault(); const o=num(formObj(e.target)); o.type='eod'; if(SESSION.role!=='admin'){ o.rep=SESSION.name; o.role=SESSION.role==='setter'?'Setter':'Closer'; } await addRecord(o); e.target.reset(); presetDates(); setEodRole(o.role); if(SESSION.role!=='admin') applyIdentity(); toast('End of day submitted.'); if(SESSION.role==='admin') renderDash(); }
+async function submitDeal(e){ e.preventDefault(); const btn=e.target.querySelector('[type=submit]'); if(btn&&btn.disabled) return; if(btn) btn.disabled=true;
+  try{ const o=num(formObj(e.target)); o.type='deal'; o.role='Closer'; o.closedDeals=1; if(SESSION.role!=='admin') o.rep=SESSION.name; await addRecord(o); e.target.reset(); presetDates(); if(SESSION.role!=='admin') applyIdentity(); toast('Closed deal logged. Nice.'); if(SESSION.role==='admin') renderDash(); }
+  finally{ if(btn) btn.disabled=false; } }
+async function submitEod(e){ e.preventDefault(); const btn=e.target.querySelector('[type=submit]'); if(btn&&btn.disabled) return; if(btn) btn.disabled=true;
+  try{ const o=num(formObj(e.target)); o.type='eod'; if(SESSION.role!=='admin'){ o.rep=SESSION.name; o.role=SESSION.role==='setter'?'Setter':'Closer'; } await addRecord(o); e.target.reset(); presetDates(); setEodRole(o.role); if(SESSION.role!=='admin') applyIdentity(); toast('End of day submitted.'); if(SESSION.role==='admin') renderDash(); }
+  finally{ if(btn) btn.disabled=false; } }
 
 /* ---------------- aggregation + dashboard ---------------- */
 function monthKey(d){ return (d||'').slice(0,7); }
