@@ -317,6 +317,13 @@
   <section id="tab-reps" hidden>
     <h2 class="section">Rep Breakdown</h2>
     <p class="hint" id="repsHint">Every setter and closer, split out. Click a rep's name to see their day-by-day submissions. Numbers reconcile with the Dashboard leaderboard.</p>
+    <div class="panel" id="eodCheckPanel" hidden><h3>EOD submissions <span style="font-weight:400;color:var(--muted);font-size:12px">- who checked out that day</span></h3>
+      <div style="padding:14px">
+        <div class="filters" style="margin:0 0 12px"><div class="field"><label>Day</label><input type="date" id="eodCheckDate" onchange="renderEodCheck()"></div><span id="eodCheckSummary" class="tag" style="align-self:flex-end;margin-bottom:2px"></span></div>
+        <div style="margin-bottom:12px"><div style="font-size:12px;text-transform:uppercase;color:var(--muted);font-weight:700;letter-spacing:.02em">Setters</div><div class="chiprow" id="eodCheckSetters" style="margin-top:6px"></div></div>
+        <div><div style="font-size:12px;text-transform:uppercase;color:var(--muted);font-weight:700;letter-spacing:.02em">Closers</div><div class="chiprow" id="eodCheckClosers" style="margin-top:6px"></div></div>
+      </div>
+    </div>
     <div class="filters">
       <div class="field"><label>Month</label><select id="rMonth"></select></div>
       <div class="field"><label>Client</label><select id="rClient"></select></div>
@@ -624,6 +631,27 @@ function renderDeals(recs){
 /* ---------------- rep breakdown tab ---------------- */
 let REP_SEL=null, REP_SCOPE=null;
 function repMode(){ return SESSION && (SESSION.role==='closer'||SESSION.role==='setter'); }
+// EOD compliance: who submitted an End-of-Day for a given day
+function submittedEod(name, day){
+  const n=String(name||'').trim().toLowerCase();
+  return RECORDS.some(x=>x.type==='eod' && String(x.rep||'').trim().toLowerCase()===n && String(x.date||'').slice(0,10)===day);
+}
+function renderEodCheck(){
+  const panel=document.getElementById('eodCheckPanel'); if(!panel) return;
+  if(repMode()){ panel.hidden=true; return; } // managers/admin only
+  panel.hidden=false;
+  const di=document.getElementById('eodCheckDate'); if(!di.value) di.value=new Date().toISOString().slice(0,10);
+  const day=di.value;
+  const chip=(n)=>{ const ok=submittedEod(n,day); return `<span class="chip" style="background:${ok?'var(--good-soft)':'var(--warn-soft)'};color:${ok?'var(--good)':'var(--warn)'};font-weight:600">${ok?'✓':'✗'} ${esc(n)}</span>`; };
+  const setters=repNames('setter'), closers=repNames('closer');
+  document.getElementById('eodCheckSetters').innerHTML=setters.length?setters.map(chip).join(''):'<span class="muted" style="font-size:12px">No setters yet.</span>';
+  document.getElementById('eodCheckClosers').innerHTML=closers.length?closers.map(chip).join(''):'<span class="muted" style="font-size:12px">No closers yet.</span>';
+  const sIn=setters.filter(n=>submittedEod(n,day)).length, cIn=closers.filter(n=>submittedEod(n,day)).length;
+  const miss=(setters.length-sIn)+(closers.length-cIn);
+  const sum=document.getElementById('eodCheckSummary');
+  sum.textContent=`Setters ${sIn}/${setters.length} · Closers ${cIn}/${closers.length} submitted`+(miss?` · ${miss} missing`:' · all in');
+  sum.style.color=miss?'var(--warn)':'var(--good)'; sum.style.borderColor=miss?'var(--warn)':'var(--good)';
+}
 // a rep's "team" = the client accounts they've worked (by rep or setter credit)
 function myTeamClients(){
   const me=String(SESSION&&SESSION.name||'').trim(), set=new Set();
@@ -646,6 +674,7 @@ function repFiltered(){
 }
 function renderReps(){
   const rm=repMode();
+  renderEodCheck();
   // rep sees their ASSIGNED teams; if none assigned yet, fall back to the accounts they've submitted for
   const assigned = rm ? teamsFor(SESSION&&SESSION.username) : [];
   REP_SCOPE = rm ? (assigned.length?assigned:myTeamClients()) : null;
