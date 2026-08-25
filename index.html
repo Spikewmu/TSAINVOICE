@@ -543,7 +543,11 @@ function buildFilterOptions(){
 }
 function agg(recs){
   const s={contractValue:0,cashCollected:0,depositCollected:0,closedDeals:0,connectedMeetings:0,noShows:0,callCapacity:0};
-  recs.forEach(x=>{ s.contractValue+=x.contractValue||0; s.cashCollected+=x.cashCollected||0; s.depositCollected+=x.depositCollected||0; s.closedDeals+=x.closedDeals||0; s.connectedMeetings+=x.connectedMeetings||0; s.noShows+=x.noShows||0; s.callCapacity+=x.callCapacity||0; });
+  recs.forEach(x=>{
+    s.contractValue+=x.contractValue||0; s.cashCollected+=x.cashCollected||0; s.depositCollected+=x.depositCollected||0; s.closedDeals+=x.closedDeals||0;
+    // meetings/connects/no-shows/capacity are closer-reported only - never count setter activity (would push capacity used past 100%)
+    if(x.role!=='Setter'){ s.connectedMeetings+=x.connectedMeetings||0; s.noShows+=x.noShows||0; s.callCapacity+=x.callCapacity||0; }
+  });
   s.closeRate=s.connectedMeetings?s.closedDeals/s.connectedMeetings:0;
   s.showRate=(s.connectedMeetings+s.noShows)?s.connectedMeetings/(s.connectedMeetings+s.noShows):0;
   s.cashPct=s.contractValue?s.cashCollected/s.contractValue:0;
