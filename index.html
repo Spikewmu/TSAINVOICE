@@ -66,6 +66,10 @@
   .linklike{background:none;border:none;padding:0;font:inherit;color:var(--gold,#b8860b);font-weight:600;cursor:pointer;text-align:left}
   .linklike:hover{text-decoration:underline}
   tr.totalrow td{font-weight:700;background:var(--surface-2);border-bottom:2px solid var(--gold,#b8860b)}
+  .teamboxes{display:flex;flex-wrap:wrap;gap:8px}
+  .teamboxes label{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:500;padding:6px 10px;border:1px solid var(--border,#333);border-radius:8px;cursor:pointer;background:var(--surface-2)}
+  .teamboxes input{margin:0;cursor:pointer}
+  .teamtag{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;background:var(--gold-soft);color:var(--gold,#b8860b);margin:2px 3px 2px 0}
   form.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow)}
   form.grid .full{grid-column:1/-1}
   form.grid .field{display:flex;flex-direction:column;gap:5px}
@@ -229,7 +233,7 @@
   <!-- ===== USERS ===== -->
   <section id="tab-users" hidden>
     <h2 class="section">Users</h2>
-    <p class="hint">Create a login for each rep and pick their role. Setters see only the setter end-of-day form. Closers see the closed-deal + closer end-of-day forms. Admins see everything.</p>
+    <p class="hint">Create a login for each rep, pick their role, and assign the team(s) / account(s) they work. Setters see only the setter end-of-day form; closers see the closed-deal + closer forms; both see a Rep Breakdown scoped to their assigned teams. Admins see everything.</p>
     <div class="panel">
       <h3>Add or update a user</h3>
       <form class="grid" id="userForm" onsubmit="saveUser(event)" style="box-shadow:none;border:none">
@@ -237,10 +241,18 @@
         <div class="field"><label>Username *</label><input name="username" required placeholder="bree" autocomplete="off"></div>
         <div class="field"><label>Role *</label><select name="role" required><option value="closer">Closer</option><option value="setter">Setter</option><option value="admin">Admin</option></select></div>
         <div class="field"><label>Password *</label><input name="password" type="text" required placeholder="set a password"></div>
-        <div class="full row-actions"><button class="btn gold" type="submit">Save user</button><span class="tag">Re-saving an existing username updates their role and password.</span></div>
+        <div class="field full"><label>Teams / accounts (assign one or more)</label><div id="newUserTeams" class="teamboxes"></div></div>
+        <div class="full row-actions"><button class="btn gold" type="submit">Save user</button><span class="tag">Re-saving an existing username updates their role, password, and teams.</span></div>
       </form>
     </div>
     <div class="panel"><h3>Current users</h3><div class="tablewrap"><table id="usersTable"></table></div></div>
+    <div class="panel" id="teamEditPanel" hidden><h3 id="teamEditTitle">Assign teams</h3>
+      <div style="padding:14px">
+        <p class="hint">Tick every account this person works. Saving updates only their team assignment (no password needed).</p>
+        <div id="teamEditBoxes" class="teamboxes"></div>
+        <div class="row-actions" style="margin-top:12px"><button class="btn gold sm" onclick="saveTeams()">Save teams</button><button class="btn ghost sm" onclick="cancelTeams()">Cancel</button></div>
+      </div>
+    </div>
   </section>
 
   <!-- ===== CLIENT OVERVIEW ===== -->
@@ -588,9 +600,11 @@ function repFiltered(){
 }
 function renderReps(){
   const rm=repMode();
-  REP_SCOPE = rm ? myTeamClients() : null;
+  // rep sees their ASSIGNED teams; if none assigned yet, fall back to the accounts they've submitted for
+  const assigned = rm ? teamsFor(SESSION&&SESSION.username) : [];
+  REP_SCOPE = rm ? (assigned.length?assigned:myTeamClients()) : null;
   const hint=document.getElementById('repsHint');
-  if(hint) hint.textContent = rm ? 'Your team’s numbers, filtered to your account(s). See how you stack up against your teammates.' : 'Every setter and closer, split out. Click a rep’s name to see their day-by-day submissions. Numbers reconcile with the Dashboard leaderboard.';
+  if(hint) hint.textContent = rm ? 'Your team’s numbers, filtered to your assigned account(s). See how you stack up against your teammates.' : 'Every setter and closer, split out. Click a rep’s name to see their day-by-day submissions. Numbers reconcile with the Dashboard leaderboard.';
   buildRepFilters();
   const recs=repFiltered();
   const setters={}, closers={};
@@ -682,25 +696,63 @@ function mgmtPass(){ return (SESSION && SESSION.role==='manager') ? CFG.managerC
 // Authorize account management by the logged-in account (actorUser/actorPass) with the
 // master password as a fallback. This is why no per-browser password setup is needed.
 function authFields(){ return { adminPass: mgmtPass(), actorUser:(SESSION&&SESSION.username)||'', actorPass:(SESSION&&SESSION.pw)||'' }; }
+// team assignments are stored as records (type 'team', latest-wins per username) - no backend change needed
+let TEAM_EDIT=null;
+function teamsFor(username){
+  username=String(username||'').trim().toLowerCase(); let best=null;
+  RECORDS.forEach(x=>{ if(x.type==='team' && String(x.username||'').trim().toLowerCase()===username){ if(!best||String(x.submittedAt||'')>String(best.submittedAt||'')) best=x; } });
+  if(best&&best.teams){ try{ const a=JSON.parse(best.teams); if(Array.isArray(a)) return a; }catch(e){} }
+  return [];
+}
+function teamBoxesHtml(checked){
+  const clients=CFG.clients||[]; checked=checked||[];
+  return clients.length ? clients.map(c=>`<label><input type="checkbox" value="${esc(c)}" ${checked.includes(c)?'checked':''}>${esc(c)}</label>`).join('')
+    : '<span class="muted">Add clients on the Client Overview / Settings tab first.</span>';
+}
 async function renderUsers(){
   const isAdmin = SESSION.role==='admin';
   // managers can only create closer/setter; admins can also create manager/admin
   const roleSel=document.querySelector('#userForm [name=role]');
   if(roleSel) roleSel.innerHTML = '<option value="closer">Closer</option><option value="setter">Setter</option>'+(isAdmin?'<option value="manager">Sales Manager</option><option value="admin">Admin</option>':'');
+  const nt=document.getElementById('newUserTeams'); if(nt) nt.innerHTML=teamBoxesHtml([]);
   let users=[];
   if(CFG.endpoint){ const res=await api({action:'listUsers', ...authFields()}); users=(res&&res.users)||[]; }
   else { users=LOCAL_USERS.map(u=>({username:u.username,name:u.name,role:u.role})); }
   users.push({username:'tsaboss',name:'Admin (master)',role:'admin',master:true});
   document.getElementById('usersTable').innerHTML=
-    `<thead><tr><th>Name</th><th>Username</th><th>Role</th><th></th></tr></thead><tbody>`+
-    users.map(u=>`<tr><td>${esc(u.name)}</td><td>${esc(u.username)}</td><td><span class="pill">${esc(u.role)}</span></td><td>${(u.master||!isAdmin)?(u.master?'<span class="tag">master, set in Settings</span>':''):`<button class="btn sm ghost" style="color:var(--warn);border-color:var(--warn)" onclick="delUser('${esc(u.username)}')">Remove</button>`}</td></tr>`).join('')
+    `<thead><tr><th>Name</th><th>Username</th><th>Role</th><th>Teams / accounts</th><th></th></tr></thead><tbody>`+
+    users.map(u=>{
+      const teams=u.master?[]:teamsFor(u.username);
+      const teamCell = u.master ? '<span class="muted">-</span>'
+        : (['closer','setter'].includes(u.role)
+            ? ((teams.length?teams.map(t=>`<span class="teamtag">${esc(t)}</span>`).join(''):'<span class="tag" style="color:var(--warn);border-color:var(--warn)">none - not scoped</span>')+` <button class="btn sm ghost" onclick="editTeams('${esc(u.username)}')">Edit</button>`)
+            : '<span class="muted">all (admin/mgr)</span>');
+      const actions = u.master ? '<span class="tag">master, set in Settings</span>'
+        : (isAdmin ? `<button class="btn sm ghost" style="color:var(--warn);border-color:var(--warn)" onclick="delUser('${esc(u.username)}')">Remove</button>` : '');
+      return `<tr><td>${esc(u.name)}</td><td>${esc(u.username)}</td><td><span class="pill">${esc(u.role)}</span></td><td>${teamCell}</td><td>${actions}</td></tr>`;
+    }).join('')
     +`</tbody>`;
+}
+function editTeams(username){
+  TEAM_EDIT=username;
+  document.getElementById('teamEditTitle').textContent='Assign teams - '+username;
+  document.getElementById('teamEditBoxes').innerHTML=teamBoxesHtml(teamsFor(username));
+  const p=document.getElementById('teamEditPanel'); p.hidden=false; p.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+function cancelTeams(){ TEAM_EDIT=null; document.getElementById('teamEditPanel').hidden=true; }
+async function saveTeams(){
+  if(!TEAM_EDIT) return;
+  const teams=[...document.querySelectorAll('#teamEditBoxes input:checked')].map(i=>i.value);
+  await addRecord({type:'team', username:String(TEAM_EDIT).toLowerCase(), teams:JSON.stringify(teams)});
+  document.getElementById('teamEditPanel').hidden=true; TEAM_EDIT=null;
+  toast('Teams updated'); setTimeout(renderUsers, 800);
 }
 async function saveUser(e){
   e.preventDefault();
   const o=formObj(e.target); o.username=o.username.trim().toLowerCase();
   if(o.username==='tsaboss'){ toast('tsaboss is the master admin, change it in Settings',true); return; }
   if(SESSION.role==='manager' && !['closer','setter'].includes(o.role)){ toast('Managers can only create closers and setters',true); return; }
+  const teams=[...document.querySelectorAll('#newUserTeams input:checked')].map(i=>i.value);
   if(CFG.endpoint){
     const res=await api({action:'saveUser', ...authFields(), user:o});
     if(!res||!res.ok){ toast('Save failed (check backend)',true); return; }
@@ -711,6 +763,7 @@ async function saveUser(e){
     if(i>=0) LOCAL_USERS[i]=rec; else LOCAL_USERS.push(rec);
     save(LS.users,LOCAL_USERS);
   }
+  await addRecord({type:'team', username:o.username, teams:JSON.stringify(teams)}); // assign teams (also clears if none ticked)
   e.target.reset(); toast('User saved'); renderUsers(); setTimeout(renderUsers, 2500);
 }
 async function delUser(username){
