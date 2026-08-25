@@ -72,6 +72,12 @@
   .teamtag{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;background:var(--gold-soft);color:var(--gold,#b8860b);margin:2px 3px 2px 0}
   form.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow)}
   form.grid .full{grid-column:1/-1}
+  .formhead{grid-column:1/-1;margin:6px 0 0;padding-top:14px;border-top:1px solid var(--border);display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+  .formhead:first-child{border-top:none;padding-top:0}
+  .formhead b{font-size:13px;font-weight:700;letter-spacing:.02em;text-transform:uppercase;color:var(--text,#e8e8e8)}
+  .formhead .sub{font-size:12px;color:var(--muted)}
+  .fieldhelp{font-size:11px;line-height:1.35;color:var(--muted);font-weight:400}
+  .rolenote{grid-column:1/-1;font-size:13px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--muted)}
   form.grid .field{display:flex;flex-direction:column;gap:5px}
   .btn{appearance:none;border:1px solid var(--navy);background:var(--navy);color:#fff;font:inherit;font-weight:600;padding:11px 20px;border-radius:9px;cursor:pointer}
   .btn:hover{background:var(--navy-2)}
@@ -176,42 +182,48 @@
   <!-- ===== END OF DAY ===== -->
   <section id="tab-eod" hidden>
     <h2 class="section">End of Day Checkout</h2>
-    <p class="hint">One per rep per day. <b>Setters</b> log activity (dials, appointments set, connected, no-shows, speed-to-lead). <b>Closers</b> log the closing numbers. Setter cash and commission come automatically from the "Setter who set it" field on each closed deal.</p>
+    <p class="hint">Fill this in <b>once at the end of each day</b> for the account you worked. Pick your role first - the form only shows the fields that apply to you. Leave anything that's zero blank or as 0.</p>
     <div id="roleSegWrap" style="margin-bottom:14px">
       <div class="seg" id="roleSeg">
-        <button class="on" data-role="Closer" onclick="setEodRole('Closer')">Closer</button>
-        <button data-role="Setter" onclick="setEodRole('Setter')">Setter</button>
+        <button class="on" data-role="Closer" onclick="setEodRole('Closer')">I'm a Closer</button>
+        <button data-role="Setter" onclick="setEodRole('Setter')">I'm a Setter</button>
       </div>
     </div>
     <form class="grid" id="eodForm" onsubmit="submitEod(event)">
       <input type="hidden" name="role" value="Closer">
-      <div class="field"><label>Date *</label><input type="date" name="date" required></div>
-      <div class="field"><label>Client *</label><select name="client" data-list="clients" required></select></div>
-      <div class="field"><label>Rep name *</label><select name="rep" data-list="reps" required></select></div>
+      <div class="rolenote" id="eodRoleNote"></div>
 
-      <div class="field"><label>Follow-up outreach</label><input type="number" name="followUpOutreach" min="0" step="1"></div>
-      <div class="field"><label>New outreach</label><input type="number" name="newOutreach" min="0" step="1"></div>
-      <div class="field"><label>Sales calls offered</label><input type="number" name="callsOffered" min="0" step="1"></div>
-      <div class="field"><label>Sales calls set</label><input type="number" name="callsSet" min="0" step="1"></div>
+      <div class="formhead"><b>1. Who &amp; when</b><span class="sub">the day and account these numbers are for</span></div>
+      <div class="field"><label>Date *</label><input type="date" name="date" required><span class="fieldhelp">The day these numbers cover (defaults to today).</span></div>
+      <div class="field"><label>Client / account *</label><select name="client" data-list="clients" required></select><span class="fieldhelp">Which account you worked today.</span></div>
+      <div class="field"><label>Rep name *</label><select name="rep" data-list="reps" required></select><span class="fieldhelp">Your name (locked to your login).</span></div>
 
-      <div class="field closerOnly"><label>Call capacity (calls you could take)</label><input type="number" name="callCapacity" min="0" step="1"></div>
-      <div class="field setterOnly" hidden><label>Speed to lead (min, optional)</label><input type="number" name="speedToLead" min="0" step="0.1"></div>
+      <div class="formhead"><b>2. Outreach &amp; dials</b><span class="sub">how much you reached out today</span></div>
+      <div class="field"><label>New outreach</label><input type="number" name="newOutreach" min="0" step="1"><span class="fieldhelp">Dials / messages to brand-new leads.</span></div>
+      <div class="field"><label>Follow-up outreach</label><input type="number" name="followUpOutreach" min="0" step="1"><span class="fieldhelp">Dials / messages to leads you'd already contacted.</span></div>
+      <div class="field"><label>Sales calls offered</label><input type="number" name="callsOffered" min="0" step="1"><span class="fieldhelp">Times you offered / pitched to book a call.</span></div>
+      <div class="field"><label>Sales calls set</label><input type="number" name="callsSet" min="0" step="1"><span class="fieldhelp">Appointments you actually booked.</span></div>
+      <div class="field setterOnly" hidden><label>Speed to lead (min)</label><input type="number" name="speedToLead" min="0" step="0.1"><span class="fieldhelp">Avg minutes from a lead arriving to your first dial. Optional.</span></div>
 
-      <div class="field"><label>New meetings today</label><input type="number" name="newMeetings" min="0" step="1"></div>
-      <div class="field"><label>Connected meetings (calls taken)</label><input type="number" name="connectedMeetings" min="0" step="1"></div>
-      <div class="field"><label>Follow-up meetings today</label><input type="number" name="followUpMeetings" min="0" step="1"></div>
-      <div class="field closerOnly"><label>Advanced sales calls</label><input type="number" name="advancedCalls" min="0" step="1"></div>
-      <div class="field"><label>No shows</label><input type="number" name="noShows" min="0" step="1"></div>
+      <div class="formhead"><b>3. Meetings / calls</b><span class="sub">what happened on the calendar today</span></div>
+      <div class="field"><label>New meetings today</label><input type="number" name="newMeetings" min="0" step="1"><span class="fieldhelp">First-time calls that took place today.</span></div>
+      <div class="field"><label>Connected meetings</label><input type="number" name="connectedMeetings" min="0" step="1"><span class="fieldhelp">Calls where you actually reached the person (calls taken).</span></div>
+      <div class="field"><label>Follow-up meetings today</label><input type="number" name="followUpMeetings" min="0" step="1"><span class="fieldhelp">Repeat / second calls that took place today.</span></div>
+      <div class="field"><label>No shows</label><input type="number" name="noShows" min="0" step="1"><span class="fieldhelp">Booked calls where they didn't show up.</span></div>
+      <div class="field closerOnly"><label>Call capacity</label><input type="number" name="callCapacity" min="0" step="1"><span class="fieldhelp">How many calls you had room to take today.</span></div>
+      <div class="field closerOnly"><label>Advanced sales calls</label><input type="number" name="advancedCalls" min="0" step="1"><span class="fieldhelp">Calls you moved forward toward a close.</span></div>
 
-      <div class="field full closerOnly" style="margin-top:2px"><span class="pill" style="background:var(--gold-soft);color:var(--warn)">Closing numbers (closers) - log each deal on the Closed Deal tab too</span></div>
-      <div class="field closerOnly"><label>Closed deals</label><input type="number" name="closedDeals" min="0" step="1"></div>
-      <div class="field closerOnly"><label>Contracts signed</label><input type="number" name="contractsSigned" min="0" step="1"></div>
-      <div class="field closerOnly"><label>Contract value ($)</label><input type="number" name="contractValue" min="0" step="0.01"></div>
-      <div class="field closerOnly"><label>Cash collected ($)</label><input type="number" name="cashCollected" min="0" step="0.01"></div>
-      <div class="field closerOnly"><label>Deposits collected ($)</label><input type="number" name="depositCollected" min="0" step="0.01"></div>
-      <div class="field closerOnly"><label>AOSi sold</label><input type="number" name="aosiSold" min="0" step="1"></div>
-      <div class="field closerOnly"><label>Product B sold</label><input type="number" name="productBSold" min="0" step="1"></div>
-      <div class="field full"><label>Notes</label><input type="text" name="notes"></div>
+      <div class="formhead closerOnly"><b>4. Closing numbers</b><span class="sub">closers only - also log each deal on the "Log Closed Deal" tab</span></div>
+      <div class="field closerOnly"><label>Closed deals</label><input type="number" name="closedDeals" min="0" step="1"><span class="fieldhelp">Deals you closed today.</span></div>
+      <div class="field closerOnly"><label>Contracts signed</label><input type="number" name="contractsSigned" min="0" step="1"><span class="fieldhelp">Agreements signed today.</span></div>
+      <div class="field closerOnly"><label>Contract value ($)</label><input type="number" name="contractValue" min="0" step="0.01"><span class="fieldhelp">Total contract value (before payment).</span></div>
+      <div class="field closerOnly"><label>Cash collected ($)</label><input type="number" name="cashCollected" min="0" step="0.01"><span class="fieldhelp">Actual money collected today.</span></div>
+      <div class="field closerOnly"><label>Deposits collected ($)</label><input type="number" name="depositCollected" min="0" step="0.01"><span class="fieldhelp">Partial / deposit payments collected.</span></div>
+      <div class="field closerOnly"><label>AOSi sold</label><input type="number" name="aosiSold" min="0" step="1"><span class="fieldhelp">Units of AOSi sold.</span></div>
+      <div class="field closerOnly"><label>Product B sold</label><input type="number" name="productBSold" min="0" step="1"><span class="fieldhelp">Units of the secondary product sold.</span></div>
+
+      <div class="formhead"><b>5. Notes</b><span class="sub">optional</span></div>
+      <div class="field full"><label>Notes</label><input type="text" name="notes" placeholder="blockers, big wins, anything the team should know"><span class="fieldhelp">Context for your manager - wins, blockers, or why the numbers look how they do.</span></div>
       <div class="full row-actions"><button class="btn gold" type="submit">Submit end of day</button></div>
     </form>
   </section>
@@ -493,6 +505,10 @@ function setEodRole(r){
   document.querySelector('#eodForm [name=role]').value=r;
   document.querySelectorAll('#eodForm .closerOnly').forEach(e=>e.hidden=r!=='Closer');
   document.querySelectorAll('#eodForm .setterOnly').forEach(e=>e.hidden=r!=='Setter');
+  const note=document.getElementById('eodRoleNote');
+  if(note) note.innerHTML = r==='Setter'
+    ? "You're logging as a <b>Setter</b>. Fill in your outreach and the meetings you set. Your cash and commission are credited automatically from the closer's “Setter who set it” field, so there are no closing-number fields here."
+    : "You're logging as a <b>Closer</b>. Fill in your dials and meetings, then your closing numbers below. Also log each individual deal on the <b>Log Closed Deal</b> tab so invoicing and setter credit stay accurate.";
   if(SESSION && SESSION.role!=='admin') return; // reps keep their locked rep list
   const repSel=document.querySelector('#eodForm [name=rep]');
   const items=r==='Closer'?CFG.closers:CFG.setters;
