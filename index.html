@@ -842,6 +842,15 @@ function dealClientChanged(){
 }
 function thisMonth(){ return new Date().toISOString().slice(0,7); }
 function cashThisMonth(name){ const m=thisMonth(); return RECORDS.filter(x=>x.client===name && monthKey(x.date)===m).reduce((s,x)=>s+(x.cashCollected||0),0); }
+function editClient(name){
+  const c=latestClients().find(x=>String(x.name).toLowerCase()===String(name).toLowerCase())||{name:name};
+  const f=document.getElementById('clientForm'), g=n=>f.querySelector('[name="'+n+'"]');
+  g('name').value=c.name||''; g('status').value=c.status||'Active'; g('manager').value=c.manager||'';
+  g('serviceLine').value=c.serviceLine||''; g('monthly').value=c.monthly||''; g('nextStep').value=c.nextStep||'';
+  // pre-fill with all global products if this client has none yet, so you can trim
+  g('products').value=(c.products&&String(c.products).trim())?c.products:(CFG.products||[]).join(', ');
+  f.scrollIntoView({behavior:'smooth',block:'center'});
+}
 async function saveClient(e){
   e.preventDefault();
   const o=formObj(e.target); o.type='client'; o.monthly=parseFloat(o.monthly)||0;
@@ -866,7 +875,7 @@ function renderClientOverview(){
     (rows.length?rows.map(c=>{
       const offers=productsForClient(c.name);
       const offerCell=(c.products&&offers.length)?offers.map(p=>`<span class="teamtag">${esc(p)}</span>`).join(''):'<span class="muted">global default</span>';
-      return `<tr><td><b>${esc(c.name)}</b></td><td><span class="pill ${pc(c.status)}">${esc(c.status)}</span></td><td>${esc(c.manager)}</td><td>${esc(c.serviceLine)}</td><td>${offerCell}</td><td class="num">${money(c.monthly)}</td><td class="num">${money(cashThisMonth(c.name))}</td><td>${esc(c.nextStep)}</td></tr>`;
+      return `<tr><td><b>${esc(c.name)}</b> <button class="btn sm ghost" onclick="editClient('${esc(c.name).replace(/'/g,"\\'")}')">Edit</button></td><td><span class="pill ${pc(c.status)}">${esc(c.status)}</span></td><td>${esc(c.manager)}</td><td>${esc(c.serviceLine)}</td><td>${offerCell}</td><td class="num">${money(c.monthly)}</td><td class="num">${money(cashThisMonth(c.name))}</td><td>${esc(c.nextStep)}</td></tr>`;
     }).join('')
      :`<tr><td colspan="8" class="muted" style="padding:16px">No clients yet. Add one below.</td></tr>`)+`</tbody>`;
 }
