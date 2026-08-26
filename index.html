@@ -15,12 +15,15 @@
     --ink:#ECE5D7; --muted:#9A9081; --border:#2C2416;
     --good:#5FC1A2; --good-soft:#14251E; --warn:#E5A15D; --warn-soft:#2C2114;
     --shadow:0 1px 2px rgba(0,0,0,.4),0 12px 34px rgba(0,0,0,.5);
-    --radius:12px;
+    --radius:14px;
     --serif:"Playfair Display",Georgia,"Times New Roman",serif;
+    /* liquid glass: warm translucent surface + light top edge, floats over the ambient glow */
+    --glass:rgba(28,23,15,.55); --glass-2:rgba(34,28,18,.62); --glass-brd:rgba(240,225,190,.10);
+    --glass-blur:blur(16px) saturate(1.15); --glass-hi:inset 0 1px 0 rgba(255,255,255,.07);
   }
   *{box-sizing:border-box}
-  body{margin:0;background:var(--ground);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.5}
-  header.app{background:var(--navy-2);color:#fff;padding:14px 20px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+  body{margin:0;background:radial-gradient(1100px 620px at 12% -8%,rgba(201,162,74,.11),transparent 58%),radial-gradient(1000px 560px at 100% -5%,rgba(150,110,50,.10),transparent 55%),var(--ground);background-attachment:fixed;color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.5}
+  header.app{position:sticky;top:0;z-index:20;background:rgba(16,13,9,.72);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border-bottom:1px solid var(--glass-brd);color:#fff;padding:14px 20px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
   header.app .brand{font-family:var(--serif);font-weight:700;letter-spacing:.01em;font-size:19px;display:flex;align-items:center;gap:9px}
   header.app .brand .dot{width:11px;height:11px;border-radius:3px;background:var(--gold)}
   header.app .sub{color:var(--muted);font-size:12.5px;letter-spacing:.04em;text-transform:uppercase}
@@ -28,7 +31,7 @@
   header.app .who{color:#fff;font-size:13px;font-weight:600}
   header.app .logout{appearance:none;border:1px solid rgba(201,162,74,.3);background:transparent;color:#cdbfa0;font:inherit;font-size:12.5px;padding:5px 11px;border-radius:8px;cursor:pointer}
   header.app .logout:hover{background:rgba(255,255,255,.08)}
-  nav.tabs{display:flex;gap:6px;background:var(--surface);border-bottom:1px solid var(--border);padding:0 12px;overflow-x:auto}
+  nav.tabs{position:sticky;top:51px;z-index:15;display:flex;gap:6px;background:rgba(20,16,11,.6);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border-bottom:1px solid var(--glass-brd);padding:0 12px;overflow-x:auto}
   nav.tabs button{appearance:none;border:none;background:none;font:inherit;color:var(--muted);padding:13px 15px;cursor:pointer;border-bottom:2.5px solid transparent;white-space:nowrap;font-weight:500}
   nav.tabs button.active{color:var(--navy);border-bottom-color:var(--gold)}
   main{max-width:1120px;margin:0 auto;padding:22px 18px 60px}
@@ -37,11 +40,11 @@
   .filters{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 18px;align-items:end}
   .field{display:flex;flex-direction:column;gap:4px}
   .field label{font-size:12px;color:var(--muted);font-weight:600;letter-spacing:.01em}
-  input,select,textarea{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:9px 11px;outline:none;min-width:0}
+  input,select,textarea{font:inherit;color:var(--ink);background:rgba(255,255,255,.045);border:1px solid var(--glass-brd);border-radius:9px;padding:9px 11px;outline:none;min-width:0}
   input:focus,select:focus,textarea:focus{border-color:var(--gold);box-shadow:0 0 0 3px rgba(201,162,74,.22)}
   input:disabled,select:disabled{opacity:.7;background:var(--surface-2)}
   .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(178px,1fr));gap:12px;margin-bottom:22px}
-  .kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 15px;box-shadow:var(--shadow)}
+  .kpi{background:var(--glass);border:1px solid var(--glass-brd);border-radius:var(--radius);padding:14px 15px;box-shadow:var(--glass-hi),var(--shadow);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur)}
   .kpi .lbl{font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;font-weight:600}
   .kpi .val{font-size:25px;font-weight:700;margin-top:5px;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
   .kpi .val.small{font-size:20px}
@@ -49,8 +52,8 @@
   .kpi.goal .lbl{color:var(--gold-2)}
   .kpi .bar{height:6px;border-radius:4px;background:rgba(255,255,255,.2);margin-top:9px;overflow:hidden}
   .kpi .bar > i{display:block;height:100%;background:var(--gold)}
-  .panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);margin-bottom:22px;overflow:hidden}
-  .panel > h3{font-family:var(--serif);font-weight:700;margin:0;padding:13px 16px;font-size:16px;border-bottom:1px solid var(--border);background:var(--surface-2);letter-spacing:.01em}
+  .panel{background:var(--glass);border:1px solid var(--glass-brd);border-radius:var(--radius);box-shadow:var(--glass-hi),var(--shadow);margin-bottom:22px;overflow:hidden;backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur)}
+  .panel > h3{font-family:var(--serif);font-weight:700;margin:0;padding:13px 16px;font-size:16px;border-bottom:1px solid var(--glass-brd);background:rgba(255,255,255,.03);letter-spacing:.01em}
   .tablewrap{overflow-x:auto}
   table{width:100%;border-collapse:collapse;font-size:13px}
   th,td{padding:9px 12px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap}
@@ -93,7 +96,7 @@
   .seg button{appearance:none;border:none;background:var(--surface);font:inherit;padding:9px 16px;cursor:pointer;color:var(--muted);font-weight:600}
   .seg button.on{background:var(--gold);color:#241c08}
   .muted{color:var(--muted)}
-  .gate{max-width:390px;margin:8vh auto;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:26px;box-shadow:var(--shadow)}
+  .gate{max-width:390px;margin:8vh auto;background:var(--glass-2);border:1px solid var(--glass-brd);border-radius:var(--radius);padding:26px;box-shadow:var(--glass-hi),var(--shadow);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur)}
   .gate .top{text-align:center;margin-bottom:16px}
   .gate .dot{width:38px;height:38px;border-radius:10px;background:var(--navy);display:inline-flex;align-items:center;justify-content:center;color:var(--gold);font-weight:800;font-size:18px;margin-bottom:8px}
   .gate .field{margin-bottom:12px}
