@@ -104,7 +104,7 @@
   .muted{color:var(--muted)}
   .gate{max-width:390px;margin:8vh auto;background:var(--glass-2);border:1px solid var(--glass-brd);border-radius:var(--radius);padding:26px;box-shadow:var(--glass-hi),var(--shadow);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur)}
   .gate .top{text-align:center;margin-bottom:16px}
-  .gate .dot{width:38px;height:38px;border-radius:10px;background:var(--navy);display:inline-flex;align-items:center;justify-content:center;color:var(--gold);font-weight:800;font-size:18px;margin-bottom:8px}
+  .gate .dot{width:44px;height:44px;border-radius:11px;background:var(--gold);display:inline-flex;align-items:center;justify-content:center;color:#241c08;font-weight:800;font-size:16px;letter-spacing:.02em;margin-bottom:8px}
   .gate .field{margin-bottom:12px}
   .gate input{width:100%}
   .tag{font-size:11px;color:var(--muted)}
@@ -146,7 +146,6 @@
   <button data-tab="reps">Rep Breakdown</button>
   <button data-tab="clients">Client Overview</button>
   <button data-tab="onboarding">Onboarding</button>
-  <button data-tab="deal">Log Closed Deal</button>
   <button data-tab="postcall">Post-Call Checkout</button>
   <button data-tab="eod">End of Day</button>
   <button data-tab="data">Data + Export</button>
@@ -285,6 +284,19 @@
       <button class="btn sm ghost" onclick="exportJSON()">Backup all (JSON)</button>
       <label class="btn sm ghost" style="cursor:pointer">Import JSON<input type="file" accept="application/json" hidden onchange="importJSON(event)"></label>
       <button class="btn sm ghost" onclick="wipe()" style="color:var(--warn);border-color:var(--warn)">Clear all</button>
+    </div>
+    <div class="panel"><h3>Daily edit <span style="font-weight:400;color:var(--muted);font-size:12px">- fix a rep's numbers by day if they entered them wrong</span></h3>
+      <div style="padding:14px">
+        <div class="filters" style="margin:0 0 12px;align-items:end">
+          <div class="seg" id="deSeg"><button class="on" data-role="Closer" onclick="deSetRole('Closer')">Closer</button><button data-role="Setter" onclick="deSetRole('Setter')">Setter</button></div>
+          <div class="field"><label>Rep</label><select id="deRep" onchange="loadDailyGrid()"></select></div>
+          <div class="field"><label>Client / account</label><select id="deClient" onchange="loadDailyGrid()"></select></div>
+          <div class="field"><label>Month</label><select id="deMonth" onchange="loadDailyGrid()"></select></div>
+          <button class="btn gold sm" onclick="saveDailyGrid()">Save changes</button>
+        </div>
+        <p class="fieldhelp" style="margin:0 0 10px">Pick the rep, their account, and the month. Edit any cell and hit <b>Save changes</b> - it re-submits that day so the corrected numbers replace the wrong ones everywhere.</p>
+        <div class="tablewrap"><table id="dailyGrid"></table></div>
+      </div>
     </div>
     <div class="panel"><h3>All records</h3><div class="tablewrap"><table id="allTable"></table></div></div>
   </section>
@@ -536,7 +548,7 @@ function startApp(){
   document.getElementById('whoTag').textContent = SESSION.name+' ('+role+')';
   document.getElementById('storeTag').textContent = '';
   const allow = {
-    admin:['dash','reps','clients','onboarding','deal','postcall','eod','data','users','settings'],
+    admin:['dash','reps','clients','onboarding','postcall','eod','data','users','settings'],
     manager:['dash','reps','clients','onboarding','users','postcall','eod'],
     founder:['dash'],
     closer:['dash','postcall','eod','reps'],
@@ -575,6 +587,7 @@ function showTab(t){
   // stale-while-revalidate: render instantly from the cached records, then refresh in the background
   const render={dash:renderDash, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, data:renderAll}[t];
   if(render){ render(); syncRecords().then(()=>{ if(currentTab()===t) render(); }); }
+  if(t==='data'){ renderDailyEntry(); }
   if(t==='users'){ renderUsers(); }
   if(t==='settings'){ loadSettingsForm(); }
 }
@@ -694,7 +707,20 @@ function renderEodProducts(){
 
 /* ---------------- aggregation + dashboard ---------------- */
 function monthKey(d){ return (d||'').slice(0,7); }
-function activityRecords(){ return RECORDS.filter(x=>x.type==='deal'||x.type==='eod'||!x.type); }
+// deals + untyped pass through; EOD collapses to the LATEST submission per rep+client+day+role,
+// so an admin correction (a re-submitted day) supersedes the wrong numbers instead of adding to them.
+function activityRecords(){
+  const out=[], latestEod={};
+  RECORDS.forEach(x=>{
+    if(x.type==='eod'){
+      const k=[(x.rep||'').trim().toLowerCase(),(x.client||'').trim().toLowerCase(),(x.date||'').slice(0,10),(x.role||'')].join('|');
+      const prev=latestEod[k];
+      if(!prev || (x.submittedAt||'')>(prev.submittedAt||'')) latestEod[k]=x;
+    } else if(x.type==='deal'||!x.type){ out.push(x); }
+  });
+  Object.values(latestEod).forEach(x=>out.push(x));
+  return out;
+}
 // founders + reps (closer/setter) see ONLY their assigned company(ies); admin/manager see all
 function dashScopeClients(){
   if(!SESSION) return null;
@@ -986,6 +1012,46 @@ function renderAll(){
      :`<tr><td colspan="9" class="muted" style="padding:16px">No records.</td></tr>`)+`</tbody>`;
 }
 function delRec(id){ RECORDS=RECORDS.filter(r=>r.id!==id); save(LS.data,RECORDS); renderAll(); renderDash(); toast('Deleted'); }
+
+/* ---------------- daily edit grid (admin: correct a rep's numbers by day) ---------------- */
+const DE_COLS_CLOSER=[['hoursDialing','Hours'],['newOutreach','Dials'],['connectedCalls','Conn. calls'],['callCapacity','Capacity'],['connectedMeetings','Conn. meetings'],['advancedCalls','Advanced'],['noShows','No shows'],['closedDeals','Closed'],['contractsSigned','Contracts'],['contractValue','Contract $'],['cashCollected','Cash $'],['depositCollected','Deposit $']];
+const DE_COLS_SETTER=[['hoursDialing','Hours'],['newOutreach','Total dials'],['followUpOutreach','Follow-ups'],['connectedCalls','Conn. calls'],['callsSet','Calls set'],['convos4min','4m+ convos'],['speedToLead','Speed (min)']];
+function deRole(){ const b=document.querySelector('#deSeg .on'); return b?b.dataset.role:'Closer'; }
+function deCols(){ return deRole()==='Setter'?DE_COLS_SETTER:DE_COLS_CLOSER; }
+function daysInMonth(ym){ const p=(ym||'').split('-'),y=+p[0],m=+p[1]; if(!y||!m) return 31; return new Date(y,m,0).getDate(); }
+function renderDailyEntry(){
+  const rep=document.getElementById('deRep'),cl=document.getElementById('deClient'),mo=document.getElementById('deMonth'); if(!rep||!cl||!mo) return;
+  cl.innerHTML=clientNames().map(c=>`<option>${esc(c)}</option>`).join('');
+  const months=[...new Set(RECORDS.map(x=>monthKey(x.date)).filter(Boolean))].sort().reverse(); if(!months.includes(thisMonth())) months.unshift(thisMonth());
+  mo.innerHTML=months.map(m=>`<option>${m}</option>`).join('');
+  deSetRole(deRole());
+}
+function deSetRole(r){
+  document.querySelectorAll('#deSeg button').forEach(b=>b.classList.toggle('on',b.dataset.role===r));
+  const rep=document.getElementById('deRep'); if(rep){ const items=r==='Setter'?repNames('setter'):repNames('closer'); const cur=rep.value; rep.innerHTML=items.map(i=>`<option>${esc(i)}</option>`).join(''); if(cur&&items.includes(cur)) rep.value=cur; }
+  loadDailyGrid();
+}
+function loadDailyGrid(){
+  const g=document.getElementById('dailyGrid'); if(!g) return;
+  const rep=(document.getElementById('deRep').value||'').trim(),client=document.getElementById('deClient').value||'',ym=document.getElementById('deMonth').value||'',role=deRole(),cols=deCols();
+  if(!rep||!client||!ym){ g.innerHTML='<tbody><tr><td class="muted" style="padding:14px">Pick a rep, client, and month above.</td></tr></tbody>'; return; }
+  const eff={}; activityRecords().forEach(x=>{ if((x.type==='eod'||!x.type) && (x.rep||'').trim()===rep && (x.client||'')===client && (x.role||'')===role){ eff[(x.date||'').slice(0,10)]=x; } });
+  const dim=daysInMonth(ym);
+  let h='<thead><tr><th>Day</th>'+cols.map(c=>`<th class="num">${esc(c[1])}</th>`).join('')+'</tr></thead><tbody>';
+  for(let d=1;d<=dim;d++){ const date=ym+'-'+String(d).padStart(2,'0'),rec=eff[date]||{};
+    h+=`<tr data-date="${date}"><td>${d}</td>`+cols.map(c=>{ const v=rec[c[0]]; return `<td><input type="number" step="any" data-f="${c[0]}" value="${(v!=null&&v!=='')?esc(String(v)):''}" oninput="this.closest('tr').dataset.dirty='1'" style="width:84px"></td>`; }).join('')+'</tr>';
+  }
+  g.innerHTML=h+'</tbody>';
+}
+async function saveDailyGrid(){
+  const rep=(document.getElementById('deRep').value||'').trim(),client=document.getElementById('deClient').value||'',role=deRole();
+  const rows=[...document.querySelectorAll('#dailyGrid tbody tr')].filter(tr=>tr.dataset.dirty==='1');
+  if(!rows.length){ toast('No changes to save'); return; }
+  if(!rep||!client){ toast('Pick a rep and client',true); return; }
+  for(const tr of rows){ const o={type:'eod',rep,role,client,date:tr.dataset.date}; tr.querySelectorAll('input[data-f]').forEach(i=>{ o[i.dataset.f]=parseFloat(i.value)||0; }); await addRecord(o); }
+  rows.forEach(tr=>{ tr.dataset.dirty=''; });
+  toast(`Saved ${rows.length} day${rows.length>1?'s':''} - corrected numbers now apply.`); loadDailyGrid();
+}
 
 /* ---------------- export ---------------- */
 const DEAL_COLS=['date','submittedET','client','lead','leadEmail','rep','setter','product','callType','contractValue','cashCollected','depositCollected','fathom','notes','submittedAt'];
