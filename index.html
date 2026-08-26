@@ -65,7 +65,7 @@
   .pill.warn{background:var(--warn-soft);color:var(--warn)}
   .linklike{background:none;border:none;padding:0;font:inherit;color:var(--gold,#b8860b);font-weight:600;cursor:pointer;text-align:left}
   .linklike:hover{text-decoration:underline}
-  .spinner{display:inline-block;width:13px;height:13px;border:2px solid rgba(0,0,0,.28);border-top-color:currentColor;border-radius:50%;animation:spin .6s linear infinite;vertical-align:-2px;margin-right:7px}
+  .spinner{display:inline-block;width:13px;height:13px;border:2px solid rgba(128,128,128,.35);border-top-color:currentColor;border-radius:50%;animation:spin .6s linear infinite;vertical-align:-2px;margin-right:7px}
   @keyframes spin{to{transform:rotate(360deg)}}
   .btn:disabled{opacity:.75;cursor:progress}
   tr.totalrow td{font-weight:700;background:var(--surface-2);border-bottom:2px solid var(--gold,#b8860b)}
@@ -839,16 +839,9 @@ function teamBoxesHtml(checked){
   return clients.length ? clients.map(c=>`<label><input type="checkbox" value="${esc(c)}" ${checked.includes(c)?'checked':''}>${esc(c)}</label>`).join('')
     : '<span class="muted">Add clients on the Client Overview / Settings tab first.</span>';
 }
-async function renderUsers(){
+function renderUsersTable(list){
   const isAdmin = SESSION.role==='admin';
-  // managers can only create closer/setter; admins can also create manager/admin
-  const roleSel=document.querySelector('#userForm [name=role]');
-  if(roleSel) roleSel.innerHTML = '<option value="closer">Closer</option><option value="setter">Setter</option>'+(isAdmin?'<option value="manager">Sales Manager</option><option value="admin">Admin</option>':'');
-  const nt=document.getElementById('newUserTeams'); if(nt) nt.innerHTML=teamBoxesHtml([]);
-  let users=[];
-  if(CFG.endpoint){ const res=await api({action:'listUsers', ...authFields()}); users=(res&&res.users)||[]; }
-  else { users=LOCAL_USERS.map(u=>({username:u.username,name:u.name,role:u.role})); }
-  USERS_CACHE=users.slice(); fillLists(); // keep the form dropdowns in sync with accounts
+  const users=list.slice();
   users.push({username:'tsaboss',name:'Admin (master)',role:'admin',master:true});
   document.getElementById('usersTable').innerHTML=
     `<thead><tr><th>Name</th><th>Username</th><th>Role</th><th>Teams / accounts</th><th></th></tr></thead><tbody>`+
@@ -863,6 +856,26 @@ async function renderUsers(){
       return `<tr><td>${esc(u.name)}</td><td>${esc(u.username)}</td><td><span class="pill">${esc(u.role)}</span></td><td>${teamCell}</td><td>${actions}</td></tr>`;
     }).join('')
     +`</tbody>`;
+}
+async function renderUsers(){
+  const isAdmin = SESSION.role==='admin';
+  // managers can only create closer/setter; admins can also create manager/admin
+  const roleSel=document.querySelector('#userForm [name=role]');
+  if(roleSel) roleSel.innerHTML = '<option value="closer">Closer</option><option value="setter">Setter</option>'+(isAdmin?'<option value="manager">Sales Manager</option><option value="admin">Admin</option>':'');
+  const nt=document.getElementById('newUserTeams'); if(nt) nt.innerHTML=teamBoxesHtml([]);
+  const tbl=document.getElementById('usersTable');
+  // cache-first: draw whatever we already have instantly, spinner only on a cold load
+  if(USERS_CACHE && USERS_CACHE.length){ renderUsersTable(USERS_CACHE); }
+  else if(tbl){ tbl.innerHTML='<tbody><tr><td style="padding:22px;color:var(--muted)"><span class="spinner"></span> Loading users...</td></tr></tbody>'; }
+  // refresh from the backend in the background, then re-render
+  let users=[];
+  if(CFG.endpoint){
+    try{ const res=await api({action:'listUsers', ...authFields()}); users=(res&&res.users)||[]; }
+    catch(e){ if(!(USERS_CACHE&&USERS_CACHE.length)&&tbl){ tbl.innerHTML='<tbody><tr><td style="padding:22px;color:var(--warn)">Could not load users - check connection and reopen this tab.</td></tr></tbody>'; } return; }
+  }
+  else { users=LOCAL_USERS.map(u=>({username:u.username,name:u.name,role:u.role})); }
+  USERS_CACHE=users.slice(); fillLists(); // keep the form dropdowns in sync with accounts
+  renderUsersTable(users);
 }
 function editTeams(username){
   TEAM_EDIT=username;
