@@ -4,55 +4,53 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>TSA Sales Tracking + Invoicing</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;0,800;1,600&display=swap" rel="stylesheet">
 <style>
+  /* Warm near-black + gold, serif display headings (Sales Team HQ scheme). Committed single theme. */
   :root{
-    --navy:#1F3864; --navy-2:#16294a; --gold:#C6A24A; --gold-soft:#F5EEDC;
-    --ground:#F4F6FA; --surface:#FFFFFF; --surface-2:#EDF1F7;
-    --ink:#191E28; --muted:#5B6675; --border:#E1E6EF;
-    --good:#0F6E56; --good-soft:#E1F1EB; --warn:#B44E1E; --warn-soft:#F7EBE3;
-    --shadow:0 1px 2px rgba(25,30,40,.05),0 6px 20px rgba(25,30,40,.07);
+    --navy:#C9A24A; --navy-2:#100D09; --gold:#C9A24A; --gold-2:#E6CB7C; --gold-soft:#2A2012;
+    --ground:#0E0C09; --surface:#17130D; --surface-2:#201A11;
+    --ink:#ECE5D7; --muted:#9A9081; --border:#2C2416;
+    --good:#5FC1A2; --good-soft:#14251E; --warn:#E5A15D; --warn-soft:#2C2114;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 12px 34px rgba(0,0,0,.5);
     --radius:12px;
+    --serif:"Playfair Display",Georgia,"Times New Roman",serif;
   }
-  @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
-    --navy:#8AAAD9; --navy-2:#0f1626; --gold:#D8BC6E; --gold-soft:#241f14;
-    --ground:#0F1219; --surface:#191F2A; --surface-2:#212734;
-    --ink:#E8ECF3; --muted:#98A3B3; --border:#2A313F;
-    --good:#5FC1A2; --good-soft:#15271F; --warn:#E5895D; --warn-soft:#2C2018;
-    --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.35);
-  }}
   *{box-sizing:border-box}
   body{margin:0;background:var(--ground);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.5}
   header.app{background:var(--navy-2);color:#fff;padding:14px 20px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
-  header.app .brand{font-weight:700;letter-spacing:.02em;font-size:17px;display:flex;align-items:center;gap:9px}
+  header.app .brand{font-family:var(--serif);font-weight:700;letter-spacing:.01em;font-size:19px;display:flex;align-items:center;gap:9px}
   header.app .brand .dot{width:11px;height:11px;border-radius:3px;background:var(--gold)}
-  header.app .sub{color:#b9c4d8;font-size:12.5px}
+  header.app .sub{color:var(--muted);font-size:12.5px;letter-spacing:.04em;text-transform:uppercase}
   header.app .spacer{flex:1}
   header.app .who{color:#fff;font-size:13px;font-weight:600}
-  header.app .logout{appearance:none;border:1px solid rgba(255,255,255,.25);background:transparent;color:#cdd8ec;font:inherit;font-size:12.5px;padding:5px 11px;border-radius:8px;cursor:pointer}
+  header.app .logout{appearance:none;border:1px solid rgba(201,162,74,.3);background:transparent;color:#cdbfa0;font:inherit;font-size:12.5px;padding:5px 11px;border-radius:8px;cursor:pointer}
   header.app .logout:hover{background:rgba(255,255,255,.08)}
   nav.tabs{display:flex;gap:6px;background:var(--surface);border-bottom:1px solid var(--border);padding:0 12px;overflow-x:auto}
   nav.tabs button{appearance:none;border:none;background:none;font:inherit;color:var(--muted);padding:13px 15px;cursor:pointer;border-bottom:2.5px solid transparent;white-space:nowrap;font-weight:500}
   nav.tabs button.active{color:var(--navy);border-bottom-color:var(--gold)}
   main{max-width:1120px;margin:0 auto;padding:22px 18px 60px}
-  h2.section{font-size:19px;margin:4px 0 2px;letter-spacing:-.01em}
+  h2.section{font-family:var(--serif);font-weight:700;font-size:24px;margin:4px 0 2px;letter-spacing:-.01em}
   .hint{color:var(--muted);font-size:13px;margin:0 0 16px}
   .filters{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 18px;align-items:end}
   .field{display:flex;flex-direction:column;gap:4px}
   .field label{font-size:12px;color:var(--muted);font-weight:600;letter-spacing:.01em}
   input,select,textarea{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:9px 11px;outline:none;min-width:0}
-  input:focus,select:focus,textarea:focus{border-color:var(--navy);box-shadow:0 0 0 3px var(--gold-soft)}
+  input:focus,select:focus,textarea:focus{border-color:var(--gold);box-shadow:0 0 0 3px rgba(201,162,74,.22)}
   input:disabled,select:disabled{opacity:.7;background:var(--surface-2)}
   .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(178px,1fr));gap:12px;margin-bottom:22px}
   .kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 15px;box-shadow:var(--shadow)}
   .kpi .lbl{font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;font-weight:600}
   .kpi .val{font-size:25px;font-weight:700;margin-top:5px;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
   .kpi .val.small{font-size:20px}
-  .kpi.goal{background:linear-gradient(160deg,var(--navy),var(--navy-2));color:#fff;border:none}
-  .kpi.goal .lbl{color:#c9d4e8}
+  .kpi.goal{background:linear-gradient(160deg,#241d10,#17130d);color:var(--ink);border:1px solid var(--gold-soft);box-shadow:inset 0 0 0 1px rgba(201,162,74,.12),var(--shadow)}
+  .kpi.goal .lbl{color:var(--gold-2)}
   .kpi .bar{height:6px;border-radius:4px;background:rgba(255,255,255,.2);margin-top:9px;overflow:hidden}
   .kpi .bar > i{display:block;height:100%;background:var(--gold)}
   .panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);margin-bottom:22px;overflow:hidden}
-  .panel > h3{margin:0;padding:13px 16px;font-size:14px;border-bottom:1px solid var(--border);background:var(--surface-2);letter-spacing:.01em}
+  .panel > h3{font-family:var(--serif);font-weight:700;margin:0;padding:13px 16px;font-size:16px;border-bottom:1px solid var(--border);background:var(--surface-2);letter-spacing:.01em}
   .tablewrap{overflow-x:auto}
   table{width:100%;border-collapse:collapse;font-size:13px}
   th,td{padding:9px 12px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap}
@@ -82,9 +80,9 @@
   .fieldhelp{font-size:11px;line-height:1.35;color:var(--muted);font-weight:400}
   .rolenote{grid-column:1/-1;font-size:13px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--muted)}
   form.grid .field{display:flex;flex-direction:column;gap:5px}
-  .btn{appearance:none;border:1px solid var(--navy);background:var(--navy);color:#fff;font:inherit;font-weight:600;padding:11px 20px;border-radius:9px;cursor:pointer}
-  .btn:hover{background:var(--navy-2)}
-  .btn.ghost{background:transparent;color:var(--navy);}
+  .btn{appearance:none;border:1px solid var(--gold);background:var(--gold);color:#241c08;font:inherit;font-weight:700;padding:11px 20px;border-radius:9px;cursor:pointer}
+  .btn:hover{background:var(--gold-2);border-color:var(--gold-2)}
+  .btn.ghost{background:transparent;color:var(--gold);border-color:var(--border)}
   .btn.gold{background:var(--gold);border-color:var(--gold);color:#3a2f10}
   .btn.sm{padding:7px 13px;font-size:13px}
   .row-actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:6px;align-items:center}
@@ -93,7 +91,7 @@
   .toast.err{background:var(--warn)}
   .seg{display:inline-flex;border:1px solid var(--border);border-radius:9px;overflow:hidden}
   .seg button{appearance:none;border:none;background:var(--surface);font:inherit;padding:9px 16px;cursor:pointer;color:var(--muted);font-weight:600}
-  .seg button.on{background:var(--navy);color:#fff}
+  .seg button.on{background:var(--gold);color:#241c08}
   .muted{color:var(--muted)}
   .gate{max-width:390px;margin:8vh auto;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:26px;box-shadow:var(--shadow)}
   .gate .top{text-align:center;margin-bottom:16px}
@@ -115,7 +113,7 @@
 <div id="gate" class="gate">
   <div class="top">
     <div class="dot">TSA</div>
-    <h2 style="margin:.2em 0">Sales Tracking + Invoicing</h2>
+    <h2 style="margin:.2em 0;font-family:var(--serif);font-weight:700;font-size:26px">Sales Tracking + Invoicing</h2>
     <p class="hint" style="margin:.3em 0 0">Sign in with the username and password your manager set up.</p>
   </div>
   <div class="field"><label for="gUser">Username</label><input id="gUser" autocomplete="username" placeholder="username"></div>
@@ -995,7 +993,7 @@ function renderClientOverview(){
   const monthly=cs.reduce((s,c)=>s+(c.monthly||0),0);
   const cash=cs.reduce((s,c)=>s+cashThisMonth(c.name),0);
   document.getElementById('clientKpis').innerHTML=`
-    <div class="kpi goal"><div class="lbl">Active clients</div><div class="val">${active}<span style="font-size:15px;color:#c9d4e8"> / ${cs.length}</span></div></div>
+    <div class="kpi goal"><div class="lbl">Active clients</div><div class="val">${active}<span style="font-size:15px;color:var(--muted)"> / ${cs.length}</span></div></div>
     <div class="kpi"><div class="lbl">Existing monthly (reported)</div><div class="val small">${money(monthly)}</div></div>
     <div class="kpi"><div class="lbl">Cash collected this month</div><div class="val small">${money(cash)}</div></div>`;
   const order={Active:0,Onboarding:1,Prospect:2,Inactive:3,Dropped:4};
