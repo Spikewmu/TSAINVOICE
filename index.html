@@ -613,9 +613,16 @@ function repNames(role){
   if(fromUsers.length) return fromUsers.sort((a,b)=>a.localeCompare(b));
   return (role==='closer'?CFG.closers:CFG.setters)||[]; // fallback until accounts exist
 }
+// admin/manager account names, so an admin/manager filling a form can credit ANY leader who also sells (e.g. Robb closing on MSP), not just themselves
+function leaderNames(){
+  if(!(SESSION && (SESSION.role==='admin'||SESSION.role==='manager'))) return [];
+  const s=new Set(USERS_CACHE.filter(u=>u.role==='admin'||u.role==='manager').map(u=>String(u.name||'').trim()).filter(Boolean));
+  if(SESSION.name) s.add(SESSION.name);
+  return [...s].sort((a,b)=>a.localeCompare(b));
+}
 function fillLists(){
-  // admins/managers who also sell can pick their own name in the rep dropdowns
-  const meExtra=(SESSION && (SESSION.role==='admin'||SESSION.role==='manager') && SESSION.name)?SESSION.name:null;
+  // admins/managers who also sell (e.g. Robb closing on MSP) appear in the rep dropdowns
+  const ldr=leaderNames();
   document.querySelectorAll('select[data-list]').forEach(sel=>{
     const key=sel.dataset.list;
     let items = key==='reps' ? [...repNames('closer'),...repNames('setter')]
@@ -623,7 +630,7 @@ function fillLists(){
       : key==='closers' ? repNames('closer')
       : key==='setters' ? repNames('setter')
       : (CFG[key]||[]);
-    if(meExtra && ['reps','closers','setters'].includes(key) && !items.includes(meExtra)) items=[meExtra,...items];
+    if(ldr.length && ['reps','closers','setters'].includes(key)) items=[...ldr.filter(n=>!items.includes(n)), ...items];
     const cur=sel.value;
     sel.innerHTML='<option value="">-</option>'+items.map(i=>`<option>${esc(i)}</option>`).join('');
     if(cur) sel.value=cur;
@@ -659,7 +666,7 @@ function setEodRole(r){
   if(repMode()) return; // actual reps keep their locked rep list; admins/managers pick from the list
   const repSel=document.querySelector('#eodForm [name=rep]');
   let items=r==='Closer'?repNames('closer'):repNames('setter');
-  if(SESSION && SESSION.name && !items.includes(SESSION.name)) items=[SESSION.name,...items]; // include the logged-in admin/manager so they can log their own work
+  const ldr=leaderNames(); if(ldr.length) items=[...ldr.filter(n=>!items.includes(n)), ...items]; // include admins/managers who also sell (e.g. Robb)
   repSel.innerHTML='<option value="">-</option>'+items.map(i=>`<option>${esc(i)}</option>`).join('');
 }
 
