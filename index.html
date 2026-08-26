@@ -65,6 +65,9 @@
   .pill.warn{background:var(--warn-soft);color:var(--warn)}
   .linklike{background:none;border:none;padding:0;font:inherit;color:var(--gold,#b8860b);font-weight:600;cursor:pointer;text-align:left}
   .linklike:hover{text-decoration:underline}
+  .spinner{display:inline-block;width:13px;height:13px;border:2px solid rgba(0,0,0,.28);border-top-color:currentColor;border-radius:50%;animation:spin .6s linear infinite;vertical-align:-2px;margin-right:7px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .btn:disabled{opacity:.75;cursor:progress}
   tr.totalrow td{font-weight:700;background:var(--surface-2);border-bottom:2px solid var(--gold,#b8860b)}
   .teamboxes{display:flex;flex-wrap:wrap;gap:8px}
   .teamboxes label{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:500;padding:6px 10px;border:1px solid var(--border,#333);border-radius:8px;cursor:pointer;background:var(--surface-2)}
@@ -586,15 +589,21 @@ function setEodRole(r){
 function formObj(f){ const o={}; new FormData(f).forEach((v,k)=>o[k]=v); return o; }
 const NUMKEYS=['contractValue','cashCollected','depositCollected','followUpOutreach','newOutreach','callsOffered','callsSet','connectedCalls','convos4min','callCapacity','speedToLead','hoursDialing','newMeetings','connectedMeetings','followUpMeetings','advancedCalls','noShows','closedDeals','contractsSigned','aosiSold','productBSold'];
 function num(o){ NUMKEYS.forEach(k=>{ if(k in o) o[k]=parseFloat(o[k])||0; }); return o; }
-async function submitDeal(e){ e.preventDefault(); const btn=e.target.querySelector('[type=submit]'); if(btn&&btn.disabled) return; if(btn) btn.disabled=true;
-  try{ const o=num(formObj(e.target)); o.type='deal'; o.role='Closer'; o.closedDeals=1; if(SESSION.role!=='admin') o.rep=SESSION.name; await addRecord(o); e.target.reset(); presetDates(); if(SESSION.role!=='admin') applyIdentity(); toast('Closed deal logged. Nice.'); if(SESSION.role==='admin') renderDash(); }
-  finally{ if(btn) btn.disabled=false; } }
-async function submitEod(e){ e.preventDefault(); const btn=e.target.querySelector('[type=submit]'); if(btn&&btn.disabled) return; if(btn) btn.disabled=true;
-  try{ const o=num(formObj(e.target)); o.type='eod'; if(SESSION.role!=='admin'){ o.rep=SESSION.name; o.role=SESSION.role==='setter'?'Setter':'Closer'; } await addRecord(o); e.target.reset(); presetDates(); setEodRole(o.role); if(SESSION.role!=='admin') applyIdentity(); toast('End of day submitted.'); if(SESSION.role==='admin') renderDash(); }
-  finally{ if(btn) btn.disabled=false; } }
-async function submitPostCall(e){ e.preventDefault(); const btn=e.target.querySelector('[type=submit]'); if(btn&&btn.disabled) return; if(btn) btn.disabled=true;
-  try{ const o=formObj(e.target); o.type='postcall'; o.role='Closer'; if(SESSION.role!=='admin') o.rep=SESSION.name; await addRecord(o); e.target.reset(); presetDates(); if(SESSION.role!=='admin') applyIdentity(); toast('Post-call logged.'); if(SESSION.role==='admin'&&currentTab()==='data') renderAll(); }
-  finally{ if(btn) btn.disabled=false; } }
+// submit-button states: spinner while sending, a green "Submitted" flash, then restore
+function btnBusy(btn,on){ if(!btn) return; if(on){ if(!btn.dataset.label) btn.dataset.label=btn.innerHTML; btn.disabled=true; btn.innerHTML='<span class="spinner"></span>Submitting...'; } else { btn.disabled=false; if(btn.dataset.label) btn.innerHTML=btn.dataset.label; } }
+function btnDone(btn,msg){ if(!btn) return; btn.disabled=true; btn.innerHTML='&#10003; '+(msg||'Submitted!'); setTimeout(()=>btnBusy(btn,false),1500); }
+async function submitDeal(e){ e.preventDefault(); const btn=e.target.querySelector('[type=submit]'); if(btn&&btn.disabled) return; btnBusy(btn,true); let ok=false;
+  try{ const o=num(formObj(e.target)); o.type='deal'; o.role='Closer'; o.closedDeals=1; if(SESSION.role!=='admin') o.rep=SESSION.name; await addRecord(o); e.target.reset(); presetDates(); if(SESSION.role!=='admin') applyIdentity(); toast('Closed deal logged. Nice.'); if(SESSION.role==='admin') renderDash(); ok=true; }
+  catch(err){ toast('Submit failed - try again',true); }
+  finally{ if(ok) btnDone(btn,'Deal logged'); else btnBusy(btn,false); } }
+async function submitEod(e){ e.preventDefault(); const btn=e.target.querySelector('[type=submit]'); if(btn&&btn.disabled) return; btnBusy(btn,true); let ok=false;
+  try{ const o=num(formObj(e.target)); o.type='eod'; if(SESSION.role!=='admin'){ o.rep=SESSION.name; o.role=SESSION.role==='setter'?'Setter':'Closer'; } await addRecord(o); e.target.reset(); presetDates(); setEodRole(o.role); if(SESSION.role!=='admin') applyIdentity(); toast('End of day submitted.'); if(SESSION.role==='admin') renderDash(); ok=true; }
+  catch(err){ toast('Submit failed - try again',true); }
+  finally{ if(ok) btnDone(btn,'Submitted!'); else btnBusy(btn,false); } }
+async function submitPostCall(e){ e.preventDefault(); const btn=e.target.querySelector('[type=submit]'); if(btn&&btn.disabled) return; btnBusy(btn,true); let ok=false;
+  try{ const o=formObj(e.target); o.type='postcall'; o.role='Closer'; if(SESSION.role!=='admin') o.rep=SESSION.name; await addRecord(o); e.target.reset(); presetDates(); if(SESSION.role!=='admin') applyIdentity(); toast('Post-call logged.'); if(SESSION.role==='admin'&&currentTab()==='data') renderAll(); ok=true; }
+  catch(err){ toast('Submit failed - try again',true); }
+  finally{ if(ok) btnDone(btn,'Post-call logged'); else btnBusy(btn,false); } }
 
 /* ---------------- aggregation + dashboard ---------------- */
 function monthKey(d){ return (d||'').slice(0,7); }
