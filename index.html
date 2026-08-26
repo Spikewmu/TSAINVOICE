@@ -205,6 +205,7 @@
       <div class="field"><label>Client / account *</label><select name="client" data-list="clients" required onchange="postcallClientChanged()"></select></div>
       <div class="field"><label>Closer *</label><select name="rep" data-list="closers" required></select><span class="fieldhelp">You (locked to your login).</span></div>
       <div class="field"><label>Lead / prospect name *</label><input type="text" name="lead" required placeholder="who the call was with"></div>
+      <div class="field"><label>Lead email</label><input type="email" name="leadEmail" placeholder="name@email.com"><span class="fieldhelp">Used to match this lead in GHL (more reliable than name).</span></div>
       <div class="field"><label>Setter (who set the call)</label><select name="setter" data-list="setters"></select><span class="fieldhelp">Leave blank if it was inbound / you set it yourself.</span></div>
       <div class="field"><label>Call outcome *</label><select name="outcome" required onchange="postcallOutcomeChanged()"><option value="">-</option><option>Won (closed)</option><option>Lost</option><option>No-show</option><option>Follow-up booked</option><option>Rescheduled</option><option>Disqualified</option><option>Canceled</option></select><span class="fieldhelp">What happened on this call.</span></div>
       <div class="field"><label>Call type</label><select name="callType"><option value="">-</option><option>First call</option><option>Second call</option><option>Follow-up</option></select></div>
@@ -643,7 +644,7 @@ async function submitPostCall(e){ e.preventDefault(); const btn=e.target.querySe
     won=/^Won/.test(o.outcome||'');
     await addRecord(o); // every call logs a post-call record
     if(won){ // a win ALSO logs a closed deal so it flows into cash / leaderboards / invoicing
-      const d=num({type:'deal',role:'Closer',date:o.date,client:o.client,lead:o.lead,rep:o.rep,setter:o.setter||'',product:o.product||'',callType:o.callType||'',contractValue:o.contractValue||0,cashCollected:o.cashCollected||0,depositCollected:o.depositCollected||0,fathom:o.fathom||'',notes:o.notes||'',closedDeals:1});
+      const d=num({type:'deal',role:'Closer',date:o.date,client:o.client,lead:o.lead,leadEmail:o.leadEmail||'',rep:o.rep,setter:o.setter||'',product:o.product||'',callType:o.callType||'',contractValue:o.contractValue||0,cashCollected:o.cashCollected||0,depositCollected:o.depositCollected||0,fathom:o.fathom||'',notes:o.notes||'',closedDeals:1});
       await addRecord(d);
     }
     e.target.reset(); presetDates(); if(SESSION.role!=='admin') applyIdentity(); postcallOutcomeChanged();
@@ -931,9 +932,9 @@ function renderAll(){
 function delRec(id){ RECORDS=RECORDS.filter(r=>r.id!==id); save(LS.data,RECORDS); renderAll(); renderDash(); toast('Deleted'); }
 
 /* ---------------- export ---------------- */
-const DEAL_COLS=['date','submittedET','client','lead','rep','setter','product','callType','contractValue','cashCollected','depositCollected','fathom','notes','submittedAt'];
+const DEAL_COLS=['date','submittedET','client','lead','leadEmail','rep','setter','product','callType','contractValue','cashCollected','depositCollected','fathom','notes','submittedAt'];
 const EOD_COLS=['date','submittedET','client','rep','role','hoursDialing','followUpOutreach','newOutreach','connectedCalls','callsOffered','callsSet','convos4min','callCapacity','speedToLead','newMeetings','connectedMeetings','followUpMeetings','advancedCalls','noShows','closedDeals','contractsSigned','contractValue','cashCollected','depositCollected','aosiSold','productBSold','notes','submittedAt'];
-const POSTCALL_COLS=['date','submittedET','client','rep','lead','setter','outcome','callType','fathom','notes','submittedAt'];
+const POSTCALL_COLS=['date','submittedET','client','rep','lead','leadEmail','setter','outcome','callType','fathom','notes','submittedAt'];
 function exportCSV(type){ const cols=type==='deal'?DEAL_COLS:(type==='postcall'?POSTCALL_COLS:EOD_COLS); const rows=RECORDS.filter(r=>r.type===type); if(!rows.length){toast('Nothing to export');return;} const head=cols.join(','); const body=rows.map(r=>cols.map(c=>csvCell(r[c])).join(',')).join('\n'); download(`tsa_${type}_${todayLocal()}.csv`,head+'\n'+body,'text/csv'); }
 function csvCell(v){ if(v==null)return ''; const s=String(v); return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; }
 function exportJSON(){ download('tsa_invoice_backup.json',JSON.stringify(RECORDS,null,2),'application/json'); }
