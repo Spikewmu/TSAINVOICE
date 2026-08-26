@@ -402,6 +402,10 @@ const DEFAULT_CFG = {
   products:["Retainer","DWY","DFY","Partnership","Other"],
   goal:2000000, closerRate:7, setterRate:3,
   endpoint:"https://script.google.com/macros/s/AKfycbzOjSVJ7gj4V6kcrbiAodGmoA884imoyvD9j-teTlxMZgGH9OYcR3q7pXUAeqCYGeS1/exec",
+  // Records (deals/eod/postcall/clients/teams/onboarding) live in Supabase Postgres = fast.
+  // Login + user accounts stay on the Apps Script endpoint above so passwords never touch this public key.
+  supaUrl:"https://wiwmogfurmdwrjndsuct.supabase.co",
+  supaKey:"sb_publishable_mIhEjMZQzUwrJTtUnKNMeA_zjJPxvie",
   adminCode:"tsaboss",
   managerCode:"TSAmgr2026"
 };
@@ -428,7 +432,18 @@ async function api(payload){
     return await r.json();
   }catch(e){ console.warn('api fail',e); return null; }
 }
+function supaOn(){ return !!(CFG.supaUrl && CFG.supaKey); }
+function supaHeaders(extra){ return Object.assign({apikey:CFG.supaKey, Authorization:'Bearer '+CFG.supaKey}, extra||{}); }
 async function remoteGet(){
+  // Primary: Supabase (records live here now). Falls back to the Apps Script sheet.
+  if(supaOn()){
+    try{
+      const r=await fetch(CFG.supaUrl+'/rest/v1/records?select=data&order=id.asc&limit=100000',{headers:supaHeaders()});
+      if(!r.ok) throw new Error('supa '+r.status);
+      const rows=await r.json();
+      return rows.map(x=>x.data).filter(Boolean);
+    }catch(e){ console.warn('supa read fail, trying sheet',e); }
+  }
   if(!CFG.endpoint) return null;
   try{ const r=await fetch(CFG.endpoint,{method:'GET'}); const j=await r.json(); return Array.isArray(j)?j:(j.records||null); }
   catch(e){ return null; }
@@ -461,6 +476,11 @@ function dedupeRecords(list){
 async function addRecord(rec){
   rec.id=uid(); rec.submittedAt=new Date().toISOString(); rec.submittedET=nowET();
   RECORDS.push(rec); save(LS.data,RECORDS);
+  if(supaOn()){
+    const r=await fetch(CFG.supaUrl+'/rest/v1/records',{method:'POST',headers:supaHeaders({'Content-Type':'application/json','Prefer':'return=minimal'}),body:JSON.stringify({rid:rec.id,type:rec.type,submitted_at:rec.submittedAt,data:rec})});
+    if(!r.ok) throw new Error('supa write '+r.status);
+    return;
+  }
   if(CFG.endpoint) await api(rec); // records have no "action" key -> backend appends
 }
 
