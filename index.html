@@ -157,9 +157,9 @@
 <main>
   <!-- ===== DASHBOARD ===== -->
   <section id="tab-dash">
-    <h2 class="section">Dashboard</h2>
-    <p class="hint">Live view of everything submitted. Filter by month, client, and role.</p>
-    <div class="filters">
+    <h2 class="section" id="dashTitle">Dashboard</h2>
+    <p class="hint" id="dashHint">Live view of everything submitted. Filter by month, client, and role.</p>
+    <div class="filters" id="dashFilters">
       <div class="field"><label>Month</label><select id="fMonth"></select></div>
       <div class="field"><label>Client</label><select id="fClient"></select></div>
       <div class="field"><label>Role</label><select id="fRole"><option value="">All</option><option>Closer</option><option>Setter</option></select></div>
@@ -534,20 +534,20 @@ function startApp(){
   document.getElementById('app').hidden=false;
   const role=SESSION.role;
   document.getElementById('whoTag').textContent = SESSION.name+' ('+role+')';
-  document.getElementById('storeTag').textContent = CFG.endpoint ? 'Shared data' : 'Local data (this browser)';
+  document.getElementById('storeTag').textContent = '';
   const allow = {
     admin:['dash','reps','clients','onboarding','deal','postcall','eod','data','users','settings'],
-    manager:['dash','reps','clients','onboarding','users'],
-    owner:['dash'],
-    closer:['postcall','eod','reps'],
-    setter:['eod','reps']
+    manager:['dash','reps','clients','onboarding','users','postcall','eod'],
+    founder:['dash'],
+    closer:['dash','postcall','eod','reps'],
+    setter:['dash','eod','reps']
   }[role] || ['eod'];
   document.querySelectorAll('#tabs button').forEach(b=>{ b.hidden = !allow.includes(b.dataset.tab); });
   fillLists(); wireTabs(); presetDates();
   ensureKey().then(()=>{
     if(role==='admin'){ setEodRole('Closer'); Promise.all([syncRecords(),loadUsers()]).then(()=>{ fillLists(); setEodRole('Closer'); renderDash(); renderAll(); }); showTab('dash'); }
-    else if(role==='manager'){ Promise.all([syncRecords(),loadUsers()]).then(()=>{ fillLists(); renderDash(); }); showTab('clients'); }
-    else if(role==='owner'){ Promise.all([syncRecords(),loadUsers()]).then(()=>{ renderDash(); }); showTab('dash'); } // offer owner: their account only, dashboard-only, read-only
+    else if(role==='manager'){ setEodRole('Closer'); Promise.all([syncRecords(),loadUsers()]).then(()=>{ fillLists(); setEodRole('Closer'); renderDash(); }); showTab('clients'); }
+    else if(role==='founder'){ Promise.all([syncRecords(),loadUsers()]).then(()=>{ renderDash(); }); showTab('dash'); } // founder: their company only, dashboard-only, read-only, no filters
     else { applyIdentity(); syncRecords().then(()=>applyIdentity()); showTab(allow[0]); }
   });
 }
@@ -594,6 +594,8 @@ function repNames(role){
   return (role==='closer'?CFG.closers:CFG.setters)||[]; // fallback until accounts exist
 }
 function fillLists(){
+  // admins/managers who also sell can pick their own name in the rep dropdowns
+  const meExtra=(SESSION && (SESSION.role==='admin'||SESSION.role==='manager') && SESSION.name)?SESSION.name:null;
   document.querySelectorAll('select[data-list]').forEach(sel=>{
     const key=sel.dataset.list;
     let items = key==='reps' ? [...repNames('closer'),...repNames('setter')]
@@ -601,6 +603,7 @@ function fillLists(){
       : key==='closers' ? repNames('closer')
       : key==='setters' ? repNames('setter')
       : (CFG[key]||[]);
+    if(meExtra && ['reps','closers','setters'].includes(key) && !items.includes(meExtra)) items=[meExtra,...items];
     const cur=sel.value;
     sel.innerHTML='<option value="">-</option>'+items.map(i=>`<option>${esc(i)}</option>`).join('');
     if(cur) sel.value=cur;
@@ -630,9 +633,10 @@ function setEodRole(r){
   if(note) note.innerHTML = r==='Setter'
     ? "You're logging as a <b>Setter</b>. Just log your <b>dials/outreach</b> and the <b>appointments you set</b> - that's it. Whether those calls connect, show, or close is reported by the <b>closer</b> who takes them, and your cash/commission is credited automatically from each deal's “Setter who set it” field. No need to re-enter any of that."
     : "You're logging as a <b>Closer</b>. Fill in your dials, then the <b>meetings/calls</b> you took (including no-shows) and your <b>closing numbers</b>. Also log each individual deal on the <b>Log Closed Deal</b> tab so invoicing and setter credit stay accurate.";
-  if(SESSION && SESSION.role!=='admin') return; // reps keep their locked rep list
+  if(repMode()) return; // actual reps keep their locked rep list; admins/managers pick from the list
   const repSel=document.querySelector('#eodForm [name=rep]');
-  const items=r==='Closer'?repNames('closer'):repNames('setter');
+  let items=r==='Closer'?repNames('closer'):repNames('setter');
+  if(SESSION && SESSION.name && !items.includes(SESSION.name)) items=[SESSION.name,...items]; // include the logged-in admin/manager so they can log their own work
   repSel.innerHTML='<option value="">-</option>'+items.map(i=>`<option>${esc(i)}</option>`).join('');
 }
 
@@ -644,25 +648,25 @@ function num(o){ NUMKEYS.forEach(k=>{ if(k in o) o[k]=parseFloat(o[k])||0; }); r
 function btnBusy(btn,on){ if(!btn) return; if(on){ if(!btn.dataset.label) btn.dataset.label=btn.innerHTML; btn.disabled=true; btn.innerHTML='<span class="spinner"></span>Submitting...'; } else { btn.disabled=false; if(btn.dataset.label) btn.innerHTML=btn.dataset.label; } }
 function btnDone(btn,msg){ if(!btn) return; btn.disabled=true; btn.innerHTML='&#10003; '+(msg||'Submitted!'); setTimeout(()=>btnBusy(btn,false),1500); }
 async function submitDeal(e){ e.preventDefault(); const btn=e.target.querySelector('[type=submit]'); if(btn&&btn.disabled) return; btnBusy(btn,true); let ok=false;
-  try{ const o=num(formObj(e.target)); o.type='deal'; o.role='Closer'; o.closedDeals=1; if(SESSION.role!=='admin') o.rep=SESSION.name; await addRecord(o); e.target.reset(); presetDates(); if(SESSION.role!=='admin') applyIdentity(); toast('Closed deal logged. Nice.'); if(SESSION.role==='admin') renderDash(); ok=true; }
+  try{ const o=num(formObj(e.target)); o.type='deal'; o.role='Closer'; o.closedDeals=1; if(repMode()) o.rep=SESSION.name; await addRecord(o); e.target.reset(); presetDates(); if(repMode()) applyIdentity(); toast('Closed deal logged. Nice.'); if(!repMode()) renderDash(); ok=true; }
   catch(err){ toast('Submit failed - try again',true); }
   finally{ if(ok) btnDone(btn,'Deal logged'); else btnBusy(btn,false); } }
 async function submitEod(e){ e.preventDefault(); const btn=e.target.querySelector('[type=submit]'); if(btn&&btn.disabled) return; btnBusy(btn,true); let ok=false;
-  try{ const o=num(formObj(e.target)); o.type='eod'; if(SESSION.role!=='admin'){ o.rep=SESSION.name; o.role=SESSION.role==='setter'?'Setter':'Closer'; }
+  try{ const o=num(formObj(e.target)); o.type='eod'; if(repMode()){ o.rep=SESSION.name; o.role=SESSION.role==='setter'?'Setter':'Closer'; }
     const units={}; document.querySelectorAll('#eodProducts input[data-prod]').forEach(i=>{ const v=parseFloat(i.value)||0; if(v) units[i.dataset.prod]=v; }); if(Object.keys(units).length) o.productUnits=JSON.stringify(units);
-    await addRecord(o); e.target.reset(); presetDates(); setEodRole(o.role); if(SESSION.role!=='admin') applyIdentity(); toast('End of day submitted.'); if(SESSION.role==='admin') renderDash(); ok=true; }
+    await addRecord(o); e.target.reset(); presetDates(); setEodRole(o.role); if(repMode()) applyIdentity(); toast('End of day submitted.'); if(!repMode()) renderDash(); ok=true; }
   catch(err){ toast('Submit failed - try again',true); }
   finally{ if(ok) btnDone(btn,'Submitted!'); else btnBusy(btn,false); } }
 async function submitPostCall(e){ e.preventDefault(); const btn=e.target.querySelector('[type=submit]'); if(btn&&btn.disabled) return; btnBusy(btn,true); let ok=false, won=false;
-  try{ const o=formObj(e.target); o.type='postcall'; o.role='Closer'; if(SESSION.role!=='admin') o.rep=SESSION.name;
+  try{ const o=formObj(e.target); o.type='postcall'; o.role='Closer'; if(repMode()) o.rep=SESSION.name;
     won=/^Won/.test(o.outcome||'');
     await addRecord(o); // every call logs a post-call record
     if(won){ // a win ALSO logs a closed deal so it flows into cash / leaderboards / invoicing
       const d=num({type:'deal',role:'Closer',date:o.date,client:o.client,lead:o.lead,leadEmail:o.leadEmail||'',rep:o.rep,setter:o.setter||'',product:o.product||'',callType:o.callType||'',contractValue:o.contractValue||0,cashCollected:o.cashCollected||0,depositCollected:o.depositCollected||0,fathom:o.fathom||'',notes:o.notes||'',closedDeals:1});
       await addRecord(d);
     }
-    e.target.reset(); presetDates(); if(SESSION.role!=='admin') applyIdentity(); postcallOutcomeChanged();
-    toast(won?'Won! Logged as a closed deal.':'Post-call logged.'); if(SESSION.role==='admin') renderDash(); ok=true; }
+    e.target.reset(); presetDates(); if(repMode()) applyIdentity(); postcallOutcomeChanged();
+    toast(won?'Won! Logged as a closed deal.':'Post-call logged.'); if(!repMode()) renderDash(); ok=true; }
   catch(err){ toast('Submit failed - try again',true); }
   finally{ if(ok) btnDone(btn, won?'Deal logged':'Post-call logged'); else btnBusy(btn,false); } }
 // Post-Call Checkout dynamic fields: populate the product list from the chosen client, and reveal the
@@ -691,8 +695,18 @@ function renderEodProducts(){
 /* ---------------- aggregation + dashboard ---------------- */
 function monthKey(d){ return (d||'').slice(0,7); }
 function activityRecords(){ return RECORDS.filter(x=>x.type==='deal'||x.type==='eod'||!x.type); }
-// offer owners see only the account(s) assigned to their login; everyone else (admin/manager) sees all
-function dashScopeClients(){ if(SESSION && SESSION.role==='owner'){ const t=teamsFor(SESSION.username); return t.length?t:[' none']; } return null; }
+// founders + reps (closer/setter) see ONLY their assigned company(ies); admin/manager see all
+function dashScopeClients(){
+  if(!SESSION) return null;
+  const r=SESSION.role;
+  if(r==='founder'||r==='closer'||r==='setter'){
+    const t=teamsFor(SESSION.username);
+    if(t.length) return t;
+    if(r==='founder') return [' none'];         // founder must be assigned; show nothing until then
+    const mine=myTeamClients(); return mine.length?mine:[' none'];  // reps fall back to accounts they've worked
+  }
+  return null;
+}
 function filtered(){ const m=document.getElementById('fMonth').value,c=document.getElementById('fClient').value,r=document.getElementById('fRole').value,sc=dashScopeClients(); return activityRecords().filter(x=>(!m||monthKey(x.date)===m)&&(!c||x.client===c)&&(!r||x.role===r)&&(!sc||sc.includes(x.client))); }
 function buildFilterOptions(){
   const months=[...new Set(RECORDS.map(x=>monthKey(x.date)).filter(Boolean))].sort().reverse();
@@ -763,7 +777,14 @@ function renderBreakdownTables(recs, opts){
      :`<tr><td colspan="${rm?13:14}" class="muted" style="padding:16px">No closer data yet.</td></tr>`)+`</tbody>`;
 }
 function renderDash(){
-  buildFilterOptions(); const recs=filtered(); const s=agg(recs);
+  buildFilterOptions();
+  // founder view: their company only, no filters/dropdowns, branded to feel exclusive
+  const founder = SESSION && SESSION.role==='founder';
+  const df=document.getElementById('dashFilters'); if(df) df.hidden=founder;
+  const dt=document.getElementById('dashTitle'), dh=document.getElementById('dashHint');
+  if(founder){ const co=(teamsFor(SESSION.username)[0])||SESSION.name; if(dt) dt.textContent=co; if(dh) dh.textContent='Your live performance dashboard.'; }
+  else if(dt){ dt.textContent='Dashboard'; if(dh) dh.textContent='Live view of everything submitted. Filter by month, client, and role.'; }
+  const recs=filtered(); const s=agg(recs);
   const gm=monthlyGoalScope(), gpc=gm?Math.min(100,Math.round(s.cashCollected/gm*100)):0;
   document.getElementById('kpis').innerHTML=`
     <div class="kpi goal"><div class="lbl">Cash collected</div><div class="val">${money(s.cashCollected)}</div><div class="bar"><i style="width:${gpc}%"></i></div><div class="lbl" style="margin-top:6px">${gpc}% of ${money(gm)} monthly</div></div>
@@ -785,7 +806,7 @@ function renderDash(){
     <div class="kpi"><div class="lbl">Hours dialing</div><div class="val small">${Math.round(ss.hours*10)/10}</div></div>
     <div class="kpi"><div class="lbl">Cash set</div><div class="val small">${money(ss.cashSet)}</div></div>`;
   renderLeaderboard(recs);
-  renderBreakdownTables(recs, {setterEl:'dashSetterTable', closerEl:'dashCloserTable', rm:(SESSION&&SESSION.role==='owner'), clickable:false});
+  renderBreakdownTables(recs, {setterEl:'dashSetterTable', closerEl:'dashCloserTable', rm:(SESSION&&(SESSION.role==='founder'||repMode())), clickable:false});
   renderClients(recs); renderDeals(recs);
 }
 // combined setter activity totals for the dashboard KPI row
@@ -810,7 +831,7 @@ function renderLeaderboard(recs){
   const all=Object.values(byRep);
   const closers=all.filter(o=>o.role!=='Setter').map(o=>({...o,closeRate:o.connected?o.deals/o.connected:0,payout:o.cash*CFG.closerRate/100})).sort((a,b)=>b.cash-a.cash||b.deals-a.deals);
   const setters=all.filter(o=>o.role==='Setter').map(o=>({...o,payout:o.cash*CFG.setterRate/100})).sort((a,b)=>b.cash-a.cash||b.set-a.set);
-  const lbRm=SESSION&&SESSION.role==='owner';
+  const lbRm=SESSION&&(SESSION.role==='founder'||repMode());
   const lbPayH=lbRm?'':'<th class="num">Est. payout</th>', lbPayC=r=>lbRm?'':`<td class="num">${money(r.payout)}</td>`;
   document.getElementById('lbClosers').innerHTML=
     `<thead><tr><th>#</th><th>Closer</th><th class="num">Cash collected</th><th class="num">Deals</th><th class="num">Close %</th>${lbPayH}</tr></thead><tbody>`+
@@ -1004,7 +1025,7 @@ function renderUsersTable(list){
     users.map(u=>{
       const teams=u.master?[]:teamsFor(u.username);
       const teamCell = u.master ? '<span class="muted">-</span>'
-        : (['closer','setter','owner'].includes(u.role)
+        : (['closer','setter','founder'].includes(u.role)
             ? ((teams.length?teams.map(t=>`<span class="teamtag">${esc(t)}</span>`).join(''):'<span class="tag" style="color:var(--warn);border-color:var(--warn)">none - not scoped</span>')+` <button class="btn sm ghost" onclick="editTeams('${esc(u.username)}')">Edit</button>`)
             : '<span class="muted">all (admin/mgr)</span>');
       const actions = u.master ? '<span class="tag">master, set in Settings</span>'
@@ -1017,7 +1038,7 @@ async function renderUsers(){
   const isAdmin = SESSION.role==='admin';
   // managers can only create closer/setter; admins can also create manager/admin
   const roleSel=document.querySelector('#userForm [name=role]');
-  if(roleSel) roleSel.innerHTML = '<option value="closer">Closer</option><option value="setter">Setter</option>'+(isAdmin?'<option value="manager">Sales Manager</option><option value="owner">Offer Owner (client)</option><option value="admin">Admin</option>':'');
+  if(roleSel) roleSel.innerHTML = '<option value="closer">Closer</option><option value="setter">Setter</option>'+(isAdmin?'<option value="manager">Sales Manager</option><option value="founder">Founder Access (client)</option><option value="admin">Admin</option>':'');
   const nt=document.getElementById('newUserTeams'); if(nt) nt.innerHTML=teamBoxesHtml([]);
   const tbl=document.getElementById('usersTable');
   // cache-first: draw whatever we already have instantly, spinner only on a cold load
