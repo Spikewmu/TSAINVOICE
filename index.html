@@ -76,6 +76,7 @@
   .teamboxes label{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:500;padding:6px 10px;border:1px solid var(--border,#333);border-radius:8px;cursor:pointer;background:var(--surface-2)}
   .teamboxes input{margin:0;cursor:pointer}
   .teamtag{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;background:var(--gold-soft);color:var(--gold,#b8860b);margin:2px 3px 2px 0}
+  .kpisec{font-family:var(--serif);font-size:15px;font-weight:700;color:var(--gold-2);margin:6px 0 8px;letter-spacing:.01em}
   .prodgrid{display:flex;flex-wrap:wrap;gap:12px}
   .produnit{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);font-weight:600}
   .produnit input{width:120px}
@@ -164,7 +165,10 @@
       <div class="field"><label>Role</label><select id="fRole"><option value="">All</option><option>Closer</option><option>Setter</option></select></div>
       <button class="btn ghost sm" onclick="renderDash()">Refresh</button>
     </div>
+    <div class="kpisec">Closers - deals &amp; cash</div>
     <div class="cards" id="kpis"></div>
+    <div class="kpisec">Setters - activity</div>
+    <div class="cards" id="kpisSetters"></div>
     <div class="cards" style="grid-template-columns:repeat(auto-fit,minmax(340px,1fr))">
       <div class="panel" style="margin:0"><h3>Closer leaderboard <span style="font-weight:400;color:var(--muted);font-size:12px">- by cash collected</span></h3><div class="tablewrap"><table id="lbClosers"></table></div></div>
       <div class="panel" style="margin:0"><h3>Setter leaderboard <span style="font-weight:400;color:var(--muted);font-size:12px">- by cash set</span></h3><div class="tablewrap"><table id="lbSetters"></table></div></div>
@@ -769,9 +773,30 @@ function renderDash(){
     <div class="kpi"><div class="lbl">Show rate</div><div class="val">${pct(s.showRate)}</div></div>
     <div class="kpi"><div class="lbl">Call capacity used</div><div class="val">${pct(s.utilization)}</div></div>
     <div class="kpi"><div class="lbl">Deposits collected</div><div class="val small">${money(s.depositCollected)}</div></div>`;
+  const ss=aggSetters(recs);
+  document.getElementById('kpisSetters').innerHTML=`
+    <div class="kpi"><div class="lbl">Total dials</div><div class="val">${ss.dials}</div></div>
+    <div class="kpi"><div class="lbl">Connected calls</div><div class="val">${ss.connCalls}</div></div>
+    <div class="kpi"><div class="lbl">Connection %</div><div class="val">${pct(ss.connRate)}</div></div>
+    <div class="kpi"><div class="lbl">Calls set</div><div class="val">${ss.set}</div></div>
+    <div class="kpi"><div class="lbl">Book %</div><div class="val">${pct(ss.bookRate)}</div></div>
+    <div class="kpi"><div class="lbl">Convos 4m+</div><div class="val">${ss.convos4}</div></div>
+    <div class="kpi"><div class="lbl">Hours dialing</div><div class="val small">${Math.round(ss.hours*10)/10}</div></div>
+    <div class="kpi"><div class="lbl">Cash set</div><div class="val small">${money(ss.cashSet)}</div></div>`;
   renderLeaderboard(recs);
   renderBreakdownTables(recs, {setterEl:'dashSetterTable', closerEl:'dashCloserTable', rm:(SESSION&&SESSION.role==='owner'), clickable:false});
   renderClients(recs); renderDeals(recs);
+}
+// combined setter activity totals for the dashboard KPI row
+function aggSetters(recs){
+  const s={dials:0,connCalls:0,set:0,convos4:0,hours:0,cashSet:0};
+  recs.forEach(x=>{
+    if((x.type==='eod'||!x.type) && x.role==='Setter'){ s.dials+=x.newOutreach||0; s.connCalls+=x.connectedCalls||0; s.set+=x.callsSet||0; s.convos4+=x.convos4min||0; s.hours+=x.hoursDialing||0; }
+    if(x.type==='deal' && (x.setter||'').trim()){ s.cashSet+=x.cashCollected||0; }
+  });
+  s.connRate=s.dials?s.connCalls/s.dials:0;
+  s.bookRate=s.connCalls?s.set/s.connCalls:0;
+  return s;
 }
 function renderLeaderboard(recs){
   const byRep={};
