@@ -80,12 +80,13 @@
   .prodgrid{display:flex;flex-wrap:wrap;gap:12px}
   .produnit{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);font-weight:600}
   .produnit input{width:120px}
-  #dailyWrap{max-height:62vh;overflow:auto}
+  .deWide{width:96vw;margin-left:calc(50% - 48vw)}  /* break out of the centered column to full width */
+  #dailyWrap{overflow:visible}                       /* no inner scrollbars; the page scrolls, header stays pinned */
   #dailyGrid{table-layout:fixed;width:100%}
-  #dailyGrid th,#dailyGrid td{text-align:center;padding:7px 8px}
-  #dailyGrid th:first-child,#dailyGrid td:first-child{width:48px}
-  #dailyGrid thead th{position:sticky;top:0;background:#1b1610;z-index:2;box-shadow:0 1px 0 var(--glass-brd)}
-  #dailyGrid input{width:100%;text-align:center;padding:8px 6px}
+  #dailyGrid th,#dailyGrid td{text-align:center;padding:9px 8px}
+  #dailyGrid th:first-child,#dailyGrid td:first-child{width:52px}
+  #dailyGrid thead th{position:sticky;top:96px;background:#1b1610;z-index:5;box-shadow:0 1px 0 var(--glass-brd)}
+  #dailyGrid input{width:100%;text-align:center;padding:9px 6px}
   form.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow)}
   form.grid .full{grid-column:1/-1}
   .formhead{grid-column:1/-1;margin:6px 0 0;padding-top:14px;border-top:1px solid var(--border);display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
@@ -291,7 +292,7 @@
       <label class="btn sm ghost" style="cursor:pointer">Import JSON<input type="file" accept="application/json" hidden onchange="importJSON(event)"></label>
       <button class="btn sm ghost" onclick="wipe()" style="color:var(--warn);border-color:var(--warn)">Clear all</button>
     </div>
-    <div class="panel"><h3>Daily edit <span style="font-weight:400;color:var(--muted);font-size:12px">- fix a rep's numbers by day if they entered them wrong</span></h3>
+    <div class="panel deWide"><h3>Daily edit <span style="font-weight:400;color:var(--muted);font-size:12px">- fix a rep's numbers by day if they entered them wrong</span></h3>
       <div style="padding:14px">
         <div class="filters" style="margin:0 0 12px;align-items:end">
           <div class="seg" id="deSeg"><button class="on" data-role="Closer" onclick="deSetRole('Closer')">Closer</button><button data-role="Setter" onclick="deSetRole('Setter')">Setter</button></div>
@@ -1050,8 +1051,7 @@ function loadDailyGrid(){
   for(let d=1;d<=dim;d++){ const date=ym+'-'+String(d).padStart(2,'0'),rec=eff[date]||{};
     h+=`<tr data-date="${date}"><td>${d}</td>`+cols.map(c=>{ const v=rec[c[0]]; return `<td><input type="number" step="any" data-f="${c[0]}" value="${(v!=null&&v!=='')?esc(String(v)):''}" oninput="this.closest('tr').dataset.dirty='1'"></td>`; }).join('')+'</tr>';
   }
-  g.innerHTML=h+'</tbody>';
-  g.style.minWidth=(cols.length*94+52)+'px'; // keep columns readable; horizontal scroll for the wider closer layout
+  g.innerHTML=h+'</tbody>'; // full-width panel + fixed layout = columns fit without a horizontal scrollbar
 }
 async function saveDailyGrid(){
   const rep=(document.getElementById('deRep').value||'').trim(),client=document.getElementById('deClient').value||'',role=deRole();
