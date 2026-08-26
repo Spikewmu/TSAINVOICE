@@ -326,7 +326,8 @@
         <div class="field"><label>Status *</label><select name="status" required><option>Active</option><option>Onboarding</option><option>Prospect</option><option>Inactive</option><option>Dropped</option></select></div>
         <div class="field"><label>Manager</label><input name="manager" placeholder="Khadija"></div>
         <div class="field"><label>Service line</label><input name="serviceLine" placeholder="TakeOver + Webinar"></div>
-        <div class="field"><label>Existing monthly ($)</label><input name="monthly" type="number" min="0" step="100"></div>
+        <div class="field"><label>Existing monthly ($)</label><input name="monthly" type="number" min="0" step="100"><span class="fieldhelp">What they're already doing per month (context).</span></div>
+        <div class="field"><label>Monthly goal ($)</label><input name="monthlyGoal" type="number" min="0" step="100" placeholder="e.g. 50000"><span class="fieldhelp">Cash-collected target to shoot for this month - drives the goal bar on the dashboard.</span></div>
         <div class="field full"><label>Products / offers</label>
           <div class="chiprow" id="clientProductChips" style="margin-bottom:8px"></div>
           <div class="row-actions"><input id="clientProductAdd" placeholder="Add an offer" onkeydown="if(event.key==='Enter'){event.preventDefault();addClientProduct();}"><button type="button" class="btn sm" onclick="addClientProduct()">Add</button></div>
@@ -763,7 +764,7 @@ function renderBreakdownTables(recs, opts){
 }
 function renderDash(){
   buildFilterOptions(); const recs=filtered(); const s=agg(recs);
-  const gm=CFG.goal/12, gpc=gm?Math.min(100,Math.round(s.cashCollected/gm*100)):0;
+  const gm=monthlyGoalScope(), gpc=gm?Math.min(100,Math.round(s.cashCollected/gm*100)):0;
   document.getElementById('kpis').innerHTML=`
     <div class="kpi goal"><div class="lbl">Cash collected</div><div class="val">${money(s.cashCollected)}</div><div class="bar"><i style="width:${gpc}%"></i></div><div class="lbl" style="margin-top:6px">${gpc}% of ${money(gm)} monthly</div></div>
     <div class="kpi"><div class="lbl">Contract value</div><div class="val small">${money(s.contractValue)}</div></div>
@@ -1079,6 +1080,14 @@ function latestClients(){
   return Object.values(m).filter(x=>x.status!=='__DELETED__');
 }
 function clientNames(){ const s=new Set(CFG.clients||[]); latestClients().forEach(c=>s.add(c.name)); return [...s]; }
+// monthly cash-collected goal for the dashboard's current client filter / scope:
+// selected client's goal, or the sum across all in-scope clients; falls back to the global yearly/12
+function monthlyGoalScope(){
+  const fc=(document.getElementById('fClient')||{}).value||'', sc=dashScopeClients();
+  const inScope=c=>(!fc||c.name===fc)&&(!sc||sc.includes(c.name));
+  const sum=latestClients().filter(inScope).reduce((a,c)=>a+(c.monthlyGoal||0),0);
+  return sum>0?sum:(CFG.goal/12);
+}
 // each client can have its own offers; fall back to the global Products list if none set
 function productsForClient(name){
   if(name){
@@ -1111,7 +1120,7 @@ function editClient(name){
   const c=latestClients().find(x=>String(x.name).toLowerCase()===String(name).toLowerCase())||{name:name};
   const f=document.getElementById('clientForm'), g=n=>f.querySelector('[name="'+n+'"]');
   g('name').value=c.name||''; g('status').value=c.status||'Active'; g('manager').value=c.manager||'';
-  g('serviceLine').value=c.serviceLine||''; g('monthly').value=c.monthly||''; g('nextStep').value=c.nextStep||'';
+  g('serviceLine').value=c.serviceLine||''; g('monthly').value=c.monthly||''; g('monthlyGoal').value=c.monthlyGoal||''; g('nextStep').value=c.nextStep||'';
   // pre-fill with all global products if this client has none yet, so you can trim
   const prods=(c.products&&String(c.products).trim())?String(c.products).split(',').map(s=>s.trim()).filter(Boolean):(CFG.products||[]);
   setClientProducts(prods);
@@ -1119,7 +1128,7 @@ function editClient(name){
 }
 async function saveClient(e){
   e.preventDefault();
-  const o=formObj(e.target); o.type='client'; o.monthly=parseFloat(o.monthly)||0;
+  const o=formObj(e.target); o.type='client'; o.monthly=parseFloat(o.monthly)||0; o.monthlyGoal=parseFloat(o.monthlyGoal)||0;
   o.products=CLIENT_PRODUCTS.join(', ');
   await addRecord(o);
   e.target.reset(); setClientProducts(CFG.products||[]); toast('Client saved'); fillLists(); renderClientOverview();
@@ -1128,20 +1137,22 @@ function renderClientOverview(){
   const cs=latestClients();
   const active=cs.filter(c=>c.status==='Active').length;
   const monthly=cs.reduce((s,c)=>s+(c.monthly||0),0);
+  const goalSum=cs.reduce((s,c)=>s+(c.monthlyGoal||0),0);
   const cash=cs.reduce((s,c)=>s+cashThisMonth(c.name),0);
   document.getElementById('clientKpis').innerHTML=`
     <div class="kpi goal"><div class="lbl">Active clients</div><div class="val">${active}<span style="font-size:15px;color:var(--muted)"> / ${cs.length}</span></div></div>
+    <div class="kpi"><div class="lbl">Monthly goal (combined)</div><div class="val small">${money(goalSum)}</div></div>
     <div class="kpi"><div class="lbl">Existing monthly (reported)</div><div class="val small">${money(monthly)}</div></div>
     <div class="kpi"><div class="lbl">Cash collected this month</div><div class="val small">${money(cash)}</div></div>`;
   const order={Active:0,Onboarding:1,Prospect:2,Inactive:3,Dropped:4};
   const rows=cs.slice().sort((a,b)=>(order[a.status]??9)-(order[b.status]??9)||String(a.name).localeCompare(b.name));
   const pc=s=>s==='Active'?'good':((s==='Dropped'||s==='Inactive')?'warn':'');
   document.getElementById('overviewTable').innerHTML=
-    `<thead><tr><th>Client</th><th>Status</th><th>Manager</th><th>Service line</th><th>Offers</th><th class="num">Existing/mo</th><th class="num">Cash this mo</th><th>Next step</th></tr></thead><tbody>`+
+    `<thead><tr><th>Client</th><th>Status</th><th>Manager</th><th>Service line</th><th>Offers</th><th class="num">Monthly goal</th><th class="num">Existing/mo</th><th class="num">Cash this mo</th><th>Next step</th></tr></thead><tbody>`+
     (rows.length?rows.map(c=>{
       const offers=productsForClient(c.name);
       const offerCell=(c.products&&offers.length)?offers.map(p=>`<span class="teamtag">${esc(p)}</span>`).join(''):'<span class="muted">global default</span>';
-      return `<tr><td><b>${esc(c.name)}</b> <button class="btn sm ghost" onclick="editClient('${esc(c.name).replace(/'/g,"\\'")}')">Edit</button></td><td><span class="pill ${pc(c.status)}">${esc(c.status)}</span></td><td>${esc(c.manager)}</td><td>${esc(c.serviceLine)}</td><td>${offerCell}</td><td class="num">${money(c.monthly)}</td><td class="num">${money(cashThisMonth(c.name))}</td><td>${esc(c.nextStep)}</td></tr>`;
+      return `<tr><td><b>${esc(c.name)}</b> <button class="btn sm ghost" onclick="editClient('${esc(c.name).replace(/'/g,"\\'")}')">Edit</button></td><td><span class="pill ${pc(c.status)}">${esc(c.status)}</span></td><td>${esc(c.manager)}</td><td>${esc(c.serviceLine)}</td><td>${offerCell}</td><td class="num">${c.monthlyGoal?money(c.monthlyGoal):'<span class="muted">-</span>'}</td><td class="num">${money(c.monthly)}</td><td class="num">${money(cashThisMonth(c.name))}</td><td>${esc(c.nextStep)}</td></tr>`;
     }).join('')
      :`<tr><td colspan="8" class="muted" style="padding:16px">No clients yet. Add one below.</td></tr>`)+`</tbody>`;
   // fresh "add client" form defaults to all global offers (ready to trim)
