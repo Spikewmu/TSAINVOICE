@@ -179,6 +179,7 @@
       <div class="field"><label>Contract value ($) *</label><input type="number" name="contractValue" min="0" step="0.01" required></div>
       <div class="field"><label>Cash collected ($) *</label><input type="number" name="cashCollected" min="0" step="0.01" required></div>
       <div class="field"><label>Deposit collected ($)</label><input type="number" name="depositCollected" min="0" step="0.01"></div>
+      <div class="field full"><label>Fathom recording link</label><input type="url" name="fathom" placeholder="https://fathom.video/share/..."><span class="fieldhelp">Fathom.video -> open the call -> three dots -> Copy share link.</span></div>
       <div class="field full"><label>Notes</label><input type="text" name="notes" placeholder="anything the invoice or team should know"></div>
       <div class="full row-actions"><button class="btn gold" type="submit">Submit closed deal</button></div>
     </form>
@@ -666,9 +667,9 @@ function renderClients(recs){
 function renderDeals(recs){
   const deals=recs.filter(x=>x.type==='deal').sort((a,b)=>(b.date||'').localeCompare(a.date||''));
   document.getElementById('dealTable').innerHTML=
-    `<thead><tr><th>Date</th><th>Client</th><th>Lead</th><th>Closer</th><th>Setter</th><th>Product</th><th class="num">Contract</th><th class="num">Cash</th><th class="num">Deposit</th></tr></thead><tbody>`+
-    (deals.length?deals.map(d=>`<tr><td>${esc((d.date||'').slice(0,10))}</td><td>${esc(d.client)}</td><td>${esc(d.lead)}</td><td>${esc(d.rep)}</td><td>${esc(d.setter)}</td><td>${esc(d.product)}</td><td class="num">${money(d.contractValue)}</td><td class="num">${money(d.cashCollected)}</td><td class="num">${money(d.depositCollected)}</td></tr>`).join('')
-     :`<tr><td colspan="9" class="muted" style="padding:16px">No closed deals yet.</td></tr>`)+`</tbody>`;
+    `<thead><tr><th>Date</th><th>Client</th><th>Lead</th><th>Closer</th><th>Setter</th><th>Product</th><th class="num">Contract</th><th class="num">Cash</th><th class="num">Deposit</th><th>Rec</th></tr></thead><tbody>`+
+    (deals.length?deals.map(d=>`<tr><td>${esc((d.date||'').slice(0,10))}</td><td>${esc(d.client)}</td><td>${esc(d.lead)}</td><td>${esc(d.rep)}</td><td>${esc(d.setter)}</td><td>${esc(d.product)}</td><td class="num">${money(d.contractValue)}</td><td class="num">${money(d.cashCollected)}</td><td class="num">${money(d.depositCollected)}</td><td>${d.fathom?`<a href="${esc(d.fathom)}" target="_blank" rel="noopener" class="linklike">▶ watch</a>`:'<span class="muted">-</span>'}</td></tr>`).join('')
+     :`<tr><td colspan="10" class="muted" style="padding:16px">No closed deals yet.</td></tr>`)+`</tbody>`;
 }
 
 /* ---------------- rep breakdown tab ---------------- */
@@ -801,7 +802,7 @@ function renderAll(){
 function delRec(id){ RECORDS=RECORDS.filter(r=>r.id!==id); save(LS.data,RECORDS); renderAll(); renderDash(); toast('Deleted'); }
 
 /* ---------------- export ---------------- */
-const DEAL_COLS=['date','submittedET','client','lead','rep','setter','product','callType','contractValue','cashCollected','depositCollected','notes','submittedAt'];
+const DEAL_COLS=['date','submittedET','client','lead','rep','setter','product','callType','contractValue','cashCollected','depositCollected','fathom','notes','submittedAt'];
 const EOD_COLS=['date','submittedET','client','rep','role','hoursDialing','followUpOutreach','newOutreach','connectedCalls','callsOffered','callsSet','convos4min','callCapacity','speedToLead','newMeetings','connectedMeetings','followUpMeetings','advancedCalls','noShows','closedDeals','contractsSigned','contractValue','cashCollected','depositCollected','aosiSold','productBSold','notes','submittedAt'];
 const POSTCALL_COLS=['date','submittedET','client','rep','lead','setter','outcome','callType','fathom','notes','submittedAt'];
 function exportCSV(type){ const cols=type==='deal'?DEAL_COLS:(type==='postcall'?POSTCALL_COLS:EOD_COLS); const rows=RECORDS.filter(r=>r.type===type); if(!rows.length){toast('Nothing to export');return;} const head=cols.join(','); const body=rows.map(r=>cols.map(c=>csvCell(r[c])).join(',')).join('\n'); download(`tsa_${type}_${todayLocal()}.csv`,head+'\n'+body,'text/csv'); }
