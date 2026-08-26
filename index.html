@@ -529,7 +529,9 @@ function fillLists(){
     if(cur) sel.value=cur;
   });
 }
-function presetDates(){ const t=new Date().toISOString().slice(0,10); document.querySelectorAll('input[type=date]').forEach(d=>{ if(!d.value) d.value=t; }); }
+// LOCAL calendar day (not UTC) - using toISOString() here would roll to tomorrow in the evening for US time zones
+function todayLocal(){ const d=new Date(); return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10); }
+function presetDates(){ const t=todayLocal(); document.querySelectorAll('input[type=date]').forEach(d=>{ if(!d.value) d.value=t; }); }
 
 /* ---------------- EOD role ---------------- */
 function setEodRole(r){
@@ -650,7 +652,7 @@ function renderEodCheck(){
   const panel=document.getElementById('eodCheckPanel'); if(!panel) return;
   if(repMode()){ panel.hidden=true; return; } // managers/admin only
   panel.hidden=false;
-  const di=document.getElementById('eodCheckDate'); if(!di.value) di.value=new Date().toISOString().slice(0,10);
+  const di=document.getElementById('eodCheckDate'); if(!di.value) di.value=todayLocal();
   const day=di.value;
   const chip=(n)=>{ const ok=submittedEod(n,day); return `<span class="chip" style="background:${ok?'var(--good-soft)':'var(--warn-soft)'};color:${ok?'var(--good)':'var(--warn)'};font-weight:600">${ok?'✓':'✗'} ${esc(n)}</span>`; };
   const setters=repNames('setter'), closers=repNames('closer');
@@ -770,7 +772,7 @@ function delRec(id){ RECORDS=RECORDS.filter(r=>r.id!==id); save(LS.data,RECORDS)
 /* ---------------- export ---------------- */
 const DEAL_COLS=['date','client','rep','setter','product','callType','contractValue','cashCollected','depositCollected','notes','submittedAt'];
 const EOD_COLS=['date','client','rep','role','followUpOutreach','newOutreach','callsOffered','callsSet','callCapacity','speedToLead','newMeetings','connectedMeetings','followUpMeetings','advancedCalls','noShows','closedDeals','contractsSigned','contractValue','cashCollected','depositCollected','aosiSold','productBSold','notes','submittedAt'];
-function exportCSV(type){ const cols=type==='deal'?DEAL_COLS:EOD_COLS; const rows=RECORDS.filter(r=>r.type===type); if(!rows.length){toast('Nothing to export');return;} const head=cols.join(','); const body=rows.map(r=>cols.map(c=>csvCell(r[c])).join(',')).join('\n'); download(`tsa_${type}_${new Date().toISOString().slice(0,10)}.csv`,head+'\n'+body,'text/csv'); }
+function exportCSV(type){ const cols=type==='deal'?DEAL_COLS:EOD_COLS; const rows=RECORDS.filter(r=>r.type===type); if(!rows.length){toast('Nothing to export');return;} const head=cols.join(','); const body=rows.map(r=>cols.map(c=>csvCell(r[c])).join(',')).join('\n'); download(`tsa_${type}_${todayLocal()}.csv`,head+'\n'+body,'text/csv'); }
 function csvCell(v){ if(v==null)return ''; const s=String(v); return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; }
 function exportJSON(){ download('tsa_invoice_backup.json',JSON.stringify(RECORDS,null,2),'application/json'); }
 function download(name,text,mime){ const b=new Blob([text],{type:mime}),u=URL.createObjectURL(b),a=document.createElement('a'); a.href=u;a.download=name;a.click();URL.revokeObjectURL(u); }
@@ -882,7 +884,7 @@ function dealClientChanged(){
   sel.innerHTML='<option value="">-</option>'+items.map(i=>`<option>${esc(i)}</option>`).join('');
   if(cur&&items.includes(cur)) sel.value=cur;
 }
-function thisMonth(){ return new Date().toISOString().slice(0,7); }
+function thisMonth(){ return todayLocal().slice(0,7); }
 function cashThisMonth(name){ const m=thisMonth(); return RECORDS.filter(x=>x.client===name && monthKey(x.date)===m).reduce((s,x)=>s+(x.cashCollected||0),0); }
 // products chip editor for the client form
 let CLIENT_PRODUCTS=[];
