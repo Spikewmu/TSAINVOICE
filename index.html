@@ -494,14 +494,13 @@ function wireTabs(){ document.querySelectorAll('#tabs button').forEach(b=>b.oncl
 function showTab(t){
   document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
   ['dash','reps','clients','onboarding','deal','eod','data','users','settings'].forEach(x=>{ document.getElementById('tab-'+x).hidden = (x!==t); });
-  if(t==='dash'){ syncRecords().then(renderDash); }
-  if(t==='reps'){ syncRecords().then(renderReps); }
-  if(t==='clients'){ syncRecords().then(renderClientOverview); }
-  if(t==='onboarding'){ syncRecords().then(renderOnboarding); }
-  if(t==='data'){ syncRecords().then(renderAll); }
+  // stale-while-revalidate: render instantly from the cached records, then refresh in the background
+  const render={dash:renderDash, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, data:renderAll}[t];
+  if(render){ render(); syncRecords().then(()=>{ if(currentTab()===t) render(); }); }
   if(t==='users'){ renderUsers(); }
   if(t==='settings'){ loadSettingsForm(); }
 }
+function currentTab(){ const b=document.querySelector('#tabs button.active'); return b?b.dataset.tab:''; }
 
 /* ---------------- selects ---------------- */
 // Rep dropdowns come from the actual user accounts (Users tab), so there's no separate list to maintain.
