@@ -76,6 +76,9 @@
   .teamboxes label{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:500;padding:6px 10px;border:1px solid var(--border,#333);border-radius:8px;cursor:pointer;background:var(--surface-2)}
   .teamboxes input{margin:0;cursor:pointer}
   .teamtag{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;background:var(--gold-soft);color:var(--gold,#b8860b);margin:2px 3px 2px 0}
+  .prodgrid{display:flex;flex-wrap:wrap;gap:12px}
+  .produnit{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);font-weight:600}
+  .produnit input{width:120px}
   form.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow)}
   form.grid .full{grid-column:1/-1}
   .formhead{grid-column:1/-1;margin:6px 0 0;padding-top:14px;border-top:1px solid var(--border);display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
@@ -162,10 +165,8 @@
       <button class="btn ghost sm" onclick="renderDash()">Refresh</button>
     </div>
     <div class="cards" id="kpis"></div>
-    <div class="cards" style="grid-template-columns:repeat(auto-fit,minmax(340px,1fr))">
-      <div class="panel" style="margin:0"><h3>Closer leaderboard <span style="font-weight:400;color:var(--muted);font-size:12px">- by cash collected</span></h3><div class="tablewrap"><table id="lbClosers"></table></div></div>
-      <div class="panel" style="margin:0"><h3>Setter leaderboard <span style="font-weight:400;color:var(--muted);font-size:12px">- by cash set</span></h3><div class="tablewrap"><table id="lbSetters"></table></div></div>
-    </div>
+    <div class="panel"><h3>Setters <span style="font-weight:400;color:var(--muted);font-size:12px">- activity + output, ranked</span></h3><div class="tablewrap"><table id="dashSetterTable"></table></div></div>
+    <div class="panel"><h3>Closers <span style="font-weight:400;color:var(--muted);font-size:12px">- activity + output, ranked</span></h3><div class="tablewrap"><table id="dashCloserTable"></table></div></div>
     <div class="panel"><h3>By client (invoicing view)</h3><div class="tablewrap"><table id="clientTable"></table></div></div>
     <div class="panel"><h3>Closed deals</h3><div class="tablewrap"><table id="dealTable"></table></div></div>
   </section>
@@ -194,15 +195,19 @@
   <!-- ===== POST-CALL CHECKOUT ===== -->
   <section id="tab-postcall" hidden>
     <h2 class="section">Post-Call Checkout</h2>
-    <p class="hint">Fill this in <b>after every call</b> - the outcome of each one, win or lose. This is separate from Log Closed Deal (that's only for deals you close). Drop your Fathom link so your manager can review the call.</p>
+    <p class="hint">Fill this in <b>after every call</b> - the outcome of each one, win or lose. If you pick <b>Won (closed)</b>, the deal fields appear so it also logs as a closed deal (no separate form). Drop your Fathom link so your manager can review the call.</p>
     <form class="grid" id="postcallForm" onsubmit="submitPostCall(event)">
       <div class="field"><label>Date this call was *</label><input type="date" name="date" required><span class="fieldhelp">Defaults to today (your local date).</span></div>
-      <div class="field"><label>Client / account *</label><select name="client" data-list="clients" required></select></div>
+      <div class="field"><label>Client / account *</label><select name="client" data-list="clients" required onchange="postcallClientChanged()"></select></div>
       <div class="field"><label>Closer *</label><select name="rep" data-list="closers" required></select><span class="fieldhelp">You (locked to your login).</span></div>
       <div class="field"><label>Lead / prospect name *</label><input type="text" name="lead" required placeholder="who the call was with"></div>
       <div class="field"><label>Setter (who set the call)</label><select name="setter" data-list="setters"></select><span class="fieldhelp">Leave blank if it was inbound / you set it yourself.</span></div>
-      <div class="field"><label>Call outcome *</label><select name="outcome" required><option value="">-</option><option>Won (closed)</option><option>Lost</option><option>No-show</option><option>Advanced (moved forward)</option><option>Follow-up booked</option><option>Blocked (partner / objection)</option><option>Rescheduled</option><option>Disqualified</option></select><span class="fieldhelp">What happened on this call.</span></div>
+      <div class="field"><label>Call outcome *</label><select name="outcome" required onchange="postcallOutcomeChanged()"><option value="">-</option><option>Won (closed)</option><option>Lost</option><option>No-show</option><option>Follow-up booked</option><option>Rescheduled</option><option>Disqualified</option><option>Canceled</option></select><span class="fieldhelp">What happened on this call.</span></div>
       <div class="field"><label>Call type</label><select name="callType"><option value="">-</option><option>First call</option><option>Second call</option><option>Follow-up</option></select></div>
+      <div class="field wonOnly" hidden><label>Product sold</label><select name="product"></select><span class="fieldhelp">This client's offer that was sold.</span></div>
+      <div class="field wonOnly" hidden><label>Contract value ($)</label><input type="number" name="contractValue" min="0" step="0.01" placeholder="0.00"></div>
+      <div class="field wonOnly" hidden><label>Cash collected ($)</label><input type="number" name="cashCollected" min="0" step="0.01" placeholder="0.00"></div>
+      <div class="field wonOnly" hidden><label>Deposit collected ($)</label><input type="number" name="depositCollected" min="0" step="0.01" placeholder="0.00"></div>
       <div class="field full"><label>Fathom recording link</label><input type="url" name="fathom" placeholder="https://fathom.video/share/..."><span class="fieldhelp">Go to <a href="https://www.fathom.ai/" target="_blank" rel="noopener" class="linklike">fathom.ai</a> -> open the call -> three dots -> Copy share link.</span></div>
       <div class="field full"><label>Notes</label><input type="text" name="notes" placeholder="what tripped it up, next step, anything your manager should know"></div>
       <div class="full row-actions"><button class="btn gold" type="submit">Submit post-call</button></div>
@@ -225,18 +230,17 @@
 
       <div class="formhead"><b>Who &amp; when</b><span class="sub">the day and account these numbers are for</span></div>
       <div class="field"><label>Date this report is for *</label><input type="date" name="date" required><span class="fieldhelp">The work day these numbers apply to. Defaults to today (your local date) - change it if you're logging a previous day.</span></div>
-      <div class="field"><label>Client / account *</label><select name="client" data-list="clients" required></select><span class="fieldhelp">Which account you worked today.</span></div>
+      <div class="field"><label>Client / account *</label><select name="client" data-list="clients" required onchange="renderEodProducts()"></select><span class="fieldhelp">Which account you worked today.</span></div>
       <div class="field"><label>Rep name *</label><select name="rep" data-list="reps" required></select><span class="fieldhelp">Your name (locked to your login).</span></div>
 
       <div class="formhead"><b>Outreach &amp; dials</b><span class="sub">how much you reached out today</span></div>
       <div class="full fieldhelp" id="eodOutreachNote" style="margin:-4px 0 2px"></div>
       <div class="field"><label>Hours dialing today</label><input type="number" name="hoursDialing" min="0" step="0.25" placeholder="e.g. 4"><span class="fieldhelp">Total time on the phones today, in hours (e.g. 4 or 3.5).</span></div>
-      <div class="field"><label>New outreach</label><input type="number" name="newOutreach" min="0" step="1"><span class="fieldhelp">Dials / messages to brand-new leads.</span></div>
-      <div class="field"><label>Follow-up outreach</label><input type="number" name="followUpOutreach" min="0" step="1"><span class="fieldhelp">Dials / messages to leads you'd already contacted.</span></div>
+      <div class="field"><label>Total dials</label><input type="number" name="newOutreach" min="0" step="1"><span class="fieldhelp">Total dials / calls you made today.</span></div>
+      <div class="field"><label>Follow-up outreach</label><input type="number" name="followUpOutreach" min="0" step="1"><span class="fieldhelp">Leads you flagged to call back later (today, tomorrow, next week).</span></div>
       <div class="field"><label>Connected calls</label><input type="number" name="connectedCalls" min="0" step="1"><span class="fieldhelp">How many people you actually reached / talked to. Drives your connection rate.</span></div>
-      <div class="field setterOnly" hidden><label>Sales calls offered</label><input type="number" name="callsOffered" min="0" step="1"><span class="fieldhelp">Times you offered / pitched to book a call.</span></div>
-      <div class="field setterOnly" hidden><label>Sales calls set</label><input type="number" name="callsSet" min="0" step="1"><span class="fieldhelp">Appointments you actually booked.</span></div>
       <div class="field setterOnly" hidden><label>Conversations over 4 min</label><input type="number" name="convos4min" min="0" step="1"><span class="fieldhelp">Number of conversations longer than 4 minutes (meaningful talk time).</span></div>
+      <div class="field setterOnly" hidden><label>Sales calls set</label><input type="number" name="callsSet" min="0" step="1"><span class="fieldhelp">Appointments you actually booked.</span></div>
       <div class="field setterOnly" hidden><label>Speed to lead (min)</label><input type="number" name="speedToLead" min="0" step="0.1"><span class="fieldhelp">Avg minutes from a lead arriving to your first dial. Optional.</span></div>
 
       <div class="formhead closerOnly"><b>Meetings / calls</b><span class="sub">the calls you took today (setters don't fill this - the closer reports call outcomes)</span></div>
@@ -253,8 +257,7 @@
       <div class="field closerOnly"><label>Contract value ($)</label><input type="number" name="contractValue" min="0" step="0.01"><span class="fieldhelp">Total contract value (before payment).</span></div>
       <div class="field closerOnly"><label>Cash collected ($)</label><input type="number" name="cashCollected" min="0" step="0.01"><span class="fieldhelp">Actual money collected today.</span></div>
       <div class="field closerOnly"><label>Deposits collected ($)</label><input type="number" name="depositCollected" min="0" step="0.01"><span class="fieldhelp">Partial / deposit payments collected.</span></div>
-      <div class="field closerOnly"><label>AOSi sold</label><input type="number" name="aosiSold" min="0" step="1"><span class="fieldhelp">Units of AOSi sold.</span></div>
-      <div class="field closerOnly"><label>Product B sold</label><input type="number" name="productBSold" min="0" step="1"><span class="fieldhelp">Units of the secondary product sold.</span></div>
+      <div class="field full closerOnly"><label>Units sold by offer</label><div id="eodProducts" class="prodgrid"></div><span class="fieldhelp">How many of each of this client's offers you sold today. Pick the client above to load its offers (set them on Client Overview).</span></div>
 
       <div class="formhead"><b>Notes</b><span class="sub">optional</span></div>
       <div class="field full"><label>Notes</label><input type="text" name="notes" placeholder="blockers, big wins, anything the team should know"><span class="fieldhelp">Context for your manager - wins, blockers, or why the numbers look how they do.</span></div>
@@ -518,13 +521,15 @@ function startApp(){
   const allow = {
     admin:['dash','reps','clients','onboarding','deal','postcall','eod','data','users','settings'],
     manager:['dash','reps','clients','onboarding','users'],
-    closer:['deal','postcall','eod','reps'],
+    owner:['dash'],
+    closer:['postcall','eod','reps'],
     setter:['eod','reps']
   }[role] || ['eod'];
   document.querySelectorAll('#tabs button').forEach(b=>{ b.hidden = !allow.includes(b.dataset.tab); });
   fillLists(); wireTabs(); presetDates();
   if(role==='admin'){ setEodRole('Closer'); Promise.all([syncRecords(),loadUsers()]).then(()=>{ fillLists(); setEodRole('Closer'); renderDash(); renderAll(); }); showTab('dash'); }
   else if(role==='manager'){ Promise.all([syncRecords(),loadUsers()]).then(()=>{ fillLists(); renderDash(); }); showTab('clients'); }
+  else if(role==='owner'){ Promise.all([syncRecords(),loadUsers()]).then(()=>{ renderDash(); }); showTab('dash'); } // offer owner: their account only, dashboard-only, read-only
   else { applyIdentity(); syncRecords().then(()=>applyIdentity()); showTab(allow[0]); }
 }
 // lock a rep's identity into the forms
@@ -540,6 +545,7 @@ function applyIdentity(){
   ['#eodForm','#dealForm','#postcallForm'].forEach(sel=>{ const cs=document.querySelector(sel+' [name=client]'); if(!cs) return;
     if(opts.length===1){ cs.innerHTML='<option>'+esc(opts[0])+'</option>'; cs.value=opts[0]; cs.disabled=true; }
     else { const cur=cs.value; cs.innerHTML='<option value="">-</option>'+opts.map(c=>'<option>'+esc(c)+'</option>').join(''); cs.value=(cur&&opts.includes(cur))?cur:''; cs.disabled=false; } });
+  postcallClientChanged(); renderEodProducts();
 }
 
 /* ---------------- tabs ---------------- */
@@ -586,6 +592,8 @@ function todayLocal(){ const d=new Date(); return new Date(d.getTime()-d.getTime
 // current submission time, recorded in Eastern (readable + sortable: "2026-08-26 01:00:59 ET"). Works from any rep's timezone.
 function nowET(){ try{ return new Date().toLocaleString('sv-SE',{timeZone:'America/New_York'})+' ET'; }catch(e){ return new Date().toISOString(); } }
 function submittedETof(r){ if(r.submittedET) return r.submittedET; if(r.submittedAt){ try{ return new Date(r.submittedAt).toLocaleString('sv-SE',{timeZone:'America/New_York'})+' ET'; }catch(e){} } return '-'; }
+// display dates in US format (M-D-YYYY, e.g. 8-25-2026); stored dates stay ISO (YYYY-MM-DD) for sorting/filtering
+function usDate(d){ d=(d||'').slice(0,10); const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(d); return m?(+m[2])+'-'+(+m[3])+'-'+m[1]:d; }
 function presetDates(){ const t=todayLocal(); document.querySelectorAll('input[type=date]').forEach(d=>{ if(!d.value) d.value=t; }); }
 
 /* ---------------- EOD role ---------------- */
@@ -594,6 +602,7 @@ function setEodRole(r){
   document.querySelector('#eodForm [name=role]').value=r;
   document.querySelectorAll('#eodForm .closerOnly').forEach(e=>e.hidden=r!=='Closer');
   document.querySelectorAll('#eodForm .setterOnly').forEach(e=>e.hidden=r!=='Setter');
+  renderEodProducts();
   const onote=document.getElementById('eodOutreachNote');
   if(onote) onote.textContent = r==='Setter'
     ? "This is the core of your day as a setter - log your hours on the phones, your dials/outreach, and the appointments you set."
@@ -620,25 +629,60 @@ async function submitDeal(e){ e.preventDefault(); const btn=e.target.querySelect
   catch(err){ toast('Submit failed - try again',true); }
   finally{ if(ok) btnDone(btn,'Deal logged'); else btnBusy(btn,false); } }
 async function submitEod(e){ e.preventDefault(); const btn=e.target.querySelector('[type=submit]'); if(btn&&btn.disabled) return; btnBusy(btn,true); let ok=false;
-  try{ const o=num(formObj(e.target)); o.type='eod'; if(SESSION.role!=='admin'){ o.rep=SESSION.name; o.role=SESSION.role==='setter'?'Setter':'Closer'; } await addRecord(o); e.target.reset(); presetDates(); setEodRole(o.role); if(SESSION.role!=='admin') applyIdentity(); toast('End of day submitted.'); if(SESSION.role==='admin') renderDash(); ok=true; }
+  try{ const o=num(formObj(e.target)); o.type='eod'; if(SESSION.role!=='admin'){ o.rep=SESSION.name; o.role=SESSION.role==='setter'?'Setter':'Closer'; }
+    const units={}; document.querySelectorAll('#eodProducts input[data-prod]').forEach(i=>{ const v=parseFloat(i.value)||0; if(v) units[i.dataset.prod]=v; }); if(Object.keys(units).length) o.productUnits=JSON.stringify(units);
+    await addRecord(o); e.target.reset(); presetDates(); setEodRole(o.role); if(SESSION.role!=='admin') applyIdentity(); toast('End of day submitted.'); if(SESSION.role==='admin') renderDash(); ok=true; }
   catch(err){ toast('Submit failed - try again',true); }
   finally{ if(ok) btnDone(btn,'Submitted!'); else btnBusy(btn,false); } }
-async function submitPostCall(e){ e.preventDefault(); const btn=e.target.querySelector('[type=submit]'); if(btn&&btn.disabled) return; btnBusy(btn,true); let ok=false;
-  try{ const o=formObj(e.target); o.type='postcall'; o.role='Closer'; if(SESSION.role!=='admin') o.rep=SESSION.name; await addRecord(o); e.target.reset(); presetDates(); if(SESSION.role!=='admin') applyIdentity(); toast('Post-call logged.'); if(SESSION.role==='admin'&&currentTab()==='data') renderAll(); ok=true; }
+async function submitPostCall(e){ e.preventDefault(); const btn=e.target.querySelector('[type=submit]'); if(btn&&btn.disabled) return; btnBusy(btn,true); let ok=false, won=false;
+  try{ const o=formObj(e.target); o.type='postcall'; o.role='Closer'; if(SESSION.role!=='admin') o.rep=SESSION.name;
+    won=/^Won/.test(o.outcome||'');
+    await addRecord(o); // every call logs a post-call record
+    if(won){ // a win ALSO logs a closed deal so it flows into cash / leaderboards / invoicing
+      const d=num({type:'deal',role:'Closer',date:o.date,client:o.client,lead:o.lead,rep:o.rep,setter:o.setter||'',product:o.product||'',callType:o.callType||'',contractValue:o.contractValue||0,cashCollected:o.cashCollected||0,depositCollected:o.depositCollected||0,fathom:o.fathom||'',notes:o.notes||'',closedDeals:1});
+      await addRecord(d);
+    }
+    e.target.reset(); presetDates(); if(SESSION.role!=='admin') applyIdentity(); postcallOutcomeChanged();
+    toast(won?'Won! Logged as a closed deal.':'Post-call logged.'); if(SESSION.role==='admin') renderDash(); ok=true; }
   catch(err){ toast('Submit failed - try again',true); }
-  finally{ if(ok) btnDone(btn,'Post-call logged'); else btnBusy(btn,false); } }
+  finally{ if(ok) btnDone(btn, won?'Deal logged':'Post-call logged'); else btnBusy(btn,false); } }
+// Post-Call Checkout dynamic fields: populate the product list from the chosen client, and reveal the
+// deal fields (product/contract/cash/deposit) only when the outcome is Won.
+function postcallClientChanged(){
+  const cs=document.querySelector('#postcallForm [name=client]'), ps=document.querySelector('#postcallForm [name=product]'); if(!ps) return;
+  const prods = cs && cs.value ? productsForClient(cs.value) : (CFG.products||[]);
+  const cur=ps.value; ps.innerHTML='<option value="">-</option>'+prods.map(p=>`<option>${esc(p)}</option>`).join(''); if(cur) ps.value=cur;
+}
+function postcallOutcomeChanged(){
+  const sel=document.querySelector('#postcallForm [name=outcome]'), won = sel && /^Won/.test(sel.value||'');
+  document.querySelectorAll('#postcallForm .wonOnly').forEach(e=>e.hidden=!won);
+  if(won) postcallClientChanged();
+}
+// Closer EOD: one unit-count input per offer of the selected client (values preserved across re-renders)
+function renderEodProducts(){
+  const wrap=document.getElementById('eodProducts'); if(!wrap) return;
+  const cs=document.querySelector('#eodForm [name=client]'), client=cs?cs.value:'';
+  const prods = client ? productsForClient(client) : [];
+  const prev={}; wrap.querySelectorAll('input[data-prod]').forEach(i=>{ if(i.value) prev[i.dataset.prod]=i.value; });
+  wrap.innerHTML = prods.length
+    ? prods.map(p=>`<label class="produnit"><span>${esc(p)}</span><input type="number" min="0" step="1" data-prod="${esc(p)}" value="${prev[p]?esc(prev[p]):''}" placeholder="0"></label>`).join('')
+    : '<span class="muted" style="font-size:12px">Pick the client above to load its offers.</span>';
+}
 
 /* ---------------- aggregation + dashboard ---------------- */
 function monthKey(d){ return (d||'').slice(0,7); }
 function activityRecords(){ return RECORDS.filter(x=>x.type==='deal'||x.type==='eod'||!x.type); }
-function filtered(){ const m=document.getElementById('fMonth').value,c=document.getElementById('fClient').value,r=document.getElementById('fRole').value; return activityRecords().filter(x=>(!m||monthKey(x.date)===m)&&(!c||x.client===c)&&(!r||x.role===r)); }
+// offer owners see only the account(s) assigned to their login; everyone else (admin/manager) sees all
+function dashScopeClients(){ if(SESSION && SESSION.role==='owner'){ const t=teamsFor(SESSION.username); return t.length?t:[' none']; } return null; }
+function filtered(){ const m=document.getElementById('fMonth').value,c=document.getElementById('fClient').value,r=document.getElementById('fRole').value,sc=dashScopeClients(); return activityRecords().filter(x=>(!m||monthKey(x.date)===m)&&(!c||x.client===c)&&(!r||x.role===r)&&(!sc||sc.includes(x.client))); }
 function buildFilterOptions(){
   const months=[...new Set(RECORDS.map(x=>monthKey(x.date)).filter(Boolean))].sort().reverse();
   const fm=document.getElementById('fMonth'),cur=fm.value;
   fm.innerHTML='<option value="">All months</option>'+months.map(m=>`<option>${m}</option>`).join('');
   if(cur)fm.value=cur; else if(months[0])fm.value=months[0];
   const fc=document.getElementById('fClient'),cc=fc.value;
-  fc.innerHTML='<option value="">All clients</option>'+clientNames().map(c=>`<option>${esc(c)}</option>`).join('');
+  const sc=dashScopeClients(), clist=sc?sc.filter(c=>c!==' none'):clientNames();
+  fc.innerHTML='<option value="">'+(sc?('My account'+(clist.length>1?'s':'')):'All clients')+'</option>'+clist.map(c=>`<option>${esc(c)}</option>`).join('');
   if(cc)fc.value=cc;
 }
 function agg(recs){
@@ -654,6 +698,51 @@ function agg(recs){
   s.utilization=s.callCapacity?s.connectedMeetings/s.callCapacity:0;
   return s;
 }
+// Shared "double chart": ranked setter + closer breakdown tables (used by the Dashboard and Rep Breakdown).
+// opts = { setterEl, closerEl, rm (hide payout + plain names), clickable (drill-down on name) }
+function renderBreakdownTables(recs, opts){
+  const rm=!!opts.rm, clickable=!!opts.clickable;
+  const setters={}, closers={};
+  function b(map,name){ if(!map[name]) map[name]={rep:name,days:new Set(),hours:0,newOut:0,fuOut:0,offered:0,set:0,connCalls:0,convos4:0,connected:0,noShows:0,capacity:0,cash:0,deals:0,contract:0}; return map[name]; }
+  recs.forEach(x=>{
+    const rep=(x.rep||'').trim(), setter=(x.setter||'').trim();
+    if((x.type==='eod'||!x.type) && rep){
+      const o=b((x.role==='Setter')?setters:closers, rep);
+      if(x.date) o.days.add(x.date.slice(0,10));
+      o.hours+=x.hoursDialing||0; o.newOut+=x.newOutreach||0; o.fuOut+=x.followUpOutreach||0; o.offered+=x.callsOffered||0; o.set+=x.callsSet||0; o.connCalls+=x.connectedCalls||0; o.convos4+=x.convos4min||0;
+      o.connected+=x.connectedMeetings||0; o.noShows+=x.noShows||0; o.capacity+=x.callCapacity||0;
+      if(x.role!=='Setter'){ o.cash+=x.cashCollected||0; o.deals+=x.closedDeals||0; o.contract+=x.contractValue||0; }
+    }
+    if(x.type==='deal'){
+      if(rep){ const o=b(closers,rep); if(x.date)o.days.add(x.date.slice(0,10)); o.cash+=x.cashCollected||0; o.deals+=x.closedDeals||0; o.contract+=x.contractValue||0; }
+      if(setter){ const o=b(setters,setter); o.cash+=x.cashCollected||0; o.deals+=x.closedDeals||0; }
+    }
+  });
+  const sRate=CFG.setterRate/100, cRate=CFG.closerRate/100;
+  const sum=(arr,k)=>arr.reduce((a,b)=>a+(b[k]||0),0);
+  const daysUnion=map=>{const s=new Set();Object.values(map).forEach(o=>o.days.forEach(d=>s.add(d)));return s.size;};
+  const setRows=Object.values(setters).map(o=>{ const dials=o.newOut+o.fuOut; return {...o,days:o.days.size,dials,connRate:dials?o.connCalls/dials:0,bookRate:o.connCalls?o.set/o.connCalls:0,payout:o.cash*sRate}; }).sort((a,b)=>b.cash-a.cash||b.set-a.set);
+  const cloRows=Object.values(closers).map(o=>({...o,days:o.days.size,dials:o.newOut+o.fuOut,closeRate:o.connected?o.deals/o.connected:0,cashPct:o.contract?o.cash/o.contract:0,util:o.capacity?o.connected/o.capacity:0,payout:o.cash*cRate})).sort((a,b)=>b.cash-a.cash);
+  let sT=null; if(setRows.length){ const dl=sum(setRows,'dials'),cc=sum(setRows,'connCalls'),st=sum(setRows,'set'); sT={n:setRows.length,days:daysUnion(setters),hours:sum(setRows,'hours'),dials:dl,connCalls:cc,connRate:dl?cc/dl:0,set:st,bookRate:cc?st/cc:0,convos4:sum(setRows,'convos4'),cash:sum(setRows,'cash'),payout:sum(setRows,'payout')}; }
+  let cT=null; if(cloRows.length){ const c=sum(cloRows,'connected'),cap=sum(cloRows,'capacity'),d=sum(cloRows,'deals'),ct=sum(cloRows,'contract'),ca=sum(cloRows,'cash'); cT={n:cloRows.length,days:daysUnion(closers),hours:sum(cloRows,'hours'),dials:sum(cloRows,'dials'),set:sum(cloRows,'set'),connected:c,capacity:cap,util:cap?c/cap:0,deals:d,contract:ct,cash:ca,closeRate:c?d/c:0,cashPct:ct?ca/ct:0,payout:sum(cloRows,'payout')}; }
+  const hrs=v=>v?(Math.round(v*10)/10):0;
+  const payH = rm?'':'<th class="num">Est. payout</th>';
+  const payC = r => rm?'':`<td class="num">${money(r.payout)}</td>`;
+  const link = clickable && !rm;
+  const sName = r => link?`<button class="linklike" onclick="repDetail('${esc(r.rep)}','Setter')">${esc(r.rep)}</button>`:esc(r.rep);
+  const cName = r => link?`<button class="linklike" onclick="repDetail('${esc(r.rep)}','Closer')">${esc(r.rep)}</button>`:esc(r.rep);
+  const sEl=document.getElementById(opts.setterEl), cEl=document.getElementById(opts.closerEl);
+  if(sEl) sEl.innerHTML=
+    `<thead><tr><th>#</th><th>Setter</th><th class="num">Days</th><th class="num">Hours</th><th class="num">Dials</th><th class="num">Conn.</th><th class="num">Conn %</th><th class="num">Set</th><th class="num">Book %</th><th class="num">4m+ convos</th><th class="num">Cash set</th>${payH}</tr></thead><tbody>`+
+    (sT?`<tr class="totalrow"><td></td><td>TOTAL &middot; ${sT.n} setter${sT.n>1?'s':''}</td><td class="num">${sT.days}</td><td class="num">${hrs(sT.hours)}</td><td class="num">${sT.dials}</td><td class="num">${sT.connCalls}</td><td class="num">${pct(sT.connRate)}</td><td class="num">${sT.set}</td><td class="num">${pct(sT.bookRate)}</td><td class="num">${sT.convos4}</td><td class="num">${money(sT.cash)}</td>${payC(sT)}</tr>`:'')+
+    (setRows.length?setRows.map((r,i)=>`<tr class="${i===0?'rank1':''}"><td>${i+1}</td><td>${sName(r)}</td><td class="num">${r.days}</td><td class="num">${hrs(r.hours)}</td><td class="num">${r.dials}</td><td class="num">${r.connCalls}</td><td class="num">${pct(r.connRate)}</td><td class="num">${r.set}</td><td class="num">${pct(r.bookRate)}</td><td class="num">${r.convos4}</td><td class="num">${money(r.cash)}</td>${payC(r)}</tr>`).join('')
+     :`<tr><td colspan="${rm?11:12}" class="muted" style="padding:16px">No setter data yet.</td></tr>`)+`</tbody>`;
+  if(cEl) cEl.innerHTML=
+    `<thead><tr><th>#</th><th>Closer</th><th class="num">Days</th><th class="num">Hours</th><th class="num">Dials</th><th class="num">Connected</th><th class="num">Capacity</th><th class="num">Cap used</th><th class="num">Deals</th><th class="num">Contract</th><th class="num">Cash</th><th class="num">Close %</th><th class="num">Cash %</th>${payH}</tr></thead><tbody>`+
+    (cT?`<tr class="totalrow"><td></td><td>TOTAL &middot; ${cT.n} closer${cT.n>1?'s':''}</td><td class="num">${cT.days}</td><td class="num">${hrs(cT.hours)}</td><td class="num">${cT.dials}</td><td class="num">${cT.connected}</td><td class="num">${cT.capacity}</td><td class="num">${pct(cT.util)}</td><td class="num">${cT.deals}</td><td class="num">${money(cT.contract)}</td><td class="num">${money(cT.cash)}</td><td class="num">${pct(cT.closeRate)}</td><td class="num">${pct(cT.cashPct)}</td>${payC(cT)}</tr>`:'')+
+    (cloRows.length?cloRows.map((r,i)=>`<tr class="${i===0?'rank1':''}"><td>${i+1}</td><td>${cName(r)}</td><td class="num">${r.days}</td><td class="num">${hrs(r.hours)}</td><td class="num">${r.dials}</td><td class="num">${r.connected}</td><td class="num">${r.capacity}</td><td class="num">${pct(r.util)}</td><td class="num">${r.deals}</td><td class="num">${money(r.contract)}</td><td class="num">${money(r.cash)}</td><td class="num">${pct(r.closeRate)}</td><td class="num">${pct(r.cashPct)}</td>${payC(r)}</tr>`).join('')
+     :`<tr><td colspan="${rm?13:14}" class="muted" style="padding:16px">No closer data yet.</td></tr>`)+`</tbody>`;
+}
 function renderDash(){
   buildFilterOptions(); const recs=filtered(); const s=agg(recs);
   const gm=CFG.goal/12, gpc=gm?Math.min(100,Math.round(s.cashCollected/gm*100)):0;
@@ -666,7 +755,8 @@ function renderDash(){
     <div class="kpi"><div class="lbl">Show rate</div><div class="val">${pct(s.showRate)}</div></div>
     <div class="kpi"><div class="lbl">Call capacity used</div><div class="val">${pct(s.utilization)}</div></div>
     <div class="kpi"><div class="lbl">Deposits collected</div><div class="val small">${money(s.depositCollected)}</div></div>`;
-  renderLeaderboard(recs); renderClients(recs); renderDeals(recs);
+  renderBreakdownTables(recs, {setterEl:'dashSetterTable', closerEl:'dashCloserTable', rm:(SESSION&&SESSION.role==='owner'), clickable:false});
+  renderClients(recs); renderDeals(recs);
 }
 function renderLeaderboard(recs){
   const byRep={};
@@ -700,7 +790,7 @@ function renderDeals(recs){
   const deals=recs.filter(x=>x.type==='deal').sort((a,b)=>(b.date||'').localeCompare(a.date||''));
   document.getElementById('dealTable').innerHTML=
     `<thead><tr><th>Date</th><th>Client</th><th>Lead</th><th>Closer</th><th>Setter</th><th>Product</th><th class="num">Contract</th><th class="num">Cash</th><th class="num">Deposit</th><th>Rec</th></tr></thead><tbody>`+
-    (deals.length?deals.map(d=>`<tr><td>${esc((d.date||'').slice(0,10))}</td><td>${esc(d.client)}</td><td>${esc(d.lead)}</td><td>${esc(d.rep)}</td><td>${esc(d.setter)}</td><td>${esc(d.product)}</td><td class="num">${money(d.contractValue)}</td><td class="num">${money(d.cashCollected)}</td><td class="num">${money(d.depositCollected)}</td><td>${d.fathom?`<a href="${esc(d.fathom)}" target="_blank" rel="noopener" class="linklike">▶ watch</a>`:'<span class="muted">-</span>'}</td></tr>`).join('')
+    (deals.length?deals.map(d=>`<tr><td>${esc(usDate(d.date))}</td><td>${esc(d.client)}</td><td>${esc(d.lead)}</td><td>${esc(d.rep)}</td><td>${esc(d.setter)}</td><td>${esc(d.product)}</td><td class="num">${money(d.contractValue)}</td><td class="num">${money(d.cashCollected)}</td><td class="num">${money(d.depositCollected)}</td><td>${d.fathom?`<a href="${esc(d.fathom)}" target="_blank" rel="noopener" class="linklike">▶ watch</a>`:'<span class="muted">-</span>'}</td></tr>`).join('')
      :`<tr><td colspan="10" class="muted" style="padding:16px">No closed deals yet.</td></tr>`)+`</tbody>`;
 }
 
@@ -816,8 +906,8 @@ function repDetail(rep, role){
   const body = recs.length ? recs.map(x=>{
     const t=x.type==='deal'?'<span class="pill good">deal</span>':'<span class="pill">eod</span>';
     return role==='Setter'
-      ? `<tr><td>${esc((x.date||'').slice(0,10))}</td><td>${esc(x.client)}</td><td>${t}</td><td class="num">${x.hoursDialing||0}</td><td class="num">${(x.newOutreach||0)+(x.followUpOutreach||0)}</td><td class="num">${x.connectedCalls||0}</td><td class="num">${x.callsSet||0}</td><td class="num">${x.convos4min||0}</td><td class="num">${x.type==='deal'?money(x.cashCollected):'-'}</td></tr>`
-      : `<tr><td>${esc((x.date||'').slice(0,10))}</td><td>${esc(x.client)}</td><td>${t}</td><td class="num">${x.connectedMeetings||0}</td><td class="num">${x.callCapacity||0}</td><td class="num">${x.closedDeals||0}</td><td class="num">${money(x.contractValue)}</td><td class="num">${money(x.cashCollected)}</td></tr>`;
+      ? `<tr><td>${esc(usDate(x.date))}</td><td>${esc(x.client)}</td><td>${t}</td><td class="num">${x.hoursDialing||0}</td><td class="num">${(x.newOutreach||0)+(x.followUpOutreach||0)}</td><td class="num">${x.connectedCalls||0}</td><td class="num">${x.callsSet||0}</td><td class="num">${x.convos4min||0}</td><td class="num">${x.type==='deal'?money(x.cashCollected):'-'}</td></tr>`
+      : `<tr><td>${esc(usDate(x.date))}</td><td>${esc(x.client)}</td><td>${t}</td><td class="num">${x.connectedMeetings||0}</td><td class="num">${x.callCapacity||0}</td><td class="num">${x.closedDeals||0}</td><td class="num">${money(x.contractValue)}</td><td class="num">${money(x.cashCollected)}</td></tr>`;
   }).join('') : `<tr><td colspan="8" class="muted" style="padding:16px">No submissions in this range.</td></tr>`;
   document.getElementById('repDetailTable').innerHTML=head+body+`</tbody>`;
   document.getElementById('repDetailPanel').scrollIntoView({behavior:'smooth',block:'nearest'});
@@ -828,7 +918,7 @@ function renderAll(){
   const rows=RECORDS.filter(x=>['deal','eod','postcall'].includes(x.type)||!x.type).sort((a,b)=>(b.submittedAt||'').localeCompare(a.submittedAt||''));
   document.getElementById('allTable').innerHTML=
     `<thead><tr><th>Date</th><th>Submitted (ET)</th><th>Type</th><th>Role</th><th>Client</th><th>Rep</th><th>Outcome / Cash</th><th class="num">Deals</th><th></th></tr></thead><tbody>`+
-    (rows.length?rows.map(r=>`<tr><td>${esc((r.date||'').slice(0,10))}</td><td style="font-size:12px;color:var(--muted)">${esc(submittedETof(r))}</td><td><span class="pill ${r.type==='deal'?'good':(r.type==='postcall'?'warn':'')}">${esc(r.type)}</span></td><td>${esc(r.role)}</td><td>${esc(r.client)}</td><td>${esc(r.rep)}</td><td>${r.type==='postcall'?esc(r.outcome||'-')+(r.lead?' <span class="muted">('+esc(r.lead)+')</span>':''):money(r.cashCollected)}</td><td class="num">${r.closedDeals||0}</td><td><button class="btn sm ghost" style="color:var(--warn);border-color:var(--warn)" onclick="delRec('${r.id}')">Delete</button></td></tr>`).join('')
+    (rows.length?rows.map(r=>`<tr><td>${esc(usDate(r.date))}</td><td style="font-size:12px;color:var(--muted)">${esc(submittedETof(r))}</td><td><span class="pill ${r.type==='deal'?'good':(r.type==='postcall'?'warn':'')}">${esc(r.type)}</span></td><td>${esc(r.role)}</td><td>${esc(r.client)}</td><td>${esc(r.rep)}</td><td>${r.type==='postcall'?esc(r.outcome||'-')+(r.lead?' <span class="muted">('+esc(r.lead)+')</span>':''):money(r.cashCollected)}</td><td class="num">${r.closedDeals||0}</td><td><button class="btn sm ghost" style="color:var(--warn);border-color:var(--warn)" onclick="delRec('${r.id}')">Delete</button></td></tr>`).join('')
      :`<tr><td colspan="9" class="muted" style="padding:16px">No records.</td></tr>`)+`</tbody>`;
 }
 function delRec(id){ RECORDS=RECORDS.filter(r=>r.id!==id); save(LS.data,RECORDS); renderAll(); renderDash(); toast('Deleted'); }
@@ -871,7 +961,7 @@ function renderUsersTable(list){
     users.map(u=>{
       const teams=u.master?[]:teamsFor(u.username);
       const teamCell = u.master ? '<span class="muted">-</span>'
-        : (['closer','setter'].includes(u.role)
+        : (['closer','setter','owner'].includes(u.role)
             ? ((teams.length?teams.map(t=>`<span class="teamtag">${esc(t)}</span>`).join(''):'<span class="tag" style="color:var(--warn);border-color:var(--warn)">none - not scoped</span>')+` <button class="btn sm ghost" onclick="editTeams('${esc(u.username)}')">Edit</button>`)
             : '<span class="muted">all (admin/mgr)</span>');
       const actions = u.master ? '<span class="tag">master, set in Settings</span>'
@@ -884,7 +974,7 @@ async function renderUsers(){
   const isAdmin = SESSION.role==='admin';
   // managers can only create closer/setter; admins can also create manager/admin
   const roleSel=document.querySelector('#userForm [name=role]');
-  if(roleSel) roleSel.innerHTML = '<option value="closer">Closer</option><option value="setter">Setter</option>'+(isAdmin?'<option value="manager">Sales Manager</option><option value="admin">Admin</option>':'');
+  if(roleSel) roleSel.innerHTML = '<option value="closer">Closer</option><option value="setter">Setter</option>'+(isAdmin?'<option value="manager">Sales Manager</option><option value="owner">Offer Owner (client)</option><option value="admin">Admin</option>':'');
   const nt=document.getElementById('newUserTeams'); if(nt) nt.innerHTML=teamBoxesHtml([]);
   const tbl=document.getElementById('usersTable');
   // cache-first: draw whatever we already have instantly, spinner only on a cold load
