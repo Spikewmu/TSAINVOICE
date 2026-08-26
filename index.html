@@ -726,8 +726,8 @@ function renderBreakdownTables(recs, opts){
   const sRate=CFG.setterRate/100, cRate=CFG.closerRate/100;
   const sum=(arr,k)=>arr.reduce((a,b)=>a+(b[k]||0),0);
   const daysUnion=map=>{const s=new Set();Object.values(map).forEach(o=>o.days.forEach(d=>s.add(d)));return s.size;};
-  const setRows=Object.values(setters).map(o=>{ const dials=o.newOut+o.fuOut; return {...o,days:o.days.size,dials,connRate:dials?o.connCalls/dials:0,bookRate:o.connCalls?o.set/o.connCalls:0,payout:o.cash*sRate}; }).sort((a,b)=>b.cash-a.cash||b.set-a.set);
-  const cloRows=Object.values(closers).map(o=>({...o,days:o.days.size,dials:o.newOut+o.fuOut,closeRate:o.connected?o.deals/o.connected:0,cashPct:o.contract?o.cash/o.contract:0,util:o.capacity?o.connected/o.capacity:0,payout:o.cash*cRate})).sort((a,b)=>b.cash-a.cash);
+  const setRows=Object.values(setters).map(o=>{ const dials=o.newOut; return {...o,days:o.days.size,dials,connRate:dials?o.connCalls/dials:0,bookRate:o.connCalls?o.set/o.connCalls:0,payout:o.cash*sRate}; }).sort((a,b)=>b.cash-a.cash||b.set-a.set);
+  const cloRows=Object.values(closers).map(o=>({...o,days:o.days.size,dials:o.newOut,closeRate:o.connected?o.deals/o.connected:0,cashPct:o.contract?o.cash/o.contract:0,util:o.capacity?o.connected/o.capacity:0,payout:o.cash*cRate})).sort((a,b)=>b.cash-a.cash);
   let sT=null; if(setRows.length){ const dl=sum(setRows,'dials'),cc=sum(setRows,'connCalls'),st=sum(setRows,'set'); sT={n:setRows.length,days:daysUnion(setters),hours:sum(setRows,'hours'),dials:dl,connCalls:cc,connRate:dl?cc/dl:0,set:st,bookRate:cc?st/cc:0,convos4:sum(setRows,'convos4'),cash:sum(setRows,'cash'),payout:sum(setRows,'payout')}; }
   let cT=null; if(cloRows.length){ const c=sum(cloRows,'connected'),cap=sum(cloRows,'capacity'),d=sum(cloRows,'deals'),ct=sum(cloRows,'contract'),ca=sum(cloRows,'cash'); cT={n:cloRows.length,days:daysUnion(closers),hours:sum(cloRows,'hours'),dials:sum(cloRows,'dials'),set:sum(cloRows,'set'),connected:c,capacity:cap,util:cap?c/cap:0,deals:d,contract:ct,cash:ca,closeRate:c?d/c:0,cashPct:ct?ca/ct:0,payout:sum(cloRows,'payout')}; }
   const hrs=v=>v?(Math.round(v*10)/10):0;
@@ -877,8 +877,8 @@ function renderReps(){
   const sRate=CFG.setterRate/100, cRate=CFG.closerRate/100;
   const sum=(arr,k)=>arr.reduce((a,b)=>a+(b[k]||0),0);
   const daysUnion=map=>{const s=new Set();Object.values(map).forEach(o=>o.days.forEach(d=>s.add(d)));return s.size;};
-  const setRows=Object.values(setters).map(o=>{ const dials=o.newOut+o.fuOut; return {...o,days:o.days.size,dials,connRate:dials?o.connCalls/dials:0,bookRate:o.connCalls?o.set/o.connCalls:0,payout:o.cash*sRate}; }).sort((a,b)=>b.cash-a.cash||b.set-a.set);
-  const cloRows=Object.values(closers).map(o=>({...o,days:o.days.size,dials:o.newOut+o.fuOut,closeRate:o.connected?o.deals/o.connected:0,cashPct:o.contract?o.cash/o.contract:0,util:o.capacity?o.connected/o.capacity:0,payout:o.cash*cRate})).sort((a,b)=>b.cash-a.cash);
+  const setRows=Object.values(setters).map(o=>{ const dials=o.newOut; return {...o,days:o.days.size,dials,connRate:dials?o.connCalls/dials:0,bookRate:o.connCalls?o.set/o.connCalls:0,payout:o.cash*sRate}; }).sort((a,b)=>b.cash-a.cash||b.set-a.set);
+  const cloRows=Object.values(closers).map(o=>({...o,days:o.days.size,dials:o.newOut,closeRate:o.connected?o.deals/o.connected:0,cashPct:o.contract?o.cash/o.contract:0,util:o.capacity?o.connected/o.capacity:0,payout:o.cash*cRate})).sort((a,b)=>b.cash-a.cash);
   let sT=null; if(setRows.length){ const dl=sum(setRows,'dials'),cc=sum(setRows,'connCalls'),st=sum(setRows,'set'); sT={n:setRows.length,days:daysUnion(setters),hours:sum(setRows,'hours'),dials:dl,connCalls:cc,connRate:dl?cc/dl:0,set:st,bookRate:cc?st/cc:0,convos4:sum(setRows,'convos4'),cash:sum(setRows,'cash'),payout:sum(setRows,'payout')}; }
   let cT=null; if(cloRows.length){ const c=sum(cloRows,'connected'),cap=sum(cloRows,'capacity'),d=sum(cloRows,'deals'),ct=sum(cloRows,'contract'),ca=sum(cloRows,'cash'); cT={n:cloRows.length,days:daysUnion(closers),hours:sum(cloRows,'hours'),dials:sum(cloRows,'dials'),set:sum(cloRows,'set'),connected:c,capacity:cap,util:cap?c/cap:0,deals:d,contract:ct,cash:ca,closeRate:c?d/c:0,cashPct:ct?ca/ct:0,payout:sum(cloRows,'payout')}; }
   const hrs=v=>v?(Math.round(v*10)/10):0;
@@ -914,7 +914,7 @@ function repDetail(rep, role){
   const body = recs.length ? recs.map(x=>{
     const t=x.type==='deal'?'<span class="pill good">deal</span>':'<span class="pill">eod</span>';
     return role==='Setter'
-      ? `<tr><td>${esc(usDate(x.date))}</td><td>${esc(x.client)}</td><td>${t}</td><td class="num">${x.hoursDialing||0}</td><td class="num">${(x.newOutreach||0)+(x.followUpOutreach||0)}</td><td class="num">${x.connectedCalls||0}</td><td class="num">${x.callsSet||0}</td><td class="num">${x.convos4min||0}</td><td class="num">${x.type==='deal'?money(x.cashCollected):'-'}</td></tr>`
+      ? `<tr><td>${esc(usDate(x.date))}</td><td>${esc(x.client)}</td><td>${t}</td><td class="num">${x.hoursDialing||0}</td><td class="num">${x.newOutreach||0}</td><td class="num">${x.connectedCalls||0}</td><td class="num">${x.callsSet||0}</td><td class="num">${x.convos4min||0}</td><td class="num">${x.type==='deal'?money(x.cashCollected):'-'}</td></tr>`
       : `<tr><td>${esc(usDate(x.date))}</td><td>${esc(x.client)}</td><td>${t}</td><td class="num">${x.connectedMeetings||0}</td><td class="num">${x.callCapacity||0}</td><td class="num">${x.closedDeals||0}</td><td class="num">${money(x.contractValue)}</td><td class="num">${money(x.cashCollected)}</td></tr>`;
   }).join('') : `<tr><td colspan="8" class="muted" style="padding:16px">No submissions in this range.</td></tr>`;
   document.getElementById('repDetailTable').innerHTML=head+body+`</tbody>`;
