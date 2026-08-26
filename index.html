@@ -414,9 +414,9 @@ const DEFAULT_CFG = {
   goal:2000000, closerRate:7, setterRate:3,
   endpoint:"https://script.google.com/macros/s/AKfycbzOjSVJ7gj4V6kcrbiAodGmoA884imoyvD9j-teTlxMZgGH9OYcR3q7pXUAeqCYGeS1/exec",
   // Records (deals/eod/postcall/clients/teams/onboarding) live in Supabase Postgres = fast.
-  // Login + user accounts stay on the Apps Script endpoint above so passwords never touch this public key.
+  // The Supabase key is NOT stored here anymore: the Apps Script backend hands it to the app
+  // only after a successful login (see ensureKey/tryGate), so it is never exposed in the page source.
   supaUrl:"https://wiwmogfurmdwrjndsuct.supabase.co",
-  supaKey:"sb_publishable_mIhEjMZQzUwrJTtUnKNMeA_zjJPxvie",
   adminCode:"tsaboss",
   managerCode:"TSAmgr2026"
 };
@@ -443,8 +443,15 @@ async function api(payload){
     return await r.json();
   }catch(e){ console.warn('api fail',e); return null; }
 }
-function supaOn(){ return !!(CFG.supaUrl && CFG.supaKey); }
-function supaHeaders(extra){ return Object.assign({apikey:CFG.supaKey, Authorization:'Bearer '+CFG.supaKey}, extra||{}); }
+// the Supabase key comes from the session (handed over at login), never from the page source
+function supaKey(){ return (SESSION&&SESSION.supaKey)||CFG.supaKey||''; }
+function supaOn(){ return !!(CFG.supaUrl && supaKey()); }
+function supaHeaders(extra){ const k=supaKey(); return Object.assign({apikey:k, Authorization:'Bearer '+k}, extra||{}); }
+// fetch the key for an existing session that predates the login change (so nobody has to re-login)
+async function ensureKey(){
+  if(supaKey() || !CFG.endpoint || !SESSION) return;
+  try{ const res=await api({action:'getKey', ...authFields()}); if(res&&res.ok&&res.supaKey){ SESSION.supaKey=res.supaKey; save(LS.auth,SESSION); } }catch(e){}
+}
 async function remoteGet(){
   // Primary: Supabase (records live here now). Falls back to the Apps Script sheet.
   if(supaOn()){
@@ -502,7 +509,7 @@ async function tryGate(){
   // 1) backend accounts
   if(CFG.endpoint){
     const res=await api({action:'login', username:u, password:p});
-    if(res && res.ok){ setSession({username:u, name:res.name||u, role:res.role, pw:p}); return; }
+    if(res && res.ok){ setSession({username:u, name:res.name||u, role:res.role, pw:p, supaKey:res.supaKey}); return; }
   }
   // 2) master admin break-glass
   if((u==='tsaboss') && p===CFG.adminCode){ setSession({username:'tsaboss', name:'Admin', role:'admin', pw:p}); return; }
@@ -532,10 +539,12 @@ function startApp(){
   }[role] || ['eod'];
   document.querySelectorAll('#tabs button').forEach(b=>{ b.hidden = !allow.includes(b.dataset.tab); });
   fillLists(); wireTabs(); presetDates();
-  if(role==='admin'){ setEodRole('Closer'); Promise.all([syncRecords(),loadUsers()]).then(()=>{ fillLists(); setEodRole('Closer'); renderDash(); renderAll(); }); showTab('dash'); }
-  else if(role==='manager'){ Promise.all([syncRecords(),loadUsers()]).then(()=>{ fillLists(); renderDash(); }); showTab('clients'); }
-  else if(role==='owner'){ Promise.all([syncRecords(),loadUsers()]).then(()=>{ renderDash(); }); showTab('dash'); } // offer owner: their account only, dashboard-only, read-only
-  else { applyIdentity(); syncRecords().then(()=>applyIdentity()); showTab(allow[0]); }
+  ensureKey().then(()=>{
+    if(role==='admin'){ setEodRole('Closer'); Promise.all([syncRecords(),loadUsers()]).then(()=>{ fillLists(); setEodRole('Closer'); renderDash(); renderAll(); }); showTab('dash'); }
+    else if(role==='manager'){ Promise.all([syncRecords(),loadUsers()]).then(()=>{ fillLists(); renderDash(); }); showTab('clients'); }
+    else if(role==='owner'){ Promise.all([syncRecords(),loadUsers()]).then(()=>{ renderDash(); }); showTab('dash'); } // offer owner: their account only, dashboard-only, read-only
+    else { applyIdentity(); syncRecords().then(()=>applyIdentity()); showTab(allow[0]); }
+  });
 }
 // lock a rep's identity into the forms
 function applyIdentity(){
