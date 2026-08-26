@@ -80,6 +80,12 @@
   .prodgrid{display:flex;flex-wrap:wrap;gap:12px}
   .produnit{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);font-weight:600}
   .produnit input{width:120px}
+  #dailyWrap{max-height:62vh;overflow:auto}
+  #dailyGrid{table-layout:fixed;width:100%}
+  #dailyGrid th,#dailyGrid td{text-align:center;padding:7px 8px}
+  #dailyGrid th:first-child,#dailyGrid td:first-child{width:48px}
+  #dailyGrid thead th{position:sticky;top:0;background:#1b1610;z-index:2;box-shadow:0 1px 0 var(--glass-brd)}
+  #dailyGrid input{width:100%;text-align:center;padding:8px 6px}
   form.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow)}
   form.grid .full{grid-column:1/-1}
   .formhead{grid-column:1/-1;margin:6px 0 0;padding-top:14px;border-top:1px solid var(--border);display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
@@ -295,7 +301,7 @@
           <button class="btn gold sm" onclick="saveDailyGrid()">Save changes</button>
         </div>
         <p class="fieldhelp" style="margin:0 0 10px">Pick the rep, their account, and the month. Edit any cell and hit <b>Save changes</b> - it re-submits that day so the corrected numbers replace the wrong ones everywhere.</p>
-        <div class="tablewrap"><table id="dailyGrid"></table></div>
+        <div class="tablewrap" id="dailyWrap"><table id="dailyGrid"></table></div>
       </div>
     </div>
     <div class="panel"><h3>All records</h3><div class="tablewrap"><table id="allTable"></table></div></div>
@@ -629,6 +635,9 @@ function nowET(){ try{ return new Date().toLocaleString('sv-SE',{timeZone:'Ameri
 function submittedETof(r){ if(r.submittedET) return r.submittedET; if(r.submittedAt){ try{ return new Date(r.submittedAt).toLocaleString('sv-SE',{timeZone:'America/New_York'})+' ET'; }catch(e){} } return '-'; }
 // display dates in US format (M-D-YYYY, e.g. 8-25-2026); stored dates stay ISO (YYYY-MM-DD) for sorting/filtering
 function usDate(d){ d=(d||'').slice(0,10); const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(d); return m?(+m[2])+'-'+(+m[3])+'-'+m[1]:d; }
+// month "2026-08" -> "August 2026" (month-year, never year-month); timestamp "2026-08-26 01:00 ET" -> "8-26-2026 01:00 ET"
+function usMonth(ym){ ym=(ym||'').slice(0,7); const m=/^(\d{4})-(\d{2})$/.exec(ym); if(!m) return ym; const names=['January','February','March','April','May','June','July','August','September','October','November','December']; return names[(+m[2])-1]+' '+m[1]; }
+function usDateTime(s){ s=String(s||''); const m=/^(\d{4})-(\d{2})-(\d{2})(.*)$/.exec(s); return m?(+m[2])+'-'+(+m[3])+'-'+m[1]+m[4]:s; }
 function presetDates(){ const t=todayLocal(); document.querySelectorAll('input[type=date]').forEach(d=>{ if(!d.value) d.value=t; }); }
 
 /* ---------------- EOD role ---------------- */
@@ -737,7 +746,7 @@ function filtered(){ const m=document.getElementById('fMonth').value,c=document.
 function buildFilterOptions(){
   const months=[...new Set(RECORDS.map(x=>monthKey(x.date)).filter(Boolean))].sort().reverse();
   const fm=document.getElementById('fMonth'),cur=fm.value;
-  fm.innerHTML='<option value="">All months</option>'+months.map(m=>`<option>${m}</option>`).join('');
+  fm.innerHTML='<option value="">All months</option>'+months.map(m=>`<option value="${m}">${usMonth(m)}</option>`).join('');
   if(cur)fm.value=cur; else if(months[0])fm.value=months[0];
   const fc=document.getElementById('fClient'),cc=fc.value;
   const sc=dashScopeClients(), clist=sc?sc.filter(c=>c!==' none'):clientNames();
@@ -917,7 +926,7 @@ function myTeamClients(){
 function buildRepFilters(){
   const months=[...new Set(RECORDS.map(x=>monthKey(x.date)).filter(Boolean))].sort().reverse();
   const fm=document.getElementById('rMonth'),cur=fm.value;
-  fm.innerHTML='<option value="">All months</option>'+months.map(m=>`<option>${m}</option>`).join('');
+  fm.innerHTML='<option value="">All months</option>'+months.map(m=>`<option value="${m}">${usMonth(m)}</option>`).join('');
   if(cur)fm.value=cur; else if(months[0])fm.value=months[0];
   const fc=document.getElementById('rClient'),cc=fc.value;
   const clients=REP_SCOPE?REP_SCOPE:clientNames();
@@ -1008,7 +1017,7 @@ function renderAll(){
   const rows=RECORDS.filter(x=>['deal','eod','postcall'].includes(x.type)||!x.type).sort((a,b)=>(b.submittedAt||'').localeCompare(a.submittedAt||''));
   document.getElementById('allTable').innerHTML=
     `<thead><tr><th>Date</th><th>Submitted (ET)</th><th>Type</th><th>Role</th><th>Client</th><th>Rep</th><th>Outcome / Cash</th><th class="num">Deals</th><th></th></tr></thead><tbody>`+
-    (rows.length?rows.map(r=>`<tr><td>${esc(usDate(r.date))}</td><td style="font-size:12px;color:var(--muted)">${esc(submittedETof(r))}</td><td><span class="pill ${r.type==='deal'?'good':(r.type==='postcall'?'warn':'')}">${esc(r.type)}</span></td><td>${esc(r.role)}</td><td>${esc(r.client)}</td><td>${esc(r.rep)}</td><td>${r.type==='postcall'?esc(r.outcome||'-')+(r.lead?' <span class="muted">('+esc(r.lead)+')</span>':''):money(r.cashCollected)}</td><td class="num">${r.closedDeals||0}</td><td><button class="btn sm ghost" style="color:var(--warn);border-color:var(--warn)" onclick="delRec('${r.id}')">Delete</button></td></tr>`).join('')
+    (rows.length?rows.map(r=>`<tr><td>${esc(usDate(r.date))}</td><td style="font-size:12px;color:var(--muted)">${esc(usDateTime(submittedETof(r)))}</td><td><span class="pill ${r.type==='deal'?'good':(r.type==='postcall'?'warn':'')}">${esc(r.type)}</span></td><td>${esc(r.role)}</td><td>${esc(r.client)}</td><td>${esc(r.rep)}</td><td>${r.type==='postcall'?esc(r.outcome||'-')+(r.lead?' <span class="muted">('+esc(r.lead)+')</span>':''):money(r.cashCollected)}</td><td class="num">${r.closedDeals||0}</td><td><button class="btn sm ghost" style="color:var(--warn);border-color:var(--warn)" onclick="delRec('${r.id}')">Delete</button></td></tr>`).join('')
      :`<tr><td colspan="9" class="muted" style="padding:16px">No records.</td></tr>`)+`</tbody>`;
 }
 function delRec(id){ RECORDS=RECORDS.filter(r=>r.id!==id); save(LS.data,RECORDS); renderAll(); renderDash(); toast('Deleted'); }
@@ -1023,7 +1032,7 @@ function renderDailyEntry(){
   const rep=document.getElementById('deRep'),cl=document.getElementById('deClient'),mo=document.getElementById('deMonth'); if(!rep||!cl||!mo) return;
   cl.innerHTML=clientNames().map(c=>`<option>${esc(c)}</option>`).join('');
   const months=[...new Set(RECORDS.map(x=>monthKey(x.date)).filter(Boolean))].sort().reverse(); if(!months.includes(thisMonth())) months.unshift(thisMonth());
-  mo.innerHTML=months.map(m=>`<option>${m}</option>`).join('');
+  mo.innerHTML=months.map(m=>`<option value="${m}">${usMonth(m)}</option>`).join('');
   deSetRole(deRole());
 }
 function deSetRole(r){
@@ -1037,11 +1046,12 @@ function loadDailyGrid(){
   if(!rep||!client||!ym){ g.innerHTML='<tbody><tr><td class="muted" style="padding:14px">Pick a rep, client, and month above.</td></tr></tbody>'; return; }
   const eff={}; activityRecords().forEach(x=>{ if((x.type==='eod'||!x.type) && (x.rep||'').trim()===rep && (x.client||'')===client && (x.role||'')===role){ eff[(x.date||'').slice(0,10)]=x; } });
   const dim=daysInMonth(ym);
-  let h='<thead><tr><th>Day</th>'+cols.map(c=>`<th class="num">${esc(c[1])}</th>`).join('')+'</tr></thead><tbody>';
+  let h='<thead><tr><th>Day</th>'+cols.map(c=>`<th>${esc(c[1])}</th>`).join('')+'</tr></thead><tbody>';
   for(let d=1;d<=dim;d++){ const date=ym+'-'+String(d).padStart(2,'0'),rec=eff[date]||{};
-    h+=`<tr data-date="${date}"><td>${d}</td>`+cols.map(c=>{ const v=rec[c[0]]; return `<td><input type="number" step="any" data-f="${c[0]}" value="${(v!=null&&v!=='')?esc(String(v)):''}" oninput="this.closest('tr').dataset.dirty='1'" style="width:84px"></td>`; }).join('')+'</tr>';
+    h+=`<tr data-date="${date}"><td>${d}</td>`+cols.map(c=>{ const v=rec[c[0]]; return `<td><input type="number" step="any" data-f="${c[0]}" value="${(v!=null&&v!=='')?esc(String(v)):''}" oninput="this.closest('tr').dataset.dirty='1'"></td>`; }).join('')+'</tr>';
   }
   g.innerHTML=h+'</tbody>';
+  g.style.minWidth=(cols.length*94+52)+'px'; // keep columns readable; horizontal scroll for the wider closer layout
 }
 async function saveDailyGrid(){
   const rep=(document.getElementById('deRep').value||'').trim(),client=document.getElementById('deClient').value||'',role=deRole();
@@ -1057,7 +1067,7 @@ async function saveDailyGrid(){
 const DEAL_COLS=['date','submittedET','client','lead','leadEmail','rep','setter','product','callType','contractValue','cashCollected','depositCollected','fathom','notes','submittedAt'];
 const EOD_COLS=['date','submittedET','client','rep','role','hoursDialing','followUpOutreach','newOutreach','connectedCalls','callsOffered','callsSet','convos4min','callCapacity','speedToLead','newMeetings','connectedMeetings','followUpMeetings','advancedCalls','noShows','closedDeals','contractsSigned','contractValue','cashCollected','depositCollected','aosiSold','productBSold','notes','submittedAt'];
 const POSTCALL_COLS=['date','submittedET','client','rep','lead','leadEmail','setter','outcome','callType','fathom','notes','submittedAt'];
-function exportCSV(type){ const cols=type==='deal'?DEAL_COLS:(type==='postcall'?POSTCALL_COLS:EOD_COLS); const rows=RECORDS.filter(r=>r.type===type); if(!rows.length){toast('Nothing to export');return;} const head=cols.join(','); const body=rows.map(r=>cols.map(c=>csvCell(r[c])).join(',')).join('\n'); download(`tsa_${type}_${todayLocal()}.csv`,head+'\n'+body,'text/csv'); }
+function exportCSV(type){ const cols=type==='deal'?DEAL_COLS:(type==='postcall'?POSTCALL_COLS:EOD_COLS); const rows=RECORDS.filter(r=>r.type===type); if(!rows.length){toast('Nothing to export');return;} const fmt=(c,v)=> c==='date'?usDate(v) : c==='submittedET'?usDateTime(v) : v; const head=cols.join(','); const body=rows.map(r=>cols.map(c=>csvCell(fmt(c,r[c]))).join(',')).join('\n'); download(`tsa_${type}_${usDate(todayLocal())}.csv`,head+'\n'+body,'text/csv'); }
 function csvCell(v){ if(v==null)return ''; const s=String(v); return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; }
 function exportJSON(){ download('tsa_invoice_backup.json',JSON.stringify(RECORDS,null,2),'application/json'); }
 function download(name,text,mime){ const b=new Blob([text],{type:mime}),u=URL.createObjectURL(b),a=document.createElement('a'); a.href=u;a.download=name;a.click();URL.revokeObjectURL(u); }
