@@ -433,7 +433,7 @@ function dedupeRecords(list){
   return out;
 }
 async function addRecord(rec){
-  rec.id=uid(); rec.submittedAt=new Date().toISOString();
+  rec.id=uid(); rec.submittedAt=new Date().toISOString(); rec.submittedET=nowET();
   RECORDS.push(rec); save(LS.data,RECORDS);
   if(CFG.endpoint) await api(rec); // records have no "action" key -> backend appends
 }
@@ -531,6 +531,9 @@ function fillLists(){
 }
 // LOCAL calendar day (not UTC) - using toISOString() here would roll to tomorrow in the evening for US time zones
 function todayLocal(){ const d=new Date(); return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10); }
+// current submission time, recorded in Eastern (readable + sortable: "2026-08-26 01:00:59 ET"). Works from any rep's timezone.
+function nowET(){ try{ return new Date().toLocaleString('sv-SE',{timeZone:'America/New_York'})+' ET'; }catch(e){ return new Date().toISOString(); } }
+function submittedETof(r){ if(r.submittedET) return r.submittedET; if(r.submittedAt){ try{ return new Date(r.submittedAt).toLocaleString('sv-SE',{timeZone:'America/New_York'})+' ET'; }catch(e){} } return '-'; }
 function presetDates(){ const t=todayLocal(); document.querySelectorAll('input[type=date]').forEach(d=>{ if(!d.value) d.value=t; }); }
 
 /* ---------------- EOD role ---------------- */
@@ -763,15 +766,15 @@ function repDetail(rep, role){
 function renderAll(){
   const rows=activityRecords().sort((a,b)=>(b.submittedAt||'').localeCompare(a.submittedAt||''));
   document.getElementById('allTable').innerHTML=
-    `<thead><tr><th>Date</th><th>Type</th><th>Role</th><th>Client</th><th>Rep</th><th class="num">Cash</th><th class="num">Deals</th><th></th></tr></thead><tbody>`+
-    (rows.length?rows.map(r=>`<tr><td>${esc((r.date||'').slice(0,10))}</td><td><span class="pill ${r.type==='deal'?'good':''}">${esc(r.type)}</span></td><td>${esc(r.role)}</td><td>${esc(r.client)}</td><td>${esc(r.rep)}</td><td class="num">${money(r.cashCollected)}</td><td class="num">${r.closedDeals||0}</td><td><button class="btn sm ghost" style="color:var(--warn);border-color:var(--warn)" onclick="delRec('${r.id}')">Delete</button></td></tr>`).join('')
-     :`<tr><td colspan="8" class="muted" style="padding:16px">No records.</td></tr>`)+`</tbody>`;
+    `<thead><tr><th>Date</th><th>Submitted (ET)</th><th>Type</th><th>Role</th><th>Client</th><th>Rep</th><th class="num">Cash</th><th class="num">Deals</th><th></th></tr></thead><tbody>`+
+    (rows.length?rows.map(r=>`<tr><td>${esc((r.date||'').slice(0,10))}</td><td style="font-size:12px;color:var(--muted)">${esc(submittedETof(r))}</td><td><span class="pill ${r.type==='deal'?'good':''}">${esc(r.type)}</span></td><td>${esc(r.role)}</td><td>${esc(r.client)}</td><td>${esc(r.rep)}</td><td class="num">${money(r.cashCollected)}</td><td class="num">${r.closedDeals||0}</td><td><button class="btn sm ghost" style="color:var(--warn);border-color:var(--warn)" onclick="delRec('${r.id}')">Delete</button></td></tr>`).join('')
+     :`<tr><td colspan="9" class="muted" style="padding:16px">No records.</td></tr>`)+`</tbody>`;
 }
 function delRec(id){ RECORDS=RECORDS.filter(r=>r.id!==id); save(LS.data,RECORDS); renderAll(); renderDash(); toast('Deleted'); }
 
 /* ---------------- export ---------------- */
-const DEAL_COLS=['date','client','rep','setter','product','callType','contractValue','cashCollected','depositCollected','notes','submittedAt'];
-const EOD_COLS=['date','client','rep','role','followUpOutreach','newOutreach','callsOffered','callsSet','callCapacity','speedToLead','newMeetings','connectedMeetings','followUpMeetings','advancedCalls','noShows','closedDeals','contractsSigned','contractValue','cashCollected','depositCollected','aosiSold','productBSold','notes','submittedAt'];
+const DEAL_COLS=['date','submittedET','client','lead','rep','setter','product','callType','contractValue','cashCollected','depositCollected','notes','submittedAt'];
+const EOD_COLS=['date','submittedET','client','rep','role','hoursDialing','followUpOutreach','newOutreach','callsOffered','callsSet','callCapacity','speedToLead','newMeetings','connectedMeetings','followUpMeetings','advancedCalls','noShows','closedDeals','contractsSigned','contractValue','cashCollected','depositCollected','aosiSold','productBSold','notes','submittedAt'];
 function exportCSV(type){ const cols=type==='deal'?DEAL_COLS:EOD_COLS; const rows=RECORDS.filter(r=>r.type===type); if(!rows.length){toast('Nothing to export');return;} const head=cols.join(','); const body=rows.map(r=>cols.map(c=>csvCell(r[c])).join(',')).join('\n'); download(`tsa_${type}_${todayLocal()}.csv`,head+'\n'+body,'text/csv'); }
 function csvCell(v){ if(v==null)return ''; const s=String(v); return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; }
 function exportJSON(){ download('tsa_invoice_backup.json',JSON.stringify(RECORDS,null,2),'application/json'); }
