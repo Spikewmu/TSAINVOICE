@@ -24,6 +24,12 @@ var SHEET_ID  = 'PASTE_YOUR_SHEET_ID_HERE';
 var ADMIN_PASS = 'tsaboss';                 // must match the app's master admin password
 var MANAGER_PASS = 'TSAmgr2026';            // must match the app's managerCode; lets Sales Managers create closers/setters
 var SALT = 'tsa-sales-salt-change-me';      // change once, before creating users
+var MASTER_USER = 'tsaboss';                // break-glass admin username
+
+// Supabase publishable key. Records live in Supabase; this key is handed to the app
+// ONLY after a successful login (see login_/getKey_), so it is no longer exposed in the
+// public page source. That is the "lock it down" gate: no login, no key, no data access.
+var SUPA_KEY = 'sb_publishable_mIhEjMZQzUwrJTtUnKNMeA_zjJPxvie';
 
 // ---- Automation: paste a Slack Incoming Webhook URL to turn on onboarding pings ----
 // Slack: create an app > Incoming Webhooks > add to your onboarding channel > copy the URL.
@@ -70,6 +76,7 @@ function doPost(e){
   var action = body.action;
 
   if(action === 'login')      return login_(body);
+  if(action === 'getKey')     return getKey_(body);
   if(action === 'listUsers')  return requireManager_(body, listUsers_);
   if(action === 'saveUser')   return requireManager_(body, saveUser_);
   if(action === 'deleteUser') return requireAdmin_(body, deleteUser_);
@@ -145,14 +152,24 @@ function usersSheet_(){ return tab_(USR_TAB, ['username','name','role','passHash
 
 function login_(body){
   var u = String(body.username||'').trim().toLowerCase();
+  // master / break-glass admin (not in the users sheet)
+  if(u === MASTER_USER && body.password === ADMIN_PASS){
+    return json_({ ok:true, name:'Admin', role:'admin', supaKey:SUPA_KEY });
+  }
   var rows = rowsAsObjects_(usersSheet_());
   for(var i=0;i<rows.length;i++){
     if(String(rows[i].username).toLowerCase() === u){
-      if(rows[i].passHash === hash_(body.password)) return json_({ ok:true, name:rows[i].name, role:rows[i].role });
+      if(rows[i].passHash === hash_(body.password)) return json_({ ok:true, name:rows[i].name, role:rows[i].role, supaKey:SUPA_KEY });
       return json_({ ok:false });
     }
   }
   return json_({ ok:false });
+}
+// Hand the Supabase key to any already-authenticated account (used when an existing
+// session predates the login change, so nobody has to log out and back in).
+function getKey_(body){
+  if(actorRole_(body) || isAdmin_(body)) return json_({ ok:true, supaKey:SUPA_KEY });
+  return json_({ ok:false, error:'not authorized' });
 }
 function listUsers_(){
   var rows = rowsAsObjects_(usersSheet_());
