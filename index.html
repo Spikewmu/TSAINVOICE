@@ -137,6 +137,7 @@
   <button data-tab="clients">Client Overview</button>
   <button data-tab="onboarding">Onboarding</button>
   <button data-tab="deal">Log Closed Deal</button>
+  <button data-tab="postcall">Post-Call Checkout</button>
   <button data-tab="eod">End of Day</button>
   <button data-tab="data">Data + Export</button>
   <button data-tab="users">Users</button>
@@ -183,6 +184,24 @@
     </form>
   </section>
 
+  <!-- ===== POST-CALL CHECKOUT ===== -->
+  <section id="tab-postcall" hidden>
+    <h2 class="section">Post-Call Checkout</h2>
+    <p class="hint">Fill this in <b>after every call</b> - the outcome of each one, win or lose. This is separate from Log Closed Deal (that's only for deals you close). Drop your Fathom link so your manager can review the call.</p>
+    <form class="grid" id="postcallForm" onsubmit="submitPostCall(event)">
+      <div class="field"><label>Date this call was *</label><input type="date" name="date" required><span class="fieldhelp">Defaults to today (your local date).</span></div>
+      <div class="field"><label>Client / account *</label><select name="client" data-list="clients" required></select></div>
+      <div class="field"><label>Closer *</label><select name="rep" data-list="closers" required></select><span class="fieldhelp">You (locked to your login).</span></div>
+      <div class="field"><label>Lead / prospect name *</label><input type="text" name="lead" required placeholder="who the call was with"></div>
+      <div class="field"><label>Setter (who set the call)</label><select name="setter" data-list="setters"></select><span class="fieldhelp">Leave blank if it was inbound / you set it yourself.</span></div>
+      <div class="field"><label>Call outcome *</label><select name="outcome" required><option value="">-</option><option>Won (closed)</option><option>Lost</option><option>No-show</option><option>Advanced (moved forward)</option><option>Follow-up booked</option><option>Blocked (partner / objection)</option><option>Rescheduled</option><option>Disqualified</option></select><span class="fieldhelp">What happened on this call.</span></div>
+      <div class="field"><label>Call type</label><select name="callType"><option value="">-</option><option>First call</option><option>Second call</option><option>Follow-up</option></select></div>
+      <div class="field full"><label>Fathom recording link</label><input type="url" name="fathom" placeholder="https://fathom.video/share/..."><span class="fieldhelp">Fathom.video -> open the call -> three dots -> Copy share link.</span></div>
+      <div class="field full"><label>Notes</label><input type="text" name="notes" placeholder="what tripped it up, next step, anything your manager should know"></div>
+      <div class="full row-actions"><button class="btn gold" type="submit">Submit post-call</button></div>
+    </form>
+  </section>
+
   <!-- ===== END OF DAY ===== -->
   <section id="tab-eod" hidden>
     <h2 class="section">End of Day Checkout</h2>
@@ -207,8 +226,10 @@
       <div class="field"><label>Hours dialing today</label><input type="number" name="hoursDialing" min="0" step="0.25" placeholder="e.g. 4"><span class="fieldhelp">Total time on the phones today, in hours (e.g. 4 or 3.5).</span></div>
       <div class="field"><label>New outreach</label><input type="number" name="newOutreach" min="0" step="1"><span class="fieldhelp">Dials / messages to brand-new leads.</span></div>
       <div class="field"><label>Follow-up outreach</label><input type="number" name="followUpOutreach" min="0" step="1"><span class="fieldhelp">Dials / messages to leads you'd already contacted.</span></div>
+      <div class="field"><label>Connected calls</label><input type="number" name="connectedCalls" min="0" step="1"><span class="fieldhelp">How many people you actually reached / talked to. Drives your connection rate.</span></div>
       <div class="field setterOnly" hidden><label>Sales calls offered</label><input type="number" name="callsOffered" min="0" step="1"><span class="fieldhelp">Times you offered / pitched to book a call.</span></div>
       <div class="field setterOnly" hidden><label>Sales calls set</label><input type="number" name="callsSet" min="0" step="1"><span class="fieldhelp">Appointments you actually booked.</span></div>
+      <div class="field setterOnly" hidden><label>Conversations over 4 min</label><input type="number" name="convos4min" min="0" step="1"><span class="fieldhelp">Number of conversations longer than 4 minutes (meaningful talk time).</span></div>
       <div class="field setterOnly" hidden><label>Speed to lead (min)</label><input type="number" name="speedToLead" min="0" step="0.1"><span class="fieldhelp">Avg minutes from a lead arriving to your first dial. Optional.</span></div>
 
       <div class="formhead closerOnly"><b>Meetings / calls</b><span class="sub">the calls you took today (setters don't fill this - the closer reports call outcomes)</span></div>
@@ -241,6 +262,7 @@
     <div class="row-actions" style="margin-bottom:16px">
       <button class="btn sm" onclick="exportCSV('deal')">Export closed deals (CSV)</button>
       <button class="btn sm" onclick="exportCSV('eod')">Export end-of-day (CSV)</button>
+      <button class="btn sm" onclick="exportCSV('postcall')">Export post-call (CSV)</button>
       <button class="btn sm ghost" onclick="exportJSON()">Backup all (JSON)</button>
       <label class="btn sm ghost" style="cursor:pointer">Import JSON<input type="file" accept="application/json" hidden onchange="importJSON(event)"></label>
       <button class="btn sm ghost" onclick="wipe()" style="color:var(--warn);border-color:var(--warn)">Clear all</button>
@@ -467,16 +489,16 @@ function startApp(){
   document.getElementById('whoTag').textContent = SESSION.name+' ('+role+')';
   document.getElementById('storeTag').textContent = CFG.endpoint ? 'Shared data' : 'Local data (this browser)';
   const allow = {
-    admin:['dash','reps','clients','onboarding','deal','eod','data','users','settings'],
+    admin:['dash','reps','clients','onboarding','deal','postcall','eod','data','users','settings'],
     manager:['dash','reps','clients','onboarding','users'],
-    closer:['deal','eod','reps'],
+    closer:['deal','postcall','eod','reps'],
     setter:['eod','reps']
   }[role] || ['eod'];
   document.querySelectorAll('#tabs button').forEach(b=>{ b.hidden = !allow.includes(b.dataset.tab); });
   fillLists(); wireTabs(); presetDates();
   if(role==='admin'){ setEodRole('Closer'); Promise.all([syncRecords(),loadUsers()]).then(()=>{ fillLists(); setEodRole('Closer'); renderDash(); renderAll(); }); showTab('dash'); }
   else if(role==='manager'){ Promise.all([syncRecords(),loadUsers()]).then(()=>{ fillLists(); renderDash(); }); showTab('clients'); }
-  else { applyIdentity(); syncRecords(); showTab(allow[0]); }
+  else { applyIdentity(); syncRecords().then(()=>applyIdentity()); showTab(allow[0]); }
 }
 // lock a rep's identity into the forms
 function applyIdentity(){
@@ -485,15 +507,19 @@ function applyIdentity(){
   document.getElementById('roleSegWrap').hidden = true; // reps cannot switch role
   const eRep=document.querySelector('#eodForm [name=rep]');
   eRep.innerHTML='<option>'+esc(SESSION.name)+'</option>'; eRep.value=SESSION.name; eRep.disabled=true;
-  const dRep=document.querySelector('#dealForm [name=rep]');
-  if(dRep){ if(![...dRep.options].some(o=>o.value===SESSION.name)) dRep.insertAdjacentHTML('beforeend','<option>'+esc(SESSION.name)+'</option>'); dRep.value=SESSION.name; dRep.disabled=true; }
+  ['#dealForm','#postcallForm'].forEach(sel=>{ const rep=document.querySelector(sel+' [name=rep]'); if(rep){ if(![...rep.options].some(o=>o.value===SESSION.name)) rep.insertAdjacentHTML('beforeend','<option>'+esc(SESSION.name)+'</option>'); rep.value=SESSION.name; rep.disabled=true; } });
+  // scope the client picker to the rep's assigned team(s): 1 team -> locked to it, 2+ -> dropdown of just those
+  const myTeams=teamsFor(SESSION&&SESSION.username), opts=myTeams.length?myTeams:clientNames();
+  ['#eodForm','#dealForm','#postcallForm'].forEach(sel=>{ const cs=document.querySelector(sel+' [name=client]'); if(!cs) return;
+    if(opts.length===1){ cs.innerHTML='<option>'+esc(opts[0])+'</option>'; cs.value=opts[0]; cs.disabled=true; }
+    else { const cur=cs.value; cs.innerHTML='<option value="">-</option>'+opts.map(c=>'<option>'+esc(c)+'</option>').join(''); cs.value=(cur&&opts.includes(cur))?cur:''; cs.disabled=false; } });
 }
 
 /* ---------------- tabs ---------------- */
 function wireTabs(){ document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>showTab(b.dataset.tab)); }
 function showTab(t){
   document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
-  ['dash','reps','clients','onboarding','deal','eod','data','users','settings'].forEach(x=>{ document.getElementById('tab-'+x).hidden = (x!==t); });
+  ['dash','reps','clients','onboarding','deal','postcall','eod','data','users','settings'].forEach(x=>{ document.getElementById('tab-'+x).hidden = (x!==t); });
   // stale-while-revalidate: render instantly from the cached records, then refresh in the background
   const render={dash:renderDash, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, data:renderAll}[t];
   if(render){ render(); syncRecords().then(()=>{ if(currentTab()===t) render(); }); }
@@ -557,13 +583,16 @@ function setEodRole(r){
 
 /* ---------------- submit ---------------- */
 function formObj(f){ const o={}; new FormData(f).forEach((v,k)=>o[k]=v); return o; }
-const NUMKEYS=['contractValue','cashCollected','depositCollected','followUpOutreach','newOutreach','callsOffered','callsSet','callCapacity','speedToLead','hoursDialing','newMeetings','connectedMeetings','followUpMeetings','advancedCalls','noShows','closedDeals','contractsSigned','aosiSold','productBSold'];
+const NUMKEYS=['contractValue','cashCollected','depositCollected','followUpOutreach','newOutreach','callsOffered','callsSet','connectedCalls','convos4min','callCapacity','speedToLead','hoursDialing','newMeetings','connectedMeetings','followUpMeetings','advancedCalls','noShows','closedDeals','contractsSigned','aosiSold','productBSold'];
 function num(o){ NUMKEYS.forEach(k=>{ if(k in o) o[k]=parseFloat(o[k])||0; }); return o; }
 async function submitDeal(e){ e.preventDefault(); const btn=e.target.querySelector('[type=submit]'); if(btn&&btn.disabled) return; if(btn) btn.disabled=true;
   try{ const o=num(formObj(e.target)); o.type='deal'; o.role='Closer'; o.closedDeals=1; if(SESSION.role!=='admin') o.rep=SESSION.name; await addRecord(o); e.target.reset(); presetDates(); if(SESSION.role!=='admin') applyIdentity(); toast('Closed deal logged. Nice.'); if(SESSION.role==='admin') renderDash(); }
   finally{ if(btn) btn.disabled=false; } }
 async function submitEod(e){ e.preventDefault(); const btn=e.target.querySelector('[type=submit]'); if(btn&&btn.disabled) return; if(btn) btn.disabled=true;
   try{ const o=num(formObj(e.target)); o.type='eod'; if(SESSION.role!=='admin'){ o.rep=SESSION.name; o.role=SESSION.role==='setter'?'Setter':'Closer'; } await addRecord(o); e.target.reset(); presetDates(); setEodRole(o.role); if(SESSION.role!=='admin') applyIdentity(); toast('End of day submitted.'); if(SESSION.role==='admin') renderDash(); }
+  finally{ if(btn) btn.disabled=false; } }
+async function submitPostCall(e){ e.preventDefault(); const btn=e.target.querySelector('[type=submit]'); if(btn&&btn.disabled) return; if(btn) btn.disabled=true;
+  try{ const o=formObj(e.target); o.type='postcall'; o.role='Closer'; if(SESSION.role!=='admin') o.rep=SESSION.name; await addRecord(o); e.target.reset(); presetDates(); if(SESSION.role!=='admin') applyIdentity(); toast('Post-call logged.'); if(SESSION.role==='admin'&&currentTab()==='data') renderAll(); }
   finally{ if(btn) btn.disabled=false; } }
 
 /* ---------------- aggregation + dashboard ---------------- */
@@ -697,14 +726,14 @@ function renderReps(){
   buildRepFilters();
   const recs=repFiltered();
   const setters={}, closers={};
-  function b(map,name){ if(!map[name]) map[name]={rep:name,days:new Set(),hours:0,newOut:0,fuOut:0,offered:0,set:0,connected:0,noShows:0,capacity:0,cash:0,deals:0,contract:0}; return map[name]; }
+  function b(map,name){ if(!map[name]) map[name]={rep:name,days:new Set(),hours:0,newOut:0,fuOut:0,offered:0,set:0,connCalls:0,convos4:0,connected:0,noShows:0,capacity:0,cash:0,deals:0,contract:0}; return map[name]; }
   recs.forEach(x=>{
     const rep=(x.rep||'').trim(), setter=(x.setter||'').trim();
     // EOD activity, bucketed by the role the rep submitted as
     if((x.type==='eod'||!x.type) && rep){
       const o=b((x.role==='Setter')?setters:closers, rep);
       if(x.date) o.days.add(x.date.slice(0,10));
-      o.hours+=x.hoursDialing||0; o.newOut+=x.newOutreach||0; o.fuOut+=x.followUpOutreach||0; o.offered+=x.callsOffered||0; o.set+=x.callsSet||0;
+      o.hours+=x.hoursDialing||0; o.newOut+=x.newOutreach||0; o.fuOut+=x.followUpOutreach||0; o.offered+=x.callsOffered||0; o.set+=x.callsSet||0; o.connCalls+=x.connectedCalls||0; o.convos4+=x.convos4min||0;
       o.connected+=x.connectedMeetings||0; o.noShows+=x.noShows||0; o.capacity+=x.callCapacity||0;
       if(x.role!=='Setter'){ o.cash+=x.cashCollected||0; o.deals+=x.closedDeals||0; o.contract+=x.contractValue||0; }
     }
@@ -717,9 +746,9 @@ function renderReps(){
   const sRate=CFG.setterRate/100, cRate=CFG.closerRate/100;
   const sum=(arr,k)=>arr.reduce((a,b)=>a+(b[k]||0),0);
   const daysUnion=map=>{const s=new Set();Object.values(map).forEach(o=>o.days.forEach(d=>s.add(d)));return s.size;};
-  const setRows=Object.values(setters).map(o=>({...o,days:o.days.size,showRate:(o.connected+o.noShows)?o.connected/(o.connected+o.noShows):0,payout:o.cash*sRate})).sort((a,b)=>b.cash-a.cash||b.set-a.set);
+  const setRows=Object.values(setters).map(o=>{ const dials=o.newOut+o.fuOut; return {...o,days:o.days.size,dials,connRate:dials?o.connCalls/dials:0,bookRate:o.connCalls?o.set/o.connCalls:0,payout:o.cash*sRate}; }).sort((a,b)=>b.cash-a.cash||b.set-a.set);
   const cloRows=Object.values(closers).map(o=>({...o,days:o.days.size,dials:o.newOut+o.fuOut,closeRate:o.connected?o.deals/o.connected:0,cashPct:o.contract?o.cash/o.contract:0,util:o.capacity?o.connected/o.capacity:0,payout:o.cash*cRate})).sort((a,b)=>b.cash-a.cash);
-  let sT=null; if(setRows.length){ sT={n:setRows.length,days:daysUnion(setters),hours:sum(setRows,'hours'),newOut:sum(setRows,'newOut'),fuOut:sum(setRows,'fuOut'),offered:sum(setRows,'offered'),set:sum(setRows,'set'),cash:sum(setRows,'cash'),payout:sum(setRows,'payout')}; }
+  let sT=null; if(setRows.length){ const dl=sum(setRows,'dials'),cc=sum(setRows,'connCalls'),st=sum(setRows,'set'); sT={n:setRows.length,days:daysUnion(setters),hours:sum(setRows,'hours'),dials:dl,connCalls:cc,connRate:dl?cc/dl:0,set:st,bookRate:cc?st/cc:0,convos4:sum(setRows,'convos4'),cash:sum(setRows,'cash'),payout:sum(setRows,'payout')}; }
   let cT=null; if(cloRows.length){ const c=sum(cloRows,'connected'),cap=sum(cloRows,'capacity'),d=sum(cloRows,'deals'),ct=sum(cloRows,'contract'),ca=sum(cloRows,'cash'); cT={n:cloRows.length,days:daysUnion(closers),hours:sum(cloRows,'hours'),dials:sum(cloRows,'dials'),set:sum(cloRows,'set'),connected:c,capacity:cap,util:cap?c/cap:0,deals:d,contract:ct,cash:ca,closeRate:c?d/c:0,cashPct:ct?ca/ct:0,payout:sum(cloRows,'payout')}; }
   const hrs=v=>v?(Math.round(v*10)/10):0;
   // payout column hidden from reps (teammates' commission is private); admins/managers see it
@@ -728,10 +757,10 @@ function renderReps(){
   const sName = r => rm?esc(r.rep):`<button class="linklike" onclick="repDetail('${esc(r.rep)}','Setter')">${esc(r.rep)}</button>`;
   const cName = r => rm?esc(r.rep):`<button class="linklike" onclick="repDetail('${esc(r.rep)}','Closer')">${esc(r.rep)}</button>`;
   document.getElementById('setterTable').innerHTML=
-    `<thead><tr><th>#</th><th>Setter</th><th class="num">Days</th><th class="num">Hours</th><th class="num">New outreach</th><th class="num">Follow-up</th><th class="num">Offered</th><th class="num">Calls set</th><th class="num">Cash set</th>${payH}</tr></thead><tbody>`+
-    (sT?`<tr class="totalrow"><td></td><td>TOTAL &middot; ${sT.n} setter${sT.n>1?'s':''}</td><td class="num">${sT.days}</td><td class="num">${hrs(sT.hours)}</td><td class="num">${sT.newOut}</td><td class="num">${sT.fuOut}</td><td class="num">${sT.offered}</td><td class="num">${sT.set}</td><td class="num">${money(sT.cash)}</td>${payC(sT)}</tr>`:'')+
-    (setRows.length?setRows.map((r,i)=>`<tr class="${i===0?'rank1':''}"><td>${i+1}</td><td>${sName(r)}</td><td class="num">${r.days}</td><td class="num">${hrs(r.hours)}</td><td class="num">${r.newOut}</td><td class="num">${r.fuOut}</td><td class="num">${r.offered}</td><td class="num">${r.set}</td><td class="num">${money(r.cash)}</td>${payC(r)}</tr>`).join('')
-     :`<tr><td colspan="${rm?9:10}" class="muted" style="padding:16px">No setter data yet.</td></tr>`)+`</tbody>`;
+    `<thead><tr><th>#</th><th>Setter</th><th class="num">Days</th><th class="num">Hours</th><th class="num">Dials</th><th class="num">Conn.</th><th class="num">Conn %</th><th class="num">Set</th><th class="num">Book %</th><th class="num">4m+ convos</th><th class="num">Cash set</th>${payH}</tr></thead><tbody>`+
+    (sT?`<tr class="totalrow"><td></td><td>TOTAL &middot; ${sT.n} setter${sT.n>1?'s':''}</td><td class="num">${sT.days}</td><td class="num">${hrs(sT.hours)}</td><td class="num">${sT.dials}</td><td class="num">${sT.connCalls}</td><td class="num">${pct(sT.connRate)}</td><td class="num">${sT.set}</td><td class="num">${pct(sT.bookRate)}</td><td class="num">${sT.convos4}</td><td class="num">${money(sT.cash)}</td>${payC(sT)}</tr>`:'')+
+    (setRows.length?setRows.map((r,i)=>`<tr class="${i===0?'rank1':''}"><td>${i+1}</td><td>${sName(r)}</td><td class="num">${r.days}</td><td class="num">${hrs(r.hours)}</td><td class="num">${r.dials}</td><td class="num">${r.connCalls}</td><td class="num">${pct(r.connRate)}</td><td class="num">${r.set}</td><td class="num">${pct(r.bookRate)}</td><td class="num">${r.convos4}</td><td class="num">${money(r.cash)}</td>${payC(r)}</tr>`).join('')
+     :`<tr><td colspan="${rm?11:12}" class="muted" style="padding:16px">No setter data yet.</td></tr>`)+`</tbody>`;
   document.getElementById('closerTable').innerHTML=
     `<thead><tr><th>#</th><th>Closer</th><th class="num">Days</th><th class="num">Hours</th><th class="num">Dials</th><th class="num">Connected</th><th class="num">Capacity</th><th class="num">Cap used</th><th class="num">Deals</th><th class="num">Contract</th><th class="num">Cash</th><th class="num">Close %</th><th class="num">Cash %</th>${payH}</tr></thead><tbody>`+
     (cT?`<tr class="totalrow"><td></td><td>TOTAL &middot; ${cT.n} closer${cT.n>1?'s':''}</td><td class="num">${cT.days}</td><td class="num">${hrs(cT.hours)}</td><td class="num">${cT.dials}</td><td class="num">${cT.connected}</td><td class="num">${cT.capacity}</td><td class="num">${pct(cT.util)}</td><td class="num">${cT.deals}</td><td class="num">${money(cT.contract)}</td><td class="num">${money(cT.cash)}</td><td class="num">${pct(cT.closeRate)}</td><td class="num">${pct(cT.cashPct)}</td>${payC(cT)}</tr>`:'')+
@@ -749,12 +778,12 @@ function repDetail(rep, role){
   document.getElementById('repDetailPanel').hidden=false;
   document.getElementById('repDetailTitle').innerHTML=`${esc(rep)} <span class="pill">${esc(role)}</span> - day-by-day`;
   const head = role==='Setter'
-    ? `<thead><tr><th>Date</th><th>Client</th><th>Type</th><th class="num">Hours</th><th class="num">New out</th><th class="num">Follow-up</th><th class="num">Offered</th><th class="num">Set</th><th class="num">Cash set</th></tr></thead><tbody>`
+    ? `<thead><tr><th>Date</th><th>Client</th><th>Type</th><th class="num">Hours</th><th class="num">Dials</th><th class="num">Conn.</th><th class="num">Set</th><th class="num">4m+</th><th class="num">Cash set</th></tr></thead><tbody>`
     : `<thead><tr><th>Date</th><th>Client</th><th>Type</th><th class="num">Connected</th><th class="num">Capacity</th><th class="num">Deals</th><th class="num">Contract</th><th class="num">Cash</th></tr></thead><tbody>`;
   const body = recs.length ? recs.map(x=>{
     const t=x.type==='deal'?'<span class="pill good">deal</span>':'<span class="pill">eod</span>';
     return role==='Setter'
-      ? `<tr><td>${esc((x.date||'').slice(0,10))}</td><td>${esc(x.client)}</td><td>${t}</td><td class="num">${x.hoursDialing||0}</td><td class="num">${x.newOutreach||0}</td><td class="num">${x.followUpOutreach||0}</td><td class="num">${x.callsOffered||0}</td><td class="num">${x.callsSet||0}</td><td class="num">${x.type==='deal'?money(x.cashCollected):'-'}</td></tr>`
+      ? `<tr><td>${esc((x.date||'').slice(0,10))}</td><td>${esc(x.client)}</td><td>${t}</td><td class="num">${x.hoursDialing||0}</td><td class="num">${(x.newOutreach||0)+(x.followUpOutreach||0)}</td><td class="num">${x.connectedCalls||0}</td><td class="num">${x.callsSet||0}</td><td class="num">${x.convos4min||0}</td><td class="num">${x.type==='deal'?money(x.cashCollected):'-'}</td></tr>`
       : `<tr><td>${esc((x.date||'').slice(0,10))}</td><td>${esc(x.client)}</td><td>${t}</td><td class="num">${x.connectedMeetings||0}</td><td class="num">${x.callCapacity||0}</td><td class="num">${x.closedDeals||0}</td><td class="num">${money(x.contractValue)}</td><td class="num">${money(x.cashCollected)}</td></tr>`;
   }).join('') : `<tr><td colspan="8" class="muted" style="padding:16px">No submissions in this range.</td></tr>`;
   document.getElementById('repDetailTable').innerHTML=head+body+`</tbody>`;
@@ -763,18 +792,19 @@ function repDetail(rep, role){
 
 /* ---------------- data tab ---------------- */
 function renderAll(){
-  const rows=activityRecords().sort((a,b)=>(b.submittedAt||'').localeCompare(a.submittedAt||''));
+  const rows=RECORDS.filter(x=>['deal','eod','postcall'].includes(x.type)||!x.type).sort((a,b)=>(b.submittedAt||'').localeCompare(a.submittedAt||''));
   document.getElementById('allTable').innerHTML=
-    `<thead><tr><th>Date</th><th>Submitted (ET)</th><th>Type</th><th>Role</th><th>Client</th><th>Rep</th><th class="num">Cash</th><th class="num">Deals</th><th></th></tr></thead><tbody>`+
-    (rows.length?rows.map(r=>`<tr><td>${esc((r.date||'').slice(0,10))}</td><td style="font-size:12px;color:var(--muted)">${esc(submittedETof(r))}</td><td><span class="pill ${r.type==='deal'?'good':''}">${esc(r.type)}</span></td><td>${esc(r.role)}</td><td>${esc(r.client)}</td><td>${esc(r.rep)}</td><td class="num">${money(r.cashCollected)}</td><td class="num">${r.closedDeals||0}</td><td><button class="btn sm ghost" style="color:var(--warn);border-color:var(--warn)" onclick="delRec('${r.id}')">Delete</button></td></tr>`).join('')
+    `<thead><tr><th>Date</th><th>Submitted (ET)</th><th>Type</th><th>Role</th><th>Client</th><th>Rep</th><th>Outcome / Cash</th><th class="num">Deals</th><th></th></tr></thead><tbody>`+
+    (rows.length?rows.map(r=>`<tr><td>${esc((r.date||'').slice(0,10))}</td><td style="font-size:12px;color:var(--muted)">${esc(submittedETof(r))}</td><td><span class="pill ${r.type==='deal'?'good':(r.type==='postcall'?'warn':'')}">${esc(r.type)}</span></td><td>${esc(r.role)}</td><td>${esc(r.client)}</td><td>${esc(r.rep)}</td><td>${r.type==='postcall'?esc(r.outcome||'-')+(r.lead?' <span class="muted">('+esc(r.lead)+')</span>':''):money(r.cashCollected)}</td><td class="num">${r.closedDeals||0}</td><td><button class="btn sm ghost" style="color:var(--warn);border-color:var(--warn)" onclick="delRec('${r.id}')">Delete</button></td></tr>`).join('')
      :`<tr><td colspan="9" class="muted" style="padding:16px">No records.</td></tr>`)+`</tbody>`;
 }
 function delRec(id){ RECORDS=RECORDS.filter(r=>r.id!==id); save(LS.data,RECORDS); renderAll(); renderDash(); toast('Deleted'); }
 
 /* ---------------- export ---------------- */
 const DEAL_COLS=['date','submittedET','client','lead','rep','setter','product','callType','contractValue','cashCollected','depositCollected','notes','submittedAt'];
-const EOD_COLS=['date','submittedET','client','rep','role','hoursDialing','followUpOutreach','newOutreach','callsOffered','callsSet','callCapacity','speedToLead','newMeetings','connectedMeetings','followUpMeetings','advancedCalls','noShows','closedDeals','contractsSigned','contractValue','cashCollected','depositCollected','aosiSold','productBSold','notes','submittedAt'];
-function exportCSV(type){ const cols=type==='deal'?DEAL_COLS:EOD_COLS; const rows=RECORDS.filter(r=>r.type===type); if(!rows.length){toast('Nothing to export');return;} const head=cols.join(','); const body=rows.map(r=>cols.map(c=>csvCell(r[c])).join(',')).join('\n'); download(`tsa_${type}_${todayLocal()}.csv`,head+'\n'+body,'text/csv'); }
+const EOD_COLS=['date','submittedET','client','rep','role','hoursDialing','followUpOutreach','newOutreach','connectedCalls','callsOffered','callsSet','convos4min','callCapacity','speedToLead','newMeetings','connectedMeetings','followUpMeetings','advancedCalls','noShows','closedDeals','contractsSigned','contractValue','cashCollected','depositCollected','aosiSold','productBSold','notes','submittedAt'];
+const POSTCALL_COLS=['date','submittedET','client','rep','lead','setter','outcome','callType','fathom','notes','submittedAt'];
+function exportCSV(type){ const cols=type==='deal'?DEAL_COLS:(type==='postcall'?POSTCALL_COLS:EOD_COLS); const rows=RECORDS.filter(r=>r.type===type); if(!rows.length){toast('Nothing to export');return;} const head=cols.join(','); const body=rows.map(r=>cols.map(c=>csvCell(r[c])).join(',')).join('\n'); download(`tsa_${type}_${todayLocal()}.csv`,head+'\n'+body,'text/csv'); }
 function csvCell(v){ if(v==null)return ''; const s=String(v); return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; }
 function exportJSON(){ download('tsa_invoice_backup.json',JSON.stringify(RECORDS,null,2),'application/json'); }
 function download(name,text,mime){ const b=new Blob([text],{type:mime}),u=URL.createObjectURL(b),a=document.createElement('a'); a.href=u;a.download=name;a.click();URL.revokeObjectURL(u); }
