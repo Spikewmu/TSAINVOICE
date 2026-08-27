@@ -65,6 +65,10 @@
   #callLogTable tr.clmain td{border-bottom:none;padding-bottom:2px}
   #callLogTable tr.clnoterow td{white-space:normal;font-size:12px;color:var(--muted);line-height:1.55;padding-top:2px;padding-bottom:15px}
   #callLogTable .cllabel{display:inline-block;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);opacity:.65;margin-right:8px;vertical-align:1px}
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.55);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;z-index:200;padding:20px}
+  .modalcard{background:#1b1610;border:1px solid var(--border);border-radius:14px;padding:22px 22px 20px;width:min(400px,94vw);box-shadow:0 24px 70px rgba(0,0,0,.55)}
+  .modalcard label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px}
+  .modalcard input{width:100%}
   td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
   tbody tr:hover{background:var(--surface-2)}
   tr.rank1 td:first-child{font-weight:700;color:var(--gold)}
@@ -151,7 +155,7 @@
   <div class="brand"><span class="dot"></span> TSA Sales Tracking + Invoicing</div>
   <div class="sub" id="storeTag"></div>
   <div class="spacer"></div>
-  <div class="who" id="whoTag"></div>
+  <div class="who" id="whoTag" onclick="openChangePw()" style="cursor:pointer" title="Change your password"></div>
   <button class="logout" onclick="logout()">Sign out</button>
 </header>
 
@@ -509,6 +513,20 @@
 </main>
 </div>
 
+<div class="modal" id="pwModal" hidden onclick="if(event.target===this)closeChangePw()">
+  <div class="modalcard">
+    <h3 style="margin:0 0 4px">Change password</h3>
+    <p class="hint" id="pwWho" style="margin:0 0 14px"></p>
+    <form onsubmit="submitChangePw(event)">
+      <div class="field"><label>Current password</label><input type="password" id="pwCurrent" autocomplete="current-password" required></div>
+      <div class="field" style="margin-top:10px"><label>New password</label><input type="password" id="pwNew" autocomplete="new-password" minlength="6" required></div>
+      <div class="field" style="margin-top:10px"><label>Confirm new password</label><input type="password" id="pwConfirm" autocomplete="new-password" required></div>
+      <div id="pwErr" class="fieldhelp" style="color:var(--warn);margin-top:8px" hidden></div>
+      <div class="row-actions" style="margin-top:16px"><button class="btn gold" type="submit">Update password</button><button class="btn ghost" type="button" onclick="closeChangePw()">Cancel</button></div>
+    </form>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -641,6 +659,25 @@ async function tryGate(){
 }
 function setSession(s){ SESSION=s; save(LS.auth,s); startApp(); }
 function logout(){ SESSION=null; localStorage.removeItem(LS.auth); location.reload(); }
+/* ---- change own password (click your name, top right) ---- */
+function openChangePw(){
+  if(!(SESSION && SESSION.token)){ toast('Password change opens after you sign in with the new login. The master account is changed in Vercel.',true); return; }
+  document.getElementById('pwWho').textContent='Signed in as '+SESSION.name+' ('+SESSION.username+')';
+  ['pwCurrent','pwNew','pwConfirm'].forEach(id=>document.getElementById(id).value='');
+  const e=document.getElementById('pwErr'); e.hidden=true; e.textContent='';
+  document.getElementById('pwModal').hidden=false; document.getElementById('pwCurrent').focus();
+}
+function closeChangePw(){ document.getElementById('pwModal').hidden=true; }
+async function submitChangePw(ev){
+  ev.preventDefault();
+  const cur=document.getElementById('pwCurrent').value, nw=document.getElementById('pwNew').value, cf=document.getElementById('pwConfirm').value;
+  const err=document.getElementById('pwErr'), showErr=m=>{ err.textContent=m; err.hidden=false; };
+  if(nw.length<6){ showErr('New password must be at least 6 characters.'); return; }
+  if(nw!==cf){ showErr('New passwords do not match.'); return; }
+  const res=await authApi({action:'changePassword', token:SESSION.token, currentPassword:cur, newPassword:nw});
+  if(res && res.ok){ SESSION.pw=nw; save(LS.auth,SESSION); closeChangePw(); toast('Password updated'); }
+  else showErr((res&&res.error)||'Could not update password.');
+}
 
 /* ---------------- start ---------------- */
 function startApp(){

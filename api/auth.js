@@ -119,6 +119,19 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, users: await r.json() });
     }
 
+    // ---------- CHANGE OWN PASSWORD (any logged-in user) ----------
+    if (action === 'changePassword') {
+      const username = session.username;
+      const cur = String(body.currentPassword || ''), nw = String(body.newPassword || '');
+      if (nw.length < 6) return res.status(200).json({ ok: false, error: 'New password must be at least 6 characters' });
+      if (username === (process.env.MASTER_USER || 'tsaboss')) return res.status(200).json({ ok: false, error: 'The master account password is set in Vercel, not here' });
+      const u = await getUser(username);
+      if (!u || !u.pass_hash) return res.status(200).json({ ok: false, error: 'Account not found' });
+      if (u.pass_hash !== hashPass(cur)) return res.status(200).json({ ok: false, error: 'Current password is incorrect' });
+      await upsertUser({ username, name: u.name, role: u.role, pass_hash: hashPass(nw) });
+      return res.status(200).json({ ok: true });
+    }
+
     // admin-only past here
     if (session.role !== 'admin') return res.status(200).json({ ok: false, error: 'admin only' });
 
