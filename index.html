@@ -397,6 +397,7 @@
     <h2 class="section">Onboarding Checklist</h2>
     <p class="hint">Track each new client through the launch steps. Advance a step and everyone sees where each client stands and where it is stuck.</p>
     <div class="panel"><h3>All clients - progress</h3><div class="tablewrap"><table id="onbOverview"></table></div></div>
+    <div class="panel"><h3>Due &amp; overdue <span style="font-weight:400;color:var(--muted);font-size:12px">- every open step, most urgent first (the daily accountability list)</span><button class="btn ghost sm" style="float:right" onclick="copyOnbDigest()">Copy for Slack</button></h3><div class="tablewrap"><table id="onbDigestTable"></table></div></div>
     <div class="panel"><h3>Client checklist</h3>
       <div class="filters" style="padding:14px 14px 0;margin-bottom:0">
         <div class="field"><label>Client</label><select id="onbClient" onchange="renderOnbChecklist()"></select></div>
@@ -1375,26 +1376,43 @@ function renderClientOverview(){
 
 /* ---------------- onboarding checklist ---------------- */
 const DEFAULT_ONB_STEPS=[
-  {step:'Contract signed', owner:'Robb'},
-  {step:'Welcome email sent', owner:'Auto / Steve'},
-  {step:'Onboarding call booked', owner:'Client'},
-  {step:'Recruiting form completed', owner:'Client'},
-  {step:'Intake form completed', owner:'Client'},
-  {step:'$1 test wire cleared', owner:'Client'},
-  {step:'Access verified (CRM/Drive/Slack)', owner:'Steve'},
-  {step:'Drive folder set up', owner:'Steve'},
-  {step:'Kickoff call done', owner:'Manager'},
-  {step:'CRM / systems build', owner:'Steve'},
-  {step:'Sales assets + scripts', owner:'Manager'},
-  {step:'Reps onboarded + dialing', owner:'Manager'},
-  {step:'Launched', owner:'Manager'}
+  {step:'Contract + NDA signed', owner:'Client', days:0, link:''},
+  {step:'Welcome sequence sent (email, intake, recruiting form, kickoff sheet, call link)', owner:'Auto / Steve', days:1, link:''},
+  {step:'Added to HQ / dashboard (fires email sequence)', owner:'Steve', days:1, link:''},
+  {step:'Client invites us to Slack as a member (not Connect)', owner:'Client', days:1, link:''},
+  {step:'Slack channels created (standard set)', owner:'Josh', days:2, link:''},
+  {step:'Welcome video dropped in sales-management', owner:'Josh', days:2, link:''},
+  {step:'Onboarding call booked', owner:'Client', days:2, link:''},
+  {step:'Intake form completed', owner:'Client', days:3, link:''},
+  {step:'Recruiting form completed', owner:'Client', days:3, link:''},
+  {step:'Drive access + credentials (viewer / password manager)', owner:'Client', days:3, link:''},
+  {step:'Drive folder set up (template duplicated)', owner:'Steve', days:4, link:''},
+  {step:'CRM / systems build', owner:'Steve', days:5, link:''},
+  {step:'Sales assets + scripts', owner:'Josh', days:5, link:''},
+  {step:'Kickoff call done', owner:'Manager', days:5, link:''},
+  {step:'$1 test wire cleared', owner:'Client', days:6, link:''},
+  {step:'Reps onboarded + dialing', owner:'Manager', days:6, link:''},
+  {step:'Launched', owner:'Manager', days:7, link:''}
 ];
 const ONB_STATUSES=['Not started','In progress','Done'];
 // steps are editable by admins; the latest saved order is stored as an 'onbconfig' record
-function latestOnbConfig(){ let best=null; RECORDS.filter(x=>x.type==='onbconfig').forEach(x=>{ if(!best||(x.submittedAt||'')>(best.submittedAt||'')) best=x; }); if(best&&best.steps){ try{ var a=JSON.parse(best.steps); if(Array.isArray(a)&&a.length) return a; }catch(e){} } return null; }
+function latestOnbConfig(){ let best=null; RECORDS.filter(x=>x.type==='onbconfig').forEach(x=>{ if(!best||(x.submittedAt||'')>(best.submittedAt||'')) best=x; }); if(best&&best.steps){ try{ var a=JSON.parse(best.steps); if(Array.isArray(a)&&a.length && a.some(s=>s&&s.days!=null)) return a; }catch(e){} } return null; } // old-format configs (no deadlines) are ignored so the new SOP default takes over until re-saved
 function onbSteps(){ return latestOnbConfig() || DEFAULT_ONB_STEPS; }
 function latestOnb(client){ const m={}; RECORDS.filter(x=>x.type==='onboard'&&x.client===client).forEach(x=>{ if(!m[x.step]||(x.submittedAt||'')>(m[x.step].submittedAt||'')) m[x.step]=x; }); return m; }
-function onbProgress(client){ const steps=onbSteps(); const st=latestOnb(client); let done=0,bn=null; steps.forEach(s=>{ const r=st[s.step]; if(r&&r.status==='Done') done++; else if(!bn) bn=s.step; }); return {done,total:steps.length,pct:steps.length?Math.round(done/steps.length*100):0,bottleneck:bn}; }
+function onbProgress(client){ const steps=onbSteps(); const st=latestOnb(client); let done=0,bn=null,overdue=0; steps.forEach(s=>{ const r=st[s.step]; if(r&&r.status==='Done') done++; else { if(!bn) bn=s.step; const dl=daysLeft(stepDue(client,s.step)); if(dl!=null&&dl<0) overdue++; } }); return {done,total:steps.length,pct:steps.length?Math.round(done/steps.length*100):0,bottleneck:bn,overdue}; }
+// onboarding starts when the client is first added; each step is due start + its `days`
+function onbStart(client){ let t=null; RECORDS.filter(x=>x.type==='client'&&x.name===client).forEach(x=>{ if(!t||(x.submittedAt||'')<t) t=x.submittedAt; }); return t?t.slice(0,10):null; }
+function addDaysISO(iso,n){ if(!iso) return null; const d=new Date(iso+'T00:00:00'); d.setDate(d.getDate()+(+n||0)); return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10); }
+function stepDue(client,step){ const s=onbSteps().find(x=>x.step===step); const start=onbStart(client); return (s&&start!=null)?addDaysISO(start,s.days):null; }
+function daysLeft(due){ if(!due) return null; const a=new Date(todayLocal()+'T00:00:00'), b=new Date(due+'T00:00:00'); return Math.round((b-a)/86400000); }
+// every incomplete step across all clients, most urgent first - this is the accountability digest that feeds Slack
+function onbDigest(){
+  const out=[], steps=onbSteps();
+  clientNames().forEach(c=>{ const st=latestOnb(c); steps.forEach(s=>{ const rec=st[s.step], status=rec?rec.status:'Not started'; if(status==='Done') return; const due=stepDue(c,s.step); out.push({client:c,step:s.step,owner:s.owner||'',status,due,daysLeft:daysLeft(due),link:s.link||''}); }); });
+  out.sort((a,b)=>((a.daysLeft==null?9999:a.daysLeft)-(b.daysLeft==null?9999:b.daysLeft)));
+  return out;
+}
+function dueLabel(dl){ if(dl==null) return '<span class="muted">no date</span>'; if(dl<0) return `<span class="pill warn">${-dl}d overdue</span>`; if(dl===0) return '<span class="pill" style="background:rgba(212,175,90,.18);color:var(--gold)">due today</span>'; return `<span class="muted">${dl}d left</span>`; }
 function renderOnboarding(){
   const sel=document.getElementById('onbClient'); const cur=sel.value; const names=clientNames();
   sel.innerHTML=names.map(n=>`<option>${esc(n)}</option>`).join('');
@@ -1403,21 +1421,41 @@ function renderOnboarding(){
   const ep=document.getElementById('stepEditorPanel'); if(ep){ ep.hidden=!isAdmin; if(isAdmin) renderStepEditor(); }
   const rows=names.map(n=>({n,p:onbProgress(n)}));
   document.getElementById('onbOverview').innerHTML=
-    `<thead><tr><th>Client</th><th>Progress</th><th class="num">%</th><th>Current step (bottleneck)</th></tr></thead><tbody>`+
-    (rows.length?rows.map(r=>`<tr><td><b>${esc(r.n)}</b></td><td><div style="width:160px;height:8px;border-radius:4px;background:var(--surface-2);overflow:hidden"><i style="display:block;height:100%;background:var(--gold);width:${r.p.pct}%"></i></div></td><td class="num">${r.p.pct}%</td><td>${r.p.bottleneck?esc(r.p.bottleneck):'<span class="pill good">Complete</span>'}</td></tr>`).join('')
-     :`<tr><td colspan="4" class="muted" style="padding:16px">Add clients on the Client Overview tab first.</td></tr>`)+`</tbody>`;
+    `<thead><tr><th>Client</th><th>Progress</th><th class="num">%</th><th>Current step (bottleneck)</th><th class="num">Overdue</th></tr></thead><tbody>`+
+    (rows.length?rows.map(r=>`<tr><td><b>${esc(r.n)}</b></td><td><div style="width:160px;height:8px;border-radius:4px;background:var(--surface-2);overflow:hidden"><i style="display:block;height:100%;background:var(--gold);width:${r.p.pct}%"></i></div></td><td class="num">${r.p.pct}%</td><td>${r.p.bottleneck?esc(r.p.bottleneck):'<span class="pill good">Complete</span>'}</td><td class="num">${r.p.overdue?'<span class="pill warn">'+r.p.overdue+'</span>':'0'}</td></tr>`).join('')
+     :`<tr><td colspan="5" class="muted" style="padding:16px">Add clients on the Client Overview tab first.</td></tr>`)+`</tbody>`;
+  renderOnbDigest();
   renderOnbChecklist();
+}
+function renderOnbDigest(){
+  const t=document.getElementById('onbDigestTable'); if(!t) return;
+  const d=onbDigest();
+  t.innerHTML=`<thead><tr><th>Due</th><th>Client</th><th>Step</th><th>Owner</th><th>Status</th></tr></thead><tbody>`+
+    (d.length?d.map(x=>{ const overdue=x.daysLeft!=null&&x.daysLeft<0; const link=x.link?` <a class="linklike" href="${esc(x.link)}" target="_blank" rel="noopener" style="font-size:11px">open</a>`:'';
+      return `<tr${overdue?' style="background:rgba(224,122,95,.06)"':''}><td style="white-space:nowrap">${dueLabel(x.daysLeft)}${x.due?' <span class="muted" style="font-size:11px">'+esc(usDate(x.due))+'</span>':''}</td><td>${esc(x.client)}</td><td>${esc(x.step)}${link}</td><td>${esc(x.owner)}</td><td>${esc(x.status)}</td></tr>`; }).join('')
+     :`<tr><td colspan="5" class="muted" style="padding:16px"><span class="pill good">All caught up</span> - nothing open.</td></tr>`)+`</tbody>`;
+}
+function copyOnbDigest(){
+  const d=onbDigest(); if(!d.length){ toast('Nothing open to post'); return; }
+  const line=x=>{ const tag=x.daysLeft==null?'no date':(x.daysLeft<0?(-x.daysLeft)+'d OVERDUE':(x.daysLeft===0?'due today':x.daysLeft+'d left')); return `- ${x.client}: ${x.step} (${x.owner||'unassigned'}) - ${tag}`; };
+  const txt=`*Onboarding - due & overdue (${usDate(todayLocal())})*\n`+d.map(line).join('\n');
+  navigator.clipboard.writeText(txt).then(()=>toast('Copied - paste into Slack'),()=>toast('Copy failed',true));
 }
 function renderOnbChecklist(){
   const client=document.getElementById('onbClient').value;
   const box=document.getElementById('onbSteps');
   if(!client){ box.innerHTML='<p class="muted">No client selected.</p>'; return; }
   const st=latestOnb(client);
-  box.innerHTML=onbSteps().map((s,i)=>{
+  const startTxt = onbStart(client)?`Onboarding started ${esc(usDate(onbStart(client)))} - due dates count from there.`:'Add this client on Client Overview to start the clock.';
+  box.innerHTML=`<p class="fieldhelp" style="margin:0 0 8px">${startTxt}</p>`+onbSteps().map((s,i)=>{
     const rec=st[s.step]; const status=rec?rec.status:'Not started';
-    return `<div style="display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--border)">
+    const due=stepDue(client,s.step), dl=daysLeft(due), overdue=status!=='Done'&&dl!=null&&dl<0;
+    const link=s.link?` <a class="linklike" href="${esc(s.link)}" target="_blank" rel="noopener" style="font-size:12px">open</a>`:'';
+    const dueTxt=status==='Done'?'<span class="pill good">done</span>':(due?dueLabel(dl)+' <span class="muted" style="font-size:11px">'+esc(usDate(due))+'</span>':'');
+    return `<div style="display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--border)${overdue?';background:rgba(224,122,95,.06)':''}">
       <span style="width:22px;color:var(--muted);font-variant-numeric:tabular-nums">${i+1}</span>
-      <span style="flex:1"><b>${esc(s.step)}</b> <span class="tag">- ${esc(s.owner)}</span></span>
+      <span style="flex:1"><b>${esc(s.step)}</b>${link} <span class="tag">- ${esc(s.owner)}</span></span>
+      <span style="width:180px;text-align:right;font-size:12px">${dueTxt}</span>
       <select onchange="setOnbStatus('${esc(client).replace(/'/g,"\\'")}','${esc(s.step).replace(/'/g,"\\'")}',this.value)">${ONB_STATUSES.map(o=>`<option${o===status?' selected':''}>${o}</option>`).join('')}</select>
     </div>`;
   }).join('');
@@ -1429,21 +1467,23 @@ async function setOnbStatus(client, step, status){
 // admin step editor (reorder / rename / reassign / add / remove)
 let EDIT_STEPS=null;
 function renderStepEditor(){
-  if(!EDIT_STEPS) EDIT_STEPS = onbSteps().map(s=>({step:s.step, owner:s.owner||''}));
-  document.getElementById('stepEditor').innerHTML = EDIT_STEPS.map((s,i)=>`
+  if(!EDIT_STEPS) EDIT_STEPS = onbSteps().map(s=>({step:s.step, owner:s.owner||'', days:(s.days!=null?s.days:0), link:s.link||''}));
+  document.getElementById('stepEditor').innerHTML = `<div style="display:flex;gap:8px;align-items:center;padding:0 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:.03em;color:var(--muted)"><span style="width:76px"></span><span style="flex:1">Step</span><span style="width:130px">Owner</span><span style="width:56px">Due day</span><span style="width:150px">Link</span><span style="width:28px"></span></div>`+EDIT_STEPS.map((s,i)=>`
     <div style="display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)">
       <span style="color:var(--muted);width:20px;font-variant-numeric:tabular-nums">${i+1}</span>
       <button class="btn sm ghost" style="padding:2px 8px" onclick="moveStep(${i},-1)">&uarr;</button>
       <button class="btn sm ghost" style="padding:2px 8px" onclick="moveStep(${i},1)">&darr;</button>
       <input value="${esc(s.step)}" oninput="EDIT_STEPS[${i}].step=this.value" style="flex:1">
       <input value="${esc(s.owner)}" oninput="EDIT_STEPS[${i}].owner=this.value" placeholder="owner" style="width:130px">
+      <input type="number" min="0" value="${s.days!=null?s.days:0}" oninput="EDIT_STEPS[${i}].days=this.value" title="days from onboarding start" style="width:56px">
+      <input value="${esc(s.link||'')}" oninput="EDIT_STEPS[${i}].link=this.value" placeholder="https://" style="width:150px">
       <button class="btn sm ghost" style="color:var(--warn);border-color:var(--warn);padding:2px 9px" onclick="delStep(${i})">&times;</button>
     </div>`).join('');
 }
 function moveStep(i,dir){ const j=i+dir; if(j<0||j>=EDIT_STEPS.length) return; const t=EDIT_STEPS[i]; EDIT_STEPS[i]=EDIT_STEPS[j]; EDIT_STEPS[j]=t; renderStepEditor(); }
 function delStep(i){ if(EDIT_STEPS.length<=1){toast('Keep at least one step',true);return;} EDIT_STEPS.splice(i,1); renderStepEditor(); }
-function addStep(){ EDIT_STEPS.push({step:'New step', owner:''}); renderStepEditor(); }
-async function saveSteps(){ const clean=EDIT_STEPS.map(s=>({step:(s.step||'').trim(),owner:(s.owner||'').trim()})).filter(s=>s.step); await addRecord({type:'onbconfig', steps:JSON.stringify(clean)}); toast('Step order saved for all clients'); EDIT_STEPS=null; renderOnboarding(); }
+function addStep(){ EDIT_STEPS.push({step:'New step', owner:'', days:0, link:''}); renderStepEditor(); }
+async function saveSteps(){ const clean=EDIT_STEPS.map(s=>({step:(s.step||'').trim(),owner:(s.owner||'').trim(),days:(+s.days||0),link:(s.link||'').trim()})).filter(s=>s.step); await addRecord({type:'onbconfig', steps:JSON.stringify(clean)}); toast('Steps saved for all clients'); EDIT_STEPS=null; renderOnboarding(); }
 
 /* ---------------- settings ---------------- */
 function loadSettingsForm(){
