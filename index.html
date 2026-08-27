@@ -209,16 +209,23 @@
   <!-- ===== POST-CALL CHECKOUT ===== -->
   <section id="tab-postcall" hidden>
     <h2 class="section">Post-Call Checkout</h2>
-    <p class="hint">Fill this in <b>after every call</b> - the outcome of each one, win or lose. If you pick <b>Won (closed)</b>, the deal fields appear so it also logs as a closed deal (no separate form). Drop your Fathom link so your manager can review the call.</p>
+    <p class="hint">Fill this in <b>after every call</b> - the outcome of each one, win or lose. Closers: pick <b>Won (closed)</b> and the deal fields appear so it also logs as a closed deal. Setters: log what happened on every connected call. Drop your Fathom link so your manager can review the call.</p>
+    <div id="pcRoleSegWrap" style="margin-bottom:14px">
+      <div class="seg" id="pcRoleSeg">
+        <button class="on" data-role="Closer" onclick="setPcRole('Closer')">I'm a Closer</button>
+        <button data-role="Setter" onclick="setPcRole('Setter')">I'm a Setter</button>
+      </div>
+    </div>
     <form class="grid" id="postcallForm" onsubmit="submitPostCall(event)">
+      <input type="hidden" name="role" value="Closer">
       <div class="field"><label>Date this call was *</label><input type="date" name="date" required><span class="fieldhelp">Defaults to today (your local date).</span></div>
       <div class="field"><label>Client / account *</label><select name="client" data-list="clients" required onchange="postcallClientChanged()"></select></div>
-      <div class="field"><label>Closer *</label><select name="rep" data-list="closers" required></select><span class="fieldhelp">You (locked to your login).</span></div>
+      <div class="field"><label id="pcRepLabel">Closer *</label><select name="rep" data-list="closers" required></select><span class="fieldhelp">You (locked to your login).</span></div>
       <div class="field"><label>Lead / prospect name *</label><input type="text" name="lead" required placeholder="who the call was with"></div>
       <div class="field"><label>Lead email</label><input type="email" name="leadEmail" placeholder="name@email.com"><span class="fieldhelp">Used to match this lead in GHL (more reliable than name).</span></div>
-      <div class="field"><label>Setter (who set the call)</label><select name="setter" data-list="setters"></select><span class="fieldhelp">Leave blank if it was inbound / you set it yourself.</span></div>
+      <div class="field closerPc"><label>Setter (who set the call)</label><select name="setter" data-list="setters"></select><span class="fieldhelp">Leave blank if it was inbound / you set it yourself.</span></div>
       <div class="field"><label>Lead source</label><select name="source"><option value="">-</option><option>Inbound</option><option>Webinar</option></select><span class="fieldhelp">Where this lead came from. Pick <b>Webinar</b> so webinar sales are tracked separately.</span></div>
-      <div class="field"><label>Call outcome *</label><select name="outcome" required onchange="postcallOutcomeChanged()"><option value="">-</option><option>Won (closed)</option><option>Lost</option><option>No-show</option><option>Follow-up booked</option><option>Rescheduled</option><option>Disqualified</option><option>Canceled</option></select><span class="fieldhelp">What happened on this call.</span></div>
+      <div class="field"><label>Call outcome *</label><select name="outcome" required onchange="postcallOutcomeChanged()"></select><span class="fieldhelp">What happened on this call.</span></div>
       <div class="field"><label>Call type</label><select name="callType"><option value="">-</option><option>First call</option><option>Second call</option><option>Follow-up</option></select></div>
       <div class="field dqOnly" hidden><label>DQ reason</label><select name="dqReason"><option value="">-</option><option>Financial DQ</option><option>Personally unsuitable</option><option>Not interested</option><option>Other (see notes)</option></select><span class="fieldhelp">Why they did not qualify. Kept general across all offers, add detail in notes.</span></div>
       <div class="field wonOnly" hidden><label>Product sold</label><select name="product"></select><span class="fieldhelp">This client's offer that was sold.</span></div>
@@ -562,13 +569,13 @@ function startApp(){
     manager:['dash','reps','clients','onboarding','users','postcall','eod'],
     founder:['dash'],
     closer:['dash','postcall','eod','reps'],
-    setter:['dash','eod','reps']
+    setter:['dash','postcall','eod','reps']
   }[role] || ['eod'];
   document.querySelectorAll('#tabs button').forEach(b=>{ b.hidden = !allow.includes(b.dataset.tab); });
-  fillLists(); wireTabs(); presetDates();
+  fillLists(); wireTabs(); presetDates(); setPcRole('Closer');
   ensureKey().then(()=>{
-    if(role==='admin'){ setEodRole('Closer'); Promise.all([syncRecords(),loadUsers()]).then(()=>{ fillLists(); setEodRole('Closer'); renderDash(); renderAll(); }); showTab('dash'); }
-    else if(role==='manager'){ setEodRole('Closer'); Promise.all([syncRecords(),loadUsers()]).then(()=>{ fillLists(); setEodRole('Closer'); renderDash(); }); showTab('clients'); }
+    if(role==='admin'){ setEodRole('Closer'); Promise.all([syncRecords(),loadUsers()]).then(()=>{ fillLists(); setEodRole('Closer'); setPcRole('Closer'); renderDash(); renderAll(); }); showTab('dash'); }
+    else if(role==='manager'){ setEodRole('Closer'); Promise.all([syncRecords(),loadUsers()]).then(()=>{ fillLists(); setEodRole('Closer'); setPcRole('Closer'); renderDash(); }); showTab('clients'); }
     else if(role==='founder'){ Promise.all([syncRecords(),loadUsers()]).then(()=>{ renderDash(); }); showTab('dash'); } // founder: their company only, dashboard-only, read-only, no filters
     else { applyIdentity(); syncRecords().then(()=>applyIdentity()); showTab(allow[0]); }
   });
@@ -578,6 +585,8 @@ function applyIdentity(){
   const myRole = SESSION.role==='setter' ? 'Setter' : 'Closer';
   setEodRole(myRole);
   document.getElementById('roleSegWrap').hidden = true; // reps cannot switch role
+  const pcw=document.getElementById('pcRoleSegWrap'); if(pcw) pcw.hidden = true;
+  setPcRole(myRole);
   const eRep=document.querySelector('#eodForm [name=rep]');
   eRep.innerHTML='<option>'+esc(SESSION.name)+'</option>'; eRep.value=SESSION.name; eRep.disabled=true;
   ['#dealForm','#postcallForm'].forEach(sel=>{ const rep=document.querySelector(sel+' [name=rep]'); if(rep){ if(![...rep.options].some(o=>o.value===SESSION.name)) rep.insertAdjacentHTML('beforeend','<option>'+esc(SESSION.name)+'</option>'); rep.value=SESSION.name; rep.disabled=true; } });
@@ -696,9 +705,10 @@ async function submitEod(e){ e.preventDefault(); const btn=e.target.querySelecto
   catch(err){ toast('Submit failed - try again',true); }
   finally{ if(ok) btnDone(btn,'Submitted!'); else btnBusy(btn,false); } }
 async function submitPostCall(e){ e.preventDefault(); const btn=e.target.querySelector('[type=submit]'); if(btn&&btn.disabled) return; btnBusy(btn,true); let ok=false, won=false;
-  try{ const o=formObj(e.target); o.type='postcall'; o.role='Closer'; if(repMode()) o.rep=SESSION.name;
+  try{ const o=formObj(e.target); o.type='postcall'; o.role=pcRole(); if(repMode()) o.rep=SESSION.name;
     const csel=e.target.querySelector('[name=client]'); if(csel && !(o.client||'').trim()) o.client=csel.value; // locked/disabled selects drop out of FormData
     if(!(o.client||'').trim()){ toast('Choose a client / account first.',true); return; }
+    if(o.role==='Setter' && !(o.setter||'').trim()) o.setter=o.rep; // a setter's post-call credits themselves
     won=/^Won/.test(o.outcome||'');
     await addRecord(o); // every call logs a post-call record
     if(won){ // a win ALSO logs a closed deal so it flows into cash / leaderboards / invoicing
@@ -721,6 +731,26 @@ function postcallOutcomeChanged(){
   document.querySelectorAll('#postcallForm .wonOnly').forEach(e=>e.hidden=!won);
   document.querySelectorAll('#postcallForm .dqOnly').forEach(e=>e.hidden=!dq);
   if(won) postcallClientChanged();
+}
+// Post-Call Checkout is role-aware: closers report a call's result (Won reveals the deal fields);
+// setters report what happened on each connected call (no Won/deal fields).
+const PC_OUTCOMES={
+  Closer:['Won (closed)','Lost','No-show','Follow-up booked','Rescheduled','Disqualified','Canceled'],
+  Setter:['Booked (set)','Follow-up booked','Callback scheduled','Not interested','Disqualified','No answer','Wrong number']
+};
+function pcRole(){ const i=document.querySelector('#postcallForm [name=role]'); return i?i.value:'Closer'; }
+function setPcRole(r){
+  document.querySelectorAll('#pcRoleSeg button').forEach(b=>b.classList.toggle('on',b.dataset.role===r));
+  const ri=document.querySelector('#postcallForm [name=role]'); if(ri) ri.value=r;
+  const lbl=document.getElementById('pcRepLabel'); if(lbl) lbl.textContent = (r==='Setter'?'Setter *':'Closer *');
+  document.querySelectorAll('#postcallForm .closerPc').forEach(e=>e.hidden = r!=='Closer'); // setters don't credit a separate setter
+  const os=document.querySelector('#postcallForm [name=outcome]');
+  if(os){ const cur=os.value, list=PC_OUTCOMES[r]||PC_OUTCOMES.Closer; os.innerHTML='<option value="">-</option>'+list.map(o=>`<option>${esc(o)}</option>`).join(''); os.value=list.includes(cur)?cur:''; }
+  if(!repMode()){ // admins/managers pick the rep; reps stay locked to their own name via applyIdentity
+    const repSel=document.querySelector('#postcallForm [name=rep]');
+    if(repSel){ let items=r==='Setter'?repNames('setter'):repNames('closer'); const ldr=leaderNames(); if(ldr.length) items=[...ldr.filter(n=>!items.includes(n)),...items]; repSel.innerHTML='<option value="">-</option>'+items.map(i=>`<option>${esc(i)}</option>`).join(''); }
+  }
+  postcallOutcomeChanged();
 }
 // Closer EOD: one unit-count input per offer of the selected client (values preserved across re-renders)
 function renderEodProducts(){
