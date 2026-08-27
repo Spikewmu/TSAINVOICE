@@ -358,7 +358,7 @@
         <div class="full row-actions"><button class="btn gold" type="submit">Save user</button><span class="tag">Re-saving an existing username updates their role, password, and teams.</span></div>
       </form>
     </div>
-    <div class="panel"><h3>Current users</h3><div class="tablewrap"><table id="usersTable"></table></div></div>
+    <div class="panel"><h3>Current users <button class="btn ghost sm" style="float:right" onclick="importUsers()" title="Copy all accounts from the old backend into the new one">Import from old backend</button></h3><div class="tablewrap"><table id="usersTable"></table></div></div>
     <div class="panel" id="teamEditPanel" hidden><h3 id="teamEditTitle">Assign teams</h3>
       <div style="padding:14px">
         <p class="hint">Tick every account this person works. Saving updates only their team assignment (no password needed).</p>
@@ -516,6 +516,12 @@ async function api(payload){
     return await r.json();
   }catch(e){ console.warn('api fail',e); return null; }
 }
+// New auth/users backend on Vercel + Supabase (/api/auth). Returns null if unreachable
+// so callers can fall back to the legacy Apps Script path during the migration.
+async function authApi(payload){
+  try{ const r=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}); return await r.json(); }
+  catch(e){ return null; }
+}
 // the Supabase key comes from the session (handed over at login), never from the page source
 function supaKey(){ return (SESSION&&SESSION.supaKey)||CFG.supaKey||''; }
 function supaOn(){ return !!(CFG.supaUrl && supaKey()); }
@@ -579,14 +585,19 @@ async function addRecord(rec){
 async function tryGate(){
   const u=document.getElementById('gUser').value.trim();
   const p=document.getElementById('gPass').value;
-  // 1) backend accounts
-  if(CFG.endpoint){
-    const res=await api({action:'login', username:u, password:p});
-    if(res && res.ok){ setSession({username:u, name:res.name||u, role:res.role, pw:p, supaKey:res.supaKey}); return; }
-  }
-  // 2) master admin break-glass
+  // 1) PRIMARY: new Vercel + Supabase auth. It also proxies to Apps Script for
+  //    users who haven't migrated yet, so it's the one true login going forward.
+  const res=await authApi({action:'login', username:u, password:p});
+  if(res && res.ok){ setSession({username:u, name:res.name||u, role:res.role, token:res.token, supaKey:res.supaKey, pw:p}); return; }
+  // 2) master break-glass, always works (covers Vercel being misconfigured mid-migration)
   if((u==='tsaboss') && p===CFG.adminCode){ setSession({username:'tsaboss', name:'Admin', role:'admin', pw:p}); return; }
-  // 3) local users (no backend configured)
+  // A clean rejection (backend ran and said no, with no error) = wrong credentials. Don't retry.
+  if(res && res.ok===false && !res.error){ document.getElementById('gateErr').hidden=false; return; }
+  // 3) FALLBACK: only if the Vercel auth was unreachable / misconfigured (res null or res.error)
+  if(CFG.endpoint){
+    const r2=await api({action:'login', username:u, password:p});
+    if(r2 && r2.ok){ setSession({username:u, name:r2.name||u, role:r2.role, pw:p, supaKey:r2.supaKey}); return; }
+  }
   if(!CFG.endpoint){
     const lu=LOCAL_USERS.find(x=>x.username===u);
     if(lu){ const h=await sha(p); if(h===lu.passHash){ setSession({username:lu.username, name:lu.name, role:lu.role, pw:p}); return; } }
@@ -655,8 +666,9 @@ function currentTab(){ const b=document.querySelector('#tabs button.active'); re
 // Rep dropdowns come from the actual user accounts (Users tab), so there's no separate list to maintain.
 let USERS_CACHE=[];
 async function loadUsers(){
+  if(SESSION && SESSION.token){ const res=await authApi({action:'listUsers', token:SESSION.token}); if(res && res.ok && res.users){ USERS_CACHE=res.users; return USERS_CACHE; } }
   if(CFG.endpoint){ try{ const res=await api({action:'listUsers', ...authFields()}); if(res&&res.users) USERS_CACHE=res.users; }catch(e){} }
-  else { USERS_CACHE=LOCAL_USERS.map(u=>({username:u.username,name:u.name,role:u.role})); }
+  else if(!(USERS_CACHE&&USERS_CACHE.length)){ USERS_CACHE=LOCAL_USERS.map(u=>({username:u.username,name:u.name,role:u.role})); }
   return USERS_CACHE;
 }
 function repNames(role){
@@ -1252,12 +1264,13 @@ async function renderUsers(){
   if(USERS_CACHE && USERS_CACHE.length){ renderUsersTable(USERS_CACHE); }
   else if(tbl){ tbl.innerHTML='<tbody><tr><td style="padding:22px;color:var(--muted)"><span class="spinner"></span> Loading users...</td></tr></tbody>'; }
   // refresh from the backend in the background, then re-render
-  let users=[];
-  if(CFG.endpoint){
-    try{ const res=await api({action:'listUsers', ...authFields()}); users=(res&&res.users)||[]; }
+  let users=[], gotUsers=false;
+  if(SESSION && SESSION.token){ const res=await authApi({action:'listUsers', token:SESSION.token}); if(res && res.ok && res.users){ users=res.users; gotUsers=true; } }
+  if(!gotUsers && CFG.endpoint){
+    try{ const res=await api({action:'listUsers', ...authFields()}); users=(res&&res.users)||[]; gotUsers=true; }
     catch(e){ if(!(USERS_CACHE&&USERS_CACHE.length)&&tbl){ tbl.innerHTML='<tbody><tr><td style="padding:22px;color:var(--warn)">Could not load users - check connection and reopen this tab.</td></tr></tbody>'; } return; }
   }
-  else { users=LOCAL_USERS.map(u=>({username:u.username,name:u.name,role:u.role})); }
+  if(!gotUsers && !CFG.endpoint){ users=LOCAL_USERS.map(u=>({username:u.username,name:u.name,role:u.role})); }
   USERS_CACHE=users.slice(); fillLists(); // keep the form dropdowns in sync with accounts
   renderUsersTable(users);
 }
@@ -1281,7 +1294,10 @@ async function saveUser(e){
   if(o.username==='tsaboss'){ toast('tsaboss is the master admin, change it in Settings',true); return; }
   if(SESSION.role==='manager' && !['closer','setter'].includes(o.role)){ toast('Managers can only create closers and setters',true); return; }
   const teams=[...document.querySelectorAll('#newUserTeams input:checked')].map(i=>i.value);
-  if(CFG.endpoint){
+  if(SESSION && SESSION.token){
+    const res=await authApi({action:'saveUser', token:SESSION.token, user:o});
+    if(!res||!res.ok){ toast('Save failed'+(res&&res.error?': '+res.error:''),true); return; }
+  } else if(CFG.endpoint){
     const res=await api({action:'saveUser', ...authFields(), user:o});
     if(!res||!res.ok){ toast('Save failed (check backend)',true); return; }
   } else {
@@ -1294,9 +1310,17 @@ async function saveUser(e){
   await addRecord({type:'team', username:o.username, teams:JSON.stringify(teams)}); // assign teams (also clears if none ticked)
   e.target.reset(); toast('User saved'); renderUsers(); setTimeout(renderUsers, 2500);
 }
+async function importUsers(){
+  if(!(SESSION && SESSION.token)){ toast('Sign in through the new login first (needed to import).',true); return; }
+  if(!confirm('Copy all accounts from the old backend into the new one? Existing accounts are left untouched.')) return;
+  const res=await authApi({action:'importUsers', token:SESSION.token});
+  if(res && res.ok){ toast('Imported '+res.imported+' of '+res.total+' accounts'); renderUsers(); }
+  else toast('Import failed'+(res&&res.error?': '+res.error:''),true);
+}
 async function delUser(username){
   if(!confirm('Remove user '+username+'?')) return;
-  if(CFG.endpoint){ const res=await api({action:'deleteUser', ...authFields(), username}); if(!res||!res.ok){ toast('Delete failed',true); return; } }
+  if(SESSION && SESSION.token){ const res=await authApi({action:'deleteUser', token:SESSION.token, username}); if(!res||!res.ok){ toast('Delete failed',true); return; } }
+  else if(CFG.endpoint){ const res=await api({action:'deleteUser', ...authFields(), username}); if(!res||!res.ok){ toast('Delete failed',true); return; } }
   else { LOCAL_USERS=LOCAL_USERS.filter(x=>x.username!==username); save(LS.users,LOCAL_USERS); }
   toast('Removed'); renderUsers();
 }
