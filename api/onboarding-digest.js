@@ -83,32 +83,43 @@ export default async function handler(req, res) {
     const latest = {};
     onboard.forEach((r) => { const d = r.data; const k = (d.client || '') + '|' + (d.step || ''); if (!latest[k] || (r.submitted_at || '') > (latest[k]._t || '')) latest[k] = { ...d, _t: r.submitted_at }; });
 
-    const open = [];
+    // group open steps BY CLIENT
+    const groups = [];
+    let totOverdue = 0, totToday = 0, totOpen = 0;
     Object.keys(start).forEach((client) => {
+      let done = 0; const open = [];
       steps.forEach((s) => {
         const rec = latest[client + '|' + s.step];
-        if (rec && rec.status === 'Done') return;
+        if (rec && rec.status === 'Done') { done++; return; }
         const due = addDays(start[client], s.days);
-        open.push({ client, step: s.step, owner: s.owner || '', due, dl: daysLeft(due) });
+        open.push({ step: s.step, owner: s.owner || '', due, dl: daysLeft(due) });
       });
+      if (!open.length) return;
+      open.sort((a, b) => (a.dl == null ? 9999 : a.dl) - (b.dl == null ? 9999 : b.dl));
+      const overdue = open.filter((o) => o.dl != null && o.dl < 0).length;
+      totOverdue += overdue; totToday += open.filter((o) => o.dl === 0).length; totOpen += open.length;
+      groups.push({ client, done, total: steps.length, open, overdue, soonest: open[0].dl == null ? 9999 : open[0].dl });
     });
-    open.sort((a, b) => (a.dl == null ? 9999 : a.dl) - (b.dl == null ? 9999 : b.dl));
+    // most-pressing clients first (most overdue, then soonest due)
+    groups.sort((a, b) => (b.overdue - a.overdue) || (a.soonest - b.soonest) || a.client.localeCompare(b.client));
 
-    const overdue = open.filter((o) => o.dl != null && o.dl < 0);
-    const today = open.filter((o) => o.dl === 0);
-    const soon = open.filter((o) => o.dl != null && o.dl > 0).slice(0, 12);
+    const emoji = (dl) => (dl == null ? ':white_circle:' : dl < 0 ? ':red_circle:' : dl === 0 ? ':large_yellow_circle:' : ':white_circle:');
+    const tag = (dl) => (dl == null ? 'no date' : dl < 0 ? `${-dl}d overdue` : dl === 0 ? 'due today' : `${dl}d left`);
 
     let text = `*Onboarding standup — ${usDate(todayISO())}*`;
-    if (!open.length) {
+    if (!groups.length) {
       text += `\n:white_check_mark: All clients caught up, nothing open.`;
     } else {
-      if (overdue.length) text += `\n\n:red_circle: *Overdue (${overdue.length})*\n` + overdue.map((o) => `• *${o.client}*: ${o.step} — ${o.owner} — ${-o.dl}d overdue (was due ${usDate(o.due)})`).join('\n');
-      if (today.length) text += `\n\n:large_yellow_circle: *Due today (${today.length})*\n` + today.map((o) => `• *${o.client}*: ${o.step} — ${o.owner}`).join('\n');
-      if (soon.length) text += `\n\n:white_circle: *Coming up*\n` + soon.map((o) => `• *${o.client}*: ${o.step} — ${o.owner} — ${o.dl}d left`).join('\n');
+      text += `  _(${totOverdue} overdue, ${totToday} due today, across ${groups.length} clients)_`;
+      groups.forEach((g) => {
+        text += `\n\n*${g.client}* — ${g.done}/${g.total} done${g.overdue ? `, :red_circle: ${g.overdue} overdue` : ''}`;
+        g.open.slice(0, 8).forEach((o) => { text += `\n${emoji(o.dl)} ${o.step} (${o.owner}) — ${tag(o.dl)}`; });
+        if (g.open.length > 8) text += `\n_…and ${g.open.length - 8} more_`;
+      });
     }
 
     const posted = await postToSlack(text);
-    return res.status(200).json({ ok: posted.ok, via: posted.via, error: posted.error, needed: posted.needed, provided: posted.provided, counts: { overdue: overdue.length, today: today.length, soon: soon.length, openTotal: open.length } });
+    return res.status(200).json({ ok: posted.ok, via: posted.via, error: posted.error, needed: posted.needed, provided: posted.provided, counts: { overdue: totOverdue, today: totToday, openTotal: totOpen, clients: groups.length } });
   } catch (e) {
     return res.status(200).json({ ok: false, error: String(e) });
   }
