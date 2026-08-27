@@ -1514,8 +1514,8 @@ function completeOnbStep(i){
   const noteEl=document.getElementById('onbnote_'+i), note=noteEl?noteEl.value.trim():'';
   const by=(SESSION&&SESSION.name)||'', at=new Date().toISOString();
   addRecord({type:'onboard', client, step:s.step, status:'Done', owner:s.owner||'', note, by, at}).then(()=>{
-    const line=`:white_check_mark: *${client}* - ${s.step}\nCompleted by ${by||'a teammate'} (${usDate(at)})`+(note?`\n> ${note}`:'');
-    slackNotify(line);
+    // server computes the next step in the sequence, pings its owner, and posts the sign-off + handoff
+    try{ fetch('/api/onboarding-signoff',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:(SESSION&&SESSION.token)||'', client, step:s.step, note, by})}).catch(()=>{}); }catch(e){}
     toast('Signed off'); renderOnboarding();
   });
 }
