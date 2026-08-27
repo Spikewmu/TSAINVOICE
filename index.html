@@ -233,6 +233,8 @@
       <div class="field"><label>Lead source</label><select name="source"><option value="">-</option><option>Inbound</option><option>Webinar</option></select><span class="fieldhelp">Where this lead came from. Pick <b>Webinar</b> so webinar sales are tracked separately.</span></div>
       <div class="field"><label>Call outcome *</label><select name="outcome" required onchange="postcallOutcomeChanged()"></select><span class="fieldhelp">What happened on this call.</span></div>
       <div class="field"><label>Call type</label><select name="callType"><option value="">-</option><option>First call</option><option>Second call</option><option>Follow-up</option></select></div>
+      <div class="field followOnly" hidden><label>Follow-up date</label><input type="date" name="followUpDate"><span class="fieldhelp">The date the next call is booked for.</span></div>
+      <div class="field followOnly" hidden><label>Follow-up time</label><input type="time" name="followUpTime"><span class="fieldhelp">Start time of the booked follow-up.</span></div>
       <div class="field dqOnly" hidden><label>DQ reason</label><select name="dqReason"><option value="">-</option><option>Financial DQ</option><option>Personally unsuitable</option><option>Not interested</option><option>Other (see notes)</option></select><span class="fieldhelp">Why they did not qualify. Kept general across all offers, add detail in notes.</span></div>
       <div class="field wonOnly" hidden><label>Product sold</label><select name="product"></select><span class="fieldhelp">This client's offer that was sold.</span></div>
       <div class="field wonOnly" hidden><label>Contract value ($)</label><input type="number" name="contractValue" min="0" step="0.01" placeholder="0.00"></div>
@@ -679,6 +681,7 @@ function usDate(d){ d=(d||'').slice(0,10); const m=/^(\d{4})-(\d{2})-(\d{2})$/.e
 // month "2026-08" -> "August 2026" (month-year, never year-month); timestamp "2026-08-26 01:00 ET" -> "8-26-2026 01:00 ET"
 function usMonth(ym){ ym=(ym||'').slice(0,7); const m=/^(\d{4})-(\d{2})$/.exec(ym); if(!m) return ym; const names=['January','February','March','April','May','June','July','August','September','October','November','December']; return names[(+m[2])-1]+' '+m[1]; }
 function usDateTime(s){ s=String(s||''); const m=/^(\d{4})-(\d{2})-(\d{2})(.*)$/.exec(s); return m?(+m[2])+'-'+(+m[3])+'-'+m[1]+m[4]:s; }
+function fmt12(t){ const m=/^(\d{1,2}):(\d{2})/.exec(String(t||'')); if(!m) return t||''; let h=+m[1]; const ap=h<12?'AM':'PM'; h=h%12||12; return h+':'+m[2]+' '+ap; }
 function presetDates(){ const t=todayLocal(); document.querySelectorAll('input[type=date]').forEach(d=>{ if(!d.value) d.value=t; }); }
 
 /* ---------------- EOD role ---------------- */
@@ -748,9 +751,10 @@ function postcallClientChanged(){
   const cur=ps.value; ps.innerHTML='<option value="">-</option>'+prods.map(p=>`<option>${esc(p)}</option>`).join(''); if(cur) ps.value=cur;
 }
 function postcallOutcomeChanged(){
-  const sel=document.querySelector('#postcallForm [name=outcome]'), won = sel && /^Won/.test(sel.value||''), dq = sel && /^Disqualified/.test(sel.value||'');
+  const sel=document.querySelector('#postcallForm [name=outcome]'), won = sel && /^Won/.test(sel.value||''), dq = sel && /^Disqualified/.test(sel.value||''), fu = sel && /(Follow-up booked|Callback scheduled|Rescheduled)/.test(sel.value||'');
   document.querySelectorAll('#postcallForm .wonOnly').forEach(e=>e.hidden=!won);
   document.querySelectorAll('#postcallForm .dqOnly').forEach(e=>e.hidden=!dq);
+  document.querySelectorAll('#postcallForm .followOnly').forEach(e=>e.hidden=!fu);
   if(won) postcallClientChanged();
 }
 // Post-Call Checkout is role-aware: closers report a call's result (Won reveals the deal fields);
@@ -832,9 +836,10 @@ function renderCallLog(){
   const body=rows.length?rows.map(x=>{
     const type = x.role==='Setter' ? 'Conversation' : (x.role==='Closer' ? 'Closing call' : (x.role||''));
     const dq=x.dqReason?` <span class="muted" style="font-size:11px">(${esc(x.dqReason)})</span>`:'';
+    const fu=x.followUpDate?` <span class="muted" style="font-size:11px">&rarr; ${esc(usDate(x.followUpDate))}${x.followUpTime?' '+esc(fmt12(x.followUpTime)):''}</span>`:'';
     const watch=x.fathom?`<a class="linklike" href="${esc(x.fathom)}" target="_blank" rel="noopener">Watch</a>`:'<span class="muted">-</span>';
     const hasNote=!!(x.notes&&x.notes.trim());
-    const main=`<tr class="${hasNote?'clmain':''}"><td>${esc(usDate(x.date))}</td><td>${esc(x.client||'')}</td><td>${esc(type)}</td><td>${esc(x.rep||'')}</td><td>${esc(x.lead||'')}${x.leadEmail?'<br><span class="muted" style="font-size:11px">'+esc(x.leadEmail)+'</span>':''}</td><td>${esc(x.source||'')}</td><td>${callLogPill(x.outcome)}${dq}</td><td>${watch}</td></tr>`;
+    const main=`<tr class="${hasNote?'clmain':''}"><td>${esc(usDate(x.date))}</td><td>${esc(x.client||'')}</td><td>${esc(type)}</td><td>${esc(x.rep||'')}</td><td>${esc(x.lead||'')}${x.leadEmail?'<br><span class="muted" style="font-size:11px">'+esc(x.leadEmail)+'</span>':''}</td><td>${esc(x.source||'')}</td><td>${callLogPill(x.outcome)}${fu}${dq}</td><td>${watch}</td></tr>`;
     const note=hasNote?`<tr class="clnoterow"><td colspan="8"><span class="cllabel">Notes</span>${esc(x.notes)}</td></tr>`:'';
     return main+note;
   }).join(''):`<tr><td colspan="8" class="muted" style="padding:16px">No calls logged in this range.</td></tr>`;
@@ -1176,7 +1181,7 @@ async function saveDailyGrid(){
 /* ---------------- export ---------------- */
 const DEAL_COLS=['date','submittedET','client','lead','leadEmail','rep','setter','source','product','callType','contractValue','cashCollected','depositCollected','fathom','notes','submittedAt'];
 const EOD_COLS=['date','submittedET','client','rep','role','hoursDialing','followUpOutreach','newOutreach','connectedCalls','callsOffered','callsSet','dqs','convos4min','callCapacity','speedToLead','newMeetings','connectedMeetings','followUpMeetings','advancedCalls','noShows','closedDeals','contractsSigned','contractValue','cashCollected','depositCollected','aosiSold','productBSold','notes','submittedAt'];
-const POSTCALL_COLS=['date','submittedET','client','rep','role','lead','leadEmail','setter','source','outcome','callType','dqReason','fathom','notes','submittedAt'];
+const POSTCALL_COLS=['date','submittedET','client','rep','role','lead','leadEmail','setter','source','outcome','followUpDate','followUpTime','callType','dqReason','fathom','notes','submittedAt'];
 function exportCSV(type){ const cols=type==='deal'?DEAL_COLS:(type==='postcall'?POSTCALL_COLS:EOD_COLS); const rows=type==='postcall'?collapsePostcall(RECORDS):RECORDS.filter(r=>r.type===type); if(!rows.length){toast('Nothing to export');return;} const fmt=(c,v)=> c==='date'?usDate(v) : c==='submittedET'?usDateTime(v) : v; const head=cols.join(','); const body=rows.map(r=>cols.map(c=>csvCell(fmt(c,r[c]))).join(',')).join('\n'); download(`tsa_${type}_${usDate(todayLocal())}.csv`,head+'\n'+body,'text/csv'); }
 function csvCell(v){ if(v==null)return ''; const s=String(v); return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; }
 function exportJSON(){ download('tsa_invoice_backup.json',JSON.stringify(RECORDS,null,2),'application/json'); }
