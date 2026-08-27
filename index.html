@@ -456,6 +456,19 @@
       <p class="hint">Break-glass owner login. Sign in with username <b>tsaboss</b> and this password to manage everything, even before the backend is set up. Change it from the default.</p>
       <div class="field" style="max-width:320px"><label>Master admin password</label><input id="setAdmin"></div>
     </div></div>
+    <div class="panel"><h3>Slack bot - workspace linking</h3><div style="padding:16px">
+      <p class="hint">Link each client's Slack workspace to the account the <b>/tsa</b> bot may share there. A workspace only ever returns data for the client you link it to - this is the wall that keeps clients from seeing each other.</p>
+      <div id="slackAuthRow" class="field" style="max-width:460px" hidden><label>Bot admin token</label><div class="row-actions"><input id="slackToken" type="password" placeholder="paste the BOT_ADMIN_TOKEN"><button class="btn sm" onclick="saveSlackToken()">Unlock</button></div><span class="fieldhelp">The value you set as BOT_ADMIN_TOKEN in Vercel. Entered once, stored only in this browser tab.</span></div>
+      <div id="slackLinkBody" hidden>
+        <div class="tablewrap"><table id="slackLinksTable"></table></div>
+        <div class="filters" style="margin-top:12px;align-items:end">
+          <div class="field"><label>Slack team ID</label><input id="slTeam" placeholder="T0XXXXXXX"><span class="fieldhelp">Run <b>/tsa</b> in the workspace - it prints this.</span></div>
+          <div class="field"><label>Client</label><select id="slClient"></select></div>
+          <div class="field"><label>Note</label><input id="slNote" placeholder="optional"></div>
+          <button class="btn gold sm" onclick="addSlackLink()">Link</button>
+        </div>
+      </div>
+    </div></div>
     <div class="row-actions"><button class="btn gold" onclick="saveSettings()">Save settings</button></div>
   </section>
 </main>
@@ -1519,7 +1532,33 @@ function loadSettingsForm(){
   document.getElementById('setSetter').value=CFG.setterRate;
   document.getElementById('setEndpoint').value=CFG.endpoint;
   document.getElementById('setAdmin').value=CFG.adminCode;
+  renderSlackLinks();
 }
+/* ---- Slack bot workspace linking (admin) ---- */
+function botToken(){ try{ return sessionStorage.getItem('tsaBotToken')||''; }catch(e){ return ''; } }
+function saveSlackToken(){ const v=(document.getElementById('slackToken').value||'').trim(); if(!v){ toast('Enter the token',true); return; } try{ sessionStorage.setItem('tsaBotToken',v); }catch(e){} renderSlackLinks(); }
+function slackApi(payload){ return fetch('/api/link-workspace',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...payload, token:botToken()})}).then(r=>r.json()).catch(()=>({ok:false,error:'network'})); }
+function renderSlackLinks(){
+  const authRow=document.getElementById('slackAuthRow'), body=document.getElementById('slackLinkBody'); if(!authRow||!body) return;
+  if(!botToken()){ authRow.hidden=false; body.hidden=true; return; }
+  authRow.hidden=true; body.hidden=false;
+  const sel=document.getElementById('slClient'); if(sel){ const cur=sel.value; sel.innerHTML='<option value="">- pick client -</option>'+clientNames().map(c=>`<option>${esc(c)}</option>`).join(''); if(cur)sel.value=cur; }
+  const tbl=document.getElementById('slackLinksTable'); tbl.innerHTML='<tbody><tr><td class="muted" style="padding:12px">Loading...</td></tr></tbody>';
+  slackApi({action:'list'}).then(res=>{
+    if(res.error==='unauthorized'){ try{sessionStorage.removeItem('tsaBotToken');}catch(e){} toast('Token rejected',true); renderSlackLinks(); return; }
+    if(!res.ok){ tbl.innerHTML=`<tbody><tr><td class="muted" style="padding:12px">${esc(res.error||'Could not load. Is the backend deployed with env vars set?')}</td></tr></tbody>`; return; }
+    const rows=res.rows||[];
+    tbl.innerHTML='<thead><tr><th>Slack team ID</th><th>Client</th><th>Note</th><th></th></tr></thead><tbody>'+
+      (rows.length?rows.map(r=>`<tr><td style="font-family:monospace">${esc(r.team_id)}</td><td><b>${esc(r.client)}</b></td><td class="muted">${esc(r.note||'')}</td><td><button class="btn sm ghost" style="color:var(--warn);border-color:var(--warn)" onclick="removeSlackLink('${esc(r.team_id).replace(/'/g,"\\'")}')">Unlink</button></td></tr>`).join('')
+       :'<tr><td colspan="4" class="muted" style="padding:12px">No workspaces linked yet.</td></tr>')+'</tbody>';
+  });
+}
+function addSlackLink(){
+  const team_id=(document.getElementById('slTeam').value||'').trim(), client=document.getElementById('slClient').value, note=(document.getElementById('slNote').value||'').trim();
+  if(!team_id||!client){ toast('Team ID and client are required',true); return; }
+  slackApi({action:'add', team_id, client, note}).then(res=>{ if(res.ok){ toast('Linked'); document.getElementById('slTeam').value=''; document.getElementById('slNote').value=''; renderSlackLinks(); } else toast(res.error||'Could not link',true); });
+}
+function removeSlackLink(team_id){ if(!confirm('Unlink '+team_id+'? The bot will stop answering in that workspace.')) return; slackApi({action:'remove', team_id}).then(res=>{ if(res.ok){ toast('Unlinked'); renderSlackLinks(); } else toast('Could not unlink',true); }); }
 function renderChips(key){ document.getElementById(key+'Chips').innerHTML=(CFG[key]||[]).map((v,i)=>`<span class="chip">${esc(v)}<button onclick="rmItem('${key}',${i})">&times;</button></span>`).join(''); }
 function addItem(key,inputId){ const inp=document.getElementById(inputId),v=inp.value.trim(); if(!v)return; (CFG[key]=CFG[key]||[]).push(v); inp.value=''; renderChips(key); }
 function rmItem(key,i){ CFG[key].splice(i,1); renderChips(key); }

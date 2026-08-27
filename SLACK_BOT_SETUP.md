@@ -28,6 +28,7 @@ alter table public.slack_workspaces enable row level security;
 | `SLACK_SIGNING_SECRET` | the app's signing secret | Slack app → Basic Information → App Credentials |
 | `SUPABASE_URL` | `https://wiwmogfurmdwrjndsuct.supabase.co` | Supabase → Settings → API |
 | `SUPABASE_SERVICE_KEY` | the **service_role** key | Supabase → Settings → API (keep secret; server-side only) |
+| `BOT_ADMIN_TOKEN` | any long random string you make up | you choose it; it unlocks the in-dashboard linking screen |
 
 Redeploy after adding them.
 
@@ -47,7 +48,11 @@ Use the app's **Install / Share** link once per client workspace (each client's 
 
 ## 5. Link each workspace to its client (the isolation step)
 
-You need each workspace's `team_id`. Easiest way: after installing, run `/tsa status` in that workspace — the bot replies that the workspace isn't linked **and prints its `team_id`**. Then insert the mapping:
+You need each workspace's `team_id`. After installing, run `/tsa status` in that workspace — the bot replies that the workspace isn't linked **and prints its `team_id`**.
+
+**Easiest way (no SQL): the dashboard.** Sign in as admin → **Settings → Slack bot - workspace linking**. Paste your `BOT_ADMIN_TOKEN` once to unlock it, then add the `team_id`, pick the client from the dropdown, and click **Link**. Unlink or re-point any workspace from the same table. Only an admin (Settings is admin-only) with the token can touch this.
+
+**Or by SQL** if you prefer:
 
 ```sql
 insert into public.slack_workspaces (team_id, client, note) values
