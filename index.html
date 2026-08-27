@@ -162,6 +162,7 @@
   <button data-tab="onboarding">Onboarding</button>
   <button data-tab="postcall">Post-Call Checkout</button>
   <button data-tab="eod">End of Day</button>
+  <button data-tab="webinar">Webinar</button>
   <button data-tab="calllog">Call Log</button>
   <button data-tab="data">Data + Export</button>
   <button data-tab="users">Users</button>
@@ -300,6 +301,38 @@
     </form>
   </section>
 
+  <!-- ===== WEBINAR ===== -->
+  <section id="tab-webinar" hidden>
+    <h2 class="section">End of Webinar Report</h2>
+    <p class="hint">Fill this in <b>after each webinar</b>. Enter the raw counts and the rates (show rate, close rate, earnings per registrant) are calculated for you. A few numbers - <b>emails delivered</b> and <b>live attendees</b> - come from Zoom / WebinarJam / your ESP, so plug those in manually. Only count sales from calls booked <b>off this webinar</b>.</p>
+    <form class="grid" id="webinarForm" onsubmit="submitWebinar(event)">
+      <div class="formhead"><b>Who &amp; when</b></div>
+      <div class="field"><label>Webinar date *</label><input type="date" name="date" required></div>
+      <div class="field"><label>Client / account *</label><select name="client" data-list="clients" required></select></div>
+      <div class="field"><label>Host</label><select name="rep" data-list="reps"></select><span class="fieldhelp">Who ran the webinar.</span></div>
+
+      <div class="formhead"><b>Promotion</b><span class="sub">how the room was filled</span></div>
+      <div class="field"><label>Emails sent</label><input type="number" name="emailsSent" min="0" step="1"></div>
+      <div class="field"><label>Emails delivered</label><input type="number" name="emailsDelivered" min="0" step="1"><span class="fieldhelp">From GHL / your ESP.</span></div>
+      <div class="field"><label>Texts sent</label><input type="number" name="textsSent" min="0" step="1"></div>
+
+      <div class="formhead"><b>Registration &amp; attendance</b></div>
+      <div class="field"><label>Registrations</label><input type="number" name="registrations" min="0" step="1"></div>
+      <div class="field"><label>Live attendees</label><input type="number" name="attendees" min="0" step="1"><span class="fieldhelp">Total who showed up (Zoom / WebinarJam).</span></div>
+
+      <div class="formhead"><b>Sales from the webinar</b><span class="sub">only calls booked off this webinar</span></div>
+      <div class="field"><label>Calls booked</label><input type="number" name="callsBooked" min="0" step="1"></div>
+      <div class="field"><label>Calls shown</label><input type="number" name="callsShown" min="0" step="1"><span class="fieldhelp">Booked calls that actually showed.</span></div>
+      <div class="field"><label>Deals closed</label><input type="number" name="dealsClosed" min="0" step="1"></div>
+      <div class="field"><label>Contract value ($)</label><input type="number" name="contractValue" min="0" step="0.01"><span class="fieldhelp">Total signed (drives average purchase price).</span></div>
+      <div class="field"><label>Cash collected ($)</label><input type="number" name="cashCollected" min="0" step="0.01"></div>
+
+      <div class="field full"><label>Notes</label><input type="text" name="notes" placeholder="what worked, what to change next time"></div>
+      <div class="full row-actions"><button class="btn gold" type="submit">Submit webinar report</button></div>
+    </form>
+    <div class="panel"><h3>Webinars <span style="font-weight:400;color:var(--muted);font-size:12px">- calculated rates</span></h3><div class="tablewrap"><table id="webinarTable"></table></div></div>
+  </section>
+
   <!-- ===== CALL LOG ===== -->
   <section id="tab-calllog" hidden>
     <h2 class="section">Call Log</h2>
@@ -323,6 +356,7 @@
       <button class="btn sm" onclick="exportCSV('deal')">Export closed deals (CSV)</button>
       <button class="btn sm" onclick="exportCSV('eod')">Export end-of-day (CSV)</button>
       <button class="btn sm" onclick="exportCSV('postcall')">Export post-call (CSV)</button>
+      <button class="btn sm" onclick="exportCSV('webinar')">Export webinars (CSV)</button>
       <button class="btn sm ghost" onclick="exportJSON()">Backup all (JSON)</button>
       <label class="btn sm ghost" style="cursor:pointer">Import JSON<input type="file" accept="application/json" hidden onchange="importJSON(event)"></label>
       <button class="btn sm ghost" onclick="wipe()" style="color:var(--warn);border-color:var(--warn)">Clear all</button>
@@ -616,10 +650,10 @@ function startApp(){
   document.getElementById('whoTag').textContent = SESSION.name+' ('+role+')';
   document.getElementById('storeTag').textContent = '';
   const allow = {
-    admin:['dash','reps','clients','onboarding','postcall','eod','calllog','data','users','settings'],
-    manager:['dash','reps','clients','onboarding','users','postcall','eod','calllog'],
+    admin:['dash','reps','clients','onboarding','postcall','eod','webinar','calllog','data','users','settings'],
+    manager:['dash','reps','clients','onboarding','users','postcall','eod','webinar','calllog'],
     founder:['dash'],
-    closer:['dash','postcall','eod','calllog','reps'],
+    closer:['dash','postcall','eod','webinar','calllog','reps'],
     setter:['dash','postcall','eod','calllog','reps']
   }[role] || ['eod'];
   document.querySelectorAll('#tabs button').forEach(b=>{ b.hidden = !allow.includes(b.dataset.tab); });
@@ -653,9 +687,9 @@ function applyIdentity(){
 function wireTabs(){ document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>showTab(b.dataset.tab)); }
 function showTab(t){
   document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
-  ['dash','reps','clients','onboarding','deal','postcall','eod','calllog','data','users','settings'].forEach(x=>{ document.getElementById('tab-'+x).hidden = (x!==t); });
+  ['dash','reps','clients','onboarding','deal','postcall','eod','webinar','calllog','data','users','settings'].forEach(x=>{ document.getElementById('tab-'+x).hidden = (x!==t); });
   // stale-while-revalidate: render instantly from the cached records, then refresh in the background
-  const render={dash:renderDash, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, calllog:renderCallLog, data:renderAll}[t];
+  const render={dash:renderDash, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, webinar:renderWebinars, calllog:renderCallLog, data:renderAll}[t];
   if(render){ render(); syncRecords().then(()=>{ if(currentTab()===t) render(); }); }
   if(t==='data'){ renderDailyEntry(); }
   if(t==='users'){ renderUsers(); }
@@ -737,7 +771,7 @@ function setEodRole(r){
 
 /* ---------------- submit ---------------- */
 function formObj(f){ const o={}; new FormData(f).forEach((v,k)=>o[k]=v); return o; }
-const NUMKEYS=['contractValue','cashCollected','depositCollected','followUpOutreach','newOutreach','callsOffered','callsSet','dqs','connectedCalls','convos4min','callCapacity','speedToLead','hoursDialing','newMeetings','connectedMeetings','followUpMeetings','advancedCalls','noShows','closedDeals','contractsSigned','aosiSold','productBSold'];
+const NUMKEYS=['contractValue','cashCollected','depositCollected','followUpOutreach','newOutreach','callsOffered','callsSet','dqs','connectedCalls','convos4min','callCapacity','speedToLead','hoursDialing','newMeetings','connectedMeetings','followUpMeetings','advancedCalls','noShows','closedDeals','contractsSigned','aosiSold','productBSold','emailsSent','emailsDelivered','textsSent','registrations','attendees','callsBooked','callsShown','dealsClosed'];
 function num(o){ NUMKEYS.forEach(k=>{ if(k in o) o[k]=parseFloat(o[k])||0; }); return o; }
 // submit-button states: spinner while sending, a green "Submitted" flash, then restore
 function btnBusy(btn,on){ if(!btn) return; if(on){ if(!btn.dataset.label) btn.dataset.label=btn.innerHTML; btn.disabled=true; btn.innerHTML='<span class="spinner"></span>Submitting...'; } else { btn.disabled=false; if(btn.dataset.label) btn.innerHTML=btn.dataset.label; } }
@@ -873,6 +907,24 @@ function renderCallLog(){
     return main+note;
   }).join(''):`<tr><td colspan="8" class="muted" style="padding:16px">No calls logged in this range.</td></tr>`;
   document.getElementById('callLogTable').innerHTML=head+body+`</tbody>`;
+}
+/* ---------------- webinar ---------------- */
+async function submitWebinar(e){ e.preventDefault(); const btn=e.target.querySelector('[type=submit]'); if(btn&&btn.disabled) return; btnBusy(btn,true); let ok=false;
+  try{ const o=num(formObj(e.target)); o.type='webinar';
+    const csel=e.target.querySelector('[name=client]'); if(csel && !(o.client||'').trim()) o.client=csel.value;
+    if(!(o.client||'').trim()){ toast('Choose a client / account first.',true); return; }
+    await addRecord(o); e.target.reset(); presetDates(); toast('Webinar report submitted.'); renderWebinars(); ok=true; }
+  catch(err){ toast('Submit failed - try again',true); }
+  finally{ if(ok) btnDone(btn,'Submitted!'); else btnBusy(btn,false); } }
+function renderWebinars(){
+  const sc=dashScopeClients();
+  const rows=RECORDS.filter(x=>x.type==='webinar'&&(!sc||sc.includes(x.client))).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  const rate=(a,b)=> b? Math.round((+a||0)/b*100)+'%' : '-';
+  const per=(a,b)=> b? money((+a||0)/b) : '-';
+  const head=`<thead><tr><th>Date</th><th>Client</th><th>Host</th><th class="num">Reg</th><th class="num">Att</th><th class="num">Show</th><th class="num">Deliv</th><th class="num">Booked</th><th class="num">Shown</th><th class="num">Closed</th><th class="num">Close%</th><th class="num">AOV</th><th class="num">Cash</th><th class="num">$/reg</th><th class="num">$/att</th></tr></thead><tbody>`;
+  const body=rows.length?rows.map(w=>`<tr><td>${esc(usDate(w.date))}</td><td>${esc(w.client||'')}</td><td>${esc(w.rep||'')}</td><td class="num">${w.registrations||0}</td><td class="num">${w.attendees||0}</td><td class="num">${rate(w.attendees,w.registrations)}</td><td class="num">${rate(w.emailsDelivered,w.emailsSent)}</td><td class="num">${w.callsBooked||0}</td><td class="num">${w.callsShown||0}</td><td class="num">${w.dealsClosed||0}</td><td class="num">${rate(w.dealsClosed,w.callsShown)}</td><td class="num">${per(w.contractValue,w.dealsClosed)}</td><td class="num">${money(w.cashCollected)}</td><td class="num">${per(w.cashCollected,w.registrations)}</td><td class="num">${per(w.cashCollected,w.attendees)}</td></tr>`).join('')
+    :`<tr><td colspan="15" class="muted" style="padding:16px">No webinar reports yet.</td></tr>`;
+  document.getElementById('webinarTable').innerHTML=head+body+`</tbody>`;
 }
 // founders + reps (closer/setter) see ONLY their assigned company(ies); admin/manager see all
 function dashScopeClients(){
@@ -1211,7 +1263,8 @@ async function saveDailyGrid(){
 const DEAL_COLS=['date','submittedET','client','lead','leadEmail','rep','setter','source','product','callType','contractValue','cashCollected','depositCollected','fathom','notes','submittedAt'];
 const EOD_COLS=['date','submittedET','client','rep','role','hoursDialing','followUpOutreach','newOutreach','connectedCalls','callsOffered','callsSet','dqs','convos4min','callCapacity','speedToLead','newMeetings','connectedMeetings','followUpMeetings','advancedCalls','noShows','closedDeals','contractsSigned','contractValue','cashCollected','depositCollected','aosiSold','productBSold','notes','submittedAt'];
 const POSTCALL_COLS=['date','submittedET','client','rep','role','lead','leadEmail','setter','source','outcome','followUpDate','followUpTime','callType','dqReason','fathom','notes','submittedAt'];
-function exportCSV(type){ const cols=type==='deal'?DEAL_COLS:(type==='postcall'?POSTCALL_COLS:EOD_COLS); const rows=type==='postcall'?collapsePostcall(RECORDS):RECORDS.filter(r=>r.type===type); if(!rows.length){toast('Nothing to export');return;} const fmt=(c,v)=> c==='date'?usDate(v) : c==='submittedET'?usDateTime(v) : v; const head=cols.join(','); const body=rows.map(r=>cols.map(c=>csvCell(fmt(c,r[c]))).join(',')).join('\n'); download(`tsa_${type}_${usDate(todayLocal())}.csv`,head+'\n'+body,'text/csv'); }
+const WEBINAR_COLS=['date','submittedET','client','rep','emailsSent','emailsDelivered','textsSent','registrations','attendees','callsBooked','callsShown','dealsClosed','contractValue','cashCollected','notes','submittedAt'];
+function exportCSV(type){ const cols=type==='deal'?DEAL_COLS:(type==='postcall'?POSTCALL_COLS:(type==='webinar'?WEBINAR_COLS:EOD_COLS)); const rows=type==='postcall'?collapsePostcall(RECORDS):RECORDS.filter(r=>r.type===type); if(!rows.length){toast('Nothing to export');return;} const fmt=(c,v)=> c==='date'?usDate(v) : c==='submittedET'?usDateTime(v) : v; const head=cols.join(','); const body=rows.map(r=>cols.map(c=>csvCell(fmt(c,r[c]))).join(',')).join('\n'); download(`tsa_${type}_${usDate(todayLocal())}.csv`,head+'\n'+body,'text/csv'); }
 function csvCell(v){ if(v==null)return ''; const s=String(v); return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; }
 function exportJSON(){ download('tsa_invoice_backup.json',JSON.stringify(RECORDS,null,2),'application/json'); }
 function download(name,text,mime){ const b=new Blob([text],{type:mime}),u=URL.createObjectURL(b),a=document.createElement('a'); a.href=u;a.download=name;a.click();URL.revokeObjectURL(u); }
