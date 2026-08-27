@@ -217,8 +217,10 @@
       <div class="field"><label>Lead / prospect name *</label><input type="text" name="lead" required placeholder="who the call was with"></div>
       <div class="field"><label>Lead email</label><input type="email" name="leadEmail" placeholder="name@email.com"><span class="fieldhelp">Used to match this lead in GHL (more reliable than name).</span></div>
       <div class="field"><label>Setter (who set the call)</label><select name="setter" data-list="setters"></select><span class="fieldhelp">Leave blank if it was inbound / you set it yourself.</span></div>
+      <div class="field"><label>Lead source</label><select name="source"><option value="">-</option><option>Inbound</option><option>Webinar</option></select><span class="fieldhelp">Where this lead came from. Pick <b>Webinar</b> so webinar sales are tracked separately.</span></div>
       <div class="field"><label>Call outcome *</label><select name="outcome" required onchange="postcallOutcomeChanged()"><option value="">-</option><option>Won (closed)</option><option>Lost</option><option>No-show</option><option>Follow-up booked</option><option>Rescheduled</option><option>Disqualified</option><option>Canceled</option></select><span class="fieldhelp">What happened on this call.</span></div>
       <div class="field"><label>Call type</label><select name="callType"><option value="">-</option><option>First call</option><option>Second call</option><option>Follow-up</option></select></div>
+      <div class="field dqOnly" hidden><label>DQ reason</label><select name="dqReason"><option value="">-</option><option>Financial DQ</option><option>Personally unsuitable</option><option>Not interested</option><option>Other (see notes)</option></select><span class="fieldhelp">Why they did not qualify. Kept general across all offers, add detail in notes.</span></div>
       <div class="field wonOnly" hidden><label>Product sold</label><select name="product"></select><span class="fieldhelp">This client's offer that was sold.</span></div>
       <div class="field wonOnly" hidden><label>Contract value ($)</label><input type="number" name="contractValue" min="0" step="0.01" placeholder="0.00"></div>
       <div class="field wonOnly" hidden><label>Cash collected ($)</label><input type="number" name="cashCollected" min="0" step="0.01" placeholder="0.00"></div>
@@ -256,6 +258,7 @@
       <div class="field"><label>Connected calls</label><input type="number" name="connectedCalls" min="0" step="1"><span class="fieldhelp">How many people you actually reached / talked to. Drives your connection rate.</span></div>
       <div class="field setterOnly" hidden><label>Conversations over 4 min</label><input type="number" name="convos4min" min="0" step="1"><span class="fieldhelp">Number of conversations longer than 4 minutes (meaningful talk time).</span></div>
       <div class="field setterOnly" hidden><label>Sales calls set</label><input type="number" name="callsSet" min="0" step="1"><span class="fieldhelp">Appointments you actually booked.</span></div>
+      <div class="field setterOnly" hidden><label>Disqualified (DQ)</label><input type="number" name="dqs" min="0" step="1"><span class="fieldhelp">How many connected calls you disqualified today. Log the reason per call on Post-Call Checkout.</span></div>
       <div class="field setterOnly" hidden><label>Speed to lead (min)</label><input type="number" name="speedToLead" min="0" step="0.1"><span class="fieldhelp">Avg minutes from a lead arriving to your first dial. Optional.</span></div>
 
       <div class="formhead closerOnly"><b>Meetings / calls</b><span class="sub">the calls you took today (setters don't fill this - the closer reports call outcomes)</span></div>
@@ -672,7 +675,7 @@ function setEodRole(r){
 
 /* ---------------- submit ---------------- */
 function formObj(f){ const o={}; new FormData(f).forEach((v,k)=>o[k]=v); return o; }
-const NUMKEYS=['contractValue','cashCollected','depositCollected','followUpOutreach','newOutreach','callsOffered','callsSet','connectedCalls','convos4min','callCapacity','speedToLead','hoursDialing','newMeetings','connectedMeetings','followUpMeetings','advancedCalls','noShows','closedDeals','contractsSigned','aosiSold','productBSold'];
+const NUMKEYS=['contractValue','cashCollected','depositCollected','followUpOutreach','newOutreach','callsOffered','callsSet','dqs','connectedCalls','convos4min','callCapacity','speedToLead','hoursDialing','newMeetings','connectedMeetings','followUpMeetings','advancedCalls','noShows','closedDeals','contractsSigned','aosiSold','productBSold'];
 function num(o){ NUMKEYS.forEach(k=>{ if(k in o) o[k]=parseFloat(o[k])||0; }); return o; }
 // submit-button states: spinner while sending, a green "Submitted" flash, then restore
 function btnBusy(btn,on){ if(!btn) return; if(on){ if(!btn.dataset.label) btn.dataset.label=btn.innerHTML; btn.disabled=true; btn.innerHTML='<span class="spinner"></span>Submitting...'; } else { btn.disabled=false; if(btn.dataset.label) btn.innerHTML=btn.dataset.label; } }
@@ -699,7 +702,7 @@ async function submitPostCall(e){ e.preventDefault(); const btn=e.target.querySe
     won=/^Won/.test(o.outcome||'');
     await addRecord(o); // every call logs a post-call record
     if(won){ // a win ALSO logs a closed deal so it flows into cash / leaderboards / invoicing
-      const d=num({type:'deal',role:'Closer',date:o.date,client:o.client,lead:o.lead,leadEmail:o.leadEmail||'',rep:o.rep,setter:o.setter||'',product:o.product||'',callType:o.callType||'',contractValue:o.contractValue||0,cashCollected:o.cashCollected||0,depositCollected:o.depositCollected||0,fathom:o.fathom||'',notes:o.notes||'',closedDeals:1});
+      const d=num({type:'deal',role:'Closer',date:o.date,client:o.client,lead:o.lead,leadEmail:o.leadEmail||'',rep:o.rep,setter:o.setter||'',source:o.source||'',product:o.product||'',callType:o.callType||'',contractValue:o.contractValue||0,cashCollected:o.cashCollected||0,depositCollected:o.depositCollected||0,fathom:o.fathom||'',notes:o.notes||'',closedDeals:1});
       await addRecord(d);
     }
     e.target.reset(); presetDates(); if(repMode()) applyIdentity(); postcallOutcomeChanged();
@@ -714,8 +717,9 @@ function postcallClientChanged(){
   const cur=ps.value; ps.innerHTML='<option value="">-</option>'+prods.map(p=>`<option>${esc(p)}</option>`).join(''); if(cur) ps.value=cur;
 }
 function postcallOutcomeChanged(){
-  const sel=document.querySelector('#postcallForm [name=outcome]'), won = sel && /^Won/.test(sel.value||'');
+  const sel=document.querySelector('#postcallForm [name=outcome]'), won = sel && /^Won/.test(sel.value||''), dq = sel && /^Disqualified/.test(sel.value||'');
   document.querySelectorAll('#postcallForm .wonOnly').forEach(e=>e.hidden=!won);
+  document.querySelectorAll('#postcallForm .dqOnly').forEach(e=>e.hidden=!dq);
   if(won) postcallClientChanged();
 }
 // Closer EOD: one unit-count input per offer of the selected client (values preserved across re-renders)
@@ -1090,9 +1094,9 @@ async function saveDailyGrid(){
 }
 
 /* ---------------- export ---------------- */
-const DEAL_COLS=['date','submittedET','client','lead','leadEmail','rep','setter','product','callType','contractValue','cashCollected','depositCollected','fathom','notes','submittedAt'];
-const EOD_COLS=['date','submittedET','client','rep','role','hoursDialing','followUpOutreach','newOutreach','connectedCalls','callsOffered','callsSet','convos4min','callCapacity','speedToLead','newMeetings','connectedMeetings','followUpMeetings','advancedCalls','noShows','closedDeals','contractsSigned','contractValue','cashCollected','depositCollected','aosiSold','productBSold','notes','submittedAt'];
-const POSTCALL_COLS=['date','submittedET','client','rep','lead','leadEmail','setter','outcome','callType','fathom','notes','submittedAt'];
+const DEAL_COLS=['date','submittedET','client','lead','leadEmail','rep','setter','source','product','callType','contractValue','cashCollected','depositCollected','fathom','notes','submittedAt'];
+const EOD_COLS=['date','submittedET','client','rep','role','hoursDialing','followUpOutreach','newOutreach','connectedCalls','callsOffered','callsSet','dqs','convos4min','callCapacity','speedToLead','newMeetings','connectedMeetings','followUpMeetings','advancedCalls','noShows','closedDeals','contractsSigned','contractValue','cashCollected','depositCollected','aosiSold','productBSold','notes','submittedAt'];
+const POSTCALL_COLS=['date','submittedET','client','rep','role','lead','leadEmail','setter','source','outcome','callType','dqReason','fathom','notes','submittedAt'];
 function exportCSV(type){ const cols=type==='deal'?DEAL_COLS:(type==='postcall'?POSTCALL_COLS:EOD_COLS); const rows=type==='postcall'?collapsePostcall(RECORDS):RECORDS.filter(r=>r.type===type); if(!rows.length){toast('Nothing to export');return;} const fmt=(c,v)=> c==='date'?usDate(v) : c==='submittedET'?usDateTime(v) : v; const head=cols.join(','); const body=rows.map(r=>cols.map(c=>csvCell(fmt(c,r[c]))).join(',')).join('\n'); download(`tsa_${type}_${usDate(todayLocal())}.csv`,head+'\n'+body,'text/csv'); }
 function csvCell(v){ if(v==null)return ''; const s=String(v); return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; }
 function exportJSON(){ download('tsa_invoice_backup.json',JSON.stringify(RECORDS,null,2),'application/json'); }
