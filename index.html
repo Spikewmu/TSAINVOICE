@@ -745,6 +745,17 @@ function activityRecords(){
   Object.values(latestEod).forEach(x=>out.push(x));
   return out;
 }
+// Post-call corrections work the same way: collapse to the LATEST submission per rep+day+lead+callType
+// (append-only backend, so a re-submitted call supersedes the earlier one instead of duplicating).
+function collapsePostcall(list){
+  const latest={};
+  list.forEach(x=>{ if(x.type!=='postcall') return;
+    const lead=(x.lead||'').trim().toLowerCase();
+    const k=lead ? [(x.rep||'').trim().toLowerCase(),(x.date||'').slice(0,10),lead,(x.callType||'').trim().toLowerCase()].join('|') : ('id:'+x.id);
+    const prev=latest[k]; if(!prev || (x.submittedAt||'')>(prev.submittedAt||'')) latest[k]=x;
+  });
+  return Object.values(latest);
+}
 // founders + reps (closer/setter) see ONLY their assigned company(ies); admin/manager see all
 function dashScopeClients(){
   if(!SESSION) return null;
@@ -1029,7 +1040,8 @@ function repDetail(rep, role){
 
 /* ---------------- data tab ---------------- */
 function renderAll(){
-  const rows=RECORDS.filter(x=>['deal','eod','postcall'].includes(x.type)||!x.type).sort((a,b)=>(b.submittedAt||'').localeCompare(a.submittedAt||''));
+  const keepPc=new Set(collapsePostcall(RECORDS).map(r=>r.id));
+  const rows=RECORDS.filter(x=> x.type==='postcall' ? keepPc.has(x.id) : (['deal','eod'].includes(x.type)||!x.type)).sort((a,b)=>(b.submittedAt||'').localeCompare(a.submittedAt||''));
   document.getElementById('allTable').innerHTML=
     `<thead><tr><th>Date</th><th>Submitted (ET)</th><th>Type</th><th>Role</th><th>Client</th><th>Rep</th><th>Outcome / Cash</th><th class="num">Deals</th><th></th></tr></thead><tbody>`+
     (rows.length?rows.map(r=>`<tr><td>${esc(usDate(r.date))}</td><td style="font-size:12px;color:var(--muted)">${esc(usDateTime(submittedETof(r)))}</td><td><span class="pill ${r.type==='deal'?'good':(r.type==='postcall'?'warn':'')}">${esc(r.type)}</span></td><td>${esc(r.role)}</td><td>${esc(r.client)}</td><td>${esc(r.rep)}</td><td>${r.type==='postcall'?esc(r.outcome||'-')+(r.lead?' <span class="muted">('+esc(r.lead)+')</span>':''):money(r.cashCollected)}</td><td class="num">${r.closedDeals||0}</td><td><button class="btn sm ghost" style="color:var(--warn);border-color:var(--warn)" onclick="delRec('${r.id}')">Delete</button></td></tr>`).join('')
@@ -1081,7 +1093,7 @@ async function saveDailyGrid(){
 const DEAL_COLS=['date','submittedET','client','lead','leadEmail','rep','setter','product','callType','contractValue','cashCollected','depositCollected','fathom','notes','submittedAt'];
 const EOD_COLS=['date','submittedET','client','rep','role','hoursDialing','followUpOutreach','newOutreach','connectedCalls','callsOffered','callsSet','convos4min','callCapacity','speedToLead','newMeetings','connectedMeetings','followUpMeetings','advancedCalls','noShows','closedDeals','contractsSigned','contractValue','cashCollected','depositCollected','aosiSold','productBSold','notes','submittedAt'];
 const POSTCALL_COLS=['date','submittedET','client','rep','lead','leadEmail','setter','outcome','callType','fathom','notes','submittedAt'];
-function exportCSV(type){ const cols=type==='deal'?DEAL_COLS:(type==='postcall'?POSTCALL_COLS:EOD_COLS); const rows=RECORDS.filter(r=>r.type===type); if(!rows.length){toast('Nothing to export');return;} const fmt=(c,v)=> c==='date'?usDate(v) : c==='submittedET'?usDateTime(v) : v; const head=cols.join(','); const body=rows.map(r=>cols.map(c=>csvCell(fmt(c,r[c]))).join(',')).join('\n'); download(`tsa_${type}_${usDate(todayLocal())}.csv`,head+'\n'+body,'text/csv'); }
+function exportCSV(type){ const cols=type==='deal'?DEAL_COLS:(type==='postcall'?POSTCALL_COLS:EOD_COLS); const rows=type==='postcall'?collapsePostcall(RECORDS):RECORDS.filter(r=>r.type===type); if(!rows.length){toast('Nothing to export');return;} const fmt=(c,v)=> c==='date'?usDate(v) : c==='submittedET'?usDateTime(v) : v; const head=cols.join(','); const body=rows.map(r=>cols.map(c=>csvCell(fmt(c,r[c]))).join(',')).join('\n'); download(`tsa_${type}_${usDate(todayLocal())}.csv`,head+'\n'+body,'text/csv'); }
 function csvCell(v){ if(v==null)return ''; const s=String(v); return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; }
 function exportJSON(){ download('tsa_invoice_backup.json',JSON.stringify(RECORDS,null,2),'application/json'); }
 function download(name,text,mime){ const b=new Blob([text],{type:mime}),u=URL.createObjectURL(b),a=document.createElement('a'); a.href=u;a.download=name;a.click();URL.revokeObjectURL(u); }
