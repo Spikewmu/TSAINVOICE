@@ -1269,9 +1269,15 @@ function renderDailyEntry(){
   mo.innerHTML=months.map(m=>`<option value="${m}">${usMonth(m)}</option>`).join('');
   deSetRole(deRole());
 }
+// reps to offer in the Daily Edit dropdown: accounts + selling leaders + anyone who ACTUALLY has EOD data for this role
+function repsForDE(role){
+  const acct = role==='Setter'?repNames('setter'):repNames('closer');
+  const fromData = [...new Set(activityRecords().filter(x=>x.type==='eod' && String(x.role||'')===role).map(x=>String(x.rep||'').trim()).filter(Boolean))];
+  return [...new Set([...acct, ...leaderNames(), ...fromData])].sort((a,b)=>a.localeCompare(b));
+}
 function deSetRole(r){
   document.querySelectorAll('#deSeg button').forEach(b=>b.classList.toggle('on',b.dataset.role===r));
-  const rep=document.getElementById('deRep'); if(rep){ const items=r==='Setter'?repNames('setter'):repNames('closer'); const cur=rep.value; rep.innerHTML=items.map(i=>`<option>${esc(i)}</option>`).join(''); if(cur&&items.includes(cur)) rep.value=cur; }
+  const rep=document.getElementById('deRep'); if(rep){ const items=repsForDE(r); const cur=rep.value; rep.innerHTML=items.map(i=>`<option>${esc(i)}</option>`).join(''); if(cur&&items.includes(cur)) rep.value=cur; }
   loadDailyGrid();
 }
 function loadDailyGrid(){
