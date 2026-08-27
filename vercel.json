@@ -1,5 +1,6 @@
 {
   "crons": [
-    { "path": "/api/onboarding-digest", "schedule": "0 13 * * *" }
+    { "path": "/api/onboarding-digest", "schedule": "0 13 * * *" },
+    { "path": "/api/client-digests", "schedule": "0 14 * * *" }
   ]
 }

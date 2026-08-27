@@ -464,6 +464,7 @@
         <div class="filters" style="margin-top:12px;align-items:end">
           <div class="field"><label>Slack team ID</label><input id="slTeam" placeholder="T0XXXXXXX"><span class="fieldhelp">Run <b>/tsa</b> in the workspace - it prints this.</span></div>
           <div class="field"><label>Client</label><select id="slClient"></select></div>
+          <div class="field"><label>Digest channel</label><input id="slDigest" placeholder="C0XXXXXXX (optional)"><span class="fieldhelp">Channel ID for this client's daily digest. Leave blank to skip.</span></div>
           <div class="field"><label>Note</label><input id="slNote" placeholder="optional"></div>
           <button class="btn gold sm" onclick="addSlackLink()">Link</button>
         </div>
@@ -1520,9 +1521,9 @@ function completeOnbStep(i){
 }
 function setOnbInProgress(i){ const client=document.getElementById('onbClient').value; const s=onbSteps()[i]; if(!client||!s) return; setOnbStatus(client,s.step,'In progress'); }
 function reopenOnbStep(i){ const client=document.getElementById('onbClient').value; const s=onbSteps()[i]; if(!client||!s) return; setOnbStatus(client,s.step,'In progress'); }
-// posts to Slack via a Vercel serverless function (/api/slack) so the webhook stays server-side;
-// quiet no-op until that function + SLACK_WEBHOOK_URL env var are added on Vercel
-function slackNotify(text){ try{ fetch('/api/slack',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text})}).catch(()=>{}); }catch(e){} }
+// posts an internal notification to Slack via /api/slack (the bot posts it); needs a session token,
+// and stays a quiet no-op until the Slack env vars are set on Vercel
+function slackNotify(text){ try{ fetch('/api/slack',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text, token:(SESSION&&SESSION.token)||''})}).catch(()=>{}); }catch(e){} }
 async function setOnbStatus(client, step, status){
   await addRecord({type:'onboard', client, step, status, owner:(onbSteps().find(s=>s.step===step)||{}).owner||''});
   toast('Updated'); renderOnboarding();
@@ -1572,15 +1573,15 @@ function renderSlackLinks(){
     if(res.error==='unauthorized'){ try{sessionStorage.removeItem('tsaBotToken');}catch(e){} toast('Token rejected',true); renderSlackLinks(); return; }
     if(!res.ok){ tbl.innerHTML=`<tbody><tr><td class="muted" style="padding:12px">${esc(res.error||'Could not load. Is the backend deployed with env vars set?')}</td></tr></tbody>`; return; }
     const rows=res.rows||[];
-    tbl.innerHTML='<thead><tr><th>Slack team ID</th><th>Client</th><th>Note</th><th></th></tr></thead><tbody>'+
-      (rows.length?rows.map(r=>`<tr><td style="font-family:monospace">${esc(r.team_id)}</td><td><b>${esc(r.client)}</b></td><td class="muted">${esc(r.note||'')}</td><td><button class="btn sm ghost" style="color:var(--warn);border-color:var(--warn)" onclick="removeSlackLink('${esc(r.team_id).replace(/'/g,"\\'")}')">Unlink</button></td></tr>`).join('')
-       :'<tr><td colspan="4" class="muted" style="padding:12px">No workspaces linked yet.</td></tr>')+'</tbody>';
+    tbl.innerHTML='<thead><tr><th>Slack team ID</th><th>Client</th><th>Digest channel</th><th>Bot token</th><th>Note</th><th></th></tr></thead><tbody>'+
+      (rows.length?rows.map(r=>`<tr><td style="font-family:monospace">${esc(r.team_id)}</td><td><b>${esc(r.client||'')}</b>${r.client?'':'<span class="pill warn">unlinked</span>'}</td><td style="font-family:monospace">${r.digest_channel?esc(r.digest_channel):'<span class="muted">-</span>'}</td><td>${r.hasToken?'<span class="pill good">yes</span>':'<span class="muted">no</span>'}</td><td class="muted">${esc(r.note||'')}</td><td><button class="btn sm ghost" style="color:var(--warn);border-color:var(--warn)" onclick="removeSlackLink('${esc(r.team_id).replace(/'/g,"\\'")}')">Unlink</button></td></tr>`).join('')
+       :'<tr><td colspan="6" class="muted" style="padding:12px">No workspaces linked yet.</td></tr>')+'</tbody>';
   });
 }
 function addSlackLink(){
-  const team_id=(document.getElementById('slTeam').value||'').trim(), client=document.getElementById('slClient').value, note=(document.getElementById('slNote').value||'').trim();
+  const team_id=(document.getElementById('slTeam').value||'').trim(), client=document.getElementById('slClient').value, note=(document.getElementById('slNote').value||'').trim(), digest_channel=(document.getElementById('slDigest').value||'').trim();
   if(!team_id||!client){ toast('Team ID and client are required',true); return; }
-  slackApi({action:'add', team_id, client, note}).then(res=>{ if(res.ok){ toast('Linked'); document.getElementById('slTeam').value=''; document.getElementById('slNote').value=''; renderSlackLinks(); } else toast(res.error||'Could not link',true); });
+  slackApi({action:'add', team_id, client, note, digest_channel}).then(res=>{ if(res.ok){ toast('Linked'); document.getElementById('slTeam').value=''; document.getElementById('slNote').value=''; document.getElementById('slDigest').value=''; renderSlackLinks(); } else toast(res.error||'Could not link',true); });
 }
 function removeSlackLink(team_id){ if(!confirm('Unlink '+team_id+'? The bot will stop answering in that workspace.')) return; slackApi({action:'remove', team_id}).then(res=>{ if(res.ok){ toast('Unlinked'); renderSlackLinks(); } else toast('Could not unlink',true); }); }
 function renderChips(key){ document.getElementById(key+'Chips').innerHTML=(CFG[key]||[]).map((v,i)=>`<span class="chip">${esc(v)}<button onclick="rmItem('${key}',${i})">&times;</button></span>`).join(''); }

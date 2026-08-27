@@ -24,19 +24,22 @@ export default async function handler(req, res) {
 
   try {
     if (body.action === 'list') {
-      const r = await fetch(SUPA + '/rest/v1/slack_workspaces?select=team_id,client,note&order=client.asc', { headers: h });
+      const r = await fetch(SUPA + '/rest/v1/slack_workspaces?select=team_id,client,note,digest_channel,bot_token&order=client.asc', { headers: h });
       if (!r.ok) return res.status(200).json({ ok: false, error: 'read ' + r.status });
-      return res.status(200).json({ ok: true, rows: await r.json() });
+      const rows = (await r.json()).map((x) => ({ team_id: x.team_id, client: x.client, note: x.note, digest_channel: x.digest_channel, hasToken: !!x.bot_token })); // never expose the token to the client
+      return res.status(200).json({ ok: true, rows });
     }
 
     if (body.action === 'add') {
       const team_id = String(body.team_id || '').trim();
       const client = String(body.client || '').trim();
       if (!team_id || !client) return res.status(400).json({ ok: false, error: 'team_id and client are required' });
+      const row = { team_id, client, note: String(body.note || '').trim() };
+      if (body.digest_channel !== undefined) row.digest_channel = String(body.digest_channel || '').trim();
       const r = await fetch(SUPA + '/rest/v1/slack_workspaces?on_conflict=team_id', {
         method: 'POST',
         headers: { ...h, Prefer: 'resolution=merge-duplicates,return=minimal' },
-        body: JSON.stringify({ team_id, client, note: String(body.note || '').trim() }),
+        body: JSON.stringify(row),
       });
       return res.status(200).json({ ok: r.ok, error: r.ok ? undefined : 'write ' + r.status });
     }
