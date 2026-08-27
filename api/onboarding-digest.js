@@ -12,7 +12,7 @@ async function postToSlack(text) {
   if (bot && channel) {
     const r = await fetch('https://slack.com/api/chat.postMessage', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + bot }, body: JSON.stringify({ channel, text }) });
     const j = await r.json().catch(() => ({}));
-    return { ok: !!j.ok, via: 'bot', error: j.error };
+    return { ok: !!j.ok, via: 'bot', error: j.error, needed: j.needed, provided: j.provided };
   }
   const webhook = process.env.SLACK_WEBHOOK_URL;
   if (webhook) { const r = await fetch(webhook, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) }); return { ok: r.ok, via: 'webhook' }; }
@@ -108,7 +108,7 @@ export default async function handler(req, res) {
     }
 
     const posted = await postToSlack(text);
-    return res.status(200).json({ ok: posted.ok, via: posted.via, error: posted.error, counts: { overdue: overdue.length, today: today.length, soon: soon.length, openTotal: open.length } });
+    return res.status(200).json({ ok: posted.ok, via: posted.via, error: posted.error, needed: posted.needed, provided: posted.provided, counts: { overdue: overdue.length, today: today.length, soon: soon.length, openTotal: open.length } });
   } catch (e) {
     return res.status(200).json({ ok: false, error: String(e) });
   }
