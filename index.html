@@ -86,12 +86,14 @@
   .produnit{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);font-weight:600}
   .produnit input{width:120px}
   .deWide{width:96vw;margin-left:calc(50% - 48vw)}  /* break out of the centered column to full width */
-  #dailyWrap{overflow:visible}                       /* no inner scrollbars; the page scrolls, header stays pinned */
-  #dailyGrid{table-layout:fixed;width:100%}
-  #dailyGrid th,#dailyGrid td{text-align:center;padding:9px 8px}
-  #dailyGrid th:first-child,#dailyGrid td:first-child{width:52px}
-  #dailyGrid thead th{position:sticky;top:96px;background:#1b1610;z-index:5;box-shadow:0 1px 0 var(--glass-brd)}
-  #dailyGrid input{width:100%;text-align:center;padding:9px 6px}
+  #dailyWrap{max-height:60vh;overflow:auto;border:1px solid var(--border);border-radius:8px}  /* own scroll box so the header can freeze */
+  #dailyGrid{table-layout:fixed;width:100%;border-collapse:collapse;font-size:12px}
+  #dailyGrid th,#dailyGrid td{text-align:center;padding:0;border:1px solid var(--border);white-space:nowrap}
+  #dailyGrid th:first-child,#dailyGrid td:first-child{width:42px;background:rgba(255,255,255,.03);color:var(--muted);font-size:11px;padding:0 4px}
+  #dailyGrid thead th{position:sticky;top:0;background:#1b1610;z-index:5;padding:6px 4px;font-size:10.5px;text-transform:uppercase;letter-spacing:.02em;color:var(--muted);font-weight:600;box-shadow:inset 0 -1px 0 var(--gold)}
+  #dailyGrid td{height:30px}
+  #dailyGrid input{width:100%;height:100%;text-align:center;padding:5px 3px;border:0;background:transparent;border-radius:0;font-size:12px}
+  #dailyGrid input:focus{background:rgba(212,175,90,.12);outline:1px solid var(--gold);outline-offset:-1px}
   form.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow)}
   form.grid .full{grid-column:1/-1}
   .formhead{grid-column:1/-1;margin:6px 0 0;padding-top:14px;border-top:1px solid var(--border);display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
@@ -1140,7 +1142,7 @@ function delRec(id){ RECORDS=RECORDS.filter(r=>r.id!==id); save(LS.data,RECORDS)
 
 /* ---------------- daily edit grid (admin: correct a rep's numbers by day) ---------------- */
 const DE_COLS_CLOSER=[['hoursDialing','Hours'],['newOutreach','Dials'],['connectedCalls','Conn. calls'],['callCapacity','Capacity'],['connectedMeetings','Conn. meetings'],['advancedCalls','Advanced'],['noShows','No shows'],['closedDeals','Closed'],['contractsSigned','Contracts'],['contractValue','Contract $'],['cashCollected','Cash $'],['depositCollected','Deposit $']];
-const DE_COLS_SETTER=[['hoursDialing','Hours'],['newOutreach','Total dials'],['followUpOutreach','Follow-ups'],['connectedCalls','Conn. calls'],['callsSet','Calls set'],['convos4min','4m+ convos'],['speedToLead','Speed (min)']];
+const DE_COLS_SETTER=[['hoursDialing','Hours'],['newOutreach','Total dials'],['followUpOutreach','Follow-ups'],['connectedCalls','Conn. calls'],['callsSet','Calls set'],['dqs','DQ'],['convos4min','4m+ convos'],['speedToLead','Speed (min)']];
 function deRole(){ const b=document.querySelector('#deSeg .on'); return b?b.dataset.role:'Closer'; }
 function deCols(){ return deRole()==='Setter'?DE_COLS_SETTER:DE_COLS_CLOSER; }
 function daysInMonth(ym){ const p=(ym||'').split('-'),y=+p[0],m=+p[1]; if(!y||!m) return 31; return new Date(y,m,0).getDate(); }
