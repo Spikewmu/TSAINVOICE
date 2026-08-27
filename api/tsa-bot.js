@@ -58,9 +58,11 @@ async function supa(path) {
   if (!r.ok) throw new Error('supabase ' + r.status);
   return r.json();
 }
-// PostgREST filter value, double-quoted so names with spaces/parens/commas (e.g. "Prime (Billy)") are literal
+// PostgREST filter value. Plain URL-encoding matches correctly, including spaces and parens
+// e.g. "Prime (Billy)" (verified against the live API; double-quoting matched the quotes literally).
+// Client names must not contain a comma (PostgREST list separator); none currently do.
 function q(v) {
-  return encodeURIComponent('"' + String(v).replace(/"/g, '\\"') + '"');
+  return encodeURIComponent(String(v));
 }
 
 function ephemeral(text) {

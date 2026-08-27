@@ -51,11 +51,11 @@ You need each workspace's `team_id`. Easiest way: after installing, run `/tsa st
 
 ```sql
 insert into public.slack_workspaces (team_id, client, note) values
-  ('T0PRIME123', 'Prime (Billy)',        'Prime / Billy workspace'),
-  ('T0DAB456',   'Deploy AI Bots (DAB)', 'DAB workspace');
+  ('T0PRIME123', 'Prime (Billy)', 'Prime / Billy workspace'),
+  ('T0DAB456',   'DAB',           'DAB workspace');
 ```
 
-The `client` value **must match the dashboard client name exactly** (check Client Overview). To re-point a workspace, update its row.
+The `client` value **must match the dashboard client name exactly** (check Client Overview). Current names: `Prime (Billy)`, `Social Revelation (Ryan)`, `MSP`, `DAB`, `Eight-Figure Sales`. To re-point a workspace, update its row.
 
 ## 6. Commands
 
