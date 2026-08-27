@@ -62,7 +62,9 @@
   th{font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:600}
   #callLogTable{table-layout:fixed;width:100%}
   #callLogTable th,#callLogTable td{white-space:normal;vertical-align:top;word-break:break-word;overflow-wrap:anywhere}
-  #callLogTable td.clnotes{font-size:12px;color:var(--muted);line-height:1.5}
+  #callLogTable tr.clmain td{border-bottom:none;padding-bottom:2px}
+  #callLogTable tr.clnoterow td{white-space:normal;font-size:12px;color:var(--muted);line-height:1.55;padding-top:2px;padding-bottom:15px}
+  #callLogTable .cllabel{display:inline-block;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);opacity:.65;margin-right:8px;vertical-align:1px}
   td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
   tbody tr:hover{background:var(--surface-2)}
   tr.rank1 td:first-child{font-weight:700;color:var(--gold)}
@@ -825,15 +827,17 @@ function renderCallLog(){
   const m=gv('clMonth'),c=gv('clClient'),r=gv('clRole'),rep=gv('clRep'),oc=gv('clOutcome'),sc=dashScopeClients();
   const rows=recs.filter(x=>(!m||monthKey(x.date)===m)&&(!c||x.client===c)&&(!r||(x.role||'')===r)&&(!rep||String(x.rep||'').trim()===rep)&&(!oc||(x.outcome||'')===oc)&&(!sc||sc.includes(x.client)))
     .sort((a,b)=>((b.date||'')+(b.submittedAt||'')).localeCompare((a.date||'')+(a.submittedAt||'')));
-  const cols=`<colgroup><col style="width:8%"><col style="width:11%"><col style="width:10%"><col style="width:9%"><col style="width:14%"><col style="width:8%"><col style="width:12%"><col style="width:22%"><col style="width:6%"></colgroup>`;
-  const head=`${cols}<thead><tr><th>Date</th><th>Client</th><th>Type</th><th>Rep</th><th>Lead</th><th>Source</th><th>Outcome</th><th>Notes</th><th>Call</th></tr></thead><tbody>`;
+  const cols=`<colgroup><col style="width:9%"><col style="width:15%"><col style="width:13%"><col style="width:12%"><col style="width:23%"><col style="width:10%"><col style="width:11%"><col style="width:7%"></colgroup>`;
+  const head=`${cols}<thead><tr><th>Date</th><th>Client</th><th>Type</th><th>Rep</th><th>Lead</th><th>Source</th><th>Outcome</th><th>Call</th></tr></thead><tbody>`;
   const body=rows.length?rows.map(x=>{
     const type = x.role==='Setter' ? 'Conversation' : (x.role==='Closer' ? 'Closing call' : (x.role||''));
     const dq=x.dqReason?` <span class="muted" style="font-size:11px">(${esc(x.dqReason)})</span>`:'';
-    const notes=x.notes?esc(x.notes):'';
     const watch=x.fathom?`<a class="linklike" href="${esc(x.fathom)}" target="_blank" rel="noopener">Watch</a>`:'<span class="muted">-</span>';
-    return `<tr><td>${esc(usDate(x.date))}</td><td>${esc(x.client||'')}</td><td>${esc(type)}</td><td>${esc(x.rep||'')}</td><td>${esc(x.lead||'')}${x.leadEmail?'<br><span class="muted" style="font-size:11px">'+esc(x.leadEmail)+'</span>':''}</td><td>${esc(x.source||'')}</td><td>${callLogPill(x.outcome)}${dq}</td><td class="clnotes">${notes}</td><td>${watch}</td></tr>`;
-  }).join(''):`<tr><td colspan="9" class="muted" style="padding:16px">No calls logged in this range.</td></tr>`;
+    const hasNote=!!(x.notes&&x.notes.trim());
+    const main=`<tr class="${hasNote?'clmain':''}"><td>${esc(usDate(x.date))}</td><td>${esc(x.client||'')}</td><td>${esc(type)}</td><td>${esc(x.rep||'')}</td><td>${esc(x.lead||'')}${x.leadEmail?'<br><span class="muted" style="font-size:11px">'+esc(x.leadEmail)+'</span>':''}</td><td>${esc(x.source||'')}</td><td>${callLogPill(x.outcome)}${dq}</td><td>${watch}</td></tr>`;
+    const note=hasNote?`<tr class="clnoterow"><td colspan="8"><span class="cllabel">Notes</span>${esc(x.notes)}</td></tr>`:'';
+    return main+note;
+  }).join(''):`<tr><td colspan="8" class="muted" style="padding:16px">No calls logged in this range.</td></tr>`;
   document.getElementById('callLogTable').innerHTML=head+body+`</tbody>`;
 }
 // founders + reps (closer/setter) see ONLY their assigned company(ies); admin/manager see all
