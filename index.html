@@ -60,6 +60,9 @@
   table{width:100%;border-collapse:collapse;font-size:13px}
   th,td{padding:9px 12px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap}
   th{font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:600}
+  #callLogTable{table-layout:fixed;width:100%}
+  #callLogTable th,#callLogTable td{white-space:normal;vertical-align:top;word-break:break-word;overflow-wrap:anywhere}
+  #callLogTable td.clnotes{font-size:12px;color:var(--muted);line-height:1.5}
   td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
   tbody tr:hover{background:var(--surface-2)}
   tr.rank1 td:first-child{font-weight:700;color:var(--gold)}
@@ -296,9 +299,10 @@
     <h2 class="section">Call Log</h2>
     <p class="hint">Every post-call checkout, newest first, from closers and setters. Review any call's outcome and open the recording. Reps see their own account; managers and admins see everything.</p>
     <div class="filters">
-      <div class="field"><label>Month</label><select id="clMonth"></select></div>
-      <div class="field"><label>Client</label><select id="clClient"></select></div>
-      <div class="field"><label>Role</label><select id="clRole" onchange="renderCallLog()"><option value="">All</option><option>Closer</option><option>Setter</option></select></div>
+      <div class="field"><label>Month</label><select id="clMonth" onchange="renderCallLog()"></select></div>
+      <div class="field"><label>Client</label><select id="clClient" onchange="renderCallLog()"></select></div>
+      <div class="field"><label>Type</label><select id="clRole" onchange="renderCallLog()"><option value="">All calls</option><option value="Closer">Closing calls</option><option value="Setter">Conversations</option></select></div>
+      <div class="field"><label>Rep</label><select id="clRep" onchange="renderCallLog()"></select></div>
       <div class="field"><label>Outcome</label><select id="clOutcome" onchange="renderCallLog()"><option value="">All</option></select></div>
       <button class="btn ghost sm" onclick="renderCallLog()">Refresh</button>
     </div>
@@ -811,21 +815,24 @@ function fillCallLogFilters(recs){
   const fm=document.getElementById('clMonth'); if(fm){ const cur=fm.value; fm.innerHTML='<option value="">All months</option>'+months.map(m=>`<option value="${m}">${usMonth(m)}</option>`).join(''); if(cur)fm.value=cur; }
   const sc=dashScopeClients(), clist=sc?sc.filter(c=>c!==' none'):clientNames();
   const fc=document.getElementById('clClient'); if(fc){ const cc=fc.value; fc.innerHTML='<option value="">'+(sc?('My account'+(clist.length>1?'s':'')):'All clients')+'</option>'+clist.map(c=>`<option>${esc(c)}</option>`).join(''); if(cc)fc.value=cc; }
+  const fr=document.getElementById('clRep'); if(fr){ const cur=fr.value, reps=[...new Set(recs.map(x=>String(x.rep||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b)); fr.innerHTML='<option value="">All reps</option>'+reps.map(n=>`<option>${esc(n)}</option>`).join(''); if(reps.includes(cur))fr.value=cur; }
   const oc=document.getElementById('clOutcome'); if(oc){ const cur=oc.value, outs=[...new Set([...PC_OUTCOMES.Closer,...PC_OUTCOMES.Setter])]; oc.innerHTML='<option value="">All outcomes</option>'+outs.map(o=>`<option>${esc(o)}</option>`).join(''); if(cur)oc.value=cur; }
 }
 function callLogPill(o){ const good=/^(Won|Booked)/.test(o||''), bad=/^(Lost|No-show|No answer|Disqualified|Not interested|Wrong)/.test(o||''); return `<span class="pill ${good?'good':(bad?'warn':'')}">${esc(o||'-')}</span>`; }
 function renderCallLog(){
   const recs=collapsePostcall(RECORDS); fillCallLogFilters(recs);
   const gv=id=>{ const e=document.getElementById(id); return e?e.value:''; };
-  const m=gv('clMonth'),c=gv('clClient'),r=gv('clRole'),oc=gv('clOutcome'),sc=dashScopeClients();
-  const rows=recs.filter(x=>(!m||monthKey(x.date)===m)&&(!c||x.client===c)&&(!r||(x.role||'')===r)&&(!oc||(x.outcome||'')===oc)&&(!sc||sc.includes(x.client)))
+  const m=gv('clMonth'),c=gv('clClient'),r=gv('clRole'),rep=gv('clRep'),oc=gv('clOutcome'),sc=dashScopeClients();
+  const rows=recs.filter(x=>(!m||monthKey(x.date)===m)&&(!c||x.client===c)&&(!r||(x.role||'')===r)&&(!rep||String(x.rep||'').trim()===rep)&&(!oc||(x.outcome||'')===oc)&&(!sc||sc.includes(x.client)))
     .sort((a,b)=>((b.date||'')+(b.submittedAt||'')).localeCompare((a.date||'')+(a.submittedAt||'')));
-  const head=`<thead><tr><th>Date</th><th>Client</th><th>Role</th><th>Rep</th><th>Lead</th><th>Source</th><th>Outcome</th><th>Notes</th><th>Call</th></tr></thead><tbody>`;
+  const cols=`<colgroup><col style="width:8%"><col style="width:11%"><col style="width:10%"><col style="width:9%"><col style="width:14%"><col style="width:8%"><col style="width:12%"><col style="width:22%"><col style="width:6%"></colgroup>`;
+  const head=`${cols}<thead><tr><th>Date</th><th>Client</th><th>Type</th><th>Rep</th><th>Lead</th><th>Source</th><th>Outcome</th><th>Notes</th><th>Call</th></tr></thead><tbody>`;
   const body=rows.length?rows.map(x=>{
+    const type = x.role==='Setter' ? 'Conversation' : (x.role==='Closer' ? 'Closing call' : (x.role||''));
     const dq=x.dqReason?` <span class="muted" style="font-size:11px">(${esc(x.dqReason)})</span>`:'';
-    const notes=x.notes?esc(x.notes.length>140?x.notes.slice(0,140)+'...':x.notes):'';
+    const notes=x.notes?esc(x.notes):'';
     const watch=x.fathom?`<a class="linklike" href="${esc(x.fathom)}" target="_blank" rel="noopener">Watch</a>`:'<span class="muted">-</span>';
-    return `<tr><td>${esc(usDate(x.date))}</td><td>${esc(x.client||'')}</td><td>${esc(x.role||'')}</td><td>${esc(x.rep||'')}</td><td>${esc(x.lead||'')}${x.leadEmail?'<br><span class="muted" style="font-size:11px">'+esc(x.leadEmail)+'</span>':''}</td><td>${esc(x.source||'')}</td><td>${callLogPill(x.outcome)}${dq}</td><td style="max-width:280px;font-size:12px;color:var(--muted)">${notes}</td><td>${watch}</td></tr>`;
+    return `<tr><td>${esc(usDate(x.date))}</td><td>${esc(x.client||'')}</td><td>${esc(type)}</td><td>${esc(x.rep||'')}</td><td>${esc(x.lead||'')}${x.leadEmail?'<br><span class="muted" style="font-size:11px">'+esc(x.leadEmail)+'</span>':''}</td><td>${esc(x.source||'')}</td><td>${callLogPill(x.outcome)}${dq}</td><td class="clnotes">${notes}</td><td>${watch}</td></tr>`;
   }).join(''):`<tr><td colspan="9" class="muted" style="padding:16px">No calls logged in this range.</td></tr>`;
   document.getElementById('callLogTable').innerHTML=head+body+`</tbody>`;
 }
