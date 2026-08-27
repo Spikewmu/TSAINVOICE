@@ -678,17 +678,24 @@ function num(o){ NUMKEYS.forEach(k=>{ if(k in o) o[k]=parseFloat(o[k])||0; }); r
 function btnBusy(btn,on){ if(!btn) return; if(on){ if(!btn.dataset.label) btn.dataset.label=btn.innerHTML; btn.disabled=true; btn.innerHTML='<span class="spinner"></span>Submitting...'; } else { btn.disabled=false; if(btn.dataset.label) btn.innerHTML=btn.dataset.label; } }
 function btnDone(btn,msg){ if(!btn) return; btn.disabled=true; btn.innerHTML='&#10003; '+(msg||'Submitted!'); setTimeout(()=>btnBusy(btn,false),1500); }
 async function submitDeal(e){ e.preventDefault(); const btn=e.target.querySelector('[type=submit]'); if(btn&&btn.disabled) return; btnBusy(btn,true); let ok=false;
-  try{ const o=num(formObj(e.target)); o.type='deal'; o.role='Closer'; o.closedDeals=1; if(repMode()) o.rep=SESSION.name; await addRecord(o); e.target.reset(); presetDates(); if(repMode()) applyIdentity(); toast('Closed deal logged. Nice.'); if(!repMode()) renderDash(); ok=true; }
+  try{ const o=num(formObj(e.target)); o.type='deal'; o.role='Closer'; o.closedDeals=1; if(repMode()) o.rep=SESSION.name;
+    const csel=e.target.querySelector('[name=client]'); if(csel && !(o.client||'').trim()) o.client=csel.value; // locked/disabled selects drop out of FormData
+    if(!(o.client||'').trim()){ toast('Choose a client / account first.',true); return; }
+    await addRecord(o); e.target.reset(); presetDates(); if(repMode()) applyIdentity(); toast('Closed deal logged. Nice.'); if(!repMode()) renderDash(); ok=true; }
   catch(err){ toast('Submit failed - try again',true); }
   finally{ if(ok) btnDone(btn,'Deal logged'); else btnBusy(btn,false); } }
 async function submitEod(e){ e.preventDefault(); const btn=e.target.querySelector('[type=submit]'); if(btn&&btn.disabled) return; btnBusy(btn,true); let ok=false;
   try{ const o=num(formObj(e.target)); o.type='eod'; if(repMode()){ o.rep=SESSION.name; o.role=SESSION.role==='setter'?'Setter':'Closer'; }
+    const csel=e.target.querySelector('[name=client]'); if(csel && !(o.client||'').trim()) o.client=csel.value; // locked/disabled selects drop out of FormData
+    if(!(o.client||'').trim()){ toast('Choose a client / account first.',true); return; }
     const units={}; document.querySelectorAll('#eodProducts input[data-prod]').forEach(i=>{ const v=parseFloat(i.value)||0; if(v) units[i.dataset.prod]=v; }); if(Object.keys(units).length) o.productUnits=JSON.stringify(units);
     await addRecord(o); e.target.reset(); presetDates(); setEodRole(o.role); if(repMode()) applyIdentity(); toast('End of day submitted.'); if(!repMode()) renderDash(); ok=true; }
   catch(err){ toast('Submit failed - try again',true); }
   finally{ if(ok) btnDone(btn,'Submitted!'); else btnBusy(btn,false); } }
 async function submitPostCall(e){ e.preventDefault(); const btn=e.target.querySelector('[type=submit]'); if(btn&&btn.disabled) return; btnBusy(btn,true); let ok=false, won=false;
   try{ const o=formObj(e.target); o.type='postcall'; o.role='Closer'; if(repMode()) o.rep=SESSION.name;
+    const csel=e.target.querySelector('[name=client]'); if(csel && !(o.client||'').trim()) o.client=csel.value; // locked/disabled selects drop out of FormData
+    if(!(o.client||'').trim()){ toast('Choose a client / account first.',true); return; }
     won=/^Won/.test(o.outcome||'');
     await addRecord(o); // every call logs a post-call record
     if(won){ // a win ALSO logs a closed deal so it flows into cash / leaderboards / invoicing
