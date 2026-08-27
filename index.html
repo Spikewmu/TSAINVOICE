@@ -1448,18 +1448,44 @@ function renderOnbChecklist(){
   const st=latestOnb(client);
   const startTxt = onbStart(client)?`Onboarding started ${esc(usDate(onbStart(client)))} - due dates count from there.`:'Add this client on Client Overview to start the clock.';
   box.innerHTML=`<p class="fieldhelp" style="margin:0 0 8px">${startTxt}</p>`+onbSteps().map((s,i)=>{
-    const rec=st[s.step]; const status=rec?rec.status:'Not started';
-    const due=stepDue(client,s.step), dl=daysLeft(due), overdue=status!=='Done'&&dl!=null&&dl<0;
+    const rec=st[s.step]||{}; const status=rec.status||'Not started', done=status==='Done';
+    const due=stepDue(client,s.step), dl=daysLeft(due), overdue=!done&&dl!=null&&dl<0;
     const link=s.link?` <a class="linklike" href="${esc(s.link)}" target="_blank" rel="noopener" style="font-size:12px">open</a>`:'';
-    const dueTxt=status==='Done'?'<span class="pill good">done</span>':(due?dueLabel(dl)+' <span class="muted" style="font-size:11px">'+esc(usDate(due))+'</span>':'');
-    return `<div style="display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--border)${overdue?';background:rgba(224,122,95,.06)':''}">
+    const dueTxt=done?'':(due?dueLabel(dl)+' <span class="muted" style="font-size:11px">'+esc(usDate(due))+'</span>':'');
+    let right;
+    if(done){
+      const by=rec.by?esc(rec.by):'someone', when=rec.at?esc(usDate(rec.at)):'', note=rec.note?` <span style="color:var(--ink)">&ldquo;${esc(rec.note)}&rdquo;</span>`:'';
+      right=`<div style="flex:1;text-align:right"><span class="pill good">&#10003; Done</span> <span class="muted" style="font-size:12px">by ${by}${when?' &middot; '+when:''}${note}</span> <button class="btn ghost sm" style="padding:2px 8px;margin-left:6px" onclick="reopenOnbStep(${i})">reopen</button></div>`;
+    } else {
+      right=`<div style="flex:1;display:flex;gap:8px;align-items:center;justify-content:flex-end">
+        <span style="font-size:12px;min-width:96px;text-align:right">${dueTxt}</span>
+        <input id="onbnote_${i}" placeholder="Note (optional)" style="flex:1;max-width:260px" onkeydown="if(event.key==='Enter'){event.preventDefault();completeOnbStep(${i});}">
+        <button class="btn gold sm" onclick="completeOnbStep(${i})">&#10003; Complete</button>
+        ${status==='In progress'?'<span class="tag">in progress</span>':`<button class="btn ghost sm" onclick="setOnbInProgress(${i})">Start</button>`}
+      </div>`;
+    }
+    return `<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)${overdue?';background:rgba(224,122,95,.06)':''}">
       <span style="width:22px;color:var(--muted);font-variant-numeric:tabular-nums">${i+1}</span>
-      <span style="flex:1"><b>${esc(s.step)}</b>${link} <span class="tag">- ${esc(s.owner)}</span></span>
-      <span style="width:180px;text-align:right;font-size:12px">${dueTxt}</span>
-      <select onchange="setOnbStatus('${esc(client).replace(/'/g,"\\'")}','${esc(s.step).replace(/'/g,"\\'")}',this.value)">${ONB_STATUSES.map(o=>`<option${o===status?' selected':''}>${o}</option>`).join('')}</select>
+      <span style="min-width:220px;max-width:340px"><b>${esc(s.step)}</b>${link} <span class="tag">- ${esc(s.owner)}</span></span>
+      ${right}
     </div>`;
   }).join('');
 }
+function completeOnbStep(i){
+  const client=document.getElementById('onbClient').value; const s=onbSteps()[i]; if(!client||!s) return;
+  const noteEl=document.getElementById('onbnote_'+i), note=noteEl?noteEl.value.trim():'';
+  const by=(SESSION&&SESSION.name)||'', at=new Date().toISOString();
+  addRecord({type:'onboard', client, step:s.step, status:'Done', owner:s.owner||'', note, by, at}).then(()=>{
+    const line=`:white_check_mark: *${client}* - ${s.step}\nCompleted by ${by||'a teammate'} (${usDate(at)})`+(note?`\n> ${note}`:'');
+    slackNotify(line);
+    toast('Signed off'); renderOnboarding();
+  });
+}
+function setOnbInProgress(i){ const client=document.getElementById('onbClient').value; const s=onbSteps()[i]; if(!client||!s) return; setOnbStatus(client,s.step,'In progress'); }
+function reopenOnbStep(i){ const client=document.getElementById('onbClient').value; const s=onbSteps()[i]; if(!client||!s) return; setOnbStatus(client,s.step,'In progress'); }
+// posts to Slack via a Vercel serverless function (/api/slack) so the webhook stays server-side;
+// quiet no-op until that function + SLACK_WEBHOOK_URL env var are added on Vercel
+function slackNotify(text){ try{ fetch('/api/slack',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text})}).catch(()=>{}); }catch(e){} }
 async function setOnbStatus(client, step, status){
   await addRecord({type:'onboard', client, step, status, owner:(onbSteps().find(s=>s.step===step)||{}).owner||''});
   toast('Updated'); renderOnboarding();
