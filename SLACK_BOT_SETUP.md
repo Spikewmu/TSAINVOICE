@@ -72,6 +72,40 @@ All replies are **ephemeral** (only the person who typed the command sees them).
 
 ---
 
+## 7. Notifications, digests & the sign-off handoff
+
+The bot also posts proactively. These need `chat:write` on the bot (OAuth & Permissions → Bot Token Scopes) and the bot invited to the target channel (`/invite @TSA Ninja`).
+
+**Env vars (in Vercel):**
+
+| Name | Used by | Value |
+|------|---------|-------|
+| `SLACK_BOT_TOKEN` | all posting | Bot User OAuth Token (`xoxb-…`) from OAuth & Permissions |
+| `DIGEST_CHANNEL` | internal digest + sign-offs | channel ID (`C…`) for the internal standup |
+| `SIGNOFF_CHANNEL` | sign-offs (optional) | separate channel for sign-offs; defaults to `DIGEST_CHANNEL` |
+| `CRON_SECRET` | daily crons | any random string (Vercel sends it as the cron auth header) |
+| `OWNER_SLACK_IDS` | sign-off handoff pings | JSON map of person → HQ Slack user id, e.g. `{"Steve":"U0123","Josh":"U0456","Khadija":"U0789"}` |
+
+**What posts:**
+- **`/api/onboarding-digest`** — the **internal standup**: every client's open steps, grouped by client, most-pressing first. Daily cron 13:00 UTC. Manual test: `/api/onboarding-digest?key=<BOT_ADMIN_TOKEN>`.
+- **`/api/onboarding-signoff`** — fired when someone clicks **✓ Complete** on a step. Posts the sign-off **and the handoff**: it finds the next step in the sequence and pings its owner ("Next up: X — @owner, you're up"). Pings come from `OWNER_SLACK_IDS`; unmapped owners (and "Client") show as plain text.
+- **`/api/slack`** — generic internal notification (session-token gated).
+
+**About `OWNER_SLACK_IDS`:** Slack user ids are **per-workspace**, but the sign-off posts to your one internal HQ channel and pings the TSA team (all HQ members), so you only need **one** map of HQ ids. Get an id in Slack: profile → ⋯ → **Copy member ID**.
+
+## 8. Per-client digests (each client's own workspace)
+
+Optional. Sends each client *their own* onboarding update into *their own* Slack, isolated. Needs the OAuth install flow so each workspace's bot token is captured.
+
+1. **SQL** (adds columns): `alter table public.slack_workspaces add column if not exists bot_token text; add column if not exists digest_channel text; alter column client drop not null;`
+2. **Slack app → OAuth & Permissions → Redirect URLs** → add `https://tsainvoice.vercel.app/api/slack-oauth`.
+3. **Vercel env:** `SLACK_CLIENT_ID` + `SLACK_CLIENT_SECRET` (Slack app → Basic Information → App Credentials) → redeploy.
+4. **Install into each client workspace** via `https://slack.com/oauth/v2/authorize?client_id=<CLIENT_ID>&scope=commands,chat:write` — this stores that workspace's `bot_token`.
+5. **Settings → Slack:** set each workspace's **Client** + **Digest channel** (the linking table shows a "Bot token: yes" once installed).
+6. **`/api/client-digests`** posts each client their own digest with their own token. Daily cron 14:00 UTC. Manual test: `?key=<BOT_ADMIN_TOKEN>`. Only workspaces with client + bot_token + digest_channel are posted to.
+
+---
+
 ## Security notes
 
 - Every request is verified against `SLACK_SIGNING_SECRET` (rejects anything not signed by Slack, and replays older than 5 min).
