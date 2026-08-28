@@ -85,6 +85,7 @@ export default async function handler(req, res) {
 
     // group open steps BY CLIENT
     const groups = [];
+    const maxDays = steps.reduce((m, s) => Math.max(m, Number(s.days) || 0), 0); // last step's due = the launch deadline
     let totOverdue = 0, totToday = 0, totOpen = 0;
     Object.keys(start).forEach((client) => {
       let done = 0; const open = [];
@@ -98,7 +99,10 @@ export default async function handler(req, res) {
       open.sort((a, b) => (a.dl == null ? 9999 : a.dl) - (b.dl == null ? 9999 : b.dl));
       const overdue = open.filter((o) => o.dl != null && o.dl < 0).length;
       totOverdue += overdue; totToday += open.filter((o) => o.dl === 0).length; totOpen += open.length;
-      groups.push({ client, done, total: steps.length, open, overdue, soonest: open[0].dl == null ? 9999 : open[0].dl });
+      const active = Math.max(0, -(daysLeft(start[client]) || 0));        // days since onboarding start
+      const launchDl = daysLeft(addDays(start[client], maxDays));          // days to (or past) the launch deadline
+      const pct = steps.length ? Math.round(done / steps.length * 100) : 0;
+      groups.push({ client, done, total: steps.length, open, overdue, soonest: open[0].dl == null ? 9999 : open[0].dl, active, launchDl, pct });
     });
     // most-pressing clients first (most overdue, then soonest due)
     groups.sort((a, b) => (b.overdue - a.overdue) || (a.soonest - b.soonest) || a.client.localeCompare(b.client));
@@ -111,8 +115,10 @@ export default async function handler(req, res) {
       text += `\n:white_check_mark: All clients caught up, nothing open.`;
     } else {
       text += `  _(${totOverdue} overdue, ${totToday} due today, across ${groups.length} clients)_`;
+      const launchTag = (dl) => (dl == null ? '' : dl < 0 ? `:red_circle: ${-dl}d overdue` : dl === 0 ? 'launch due today' : `${dl}d to launch`);
       groups.forEach((g) => {
-        text += `\n\n*${g.client}* — ${g.done}/${g.total} done${g.overdue ? `, :red_circle: ${g.overdue} overdue` : ''}`;
+        const lt = launchTag(g.launchDl);
+        text += `\n\n*${g.client}* — ${g.pct}% complete (${g.done}/${g.total}) · day ${g.active + 1}${lt ? ` · ${lt}` : ''}${g.overdue ? `, ${g.overdue} step${g.overdue > 1 ? 's' : ''} overdue` : ''}`;
         g.open.slice(0, 8).forEach((o) => { text += `\n${emoji(o.dl)} ${o.step} (${o.owner}) — ${tag(o.dl)}`; });
         if (g.open.length > 8) text += `\n_…and ${g.open.length - 8} more_`;
       });
