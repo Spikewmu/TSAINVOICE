@@ -317,14 +317,16 @@
       <button class="btn sm ghost" onclick="printAgenda()">Print</button>
     </div>
 
-    <div class="panel"><h3>Add your update</h3><div style="padding:14px">
-      <div class="filters" style="margin:0;align-items:end">
-        <div class="field"><label>Meeting date</label><input type="date" id="agDate"></div>
-        <div class="field"><label>Section</label><select id="agSection" onchange="agSectionChanged()"><option>Announcements</option><option>Wins</option><option>Webinar</option><option>Setter</option><option>Closer</option><option>Other</option></select></div>
-        <div class="field"><label>Client</label><select id="agClient"></select></div>
-      </div>
-      <div class="field full" style="margin-top:10px"><label>Your update</label><textarea id="agText" rows="3" style="width:100%" placeholder="What the team needs to know for this client / section"></textarea></div>
-      <div class="row-actions"><button class="btn gold sm" onclick="addAgendaEntry()">Add to agenda</button></div>
+    <div class="panel"><h3>Fill your section</h3><div style="padding:14px">
+      <div class="field" style="max-width:280px;margin-bottom:6px"><label>Your section</label><select id="agSection" onchange="renderFillGrid()"><option>Webinar</option><option>Setter</option><option>Closer</option><option>Other</option></select><span class="fieldhelp">Pick your lane, then write an update for each client below. Leave a client blank if there is nothing to report.</span></div>
+      <div id="fillGrid"></div>
+      <div class="row-actions" style="margin-top:12px"><button class="btn gold sm" onclick="saveFillGrid()">Save my updates</button></div>
+    </div></div>
+
+    <div class="panel"><h3>Announcements &amp; wins <span style="font-weight:400;color:var(--muted);font-size:12px">- for the whole team, not a specific client</span></h3><div style="padding:14px">
+      <div class="field full"><label>Announcement (optional)</label><textarea id="agAnnounce" rows="2" style="width:100%" placeholder="Anything the whole team should know"></textarea></div>
+      <div class="field full" style="margin-top:8px"><label>Win to shout out (optional)</label><textarea id="agWin" rows="2" style="width:100%" placeholder="A win worth celebrating"></textarea></div>
+      <div class="row-actions" style="margin-top:8px"><button class="btn sm" onclick="saveAnnounceWin()">Post announcement / win</button></div>
     </div></div>
 
     <div class="panel"><h3>Agenda <span id="mtgWhen" class="muted" style="font-weight:400;font-size:12px"></span></h3><div style="padding:16px" id="agendaView"></div></div>
@@ -1008,24 +1010,46 @@ function mtgDates(){ const ds=new Set([todayLocal()]); collapseAgenda(RECORDS).f
 function fillMtgSelects(){
   const md=document.getElementById('mtgDate'); if(md){ const cur=md.value, ds=mtgDates(); md.innerHTML=ds.map(d=>`<option value="${d}">${usDate(d)}</option>`).join(''); md.value=(cur&&ds.includes(cur))?cur:ds[0]; }
   const clients=clientNames();
-  const ac=document.getElementById('agClient'); if(ac){ const cur=ac.value; ac.innerHTML='<option value="">- General -</option>'+clients.map(c=>`<option>${esc(c)}</option>`).join(''); if(cur)ac.value=cur; }
   const pc=document.getElementById('prClient'); if(pc){ const cur=pc.value; pc.innerHTML='<option value="">- none -</option>'+clients.map(c=>`<option>${esc(c)}</option>`).join(''); if(cur)pc.value=cur; }
   const po=document.getElementById('prOwner'); if(po){ const cur=po.value, people=[...new Set([...(USERS_CACHE||[]).map(u=>String(u.name||'').trim()), ...leaderNames(), (SESSION&&SESSION.name)||''])].filter(Boolean).sort((a,b)=>a.localeCompare(b)); po.innerHTML=people.map(n=>`<option>${esc(n)}</option>`).join(''); po.value=(cur&&people.includes(cur))?cur:((SESSION&&SESSION.name)||people[0]||''); }
+  const sec=document.getElementById('agSection'); if(sec && !sec.dataset.set){ sec.dataset.set='1'; if(SESSION&&SESSION.role==='webinarteam') sec.value='Webinar'; }
 }
 function renderMeeting(){
   fillMtgSelects();
-  const ad=document.getElementById('agDate'), pd=document.getElementById('prDue');
-  if(ad&&!ad.value) ad.value=(document.getElementById('mtgDate').value)||todayLocal();
-  if(pd&&!pd.value) pd.value=todayLocal();
+  const pd=document.getElementById('prDue'); if(pd&&!pd.value) pd.value=todayLocal();
   const date=(document.getElementById('mtgDate').value)||todayLocal();
   document.getElementById('mtgWhen').textContent='- '+usDate(date);
-  renderAgendaView(date); renderPromises(date);
+  renderFillGrid(); renderAgendaView(date); renderPromises(date);
+}
+// one textarea per client for the chosen section, prefilled with what this person already wrote
+function renderFillGrid(){
+  const box=document.getElementById('fillGrid'); if(!box) return;
+  const date=(document.getElementById('mtgDate').value)||todayLocal(), section=document.getElementById('agSection').value, by=(SESSION&&SESSION.name)||'';
+  const mine={}; collapseAgenda(RECORDS).forEach(x=>{ if((x.date||'').slice(0,10)===date && x.section===section && (x.by||'').trim()===by && (x.client||'').trim()) mine[x.client]=x.text||''; });
+  const cs=clientNames();
+  box.innerHTML = cs.length ? cs.map(c=>`<div class="field full" style="margin-bottom:10px"><label>${esc(c)}</label><textarea data-client="${esc(c)}" data-orig="${esc(mine[c]||'')}" rows="2" style="width:100%" placeholder="Your ${esc(section.toLowerCase())} update for ${esc(c)} (blank = nothing to report)">${esc(mine[c]||'')}</textarea></div>`).join('')
+    : '<p class="muted">Add clients on the Client Overview tab first.</p>';
+}
+function saveFillGrid(){
+  const date=(document.getElementById('mtgDate').value)||todayLocal(), section=document.getElementById('agSection').value;
+  const tas=[...document.querySelectorAll('#fillGrid textarea')];
+  const jobs=[]; let n=0;
+  tas.forEach(t=>{ const text=(t.value||'').trim(), orig=(t.dataset.orig||'').trim(); if(text!==orig){ jobs.push(addRecord({type:'agenda',date,section,client:t.dataset.client,text,by:(SESSION&&SESSION.name)||''})); if(text) n++; } });
+  if(!jobs.length){ toast('No changes to save'); return; }
+  Promise.all(jobs).then(()=>{ toast('Saved your '+section.toLowerCase()+' updates'); renderMeeting(); });
+}
+function saveAnnounceWin(){
+  const date=(document.getElementById('mtgDate').value)||todayLocal();
+  const a=(document.getElementById('agAnnounce').value||'').trim(), w=(document.getElementById('agWin').value||'').trim();
+  const jobs=[]; if(a) jobs.push(addRecord({type:'agenda',date,section:'Announcements',client:'',text:a,by:(SESSION&&SESSION.name)||''})); if(w) jobs.push(addRecord({type:'agenda',date,section:'Wins',client:'',text:w,by:(SESSION&&SESSION.name)||''}));
+  if(!jobs.length){ toast('Nothing to post',true); return; }
+  Promise.all(jobs).then(()=>{ document.getElementById('agAnnounce').value=''; document.getElementById('agWin').value=''; toast('Posted'); renderMeeting(); });
 }
 function fmtEntry(x){ return `<div style="padding:6px 0 8px 2px"><div style="white-space:pre-wrap">${esc(x.text||'')}</div><div class="muted" style="font-size:11px">- ${esc(x.by||'')}</div></div>`; }
 function renderAgendaView(date){
   const box=document.getElementById('agendaView'); if(!box) return;
-  const entries=collapseAgenda(RECORDS).filter(x=>(x.date||'').slice(0,10)===date);
-  if(!entries.length){ box.innerHTML='<p class="muted">No updates added for this meeting yet. Add yours above.</p>'; return; }
+  const entries=collapseAgenda(RECORDS).filter(x=>(x.date||'').slice(0,10)===date && (x.text||'').trim());
+  if(!entries.length){ box.innerHTML='<p class="muted">No updates added for this meeting yet. Fill your section above.</p>'; return; }
   let html=''; const gen=entries.filter(x=>!(x.client||'').trim());
   ['Announcements','Wins'].forEach(sec=>{ const items=gen.filter(x=>x.section===sec); if(items.length) html+=`<div style="margin-bottom:14px"><div style="font-weight:700;color:var(--gold);text-transform:uppercase;font-size:12px;letter-spacing:.03em">${esc(sec)}</div>`+items.map(fmtEntry).join('')+'</div>'; });
   const clients=[...new Set(entries.filter(x=>(x.client||'').trim()).map(x=>x.client))].sort((a,b)=>a.localeCompare(b));
@@ -1041,12 +1065,6 @@ function renderPromises(date){
       return `<tr${done?' style="opacity:.55"':''}><td><b>${esc(p.owner||'')}</b></td><td${done?' style="text-decoration:line-through"':''}>${esc(p.what||'')}</td><td>${esc(p.client||'')}</td><td${overdue?' style="color:var(--warn)"':''}>${p.due?esc(usDate(p.due)):'-'}</td><td><input type="checkbox" ${done?'checked':''} onchange="togglePromise('${esc(String(p.pid||p.id)).replace(/'/g,"\\'")}',this.checked)"></td></tr>`; }).join('')
     :'<tr><td colspan="5" class="muted" style="padding:14px">No promises logged yet.</td></tr>')+'</tbody>';
 }
-function agSectionChanged(){}
-function addAgendaEntry(){
-  const date=(document.getElementById('agDate').value)||todayLocal(), section=document.getElementById('agSection').value, client=document.getElementById('agClient').value, text=(document.getElementById('agText').value||'').trim();
-  if(!text){ toast('Write your update first',true); return; }
-  addRecord({type:'agenda', date, section, client, text, by:(SESSION&&SESSION.name)||''}).then(()=>{ document.getElementById('agText').value=''; toast('Added to agenda'); const md=document.getElementById('mtgDate'); if(md) md.value=date; renderMeeting(); });
-}
 function addPromise(){
   const date=(document.getElementById('mtgDate').value)||todayLocal(), owner=document.getElementById('prOwner').value, what=(document.getElementById('prWhat').value||'').trim(), due=document.getElementById('prDue').value||'', client=document.getElementById('prClient').value||'';
   if(!what){ toast('What is the commitment?',true); return; }
@@ -1057,7 +1075,7 @@ function togglePromise(pid,checked){
   addRecord({type:'promise', pid, date:cur.date, owner:cur.owner, what:cur.what, due:cur.due, client:cur.client, done:checked?'yes':'', by:(SESSION&&SESSION.name)||''}).then(()=>renderMeeting());
 }
 function buildAgendaText(date){
-  const entries=collapseAgenda(RECORDS).filter(x=>(x.date||'').slice(0,10)===date);
+  const entries=collapseAgenda(RECORDS).filter(x=>(x.date||'').slice(0,10)===date && (x.text||'').trim());
   let out='TSA Meeting Agenda - '+usDate(date)+'\n'; const gen=entries.filter(x=>!(x.client||'').trim());
   ['Announcements','Wins'].forEach(sec=>{ const items=gen.filter(x=>x.section===sec); if(items.length) out+='\n== '+sec.toUpperCase()+' ==\n'+items.map(x=>'- '+(x.text||'')+' ('+(x.by||'')+')').join('\n')+'\n'; });
   [...new Set(entries.filter(x=>(x.client||'').trim()).map(x=>x.client))].sort().forEach(c=>{ out+='\n== '+c+' ==\n'; ['Webinar','Setter','Closer','Other'].forEach(sec=>{ entries.filter(x=>x.client===c&&x.section===sec).forEach(x=>{ out+='['+sec+'] '+(x.text||'')+' ('+(x.by||'')+')\n'; }); }); });
