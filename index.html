@@ -69,6 +69,12 @@
   .modalcard{background:#1b1610;border:1px solid var(--border);border-radius:14px;padding:22px 22px 20px;width:min(400px,94vw);box-shadow:0 24px 70px rgba(0,0,0,.55)}
   .modalcard label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px}
   .modalcard input{width:100%}
+  .agsec-head{font-weight:700;color:var(--gold);text-transform:uppercase;font-size:11.5px;letter-spacing:.05em;margin-bottom:8px}
+  .agclient{font-weight:700;font-size:15.5px;margin:18px 0 10px;padding-top:12px;border-top:1px solid var(--border)}
+  .agindent{margin-left:14px;border-left:2px solid var(--border);padding-left:16px}
+  .agtag{display:inline-block;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);background:rgba(255,255,255,.05);padding:2px 8px;border-radius:6px;margin:10px 0 3px}
+  .agentry{margin:0 0 6px;padding-left:12px;line-height:1.5;white-space:pre-wrap}
+  .agentry .agby{color:var(--muted);font-size:11px}
   td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
   tbody tr:hover{background:var(--surface-2)}
   tr.rank1 td:first-child{font-weight:700;color:var(--gold)}
@@ -1046,17 +1052,18 @@ function saveTeamUpdate(){
   if(!t){ toast('Nothing to post',true); return; }
   addRecord({type:'agenda',date,section:'Whole team',client:'',text:t,by:(SESSION&&SESSION.name)||''}).then(()=>{ document.getElementById('agTeam').value=''; toast('Posted'); renderMeeting(); });
 }
-function fmtEntry(x){ return `<div style="padding:6px 0 8px 2px"><div style="white-space:pre-wrap">${esc(x.text||'')}</div><div class="muted" style="font-size:11px">- ${esc(x.by||'')}</div></div>`; }
+function fmtEntry(x){ return `<div class="agentry">${esc(x.text||'')} <span class="agby">- ${esc(x.by||'')}</span></div>`; }
 function renderAgendaView(date){
   const box=document.getElementById('agendaView'); if(!box) return;
   const entries=collapseAgenda(RECORDS).filter(x=>(x.date||'').slice(0,10)===date && (x.text||'').trim());
   if(!entries.length){ box.innerHTML='<p class="muted">No updates added for this meeting yet. Fill your accounts above.</p>'; return; }
   let html=''; const gen=entries.filter(x=>!(x.client||'').trim());
-  if(gen.length) html+=`<div style="margin-bottom:14px"><div style="font-weight:700;color:var(--gold);text-transform:uppercase;font-size:12px;letter-spacing:.03em">Whole team updates</div>`+gen.map(fmtEntry).join('')+'</div>';
+  if(gen.length) html+=`<div style="margin-bottom:8px"><div class="agsec-head">Whole team updates</div><div class="agindent">`+gen.map(fmtEntry).join('')+`</div></div>`;
   const clients=[...new Set(entries.filter(x=>(x.client||'').trim()).map(x=>x.client))].sort((a,b)=>a.localeCompare(b));
-  clients.forEach(c=>{ html+=`<div style="margin:16px 0 6px;border-top:1px solid var(--border);padding-top:10px"><b style="font-size:15px">${esc(c)}</b></div>`;
+  clients.forEach(c=>{ html+=`<div class="agclient">${esc(c)}</div><div class="agindent">`;
     const secs=['Account update','Win',...new Set(entries.filter(x=>x.client===c).map(x=>x.section).filter(s=>!['Account update','Win'].includes(s)))];
-    secs.forEach(sec=>{ const items=entries.filter(x=>x.client===c&&x.section===sec); if(items.length) html+=`<div style="margin:6px 0 4px"><span class="tag">${esc(sec)}</span></div>`+items.map(fmtEntry).join(''); }); });
+    secs.forEach(sec=>{ const items=entries.filter(x=>x.client===c&&x.section===sec); if(items.length) html+=`<div class="agtag">${esc(sec)}</div>`+items.map(fmtEntry).join(''); });
+    html+='</div>'; });
   box.innerHTML=html;
 }
 function renderPromises(date){
