@@ -1096,7 +1096,65 @@ function buildAgendaText(date){
   return out;
 }
 function copyAgenda(){ const d=(document.getElementById('mtgDate').value)||todayLocal(); navigator.clipboard.writeText(buildAgendaText(d)).then(()=>toast('Agenda copied'),()=>toast('Copy failed',true)); }
-function printAgenda(){ const d=(document.getElementById('mtgDate').value)||todayLocal(); const w=window.open('','_blank'); if(!w){ toast('Allow pop-ups to print',true); return; } w.document.write('<pre style="font:13px/1.5 ui-monospace,monospace;white-space:pre-wrap;padding:24px">'+esc(buildAgendaText(d))+'</pre>'); w.document.close(); w.focus(); w.print(); }
+function buildAgendaHTML(date){
+  const entries=collapseAgenda(RECORDS).filter(x=>(x.date||'').slice(0,10)===date && (x.text||'').trim());
+  const gen=entries.filter(x=>!(x.client||'').trim());
+  const clients=[...new Set(entries.filter(x=>(x.client||'').trim()).map(x=>x.client))].sort((a,b)=>a.localeCompare(b));
+  const proms=collapsePromises(RECORDS).filter(x=>(x.date||'').slice(0,10)===date||String(x.done||'')!=='yes');
+  const line=x=>`<div class="entry"><span class="etext">${esc(x.text||'')}</span><span class="by">${esc(x.by||'')}</span></div>`;
+  let body='';
+  if(gen.length) body+=`<section class="blk"><h2 class="team">Whole team updates</h2><div class="secbody">${gen.map(line).join('')}</div></section>`;
+  clients.forEach(c=>{
+    const secs=['Account update','Win',...new Set(entries.filter(x=>x.client===c).map(x=>x.section).filter(s=>!['Account update','Win'].includes(s)))];
+    let inner='';
+    secs.forEach(sec=>{ const items=entries.filter(x=>x.client===c&&x.section===sec); if(items.length){ const cls=sec==='Win'?'tag win':'tag'; inner+=`<div class="sec"><span class="${cls}">${esc(sec)}</span><div class="secbody">${items.map(line).join('')}</div></div>`; } });
+    body+=`<section class="blk client"><h2 class="cname">${esc(c)}</h2>${inner||'<div class="secbody"><div class="entry muted">No update.</div></div>'}</section>`;
+  });
+  let promHtml='';
+  if(proms.length){
+    const overdue=p=>p.due&&String(p.done||'')!=='yes'&&p.due<todayLocal();
+    promHtml=`<section class="blk"><h2 class="team">Promises &amp; commitments</h2><table class="proms"><thead><tr><th class="cbh"></th><th>Owner</th><th>Commitment</th><th>By when</th><th>Client</th></tr></thead><tbody>`
+      +proms.map(p=>{const done=String(p.done||'')==='yes'; return `<tr class="${done?'done':''}${overdue(p)?' over':''}"><td class="box">${done?'&#9745;':'&#9744;'}</td><td class="ow">${esc(p.owner||'')}</td><td>${esc(p.what||'')}</td><td class="due">${p.due?esc(usDate(p.due)):''}${overdue(p)?' <span class="odflag">overdue</span>':''}</td><td>${esc(p.client||'')}</td></tr>`;}).join('')
+      +`</tbody></table></section>`;
+  }
+  if(!body&&!promHtml) body='<p class="empty">No updates added for this meeting yet.</p>';
+  const css=`
+    @page{margin:14mm}
+    *{box-sizing:border-box}
+    html,body{margin:0;padding:0}
+    body{font:14px/1.5 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#1c1a15;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    .wrap{max-width:760px;margin:0 auto;padding:28px 20px}
+    .head{border-bottom:2px solid #b28e2b;padding-bottom:14px;margin-bottom:22px}
+    .brand{font:600 11px/1 -apple-system,Segoe UI,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#b28e2b}
+    .head h1{font:600 27px/1.1 Georgia,'Times New Roman',serif;margin:7px 0 3px;color:#141210}
+    .head .sub{font-size:14px;color:#6b665c}
+    .blk{margin:0 0 22px;page-break-inside:avoid}
+    h2.team{font:600 12px/1 -apple-system,Segoe UI,sans-serif;letter-spacing:.1em;text-transform:uppercase;color:#8a7433;margin:0 0 10px;padding-bottom:6px;border-bottom:1px solid #e7e0cf}
+    h2.cname{font:600 18px/1.2 Georgia,serif;color:#141210;margin:0 0 10px;padding-bottom:6px;border-bottom:1px solid #e7e0cf}
+    .client{border-left:3px solid #edd9a6;padding-left:14px}
+    .sec{display:flex;gap:12px;margin:0 0 8px;align-items:baseline}
+    .tag{flex:0 0 108px;font:600 10px/1.4 -apple-system,sans-serif;letter-spacing:.06em;text-transform:uppercase;color:#7a6f57;padding-top:2px}
+    .tag.win{color:#2f7a43}
+    .secbody{flex:1}
+    .entry{margin:0 0 5px;display:flex;justify-content:space-between;gap:14px;align-items:baseline}
+    .entry .etext{flex:1}
+    .entry.muted{color:#9a9484;font-style:italic}
+    .by{flex:0 0 auto;font-size:11px;color:#9a9484;white-space:nowrap}
+    .proms{width:100%;border-collapse:collapse;font-size:13px}
+    .proms th{text-align:left;font:600 10px/1 -apple-system,sans-serif;letter-spacing:.06em;text-transform:uppercase;color:#8a7f68;padding:0 8px 7px;border-bottom:1px solid #d8cfb8}
+    .proms td{padding:8px;border-bottom:1px solid #eee7d6;vertical-align:top}
+    .proms .box{font-size:16px;line-height:1;width:22px;text-align:center;color:#8a7433}
+    .proms .cbh{width:22px}
+    .proms .ow{font-weight:600;white-space:nowrap}
+    .proms .due{white-space:nowrap;color:#4f4a3f}
+    .proms tr.done td{color:#9a9484}
+    .proms tr.done .box{color:#2f7a43}
+    .odflag{display:inline-block;font:600 9px/1 -apple-system,sans-serif;text-transform:uppercase;letter-spacing:.05em;color:#b23b2e}
+    .empty{color:#8a8577;font-style:italic}
+  `;
+  return `<!doctype html><html><head><meta charset="utf-8"><title>TSA Meeting Agenda - ${esc(usDate(date))}</title><style>${css}</style></head><body><div class="wrap"><header class="head"><div class="brand">The Sales Agency</div><h1>Meeting Agenda</h1><div class="sub">${esc(usDate(date))}</div></header>${body}${promHtml}</div></body></html>`;
+}
+function printAgenda(){ const d=(document.getElementById('mtgDate').value)||todayLocal(); const w=window.open('','_blank'); if(!w){ toast('Allow pop-ups to print',true); return; } w.document.write(buildAgendaHTML(d)); w.document.close(); w.focus(); setTimeout(()=>{ try{w.print();}catch(e){} },250); }
 // founders + reps (closer/setter) see ONLY their assigned company(ies); admin/manager see all
 function dashScopeClients(){
   if(!SESSION) return null;
