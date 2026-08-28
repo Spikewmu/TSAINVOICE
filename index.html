@@ -1027,6 +1027,9 @@ function renderMeeting(){
   const pd=document.getElementById('prDue'); if(pd&&!pd.value) pd.value=todayLocal();
   const date=(document.getElementById('mtgDate').value)||todayLocal();
   document.getElementById('mtgWhen').textContent='- '+usDate(date);
+  const by=((SESSION&&SESSION.name)||'').trim();
+  const myTeam=collapseAgenda(RECORDS).find(x=>(x.date||'').slice(0,10)===date && !(x.client||'').trim() && (x.section||'')==='Whole team' && (x.by||'').trim()===by);
+  const at=document.getElementById('agTeam'); if(at) at.value=myTeam?(myTeam.text||''):'';
   renderFillGrid(); renderAgendaView(date); renderPromises(date);
 }
 // one block per account with an Update box and a Win box, prefilled with what this person already wrote
