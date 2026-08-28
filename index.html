@@ -318,6 +318,7 @@
     <p class="hint">Fill your section for each client <b>before</b> the meeting so everyone reads it first, then we discuss. Log what you commit to in <b>Promises</b> so we track who does what by when. Your name is signed to everything you add.</p>
     <div class="filters">
       <div class="field"><label>Meeting</label><select id="mtgDate" onchange="renderMeeting()"></select></div>
+      <div class="field"><label>Or pick a date</label><input type="date" id="mtgNewDate" onchange="pickMtgDate()"><span class="fieldhelp">Choose an upcoming day (e.g. Monday) to start its notes.</span></div>
       <button class="btn ghost sm" onclick="renderMeeting()">Refresh</button>
       <button class="btn sm" onclick="copyAgenda()">Copy for AI / paste</button>
       <button class="btn sm ghost" onclick="printAgenda()">Print</button>
@@ -1011,7 +1012,9 @@ function renderWebinars(){
 /* ---------------- meeting agenda + promises ---------------- */
 function collapseAgenda(list){ const m={}; list.forEach(x=>{ if(x.type!=='agenda') return; const k=[(x.date||'').slice(0,10),(x.client||'').trim(),(x.section||''),(x.by||'').trim()].join('|'); if(!m[k]||(x.submittedAt||'')>(m[k].submittedAt||'')) m[k]=x; }); return Object.values(m); }
 function collapsePromises(list){ const m={}; list.forEach(x=>{ if(x.type!=='promise') return; const k=x.pid||x.id; if(!m[k]||(x.submittedAt||'')>(m[k].submittedAt||'')) m[k]=x; }); return Object.values(m); }
-function mtgDates(){ const ds=new Set([todayLocal()]); collapseAgenda(RECORDS).forEach(x=>ds.add((x.date||'').slice(0,10))); collapsePromises(RECORDS).forEach(x=>ds.add((x.date||'').slice(0,10))); return [...ds].filter(Boolean).sort().reverse(); }
+let MTG_EXTRA='';
+function mtgDates(){ const ds=new Set([todayLocal()]); if(MTG_EXTRA)ds.add(MTG_EXTRA); collapseAgenda(RECORDS).forEach(x=>ds.add((x.date||'').slice(0,10))); collapsePromises(RECORDS).forEach(x=>ds.add((x.date||'').slice(0,10))); return [...ds].filter(Boolean).sort().reverse(); }
+function pickMtgDate(){ const d=(document.getElementById('mtgNewDate').value||'').slice(0,10); if(!d)return; MTG_EXTRA=d; fillMtgSelects(); const md=document.getElementById('mtgDate'); if(md)md.value=d; renderMeeting(); }
 function fillMtgSelects(){
   const md=document.getElementById('mtgDate'); if(md){ const cur=md.value, ds=mtgDates(); md.innerHTML=ds.map(d=>`<option value="${d}">${usDate(d)}</option>`).join(''); md.value=(cur&&ds.includes(cur))?cur:ds[0]; }
   const clients=clientNames();
