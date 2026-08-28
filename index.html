@@ -14,7 +14,7 @@
     --navy:#C9A24A; --navy-2:#100D09; --gold:#C9A24A; --gold-2:#E6CB7C; --gold-soft:#2A2012;
     --ground:#0E0C09; --surface:#17130D; --surface-2:#201A11;
     --ink:#ECE5D7; --muted:#9A9081; --border:#2C2416;
-    --good:#5FC1A2; --good-soft:#14251E; --warn:#E5A15D; --warn-soft:#2C2114; --bad:#E5776A; --bad-soft:#2E1714;
+    --good:#5FC1A2; --good-soft:#14251E; --warn:#E5A15D; --warn-soft:#2C2114;
     --shadow:0 1px 2px rgba(0,0,0,.4),0 12px 34px rgba(0,0,0,.5);
     --radius:14px;
     --serif:"Playfair Display",Georgia,"Times New Roman",serif;
@@ -82,9 +82,6 @@
   .pill{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;background:var(--surface-2);color:var(--muted)}
   .pill.good{background:var(--good-soft);color:var(--good)}
   .pill.warn{background:var(--warn-soft);color:var(--warn)}
-  .pill.bad{background:var(--bad-soft);color:var(--bad)}
-  .kpi.alarm{border-color:var(--bad);box-shadow:inset 0 0 0 1px var(--bad)}
-  .kpi.alarm .val{color:var(--bad)}
   .linklike{background:none;border:none;padding:0;font:inherit;color:var(--gold,#b8860b);font-weight:600;cursor:pointer;text-align:left}
   .linklike:hover{text-decoration:underline}
   .spinner{display:inline-block;width:13px;height:13px;border:2px solid rgba(128,128,128,.35);border-top-color:currentColor;border-radius:50%;animation:spin .6s linear infinite;vertical-align:-2px;margin-right:7px}
@@ -467,8 +464,7 @@
         <div class="field"><label>Manager</label><input name="manager" placeholder="Khadija"></div>
         <div class="field"><label>Service line</label><input name="serviceLine" placeholder="TakeOver + Webinar"></div>
         <div class="field"><label>Existing monthly ($)</label><input name="monthly" type="number" min="0" step="100"><span class="fieldhelp">What they're already doing per month (context).</span></div>
-        <div class="field"><label>Monthly goal ($)</label><input name="monthlyGoal" type="number" min="0" step="100" placeholder="e.g. 50000"><span class="fieldhelp">Cash-collected target to shoot for this month - drives the goal bar on the dashboard + the health score.</span></div>
-        <div class="field"><label>Monthly booked-calls goal</label><input name="bookedGoal" type="number" min="0" step="1" placeholder="e.g. 40"><span class="fieldhelp">Calls the setters should book this month - feeds the client health score. Leave blank to skip.</span></div>
+        <div class="field"><label>Monthly goal ($)</label><input name="monthlyGoal" type="number" min="0" step="100" placeholder="e.g. 50000"><span class="fieldhelp">Cash-collected target to shoot for this month - drives the goal bar on the dashboard.</span></div>
         <div class="field full"><label>Products / offers</label>
           <div class="chiprow" id="clientProductChips" style="margin-bottom:8px"></div>
           <div class="row-actions"><input id="clientProductAdd" placeholder="Add an offer" onkeydown="if(event.key==='Enter'){event.preventDefault();addClientProduct();}"><button type="button" class="btn sm" onclick="addClientProduct()">Add</button></div>
@@ -534,8 +530,6 @@
       <div class="field"><label>Monthly cash-collected goal ($)</label><input type="number" id="setGoal" step="1000"></div>
       <div class="field"><label>Closer payout rate (%)</label><input type="number" id="setCloser" step="0.1"></div>
       <div class="field"><label>Setter payout rate (%)</label><input type="number" id="setSetter" step="0.1"></div>
-      <div class="field"><label>Health: target show rate (%)</label><input type="number" id="setHsShow" min="0" max="100" step="1"><span class="fieldhelp">Benchmark for the client health score (connected ÷ booked-and-showed). Default 60.</span></div>
-      <div class="field"><label>Health: target close rate (%)</label><input type="number" id="setHsClose" min="0" max="100" step="1"><span class="fieldhelp">Benchmark for the client health score (deals ÷ connected). Default 20.</span></div>
     </div></div>
     <div class="panel"><h3>Shared data + accounts (recommended)</h3><div style="padding:16px">
       <p class="hint">Deploy the Google Apps Script backend (see README) so all submissions and all user logins live in one shared Google Sheet, working across every device. Paste its Web App URL here.</p>
@@ -589,7 +583,6 @@ const DEFAULT_CFG = {
   setters:["Twyla","Gianna","Ra-eez"],
   products:["Retainer","DWY","DFY","Partnership","Other"],
   goal:2000000, closerRate:7, setterRate:3,
-  hsShow:0.6, hsClose:0.2,   // client health-score benchmarks: target show rate + close rate
   endpoint:"https://script.google.com/macros/s/AKfycbzOjSVJ7gj4V6kcrbiAodGmoA884imoyvD9j-teTlxMZgGH9OYcR3q7pXUAeqCYGeS1/exec",
   // Records (deals/eod/postcall/clients/teams/onboarding) live in Supabase Postgres = fast.
   // The Supabase key is NOT stored here anymore: the Apps Script backend hands it to the app
@@ -1677,7 +1670,7 @@ function editClient(name){
   const c=latestClients().find(x=>String(x.name).toLowerCase()===String(name).toLowerCase())||{name:name};
   const f=document.getElementById('clientForm'), g=n=>f.querySelector('[name="'+n+'"]');
   g('name').value=c.name||''; g('status').value=c.status||'Active'; g('manager').value=c.manager||'';
-  g('serviceLine').value=c.serviceLine||''; g('monthly').value=c.monthly||''; g('monthlyGoal').value=c.monthlyGoal||''; g('bookedGoal').value=c.bookedGoal||''; g('nextStep').value=c.nextStep||'';
+  g('serviceLine').value=c.serviceLine||''; g('monthly').value=c.monthly||''; g('monthlyGoal').value=c.monthlyGoal||''; g('nextStep').value=c.nextStep||'';
   // pre-fill with all global products if this client has none yet, so you can trim
   const prods=(c.products&&String(c.products).trim())?String(c.products).split(',').map(s=>s.trim()).filter(Boolean):(CFG.products||[]);
   setClientProducts(prods);
@@ -1685,44 +1678,13 @@ function editClient(name){
 }
 async function saveClient(e){
   e.preventDefault();
-  const o=formObj(e.target); o.type='client'; o.monthly=parseFloat(o.monthly)||0; o.monthlyGoal=parseFloat(o.monthlyGoal)||0; o.bookedGoal=parseFloat(o.bookedGoal)||0;
+  const o=formObj(e.target); o.type='client'; o.monthly=parseFloat(o.monthly)||0; o.monthlyGoal=parseFloat(o.monthlyGoal)||0;
   o.products=CLIENT_PRODUCTS.join(', ');
   await addRecord(o);
   e.target.reset(); setClientProducts(CFG.products||[]); toast('Client saved'); fillLists(); renderClientOverview();
 }
-// ---- client health score (T-305) ----
-// Fraction of the current month elapsed, so mid-month goals are paced fairly (day 14 of 30 = ~47%).
-function monthPace(){ const t=todayLocal(), y=+t.slice(0,4), m=+t.slice(5,7), day=+t.slice(8,10); const dim=new Date(y,m,0).getDate(); return Math.min(1, Math.max(day,1)/dim); }
-// Benchmark KPIs (show rate, close rate, cash, contracted, calls booked) -> % attainment each, averaged into a 0-100 score.
-function clientHealth(name){
-  const m=thisMonth();
-  const recs=activityRecords().filter(x=>x.client===name && monthKey(x.date)===m);
-  const c=latestClients().find(x=>String(x.name).toLowerCase()===String(name).toLowerCase())||{};
-  const st=agg(recs), booked=recs.reduce((s,x)=>s+(x.callsSet||0),0), pace=monthPace();
-  const parts=[];
-  const add=(label,actual,target,fmt)=>{ if(target>0) parts.push({label,actual,target,fmt,att:Math.max(0,Math.min(1,actual/target))}); };
-  if((st.connectedMeetings+st.noShows)>0) add('Show rate',st.showRate,(CFG.hsShow??0.6),'pct');
-  if(st.connectedMeetings>0)              add('Close rate',st.closeRate,(CFG.hsClose??0.2),'pct');
-  add('Cash collected',st.cashCollected,(c.monthlyGoal||0)*pace,'money');
-  add('Contracted',st.contractValue,(c.monthlyGoal||0)*pace,'money');
-  add('Calls booked',booked,(c.bookedGoal||0)*pace,'count');
-  if(!parts.length) return {score:null,parts:[],level:''};
-  const score=Math.round(parts.reduce((s,p)=>s+p.att,0)/parts.length*100);
-  return {score,parts,level:score>=90?'good':(score>=75?'warn':'bad')};
-}
-function healthTitle(h){
-  if(h.score==null) return 'No activity or goals set this month';
-  const f=(v,fmt)=>fmt==='pct'?pct(v):(fmt==='money'?money(v):Math.round(v));
-  return 'Paced to today (' + Math.round(monthPace()*100) + '% of month)\n' + h.parts.map(p=>`${p.label}: ${f(p.actual,p.fmt)} / ${f(p.target,p.fmt)} (${Math.round(p.att*100)}%)`).join('\n');
-}
-function healthPill(h){
-  if(h.score==null) return '<span class="pill" title="No activity or goals set this month">-</span>';
-  return `<span class="pill ${h.level}" title="${esc(healthTitle(h))}">${h.score}%${h.level==='bad'?' ⚠':''}</span>`;
-}
 function renderClientOverview(){
   const cs=latestClients();
-  const health={}; cs.forEach(c=>health[c.name]=clientHealth(c.name));
-  const scored=cs.filter(c=>health[c.name].score!=null), alarms=scored.filter(c=>health[c.name].level==='bad').length;
   const active=cs.filter(c=>c.status==='Active').length;
   const monthly=cs.reduce((s,c)=>s+(c.monthly||0),0);
   const goalSum=cs.reduce((s,c)=>s+(c.monthlyGoal||0),0);
@@ -1731,19 +1693,18 @@ function renderClientOverview(){
     <div class="kpi goal"><div class="lbl">Active clients</div><div class="val">${active}<span style="font-size:15px;color:var(--muted)"> / ${cs.length}</span></div></div>
     <div class="kpi"><div class="lbl">Monthly goal (combined)</div><div class="val small">${money(goalSum)}</div></div>
     <div class="kpi"><div class="lbl">Existing monthly (reported)</div><div class="val small">${money(monthly)}</div></div>
-    <div class="kpi"><div class="lbl">Cash collected this month</div><div class="val small">${money(cash)}</div></div>
-    <div class="kpi ${alarms?'alarm':''}"><div class="lbl">Health alarms (&lt;75%)</div><div class="val">${alarms}<span style="font-size:15px;color:var(--muted)"> / ${scored.length}</span></div></div>`;
+    <div class="kpi"><div class="lbl">Cash collected this month</div><div class="val small">${money(cash)}</div></div>`;
   const order={Active:0,Onboarding:1,Prospect:2,Inactive:3,Dropped:4};
   const rows=cs.slice().sort((a,b)=>(order[a.status]??9)-(order[b.status]??9)||String(a.name).localeCompare(b.name));
   const pc=s=>s==='Active'?'good':((s==='Dropped'||s==='Inactive')?'warn':'');
   document.getElementById('overviewTable').innerHTML=
-    `<thead><tr><th>Client</th><th>Status</th><th>Health</th><th>Manager</th><th>Service line</th><th>Offers</th><th class="num">Monthly goal</th><th class="num">Existing/mo</th><th class="num">Cash this mo</th><th>Next step</th></tr></thead><tbody>`+
+    `<thead><tr><th>Client</th><th>Status</th><th>Manager</th><th>Service line</th><th>Offers</th><th class="num">Monthly goal</th><th class="num">Existing/mo</th><th class="num">Cash this mo</th><th>Next step</th></tr></thead><tbody>`+
     (rows.length?rows.map(c=>{
       const offers=productsForClient(c.name);
       const offerCell=(c.products&&offers.length)?offers.map(p=>`<span class="teamtag">${esc(p)}</span>`).join(''):'<span class="muted">global default</span>';
-      return `<tr><td><b>${esc(c.name)}</b> <button class="btn sm ghost" onclick="editClient('${esc(c.name).replace(/'/g,"\\'")}')">Edit</button></td><td><span class="pill ${pc(c.status)}">${esc(c.status)}</span></td><td>${healthPill(health[c.name])}</td><td>${esc(c.manager)}</td><td>${esc(c.serviceLine)}</td><td>${offerCell}</td><td class="num">${c.monthlyGoal?money(c.monthlyGoal):'<span class="muted">-</span>'}</td><td class="num">${money(c.monthly)}</td><td class="num">${money(cashThisMonth(c.name))}</td><td>${esc(c.nextStep)}</td></tr>`;
+      return `<tr><td><b>${esc(c.name)}</b> <button class="btn sm ghost" onclick="editClient('${esc(c.name).replace(/'/g,"\\'")}')">Edit</button></td><td><span class="pill ${pc(c.status)}">${esc(c.status)}</span></td><td>${esc(c.manager)}</td><td>${esc(c.serviceLine)}</td><td>${offerCell}</td><td class="num">${c.monthlyGoal?money(c.monthlyGoal):'<span class="muted">-</span>'}</td><td class="num">${money(c.monthly)}</td><td class="num">${money(cashThisMonth(c.name))}</td><td>${esc(c.nextStep)}</td></tr>`;
     }).join('')
-     :`<tr><td colspan="10" class="muted" style="padding:16px">No clients yet. Add one below.</td></tr>`)+`</tbody>`;
+     :`<tr><td colspan="8" class="muted" style="padding:16px">No clients yet. Add one below.</td></tr>`)+`</tbody>`;
   // fresh "add client" form defaults to all global offers (ready to trim)
   if(!document.querySelector('#clientForm [name="name"]').value) setClientProducts(CFG.products||[]);
 }
@@ -1891,8 +1852,6 @@ function loadSettingsForm(){
   document.getElementById('setGoal').value=CFG.goal;
   document.getElementById('setCloser').value=CFG.closerRate;
   document.getElementById('setSetter').value=CFG.setterRate;
-  document.getElementById('setHsShow').value=Math.round((CFG.hsShow??DEFAULT_CFG.hsShow)*100);
-  document.getElementById('setHsClose').value=Math.round((CFG.hsClose??DEFAULT_CFG.hsClose)*100);
   document.getElementById('setEndpoint').value=CFG.endpoint;
   document.getElementById('setAdmin').value=CFG.adminCode;
   renderSlackLinks();
@@ -1929,8 +1888,6 @@ function saveSettings(){
   CFG.goal=parseFloat(document.getElementById('setGoal').value)||0;
   CFG.closerRate=parseFloat(document.getElementById('setCloser').value)||0;
   CFG.setterRate=parseFloat(document.getElementById('setSetter').value)||0;
-  CFG.hsShow=(parseFloat(document.getElementById('setHsShow').value)||60)/100;
-  CFG.hsClose=(parseFloat(document.getElementById('setHsClose').value)||20)/100;
   CFG.endpoint=document.getElementById('setEndpoint').value.trim();
   CFG.adminCode=document.getElementById('setAdmin').value.trim()||DEFAULT_CFG.adminCode;
   save(LS.cfg,CFG); fillLists();
