@@ -288,7 +288,7 @@
       <div class="field closerOnly"><label>Connected meetings</label><input type="number" name="connectedMeetings" min="0" step="1"><span class="fieldhelp">Calls where you actually reached the person (calls taken).</span></div>
       <div class="field closerOnly"><label>Follow-up meetings today</label><input type="number" name="followUpMeetings" min="0" step="1"><span class="fieldhelp">Repeat / second calls that took place today.</span></div>
       <div class="field closerOnly"><label>No shows</label><input type="number" name="noShows" min="0" step="1"><span class="fieldhelp">Booked calls where they didn't show up.</span></div>
-      <div class="field closerOnly"><label>Call capacity</label><input type="number" name="callCapacity" min="0" step="1"><span class="fieldhelp">How many calls you had room to take today.</span></div>
+      <div class="field closerOnly"><label title="How many sales calls you had room to take today (not dials). We compare it to how many you actually took to get your utilization.">Call utilization</label><input type="number" name="callCapacity" min="0" step="1"><span class="fieldhelp">How many <b>sales calls</b> you had room to take today (not dials). We compare it to how many you took.</span></div>
       <div class="field closerOnly"><label>Advanced sales calls</label><input type="number" name="advancedCalls" min="0" step="1"><span class="fieldhelp">Calls you moved forward toward a close.</span></div>
 
       <div class="formhead closerOnly"><b>Closing numbers</b><span class="sub">closers only - also log each deal on the "Log Closed Deal" tab</span></div>
@@ -1063,7 +1063,7 @@ function renderDash(){
     <div class="kpi"><div class="lbl">Cash collected %</div><div class="val">${pct(s.cashPct)}</div></div>
     <div class="kpi"><div class="lbl">Close %</div><div class="val">${pct(s.closeRate)}</div></div>
     <div class="kpi"><div class="lbl">Show rate</div><div class="val">${pct(s.showRate)}</div></div>
-    <div class="kpi"><div class="lbl">Call capacity used</div><div class="val">${pct(s.utilization)}</div></div>
+    <div class="kpi"><div class="lbl" title="Connected sales calls divided by how many calls closers had room to take. Low = we can push for more bookings or spend more on ads.">Call utilization</div><div class="val">${pct(s.utilization)}</div></div>
     <div class="kpi"><div class="lbl">Deposits collected</div><div class="val small">${money(s.depositCollected)}</div></div>`;
   const ss=aggSetters(recs);
   document.getElementById('kpisSetters').innerHTML=`
@@ -1259,8 +1259,8 @@ function renderAll(){
 function delRec(id){ RECORDS=RECORDS.filter(r=>r.id!==id); save(LS.data,RECORDS); renderAll(); renderDash(); toast('Deleted'); }
 
 /* ---------------- daily edit grid (admin: correct a rep's numbers by day) ---------------- */
-const DE_COLS_CLOSER=[['hoursDialing','Hours'],['newOutreach','Dials'],['connectedCalls','Conn. calls'],['callCapacity','Capacity'],['connectedMeetings','Conn. meetings'],['advancedCalls','Advanced'],['noShows','No shows'],['closedDeals','Closed'],['contractsSigned','Contracts'],['contractValue','Contract $'],['cashCollected','Cash $'],['depositCollected','Deposit $']];
-const DE_COLS_SETTER=[['hoursDialing','Hours'],['newOutreach','Total dials'],['followUpOutreach','Follow-ups'],['connectedCalls','Conn. calls'],['callsSet','Calls set'],['dqs','DQ'],['convos4min','4m+ convos'],['speedToLead','Speed (min)']];
+const DE_COLS_CLOSER=[['hoursDialing','Hours','Hours on the phones today'],['newOutreach','Dials','Total dials / calls made today'],['connectedCalls','Conn. calls','People actually reached on outbound dials'],['callCapacity','Utilization','Sales calls they had room to take today (not dials); compared to how many they took'],['connectedMeetings','Conn. meetings','Booked calls where they reached the person (calls taken)'],['advancedCalls','Advanced','Calls moved forward toward a close'],['noShows','No shows','Booked calls where the lead did not show'],['closedDeals','Closed','Deals closed today'],['contractsSigned','Contracts','Agreements signed today'],['contractValue','Contract $','Total contract value (before payment)'],['cashCollected','Cash $','Actual money collected today'],['depositCollected','Deposit $','Partial / deposit payments collected']];
+const DE_COLS_SETTER=[['hoursDialing','Hours','Hours on the phones today'],['newOutreach','Total dials','Total dials / calls made today'],['followUpOutreach','Follow-ups','Leads flagged to call back later'],['connectedCalls','Conn. calls','People actually reached / talked to'],['callsSet','Calls set','Appointments actually booked'],['dqs','DQ','Connected calls disqualified today'],['convos4min','4m+ convos','Conversations longer than 4 minutes'],['speedToLead','Speed (min)','Avg minutes from a lead arriving to first dial']];
 function deRole(){ const b=document.querySelector('#deSeg .on'); return b?b.dataset.role:'Closer'; }
 function deCols(){ return deRole()==='Setter'?DE_COLS_SETTER:DE_COLS_CLOSER; }
 function daysInMonth(ym){ const p=(ym||'').split('-'),y=+p[0],m=+p[1]; if(!y||!m) return 31; return new Date(y,m,0).getDate(); }
@@ -1288,7 +1288,7 @@ function loadDailyGrid(){
   if(!rep||!client||!ym){ g.innerHTML='<tbody><tr><td class="muted" style="padding:14px">Pick a rep, client, and month above.</td></tr></tbody>'; return; }
   const eff={}; activityRecords().forEach(x=>{ if((x.type==='eod'||!x.type) && (x.rep||'').trim()===rep && (x.client||'')===client && (x.role||'')===role){ eff[(x.date||'').slice(0,10)]=x; } });
   const dim=daysInMonth(ym);
-  let h='<thead><tr><th>Day</th>'+cols.map(c=>`<th>${esc(c[1])}</th>`).join('')+'</tr></thead><tbody>';
+  let h='<thead><tr><th>Day</th>'+cols.map(c=>`<th${c[2]?` title="${esc(c[2])}" style="cursor:help"`:''}>${esc(c[1])}</th>`).join('')+'</tr></thead><tbody>';
   for(let d=1;d<=dim;d++){ const date=ym+'-'+String(d).padStart(2,'0'),rec=eff[date]||{};
     h+=`<tr data-date="${date}"><td>${d}</td>`+cols.map(c=>{ const v=rec[c[0]]; return `<td><input type="number" step="any" data-f="${c[0]}" value="${(v!=null&&v!=='')?esc(String(v)):''}" oninput="this.closest('tr').dataset.dirty='1'"></td>`; }).join('')+'</tr>';
   }
