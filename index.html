@@ -164,6 +164,7 @@
   <button data-tab="reps">Rep Breakdown</button>
   <button data-tab="clients">Client Overview</button>
   <button data-tab="onboarding">Onboarding</button>
+  <button data-tab="meeting">Meeting</button>
   <button data-tab="postcall">Post-Call Checkout</button>
   <button data-tab="eod">End of Day</button>
   <button data-tab="webinar">Webinar</button>
@@ -303,6 +304,41 @@
       <div class="field full"><label>Notes</label><input type="text" name="notes" placeholder="blockers, big wins, anything the team should know"><span class="fieldhelp">Context for your manager - wins, blockers, or why the numbers look how they do.</span></div>
       <div class="full row-actions"><button class="btn gold" type="submit">Submit end of day</button></div>
     </form>
+  </section>
+
+  <!-- ===== MEETING AGENDA ===== -->
+  <section id="tab-meeting" hidden>
+    <h2 class="section">Meeting Agenda</h2>
+    <p class="hint">Fill your section for each client <b>before</b> the meeting so everyone reads it first, then we discuss. Log what you commit to in <b>Promises</b> so we track who does what by when. Your name is signed to everything you add.</p>
+    <div class="filters">
+      <div class="field"><label>Meeting</label><select id="mtgDate" onchange="renderMeeting()"></select></div>
+      <button class="btn ghost sm" onclick="renderMeeting()">Refresh</button>
+      <button class="btn sm" onclick="copyAgenda()">Copy for AI / paste</button>
+      <button class="btn sm ghost" onclick="printAgenda()">Print</button>
+    </div>
+
+    <div class="panel"><h3>Add your update</h3><div style="padding:14px">
+      <div class="filters" style="margin:0;align-items:end">
+        <div class="field"><label>Meeting date</label><input type="date" id="agDate"></div>
+        <div class="field"><label>Section</label><select id="agSection" onchange="agSectionChanged()"><option>Announcements</option><option>Wins</option><option>Webinar</option><option>Setter</option><option>Closer</option><option>Other</option></select></div>
+        <div class="field"><label>Client</label><select id="agClient"></select></div>
+      </div>
+      <div class="field full" style="margin-top:10px"><label>Your update</label><textarea id="agText" rows="3" style="width:100%" placeholder="What the team needs to know for this client / section"></textarea></div>
+      <div class="row-actions"><button class="btn gold sm" onclick="addAgendaEntry()">Add to agenda</button></div>
+    </div></div>
+
+    <div class="panel"><h3>Agenda <span id="mtgWhen" class="muted" style="font-weight:400;font-size:12px"></span></h3><div style="padding:16px" id="agendaView"></div></div>
+
+    <div class="panel"><h3>Promises &amp; commitments <span style="font-weight:400;color:var(--muted);font-size:12px">- who owes what by when</span></h3><div style="padding:14px">
+      <div class="filters" style="margin:0 0 12px;align-items:end">
+        <div class="field"><label>Who</label><select id="prOwner"></select></div>
+        <div class="field" style="flex:2"><label>Commitment</label><input id="prWhat" placeholder="what you will get done"></div>
+        <div class="field"><label>By when</label><input type="date" id="prDue"></div>
+        <div class="field"><label>Client</label><select id="prClient"></select></div>
+        <button class="btn gold sm" onclick="addPromise()">Log promise</button>
+      </div>
+      <div class="tablewrap"><table id="promisesTable"></table></div>
+    </div></div>
   </section>
 
   <!-- ===== WEBINAR ===== -->
@@ -687,10 +723,10 @@ function startApp(){
   document.getElementById('whoTag').textContent = SESSION.name+' ('+roleLabel(role)+')';
   document.getElementById('storeTag').textContent = '';
   const allow = {
-    admin:['dash','reps','clients','onboarding','postcall','eod','webinar','calllog','data','users','settings'],
-    manager:['dash','reps','clients','onboarding','users','postcall','eod','webinar','calllog'],
+    admin:['dash','reps','clients','onboarding','meeting','postcall','eod','webinar','calllog','data','users','settings'],
+    manager:['dash','reps','clients','onboarding','meeting','users','postcall','eod','webinar','calllog'],
     founder:['dash'],
-    webinarteam:['dash','webinar'],
+    webinarteam:['dash','meeting','webinar'],
     closer:['dash','postcall','eod','webinar','calllog','reps'],
     setter:['dash','postcall','eod','calllog','reps']
   }[role] || ['eod'];
@@ -726,9 +762,9 @@ function applyIdentity(){
 function wireTabs(){ document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>showTab(b.dataset.tab)); }
 function showTab(t){
   document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
-  ['dash','reps','clients','onboarding','deal','postcall','eod','webinar','calllog','data','users','settings'].forEach(x=>{ document.getElementById('tab-'+x).hidden = (x!==t); });
+  ['dash','reps','clients','onboarding','meeting','deal','postcall','eod','webinar','calllog','data','users','settings'].forEach(x=>{ document.getElementById('tab-'+x).hidden = (x!==t); });
   // stale-while-revalidate: render instantly from the cached records, then refresh in the background
-  const render={dash:renderDash, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, webinar:renderWebinars, calllog:renderCallLog, data:renderAll}[t];
+  const render={dash:renderDash, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, webinar:renderWebinars, calllog:renderCallLog, data:renderAll}[t];
   if(render){ render(); syncRecords().then(()=>{ if(currentTab()===t) render(); }); }
   if(t==='data'){ renderDailyEntry(); }
   if(t==='users'){ renderUsers(); }
@@ -965,6 +1001,72 @@ function renderWebinars(){
     :`<tr><td colspan="15" class="muted" style="padding:16px">No webinar reports yet.</td></tr>`;
   document.getElementById('webinarTable').innerHTML=head+body+`</tbody>`;
 }
+/* ---------------- meeting agenda + promises ---------------- */
+function collapseAgenda(list){ const m={}; list.forEach(x=>{ if(x.type!=='agenda') return; const k=[(x.date||'').slice(0,10),(x.client||'').trim(),(x.section||''),(x.by||'').trim()].join('|'); if(!m[k]||(x.submittedAt||'')>(m[k].submittedAt||'')) m[k]=x; }); return Object.values(m); }
+function collapsePromises(list){ const m={}; list.forEach(x=>{ if(x.type!=='promise') return; const k=x.pid||x.id; if(!m[k]||(x.submittedAt||'')>(m[k].submittedAt||'')) m[k]=x; }); return Object.values(m); }
+function mtgDates(){ const ds=new Set([todayLocal()]); collapseAgenda(RECORDS).forEach(x=>ds.add((x.date||'').slice(0,10))); collapsePromises(RECORDS).forEach(x=>ds.add((x.date||'').slice(0,10))); return [...ds].filter(Boolean).sort().reverse(); }
+function fillMtgSelects(){
+  const md=document.getElementById('mtgDate'); if(md){ const cur=md.value, ds=mtgDates(); md.innerHTML=ds.map(d=>`<option value="${d}">${usDate(d)}</option>`).join(''); md.value=(cur&&ds.includes(cur))?cur:ds[0]; }
+  const clients=clientNames();
+  const ac=document.getElementById('agClient'); if(ac){ const cur=ac.value; ac.innerHTML='<option value="">- General -</option>'+clients.map(c=>`<option>${esc(c)}</option>`).join(''); if(cur)ac.value=cur; }
+  const pc=document.getElementById('prClient'); if(pc){ const cur=pc.value; pc.innerHTML='<option value="">- none -</option>'+clients.map(c=>`<option>${esc(c)}</option>`).join(''); if(cur)pc.value=cur; }
+  const po=document.getElementById('prOwner'); if(po){ const cur=po.value, people=[...new Set([...(USERS_CACHE||[]).map(u=>String(u.name||'').trim()), ...leaderNames(), (SESSION&&SESSION.name)||''])].filter(Boolean).sort((a,b)=>a.localeCompare(b)); po.innerHTML=people.map(n=>`<option>${esc(n)}</option>`).join(''); po.value=(cur&&people.includes(cur))?cur:((SESSION&&SESSION.name)||people[0]||''); }
+}
+function renderMeeting(){
+  fillMtgSelects();
+  const ad=document.getElementById('agDate'), pd=document.getElementById('prDue');
+  if(ad&&!ad.value) ad.value=(document.getElementById('mtgDate').value)||todayLocal();
+  if(pd&&!pd.value) pd.value=todayLocal();
+  const date=(document.getElementById('mtgDate').value)||todayLocal();
+  document.getElementById('mtgWhen').textContent='- '+usDate(date);
+  renderAgendaView(date); renderPromises(date);
+}
+function fmtEntry(x){ return `<div style="padding:6px 0 8px 2px"><div style="white-space:pre-wrap">${esc(x.text||'')}</div><div class="muted" style="font-size:11px">- ${esc(x.by||'')}</div></div>`; }
+function renderAgendaView(date){
+  const box=document.getElementById('agendaView'); if(!box) return;
+  const entries=collapseAgenda(RECORDS).filter(x=>(x.date||'').slice(0,10)===date);
+  if(!entries.length){ box.innerHTML='<p class="muted">No updates added for this meeting yet. Add yours above.</p>'; return; }
+  let html=''; const gen=entries.filter(x=>!(x.client||'').trim());
+  ['Announcements','Wins'].forEach(sec=>{ const items=gen.filter(x=>x.section===sec); if(items.length) html+=`<div style="margin-bottom:14px"><div style="font-weight:700;color:var(--gold);text-transform:uppercase;font-size:12px;letter-spacing:.03em">${esc(sec)}</div>`+items.map(fmtEntry).join('')+'</div>'; });
+  const clients=[...new Set(entries.filter(x=>(x.client||'').trim()).map(x=>x.client))].sort((a,b)=>a.localeCompare(b));
+  clients.forEach(c=>{ html+=`<div style="margin:16px 0 6px;border-top:1px solid var(--border);padding-top:10px"><b style="font-size:15px">${esc(c)}</b></div>`;
+    ['Webinar','Setter','Closer','Other','Announcements','Wins'].forEach(sec=>{ const items=entries.filter(x=>x.client===c&&x.section===sec); if(items.length) html+=`<div style="margin:6px 0 4px"><span class="tag">${esc(sec)}</span></div>`+items.map(fmtEntry).join(''); }); });
+  box.innerHTML=html;
+}
+function renderPromises(date){
+  const t=document.getElementById('promisesTable'); if(!t) return;
+  const rows=collapsePromises(RECORDS).filter(x=> (x.date||'').slice(0,10)===date || String(x.done||'')!=='yes').sort((a,b)=> String(a.owner||'').localeCompare(String(b.owner||'')) || (a.due||'').localeCompare(b.due||''));
+  t.innerHTML='<thead><tr><th>Who</th><th>Commitment</th><th>Client</th><th>By when</th><th>Done</th></tr></thead><tbody>'+
+   (rows.length?rows.map(p=>{ const done=String(p.done||'')==='yes', overdue=!done&&p.due&&p.due<todayLocal();
+      return `<tr${done?' style="opacity:.55"':''}><td><b>${esc(p.owner||'')}</b></td><td${done?' style="text-decoration:line-through"':''}>${esc(p.what||'')}</td><td>${esc(p.client||'')}</td><td${overdue?' style="color:var(--warn)"':''}>${p.due?esc(usDate(p.due)):'-'}</td><td><input type="checkbox" ${done?'checked':''} onchange="togglePromise('${esc(String(p.pid||p.id)).replace(/'/g,"\\'")}',this.checked)"></td></tr>`; }).join('')
+    :'<tr><td colspan="5" class="muted" style="padding:14px">No promises logged yet.</td></tr>')+'</tbody>';
+}
+function agSectionChanged(){}
+function addAgendaEntry(){
+  const date=(document.getElementById('agDate').value)||todayLocal(), section=document.getElementById('agSection').value, client=document.getElementById('agClient').value, text=(document.getElementById('agText').value||'').trim();
+  if(!text){ toast('Write your update first',true); return; }
+  addRecord({type:'agenda', date, section, client, text, by:(SESSION&&SESSION.name)||''}).then(()=>{ document.getElementById('agText').value=''; toast('Added to agenda'); const md=document.getElementById('mtgDate'); if(md) md.value=date; renderMeeting(); });
+}
+function addPromise(){
+  const date=(document.getElementById('mtgDate').value)||todayLocal(), owner=document.getElementById('prOwner').value, what=(document.getElementById('prWhat').value||'').trim(), due=document.getElementById('prDue').value||'', client=document.getElementById('prClient').value||'';
+  if(!what){ toast('What is the commitment?',true); return; }
+  addRecord({type:'promise', pid:uid(), date, owner, what, due, client, done:'', by:(SESSION&&SESSION.name)||''}).then(()=>{ document.getElementById('prWhat').value=''; toast('Promise logged'); renderMeeting(); });
+}
+function togglePromise(pid,checked){
+  const cur=collapsePromises(RECORDS).find(x=>String(x.pid||x.id)===pid); if(!cur) return;
+  addRecord({type:'promise', pid, date:cur.date, owner:cur.owner, what:cur.what, due:cur.due, client:cur.client, done:checked?'yes':'', by:(SESSION&&SESSION.name)||''}).then(()=>renderMeeting());
+}
+function buildAgendaText(date){
+  const entries=collapseAgenda(RECORDS).filter(x=>(x.date||'').slice(0,10)===date);
+  let out='TSA Meeting Agenda - '+usDate(date)+'\n'; const gen=entries.filter(x=>!(x.client||'').trim());
+  ['Announcements','Wins'].forEach(sec=>{ const items=gen.filter(x=>x.section===sec); if(items.length) out+='\n== '+sec.toUpperCase()+' ==\n'+items.map(x=>'- '+(x.text||'')+' ('+(x.by||'')+')').join('\n')+'\n'; });
+  [...new Set(entries.filter(x=>(x.client||'').trim()).map(x=>x.client))].sort().forEach(c=>{ out+='\n== '+c+' ==\n'; ['Webinar','Setter','Closer','Other'].forEach(sec=>{ entries.filter(x=>x.client===c&&x.section===sec).forEach(x=>{ out+='['+sec+'] '+(x.text||'')+' ('+(x.by||'')+')\n'; }); }); });
+  const proms=collapsePromises(RECORDS).filter(x=>(x.date||'').slice(0,10)===date||String(x.done||'')!=='yes');
+  if(proms.length) out+='\n== PROMISES ==\n'+proms.map(p=>'- ['+(String(p.done||'')==='yes'?'x':' ')+'] '+(p.owner||'')+': '+(p.what||'')+(p.due?' (by '+usDate(p.due)+')':'')+(p.client?' ['+p.client+']':'')).join('\n')+'\n';
+  return out;
+}
+function copyAgenda(){ const d=(document.getElementById('mtgDate').value)||todayLocal(); navigator.clipboard.writeText(buildAgendaText(d)).then(()=>toast('Agenda copied'),()=>toast('Copy failed',true)); }
+function printAgenda(){ const d=(document.getElementById('mtgDate').value)||todayLocal(); const w=window.open('','_blank'); if(!w){ toast('Allow pop-ups to print',true); return; } w.document.write('<pre style="font:13px/1.5 ui-monospace,monospace;white-space:pre-wrap;padding:24px">'+esc(buildAgendaText(d))+'</pre>'); w.document.close(); w.focus(); w.print(); }
 // founders + reps (closer/setter) see ONLY their assigned company(ies); admin/manager see all
 function dashScopeClients(){
   if(!SESSION) return null;
