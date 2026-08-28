@@ -684,12 +684,13 @@ function startApp(){
   document.getElementById('gate').hidden=true;
   document.getElementById('app').hidden=false;
   const role=SESSION.role;
-  document.getElementById('whoTag').textContent = SESSION.name+' ('+role+')';
+  document.getElementById('whoTag').textContent = SESSION.name+' ('+roleLabel(role)+')';
   document.getElementById('storeTag').textContent = '';
   const allow = {
     admin:['dash','reps','clients','onboarding','postcall','eod','webinar','calllog','data','users','settings'],
     manager:['dash','reps','clients','onboarding','users','postcall','eod','webinar','calllog'],
     founder:['dash'],
+    webinarteam:['dash','webinar'],
     closer:['dash','postcall','eod','webinar','calllog','reps'],
     setter:['dash','postcall','eod','calllog','reps']
   }[role] || ['eod'];
@@ -699,6 +700,7 @@ function startApp(){
     if(role==='admin'){ setEodRole('Closer'); Promise.all([syncRecords(),loadUsers()]).then(()=>{ fillLists(); setEodRole('Closer'); setPcRole('Closer'); renderDash(); renderAll(); }); showTab('dash'); }
     else if(role==='manager'){ setEodRole('Closer'); Promise.all([syncRecords(),loadUsers()]).then(()=>{ fillLists(); setEodRole('Closer'); setPcRole('Closer'); renderDash(); }); showTab('clients'); }
     else if(role==='founder'){ Promise.all([syncRecords(),loadUsers()]).then(()=>{ renderDash(); }); showTab('dash'); } // founder: their company only, dashboard-only, read-only, no filters
+    else if(role==='webinarteam'){ Promise.all([syncRecords(),loadUsers()]).then(()=>{ fillLists(); renderDash(); }); showTab('dash'); } // webinar team: dashboard + webinar tab, all clients
     else { applyIdentity(); syncRecords().then(()=>applyIdentity()); showTab(allow[0]); }
   });
 }
@@ -1332,6 +1334,7 @@ function teamBoxesHtml(checked){
   return clients.length ? clients.map(c=>`<label><input type="checkbox" value="${esc(c)}" ${checked.includes(c)?'checked':''}>${esc(c)}</label>`).join('')
     : '<span class="muted">Add clients on the Client Overview / Settings tab first.</span>';
 }
+function roleLabel(r){ return ({admin:'Admin',manager:'Sales Manager',founder:'Founder',webinarteam:'Webinar Team',closer:'Closer',setter:'Setter'})[r]||r; }
 function renderUsersTable(list){
   const isAdmin = SESSION.role==='admin';
   const users=list.slice();
@@ -1346,7 +1349,7 @@ function renderUsersTable(list){
             : '<span class="muted">all (admin/mgr)</span>');
       const actions = u.master ? '<span class="tag">master, set in Settings</span>'
         : (isAdmin ? `<button class="btn sm ghost" style="color:var(--warn);border-color:var(--warn)" onclick="delUser('${esc(u.username)}')">Remove</button>` : '');
-      return `<tr><td>${esc(u.name)}</td><td>${esc(u.username)}</td><td><span class="pill">${esc(u.role)}</span></td><td>${teamCell}</td><td>${actions}</td></tr>`;
+      return `<tr><td>${esc(u.name)}</td><td>${esc(u.username)}</td><td><span class="pill">${esc(roleLabel(u.role))}</span></td><td>${teamCell}</td><td>${actions}</td></tr>`;
     }).join('')
     +`</tbody>`;
 }
@@ -1354,7 +1357,7 @@ async function renderUsers(){
   const isAdmin = SESSION.role==='admin';
   // managers can only create closer/setter; admins can also create manager/admin
   const roleSel=document.querySelector('#userForm [name=role]');
-  if(roleSel) roleSel.innerHTML = '<option value="closer">Closer</option><option value="setter">Setter</option>'+(isAdmin?'<option value="manager">Sales Manager</option><option value="founder">Founder Access (client)</option><option value="admin">Admin</option>':'');
+  if(roleSel) roleSel.innerHTML = '<option value="closer">Closer</option><option value="setter">Setter</option>'+(isAdmin?'<option value="manager">Sales Manager</option><option value="webinarteam">Webinar Team</option><option value="founder">Founder Access (client)</option><option value="admin">Admin</option>':'');
   const nt=document.getElementById('newUserTeams'); if(nt) nt.innerHTML=teamBoxesHtml([]);
   const tbl=document.getElementById('usersTable');
   // cache-first: draw whatever we already have instantly, spinner only on a cold load
