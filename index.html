@@ -1169,12 +1169,14 @@ function printAgenda(){ const d=(document.getElementById('mtgDate').value)||toda
 // founders + reps (closer/setter) see ONLY their assigned company(ies); admin/manager see all
 // normalize a person's name/username so "Ra-eez" and "Raeez" match
 function nrmName(s){ return String(s==null?'':s).toLowerCase().replace(/[^a-z0-9]/g,''); }
-// clients where the logged-in user is listed as webinar / setter / closer manager
-function managedClients(){
-  if(!SESSION) return [];
-  const keys=new Set([nrmName(SESSION.name), nrmName(SESSION.username)].filter(Boolean));
+// clients where a given user is listed as webinar / setter / closer manager
+function managedClientsForUser(u){
+  if(!u) return [];
+  const keys=new Set([nrmName(u.name), nrmName(u.username)].filter(Boolean));
+  if(!keys.size) return [];
   return latestClients().filter(c=>['webinarMgr','setterMgr','closerMgr'].some(f=>c[f]&&keys.has(nrmName(c[f])))).map(c=>c.name);
 }
+function managedClients(){ return managedClientsForUser(SESSION); }
 function dashScopeClients(){
   if(!SESSION) return null;
   const r=SESSION.role;
@@ -1554,10 +1556,15 @@ function renderUsersTable(list){
     `<thead><tr><th>Name</th><th>Username</th><th>Role</th><th>Teams / accounts</th><th></th></tr></thead><tbody>`+
     users.map(u=>{
       const teams=u.master?[]:teamsFor(u.username);
+      const mgd=u.master?[]:managedClientsForUser(u);
       const teamCell = u.master ? '<span class="muted">-</span>'
         : (['closer','setter','founder'].includes(u.role)
             ? ((teams.length?teams.map(t=>`<span class="teamtag">${esc(t)}</span>`).join(''):'<span class="tag" style="color:var(--warn);border-color:var(--warn)">none - not scoped</span>')+` <button class="btn sm ghost" onclick="editTeams('${esc(u.username)}')">Edit</button>`)
-            : '<span class="muted">all (admin/mgr)</span>');
+            : (u.role==='admin'
+                ? '<span class="muted">all (admin)</span>'
+                : (mgd.length
+                    ? mgd.map(t=>`<span class="teamtag">${esc(t)}</span>`).join('')+' <span class="muted" style="font-size:11px">set on Client Overview</span>'
+                    : '<span class="tag" style="color:var(--warn);border-color:var(--warn)">all - none assigned yet</span>')));
       const actions = u.master ? '<span class="tag">master, set in Settings</span>'
         : (isAdmin ? `<button class="btn sm ghost" style="color:var(--warn);border-color:var(--warn)" onclick="delUser('${esc(u.username)}')">Remove</button>` : '');
       return `<tr><td>${esc(u.name)}</td><td>${esc(u.username)}</td><td><span class="pill">${esc(roleLabel(u.role))}</span></td><td>${teamCell}</td><td>${actions}</td></tr>`;
@@ -1698,14 +1705,15 @@ async function saveClient(e){
   await addRecord(o);
   e.target.reset(); setClientProducts(CFG.products||[]); toast('Client saved'); fillLists(); renderClientOverview();
 }
-// people selectable as account managers (users + leaders + the known TSA managers)
-function mgrPeople(){ const s=new Set(['Keithen','Ra-eez','Khadija','Josh','Robb']); (USERS_CACHE||[]).forEach(u=>{ if(u.name) s.add(String(u.name).trim()); }); leaderNames().forEach(n=>s.add(n)); return [...s].filter(Boolean).sort((a,b)=>a.localeCompare(b)); }
+// people selectable as account managers = real user accounts that can manage (admin / manager / webinar team).
+// Using actual accounts (not typed names) so the assignment always maps to a real login for scoping.
+function mgrPeople(){ const s=new Set(); (USERS_CACHE||[]).filter(u=>['admin','manager','webinarteam'].includes(u.role)).forEach(u=>{ if(u.name) s.add(String(u.name).trim()); }); return [...s].filter(Boolean).sort((a,b)=>a.localeCompare(b)); }
 function fillMgrSelects(){ const people=mgrPeople(); ['webinarMgr','setterMgr','closerMgr'].forEach(nm=>{ const sel=document.querySelector('#clientForm [name="'+nm+'"]'); if(!sel)return; const cur=sel.value; sel.innerHTML='<option value="">- none -</option>'+people.map(p=>`<option>${esc(p)}</option>`).join(''); if(cur&&![...sel.options].some(o=>o.value===cur)) sel.add(new Option(cur,cur)); sel.value=cur; }); }
 function mgrCellHTML(c){ const rows=[c.webinarMgr&&('Web: '+c.webinarMgr), c.setterMgr&&('Set: '+c.setterMgr), c.closerMgr&&('Clo: '+c.closerMgr)].filter(Boolean); return rows.length?rows.map(esc).join('<br>'):(c.manager?esc(c.manager):'<span class="muted">-</span>'); }
 function renderClientOverview(){
   const scope=dashScopeClients();
   const cs=latestClients().filter(c=>!scope||scope.includes(c.name));
-  fillMgrSelects();
+  if(!(USERS_CACHE&&USERS_CACHE.length)) loadUsers().then(fillMgrSelects); else fillMgrSelects();
   const active=cs.filter(c=>c.status==='Active').length;
   const monthly=cs.reduce((s,c)=>s+(c.monthly||0),0);
   const goalSum=cs.reduce((s,c)=>s+(c.monthlyGoal||0),0);
