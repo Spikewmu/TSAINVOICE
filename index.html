@@ -461,7 +461,10 @@
       <form class="grid" id="clientForm" onsubmit="saveClient(event)" style="box-shadow:none;border:none">
         <div class="field"><label>Client name *</label><input name="name" required placeholder="Prime (Billy)"></div>
         <div class="field"><label>Status *</label><select name="status" required><option>Active</option><option>Onboarding</option><option>Prospect</option><option>Inactive</option><option>Dropped</option></select></div>
-        <div class="field"><label>Manager</label><input name="manager" placeholder="Khadija"></div>
+        <div class="field"><label>Manager (primary)</label><input name="manager" placeholder="optional overall contact"></div>
+        <div class="field"><label>Webinar manager</label><select name="webinarMgr"></select><span class="fieldhelp">Sees this account. Leave "- none -" if not applicable.</span></div>
+        <div class="field"><label>Setter manager</label><select name="setterMgr"></select></div>
+        <div class="field"><label>Closer manager</label><select name="closerMgr"></select></div>
         <div class="field"><label>Service line</label><input name="serviceLine" placeholder="TakeOver + Webinar"></div>
         <div class="field"><label>Existing monthly ($)</label><input name="monthly" type="number" min="0" step="100"><span class="fieldhelp">What they're already doing per month (context).</span></div>
         <div class="field"><label>Monthly goal ($)</label><input name="monthlyGoal" type="number" min="0" step="100" placeholder="e.g. 50000"><span class="fieldhelp">Cash-collected target to shoot for this month - drives the goal bar on the dashboard.</span></div>
@@ -1164,6 +1167,14 @@ function buildAgendaHTML(date){
 }
 function printAgenda(){ const d=(document.getElementById('mtgDate').value)||todayLocal(); const w=window.open('','_blank'); if(!w){ toast('Allow pop-ups to print',true); return; } w.document.write(buildAgendaHTML(d)); w.document.close(); w.focus(); setTimeout(()=>{ try{w.print();}catch(e){} },250); }
 // founders + reps (closer/setter) see ONLY their assigned company(ies); admin/manager see all
+// normalize a person's name/username so "Ra-eez" and "Raeez" match
+function nrmName(s){ return String(s==null?'':s).toLowerCase().replace(/[^a-z0-9]/g,''); }
+// clients where the logged-in user is listed as webinar / setter / closer manager
+function managedClients(){
+  if(!SESSION) return [];
+  const keys=new Set([nrmName(SESSION.name), nrmName(SESSION.username)].filter(Boolean));
+  return latestClients().filter(c=>['webinarMgr','setterMgr','closerMgr'].some(f=>c[f]&&keys.has(nrmName(c[f])))).map(c=>c.name);
+}
 function dashScopeClients(){
   if(!SESSION) return null;
   const r=SESSION.role;
@@ -1173,6 +1184,8 @@ function dashScopeClients(){
     if(r==='founder') return [' none'];         // founder must be assigned; show nothing until then
     const mine=myTeamClients(); return mine.length?mine:[' none'];  // reps fall back to accounts they've worked
   }
+  // managers + webinar team see only the accounts they manage (fall back to all if unassigned, so nobody is locked out)
+  if(r==='manager'||r==='webinarteam'){ const m=managedClients(); return m.length?m:null; }
   return null;
 }
 function filtered(){ const m=document.getElementById('fMonth').value,c=document.getElementById('fClient').value,r=document.getElementById('fRole').value,sc=dashScopeClients(); return activityRecords().filter(x=>(!m||monthKey(x.date)===m)&&(!c||x.client===c)&&(!r||x.role===r)&&(!sc||sc.includes(x.client))); }
@@ -1671,6 +1684,8 @@ function editClient(name){
   const f=document.getElementById('clientForm'), g=n=>f.querySelector('[name="'+n+'"]');
   g('name').value=c.name||''; g('status').value=c.status||'Active'; g('manager').value=c.manager||'';
   g('serviceLine').value=c.serviceLine||''; g('monthly').value=c.monthly||''; g('monthlyGoal').value=c.monthlyGoal||''; g('nextStep').value=c.nextStep||'';
+  fillMgrSelects();
+  ['webinarMgr','setterMgr','closerMgr'].forEach(nm=>{ const sel=g(nm), v=c[nm]||''; if(v&&![...sel.options].some(o=>o.value===v)) sel.add(new Option(v,v)); sel.value=v; });
   // pre-fill with all global products if this client has none yet, so you can trim
   const prods=(c.products&&String(c.products).trim())?String(c.products).split(',').map(s=>s.trim()).filter(Boolean):(CFG.products||[]);
   setClientProducts(prods);
@@ -1683,8 +1698,14 @@ async function saveClient(e){
   await addRecord(o);
   e.target.reset(); setClientProducts(CFG.products||[]); toast('Client saved'); fillLists(); renderClientOverview();
 }
+// people selectable as account managers (users + leaders + the known TSA managers)
+function mgrPeople(){ const s=new Set(['Keithen','Ra-eez','Khadija','Josh','Robb']); (USERS_CACHE||[]).forEach(u=>{ if(u.name) s.add(String(u.name).trim()); }); leaderNames().forEach(n=>s.add(n)); return [...s].filter(Boolean).sort((a,b)=>a.localeCompare(b)); }
+function fillMgrSelects(){ const people=mgrPeople(); ['webinarMgr','setterMgr','closerMgr'].forEach(nm=>{ const sel=document.querySelector('#clientForm [name="'+nm+'"]'); if(!sel)return; const cur=sel.value; sel.innerHTML='<option value="">- none -</option>'+people.map(p=>`<option>${esc(p)}</option>`).join(''); if(cur&&![...sel.options].some(o=>o.value===cur)) sel.add(new Option(cur,cur)); sel.value=cur; }); }
+function mgrCellHTML(c){ const rows=[c.webinarMgr&&('Web: '+c.webinarMgr), c.setterMgr&&('Set: '+c.setterMgr), c.closerMgr&&('Clo: '+c.closerMgr)].filter(Boolean); return rows.length?rows.map(esc).join('<br>'):(c.manager?esc(c.manager):'<span class="muted">-</span>'); }
 function renderClientOverview(){
-  const cs=latestClients();
+  const scope=dashScopeClients();
+  const cs=latestClients().filter(c=>!scope||scope.includes(c.name));
+  fillMgrSelects();
   const active=cs.filter(c=>c.status==='Active').length;
   const monthly=cs.reduce((s,c)=>s+(c.monthly||0),0);
   const goalSum=cs.reduce((s,c)=>s+(c.monthlyGoal||0),0);
@@ -1698,11 +1719,11 @@ function renderClientOverview(){
   const rows=cs.slice().sort((a,b)=>(order[a.status]??9)-(order[b.status]??9)||String(a.name).localeCompare(b.name));
   const pc=s=>s==='Active'?'good':((s==='Dropped'||s==='Inactive')?'warn':'');
   document.getElementById('overviewTable').innerHTML=
-    `<thead><tr><th>Client</th><th>Status</th><th>Manager</th><th>Service line</th><th>Offers</th><th class="num">Monthly goal</th><th class="num">Existing/mo</th><th class="num">Cash this mo</th><th>Next step</th></tr></thead><tbody>`+
+    `<thead><tr><th>Client</th><th>Status</th><th>Managers</th><th>Service line</th><th>Offers</th><th class="num">Monthly goal</th><th class="num">Existing/mo</th><th class="num">Cash this mo</th><th>Next step</th></tr></thead><tbody>`+
     (rows.length?rows.map(c=>{
       const offers=productsForClient(c.name);
       const offerCell=(c.products&&offers.length)?offers.map(p=>`<span class="teamtag">${esc(p)}</span>`).join(''):'<span class="muted">global default</span>';
-      return `<tr><td><b>${esc(c.name)}</b> <button class="btn sm ghost" onclick="editClient('${esc(c.name).replace(/'/g,"\\'")}')">Edit</button></td><td><span class="pill ${pc(c.status)}">${esc(c.status)}</span></td><td>${esc(c.manager)}</td><td>${esc(c.serviceLine)}</td><td>${offerCell}</td><td class="num">${c.monthlyGoal?money(c.monthlyGoal):'<span class="muted">-</span>'}</td><td class="num">${money(c.monthly)}</td><td class="num">${money(cashThisMonth(c.name))}</td><td>${esc(c.nextStep)}</td></tr>`;
+      return `<tr><td><b>${esc(c.name)}</b> <button class="btn sm ghost" onclick="editClient('${esc(c.name).replace(/'/g,"\\'")}')">Edit</button></td><td><span class="pill ${pc(c.status)}">${esc(c.status)}</span></td><td style="font-size:12px;line-height:1.5">${mgrCellHTML(c)}</td><td>${esc(c.serviceLine)}</td><td>${offerCell}</td><td class="num">${c.monthlyGoal?money(c.monthlyGoal):'<span class="muted">-</span>'}</td><td class="num">${money(c.monthly)}</td><td class="num">${money(cashThisMonth(c.name))}</td><td>${esc(c.nextStep)}</td></tr>`;
     }).join('')
      :`<tr><td colspan="8" class="muted" style="padding:16px">No clients yet. Add one below.</td></tr>`)+`</tbody>`;
   // fresh "add client" form defaults to all global offers (ready to trim)
