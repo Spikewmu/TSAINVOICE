@@ -449,6 +449,13 @@
         <div class="row-actions" style="margin-top:12px"><button class="btn gold sm" onclick="saveTeams()">Save teams</button><button class="btn ghost sm" onclick="cancelTeams()">Cancel</button></div>
       </div>
     </div>
+    <div class="panel" id="rolesEditPanel" hidden><h3 id="rolesEditTitle">Account roles</h3>
+      <div style="padding:14px">
+        <p class="hint">Tick the management role(s) this person holds for each account - one person can hold several roles across several clients. Saving updates the account records and scopes what this person sees. One person per role per account: ticking a box another manager holds reassigns it (their name shows in grey).</p>
+        <div class="tablewrap"><table id="rolesEditTable"></table></div>
+        <div class="row-actions" style="margin-top:12px"><button class="btn gold sm" onclick="saveRoles()">Save roles</button><button class="btn ghost sm" onclick="cancelRoles()">Cancel</button></div>
+      </div>
+    </div>
   </section>
 
   <!-- ===== CLIENT OVERVIEW ===== -->
@@ -1557,14 +1564,15 @@ function renderUsersTable(list){
     users.map(u=>{
       const teams=u.master?[]:teamsFor(u.username);
       const mgd=u.master?[]:managedClientsForUser(u);
+      const rolesBtn=` <button class="btn sm ghost" onclick="editRoles('${esc(u.username)}')">Edit roles</button>`;
       const teamCell = u.master ? '<span class="muted">-</span>'
         : (['closer','setter','founder'].includes(u.role)
             ? ((teams.length?teams.map(t=>`<span class="teamtag">${esc(t)}</span>`).join(''):'<span class="tag" style="color:var(--warn);border-color:var(--warn)">none - not scoped</span>')+` <button class="btn sm ghost" onclick="editTeams('${esc(u.username)}')">Edit</button>`)
             : (u.role==='admin'
-                ? '<span class="muted">all (admin)</span>'
+                ? '<span class="muted">all (admin)</span>'+(mgd.length?' &middot; '+mgd.map(t=>`<span class="teamtag">${esc(t)}</span>`).join(''):'')+rolesBtn
                 : (mgd.length
-                    ? mgd.map(t=>`<span class="teamtag">${esc(t)}</span>`).join('')+' <span class="muted" style="font-size:11px">set on Client Overview</span>'
-                    : '<span class="tag" style="color:var(--warn);border-color:var(--warn)">all - none assigned yet</span>')));
+                    ? mgd.map(t=>`<span class="teamtag">${esc(t)}</span>`).join('')
+                    : '<span class="tag" style="color:var(--warn);border-color:var(--warn)">all - none assigned yet</span>')+rolesBtn));
       const actions = u.master ? '<span class="tag">master, set in Settings</span>'
         : (isAdmin ? `<button class="btn sm ghost" style="color:var(--warn);border-color:var(--warn)" onclick="delUser('${esc(u.username)}')">Remove</button>` : '');
       return `<tr><td>${esc(u.name)}</td><td>${esc(u.username)}</td><td><span class="pill">${esc(roleLabel(u.role))}</span></td><td>${teamCell}</td><td>${actions}</td></tr>`;
@@ -1605,6 +1613,46 @@ async function saveTeams(){
   await addRecord({type:'team', username:String(TEAM_EDIT).toLowerCase(), teams:JSON.stringify(teams)});
   document.getElementById('teamEditPanel').hidden=true; TEAM_EDIT=null;
   toast('Teams updated'); setTimeout(renderUsers, 800);
+}
+/* ---- account roles editor: assign webinar/setter/closer manager roles per client, from a user ---- */
+let ROLE_EDIT=null;
+function isMgrField(v,u){ if(!v||!u) return false; const n=nrmName(v); return n===nrmName(u.name)||n===nrmName(u.username); }
+function userByName(username){ return (USERS_CACHE||[]).find(x=>x.username===username)||{username,name:username}; }
+function editRoles(username){
+  ROLE_EDIT=username; const u=userByName(username);
+  document.getElementById('rolesEditTitle').textContent='Account roles - '+(u.name||username);
+  renderRolesTable(u);
+  cancelTeams();
+  const p=document.getElementById('rolesEditPanel'); p.hidden=false; p.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+function renderRolesTable(u){
+  const cs=latestClients().slice().sort((a,b)=>String(a.name).localeCompare(String(b.name)));
+  const held=(v)=> (v && !isMgrField(v,u)) ? ` <span class="muted" style="font-size:10px">(${esc(v)})</span>` : '';
+  const cell=(c,role,f)=>`<td class="num"><label style="cursor:pointer"><input type="checkbox" data-client="${esc(c.name)}" data-role="${role}" ${isMgrField(c[f],u)?'checked':''}></label>${held(c[f])}</td>`;
+  document.getElementById('rolesEditTable').innerHTML=
+    `<thead><tr><th>Account</th><th class="num">Webinar</th><th class="num">Setter</th><th class="num">Closer</th></tr></thead><tbody>`+
+    (cs.length?cs.map(c=>`<tr><td><b>${esc(c.name)}</b></td>${cell(c,'web','webinarMgr')}${cell(c,'set','setterMgr')}${cell(c,'clo','closerMgr')}</tr>`).join('')
+      :`<tr><td colspan="4" class="muted" style="padding:14px">Add clients on the Client Overview tab first.</td></tr>`)+`</tbody>`;
+}
+function cancelRoles(){ ROLE_EDIT=null; document.getElementById('rolesEditPanel').hidden=true; }
+async function saveRoles(){
+  if(!ROLE_EDIT) return;
+  const u=userByName(ROLE_EDIT), name=u.name||u.username;
+  const sel={};
+  document.querySelectorAll('#rolesEditTable input[type=checkbox]').forEach(b=>{ (sel[b.dataset.client]=sel[b.dataset.client]||{})[b.dataset.role]=b.checked; });
+  const jobs=[];
+  Object.keys(sel).forEach(cn=>{
+    const cur=latestClients().find(x=>x.name===cn); if(!cur) return;
+    const {_t,...clean}=cur, s=sel[cn];
+    const fld=(f,checked)=> checked ? name : (isMgrField(cur[f],u) ? '' : (cur[f]||''));
+    const next={ webinarMgr:fld('webinarMgr',s.web), setterMgr:fld('setterMgr',s.set), closerMgr:fld('closerMgr',s.clo) };
+    if(next.webinarMgr!==(cur.webinarMgr||'')||next.setterMgr!==(cur.setterMgr||'')||next.closerMgr!==(cur.closerMgr||''))
+      jobs.push(addRecord(Object.assign({},clean,next,{type:'client'})));
+  });
+  if(!jobs.length){ toast('No changes'); cancelRoles(); return; }
+  await Promise.all(jobs);
+  document.getElementById('rolesEditPanel').hidden=true; ROLE_EDIT=null;
+  toast('Roles updated'); fillLists(); renderUsers(); setTimeout(renderUsers, 800);
 }
 async function saveUser(e){
   e.preventDefault();
