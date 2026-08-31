@@ -1048,11 +1048,12 @@ function renderFillGrid(){
   const date=(document.getElementById('mtgDate').value)||todayLocal(), by=(SESSION&&SESSION.name)||'';
   const mine={}; collapseAgenda(RECORDS).forEach(x=>{ if((x.date||'').slice(0,10)===date && (x.by||'').trim()===by && (x.client||'').trim()) mine[x.section+'|'+x.client]=x.text||''; });
   const cs=clientNames();
-  box.innerHTML = cs.length ? cs.map(c=>{ const up=esc(mine['Account update|'+c]||''), win=esc(mine['Win|'+c]||'');
+  box.innerHTML = cs.length ? cs.map(c=>{ const up=esc(mine['Account update|'+c]||''), win=esc(mine['Win|'+c]||''), need=esc(mine['Need|'+c]||'');
     return `<div style="margin-bottom:14px;border-bottom:1px solid var(--border);padding-bottom:12px">
       <div style="font-weight:600;margin-bottom:6px">${esc(c)}</div>
       <input data-client="${esc(c)}" data-section="Win" data-orig="${win}" style="width:100%" placeholder="Win for ${esc(c)} (optional)" value="${win}">
       <textarea data-client="${esc(c)}" data-section="Account update" data-orig="${up}" rows="2" style="width:100%;margin-top:6px" placeholder="Update for ${esc(c)} (blank = nothing to report)">${up}</textarea>
+      <input data-client="${esc(c)}" data-section="Need" data-orig="${need}" style="width:100%;margin-top:6px" placeholder="Need for ${esc(c)} (what you need from the team - reps, assets, access, a decision)" value="${need}">
     </div>`; }).join('')
     : '<p class="muted">Add clients on the Client Overview tab first.</p>';
 }
@@ -1078,7 +1079,7 @@ function renderAgendaView(date){
   if(gen.length) html+=`<div style="margin-bottom:8px"><div class="agsec-head">Whole team updates</div><div class="agindent">`+gen.map(fmtEntry).join('')+`</div></div>`;
   const clients=[...new Set(entries.filter(x=>(x.client||'').trim()).map(x=>x.client))].sort((a,b)=>a.localeCompare(b));
   clients.forEach(c=>{ html+=`<div class="agclient">${esc(c)}</div><div class="agindent">`;
-    const secs=['Account update','Win',...new Set(entries.filter(x=>x.client===c).map(x=>x.section).filter(s=>!['Account update','Win'].includes(s)))];
+    const secs=['Win','Account update','Need',...new Set(entries.filter(x=>x.client===c).map(x=>x.section).filter(s=>!['Win','Account update','Need'].includes(s)))];
     secs.forEach(sec=>{ const items=entries.filter(x=>x.client===c&&x.section===sec); if(items.length) html+=`<div class="agtag">${esc(sec)}</div>`+items.map(fmtEntry).join(''); });
     html+='</div>'; });
   box.innerHTML=html;
@@ -1104,7 +1105,7 @@ function buildAgendaText(date){
   const entries=collapseAgenda(RECORDS).filter(x=>(x.date||'').slice(0,10)===date && (x.text||'').trim());
   let out='TSA Meeting Agenda - '+usDate(date)+'\n'; const gen=entries.filter(x=>!(x.client||'').trim());
   if(gen.length) out+='\n== WHOLE TEAM UPDATES ==\n'+gen.map(x=>'- '+(x.text||'')+' ('+(x.by||'')+')').join('\n')+'\n';
-  [...new Set(entries.filter(x=>(x.client||'').trim()).map(x=>x.client))].sort().forEach(c=>{ out+='\n== '+c+' ==\n'; const secs=['Account update','Win',...new Set(entries.filter(x=>x.client===c).map(x=>x.section).filter(s=>!['Account update','Win'].includes(s)))]; secs.forEach(sec=>{ entries.filter(x=>x.client===c&&x.section===sec).forEach(x=>{ out+='['+sec+'] '+(x.text||'')+' ('+(x.by||'')+')\n'; }); }); });
+  [...new Set(entries.filter(x=>(x.client||'').trim()).map(x=>x.client))].sort().forEach(c=>{ out+='\n== '+c+' ==\n'; const secs=['Win','Account update','Need',...new Set(entries.filter(x=>x.client===c).map(x=>x.section).filter(s=>!['Win','Account update','Need'].includes(s)))]; secs.forEach(sec=>{ entries.filter(x=>x.client===c&&x.section===sec).forEach(x=>{ out+='['+sec+'] '+(x.text||'')+' ('+(x.by||'')+')\n'; }); }); });
   const proms=collapsePromises(RECORDS).filter(x=>(x.date||'').slice(0,10)===date||String(x.done||'')!=='yes');
   if(proms.length) out+='\n== PROMISES ==\n'+proms.map(p=>'- ['+(String(p.done||'')==='yes'?'x':' ')+'] '+(p.owner||'')+': '+(p.what||'')+(p.due?' (by '+usDate(p.due)+')':'')+(p.client?' ['+p.client+']':'')).join('\n')+'\n';
   return out;
@@ -1120,10 +1121,10 @@ function buildAgendaHTML(date){
   if(gen.length) body+=`<section class="blk"><h2 class="team">Whole team updates</h2><div class="secbody">${gen.map(line).join('')}</div></section>`;
   let cards='';
   clients.forEach(c=>{
-    const order=['Win','Account update'];
+    const order=['Win','Account update','Need'];
     const secs=[...order,...new Set(entries.filter(x=>x.client===c).map(x=>x.section).filter(s=>!order.includes(s)))];
     let inner='';
-    secs.forEach(sec=>{ const items=entries.filter(x=>x.client===c&&x.section===sec); if(items.length){ const cls=sec==='Win'?'lab win':'lab'; inner+=`<div class="sec"><div class="${cls}">${esc(sec)}</div><div class="secbody">${items.map(line).join('')}</div></div>`; } });
+    secs.forEach(sec=>{ const items=entries.filter(x=>x.client===c&&x.section===sec); if(items.length){ const cls=sec==='Win'?'lab win':(sec==='Need'?'lab need':'lab'); inner+=`<div class="sec"><div class="${cls}">${esc(sec)}</div><div class="secbody">${items.map(line).join('')}</div></div>`; } });
     cards+=`<section class="blk client"><h2 class="cname">${esc(c)}</h2>${inner||'<div class="sec"><div class="secbody"><div class="entry muted">No update.</div></div></div>'}</section>`;
   });
   if(cards) body+=`<div class="clients">${cards}</div>`;
@@ -1154,6 +1155,7 @@ function buildAgendaHTML(date){
     .sec{margin:0 0 5px}
     .lab{font:600 9px/1.3 -apple-system,sans-serif;letter-spacing:.05em;text-transform:uppercase;color:#7a6f57;margin-bottom:1px}
     .lab.win{color:#2f7a43}
+    .lab.need{color:#b5761b}
     .entry{margin:0 0 2px;display:flex;justify-content:space-between;gap:12px;align-items:baseline}
     .entry .etext{flex:1;white-space:pre-wrap}
     .entry.muted{color:#9a9484;font-style:italic}
