@@ -1113,6 +1113,7 @@ function renderFillGrid(){
   box.innerHTML = cs.length ? cs.map(c=>{ const up=esc(mine['Account update|'+c]||''), win=esc(mine['Win|'+c]||''), need=esc(mine['Need|'+c]||'');
     return `<div style="margin-bottom:14px;border-bottom:1px solid var(--border);padding-bottom:12px">
       <div style="font-weight:600;margin-bottom:6px">${esc(c)}</div>
+      ${metricsLineHTML(clientDayMetrics(c,date))}
       <input data-client="${esc(c)}" data-section="Win" data-orig="${win}" style="width:100%" placeholder="Win for ${esc(c)} (optional)" value="${win}">
       <textarea data-client="${esc(c)}" data-section="Account update" data-orig="${up}" rows="2" style="width:100%;margin-top:6px" placeholder="Update for ${esc(c)} (blank = nothing to report)">${up}</textarea>
       <input data-client="${esc(c)}" data-section="Need" data-orig="${need}" style="width:100%;margin-top:6px" placeholder="Need for ${esc(c)} (what you need from the team - reps, assets, access, a decision)" value="${need}">
