@@ -179,6 +179,7 @@
   <button data-tab="onboarding">Onboarding</button>
   <button data-tab="postcall">Post-Call Checkout</button>
   <button data-tab="eod">End of Day</button>
+  <button data-tab="mgreod">Manager EOD</button>
   <button data-tab="webinar">Webinar</button>
   <button data-tab="calllog">Call Log</button>
   <button data-tab="data">Data + Export</button>
@@ -353,6 +354,38 @@
       </div>
       <div class="tablewrap"><table id="promisesTable"></table></div>
     </div></div>
+  </section>
+
+  <!-- ===== MANAGER EOD ===== -->
+  <section id="tab-mgreod" hidden>
+    <h2 class="section">Manager End of Day</h2>
+    <p class="hint">Managers fill this at the end of each day, one per account you run, so we can see team output and where the constraint is. Managers get held accountable the same way reps do. The raw numbers also auto-roll onto the Meeting agenda.</p>
+    <form class="grid" id="mgrEodForm" onsubmit="submitMgrEod(event)">
+      <div class="formhead"><b>Account &amp; day</b></div>
+      <div class="field"><label>Date *</label><input type="date" name="date" required></div>
+      <div class="field"><label>Client / account *</label><select name="client" required></select></div>
+
+      <div class="formhead"><b>Setters</b></div>
+      <div class="field"><label>Setters working today</label><input type="number" name="settersWorking" min="0" step="1"></div>
+      <div class="field"><label>Total hours</label><input type="number" name="setterHours" min="0" step="0.1"></div>
+      <div class="field"><label>Total inputs (dials)</label><input type="number" name="setterDials" min="0" step="1"></div>
+      <div class="field"><label>Total sets</label><input type="number" name="setterSets" min="0" step="1"></div>
+      <div class="field"><label>Setter EOD checkouts completed</label><input type="number" name="setterEods" min="0" step="1"><span class="fieldhelp">How many of your setters submitted their end-of-day report.</span></div>
+
+      <div class="formhead"><b>Closers</b></div>
+      <div class="field"><label>Closers working today</label><input type="number" name="closersWorking" min="0" step="1"></div>
+      <div class="field"><label>Calls taken</label><input type="number" name="closerCalls" min="0" step="1"></div>
+      <div class="field"><label>Show rate (%)</label><input type="number" name="showRate" min="0" max="100" step="1"></div>
+      <div class="field"><label>Close rate (%)</label><input type="number" name="closeRate" min="0" max="100" step="1"></div>
+      <div class="field"><label>Cash collected ($)</label><input type="number" name="cash" min="0" step="0.01"></div>
+      <div class="field"><label>Closer EOD checkouts completed</label><input type="number" name="closerEods" min="0" step="1"><span class="fieldhelp">How many of your closers submitted their end-of-day report.</span></div>
+
+      <div class="formhead"><b>Constraint</b><span class="sub">what held the team back</span></div>
+      <div class="field full"><label>Bottleneck / notes</label><textarea name="bottleneck" rows="2" placeholder="If reps missed KPIs: who was the bottleneck, what happened (sick, half day, left early), did they meet KPIs?"></textarea></div>
+
+      <div class="full row-actions"><button class="btn gold" type="submit">Submit manager EOD</button></div>
+    </form>
+    <div class="panel"><h3>Recent manager EODs <span style="font-weight:400;color:var(--muted);font-size:12px">- latest per manager, account + day</span></h3><div class="tablewrap"><table id="mgrEodTable"></table></div></div>
   </section>
 
   <!-- ===== WEBINAR ===== -->
@@ -747,8 +780,8 @@ function startApp(){
   document.getElementById('whoTag').textContent = SESSION.name+' ('+roleLabel(role)+')';
   document.getElementById('storeTag').textContent = '';
   const allow = {
-    admin:['dash','reps','clients','onboarding','meeting','postcall','eod','webinar','calllog','data','users','settings'],
-    manager:['dash','reps','clients','onboarding','meeting','users','postcall','eod','webinar','calllog'],
+    admin:['dash','reps','clients','onboarding','meeting','postcall','eod','mgreod','webinar','calllog','data','users','settings'],
+    manager:['dash','reps','clients','onboarding','meeting','users','postcall','eod','mgreod','webinar','calllog'],
     founder:['dash'],
     webinarteam:['dash','meeting','webinar'],
     closer:['dash','postcall','eod','webinar','calllog','reps'],
@@ -786,9 +819,9 @@ function applyIdentity(){
 function wireTabs(){ document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>showTab(b.dataset.tab)); }
 function showTab(t){
   document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
-  ['dash','reps','clients','onboarding','meeting','deal','postcall','eod','webinar','calllog','data','users','settings'].forEach(x=>{ document.getElementById('tab-'+x).hidden = (x!==t); });
+  ['dash','reps','clients','onboarding','meeting','deal','postcall','eod','mgreod','webinar','calllog','data','users','settings'].forEach(x=>{ document.getElementById('tab-'+x).hidden = (x!==t); });
   // stale-while-revalidate: render instantly from the cached records, then refresh in the background
-  const render={dash:renderDash, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, webinar:renderWebinars, calllog:renderCallLog, data:renderAll}[t];
+  const render={dash:renderDash, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, mgreod:renderMgrEod, webinar:renderWebinars, calllog:renderCallLog, data:renderAll}[t];
   if(render){ render(); syncRecords().then(()=>{ if(currentTab()===t) render(); }); }
   if(t==='data'){ renderDailyEntry(); }
   if(t==='users'){ renderUsers(); }
@@ -1013,6 +1046,30 @@ async function submitWebinar(e){ e.preventDefault(); const btn=e.target.querySel
     const csel=e.target.querySelector('[name=client]'); if(csel && !(o.client||'').trim()) o.client=csel.value;
     if(!(o.client||'').trim()){ toast('Choose a client / account first.',true); return; }
     await addRecord(o); e.target.reset(); presetDates(); toast('Webinar report submitted.'); renderWebinars(); ok=true; }
+  catch(err){ toast('Submit failed - try again',true); }
+  finally{ if(ok) btnDone(btn,'Submitted!'); else btnBusy(btn,false); } }
+/* ---------------- manager EOD ---------------- */
+function collapseMgrEod(list){ const m={}; list.forEach(x=>{ if(x.type!=='mgreod')return; const k=[(x.date||'').slice(0,10),(x.client||'').trim(),(x.by||'').trim()].join('|'); if(!m[k]||(x.submittedAt||'')>(m[k].submittedAt||'')) m[k]=x; }); return Object.values(m); }
+function renderMgrEod(){
+  const sc=dashScopeClients(), clist=sc?sc.filter(c=>c!==' none'):clientNames();
+  const sel=document.querySelector('#mgrEodForm [name=client]');
+  if(sel){ const cur=sel.value; sel.innerHTML=clist.map(c=>`<option>${esc(c)}</option>`).join(''); if(cur&&clist.includes(cur))sel.value=cur; }
+  const d=document.querySelector('#mgrEodForm [name=date]'); if(d&&!d.value) d.value=todayLocal();
+  renderMgrEodTable();
+}
+function renderMgrEodTable(){
+  const t=document.getElementById('mgrEodTable'); if(!t) return;
+  const sc=dashScopeClients();
+  const rows=collapseMgrEod(RECORDS).filter(x=>!sc||sc.includes(x.client)).sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.submittedAt||'').localeCompare(a.submittedAt||'')).slice(0,60);
+  const head=`<thead><tr><th>Date</th><th>Account</th><th>Manager</th><th class="num">Setters</th><th class="num">Dials</th><th class="num">Sets</th><th class="num">Set EOD</th><th class="num">Closers</th><th class="num">Calls</th><th class="num">Show%</th><th class="num">Close%</th><th class="num">Cash</th><th class="num">Clo EOD</th><th>Bottleneck</th></tr></thead><tbody>`;
+  t.innerHTML=head+(rows.length?rows.map(x=>`<tr><td style="white-space:nowrap">${esc(usDate(x.date))}</td><td>${esc(x.client)}</td><td>${esc(x.by||'')}</td><td class="num">${x.settersWorking||0}</td><td class="num">${x.setterDials||0}</td><td class="num">${x.setterSets||0}</td><td class="num">${x.setterEods||0}</td><td class="num">${x.closersWorking||0}</td><td class="num">${x.closerCalls||0}</td><td class="num">${x.showRate||0}%</td><td class="num">${x.closeRate||0}%</td><td class="num">${money(x.cash)}</td><td class="num">${x.closerEods||0}</td><td>${esc(x.bottleneck||'')}</td></tr>`).join(''):`<tr><td colspan="14" class="muted" style="padding:16px">No manager EODs yet.</td></tr>`)+`</tbody>`;
+}
+async function submitMgrEod(e){ e.preventDefault(); const btn=e.target.querySelector('[type=submit]'); if(btn&&btn.disabled) return; btnBusy(btn,true); let ok=false;
+  try{ const o=formObj(e.target); o.type='mgreod'; o.by=(SESSION&&SESSION.name)||'';
+    ['settersWorking','setterHours','setterDials','setterSets','setterEods','closersWorking','closerCalls','showRate','closeRate','cash','closerEods'].forEach(k=>{ o[k]=parseFloat(o[k])||0; });
+    const csel=e.target.querySelector('[name=client]'); if(csel && !(o.client||'').trim()) o.client=csel.value;
+    if(!(o.client||'').trim()){ toast('Choose a client / account first.',true); return; }
+    await addRecord(o); e.target.reset(); renderMgrEod(); toast('Manager EOD submitted.'); ok=true; }
   catch(err){ toast('Submit failed - try again',true); }
   finally{ if(ok) btnDone(btn,'Submitted!'); else btnBusy(btn,false); } }
 function renderWebinars(){
