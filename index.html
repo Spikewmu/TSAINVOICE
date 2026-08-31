@@ -76,6 +76,7 @@
   .agtag{display:inline-block;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);background:rgba(255,255,255,.05);padding:2px 8px;border-radius:6px;margin:10px 0 3px}
   .agentry{margin:0 0 6px;padding-left:12px;line-height:1.5;white-space:pre-wrap}
   .agentry .agby{color:var(--muted);font-size:11px}
+  .agcov{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin:2px 0 3px}
   .agmetrics{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 8px}
   .agm{font-size:11px;color:var(--muted);background:rgba(255,255,255,.05);border:1px solid var(--border);padding:3px 9px;border-radius:6px}
   .agm b{color:var(--ink);font-weight:700;font-variant-numeric:tabular-nums}
@@ -1134,23 +1135,37 @@ function saveTeamUpdate(){
   addRecord({type:'agenda',date,section:'Whole team',client:'',text:t,by:(SESSION&&SESSION.name)||''}).then(()=>{ document.getElementById('agTeam').value=''; toast('Posted'); renderMeeting(); });
 }
 function fmtEntry(x){ return `<div class="agentry">${esc(x.text||'')} <span class="agby">- ${esc(x.by||'')}</span></div>`; }
-// per-client daily KPIs from the reps' EOD activity (auto-computed for the meeting date)
-function clientDayMetrics(client, date){
-  const recs=activityRecords().filter(x=>x.client===client && (x.date||'').slice(0,10)===date && (x.type==='eod'||!x.type));
+// The activity days a meeting reviews: the PRIOR day, except a Monday meeting reviews Fri+Sat+Sun
+// (no TakeOver meetings on Sat/Sun), so the morning SOD always shows the previous day's production.
+function mtgReviewDates(meetingDate){
+  const s=(meetingDate||todayLocal()).slice(0,10), y=+s.slice(0,4), mo=+s.slice(5,7), dd=+s.slice(8,10);
+  const dow=new Date(y,mo-1,dd).getDay();          // 0=Sun .. 6=Sat
+  const back=dow===1?3:1;                            // Monday looks back 3 days (Fri,Sat,Sun); else 1
+  const iso=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  const out=[]; for(let i=back;i>=1;i--) out.push(iso(new Date(y,mo-1,dd-i)));
+  return out;
+}
+function reviewLabel(dates){ if(!dates||!dates.length) return ''; return dates.length===1?usDate(dates[0]):usDate(dates[0])+' - '+usDate(dates[dates.length-1]); }
+// per-client KPIs from the reps' EOD activity across the review window for the meeting date
+function clientDayMetrics(client, meetingDate){
+  const dates=mtgReviewDates(meetingDate), set=new Set(dates);
+  const recs=activityRecords().filter(x=>x.client===client && set.has((x.date||'').slice(0,10)) && (x.type==='eod'||!x.type));
   let hours=0,dials=0,connected=0,sets=0,deals=0,cash=0; const staff=new Set();
   recs.forEach(x=>{ hours+=x.hoursDialing||0; dials+=x.newOutreach||0; connected+=x.connectedCalls||0; sets+=x.callsSet||0; deals+=x.closedDeals||0; cash+=x.cashCollected||0; const r=(x.rep||'').trim(); if(r)staff.add(r); });
-  return {n:recs.length, hours:Math.round(hours*10)/10, dials, connected, connRate:dials?connected/dials:0, sets, deals, cash, staff:[...staff]};
+  return {n:recs.length, hours:Math.round(hours*10)/10, dials, connected, connRate:dials?connected/dials:0, sets, deals, cash, staff:[...staff], dates, coverage:reviewLabel(dates)};
 }
+// clients that reported activity in a meeting's review window
+function mtgActivityClients(meetingDate){ const set=new Set(mtgReviewDates(meetingDate)); return [...new Set(activityRecords().filter(x=>set.has((x.date||'').slice(0,10)) && (x.client||'').trim() && (x.type==='eod'||!x.type)).map(x=>x.client))]; }
 function mtgMetricCells(m){ return [['Hours',m.hours],['Dials',m.dials],['Conn',pct(m.connRate)],['Sets',m.sets],['Deals',m.deals],['Cash',money(m.cash)]]; }
 function metricsLineHTML(m){
   if(!m.n) return '';
-  return `<div class="agmetrics">`+mtgMetricCells(m).map(([k,v])=>`<span class="agm"><b>${v}</b> ${k}</span>`).join('')+`</div>`+(m.staff.length?`<div class="agstaff">Staff: <b>${m.staff.map(esc).join(', ')}</b></div>`:'');
+  return `<div class="agcov">Reviewing ${esc(m.coverage)}</div><div class="agmetrics">`+mtgMetricCells(m).map(([k,v])=>`<span class="agm"><b>${v}</b> ${k}</span>`).join('')+`</div>`+(m.staff.length?`<div class="agstaff">Staff: <b>${m.staff.map(esc).join(', ')}</b></div>`:'');
 }
-function metricsLineText(m){ if(!m.n) return ''; return '  KPIs: '+mtgMetricCells(m).map(([k,v])=>k+' '+v).join(' | ')+(m.staff.length?('  |  Staff: '+m.staff.join(', ')):'')+'\n'; }
+function metricsLineText(m){ if(!m.n) return ''; return '  KPIs ('+m.coverage+'): '+mtgMetricCells(m).map(([k,v])=>k+' '+v).join(' | ')+(m.staff.length?('  |  Staff: '+m.staff.join(', ')):'')+'\n'; }
 function renderAgendaView(date){
   const box=document.getElementById('agendaView'); if(!box) return;
   const entries=collapseAgenda(RECORDS).filter(x=>(x.date||'').slice(0,10)===date && (x.text||'').trim());
-  const actClients=[...new Set(activityRecords().filter(x=>(x.date||'').slice(0,10)===date && (x.client||'').trim() && (x.type==='eod'||!x.type)).map(x=>x.client))];
+  const actClients=mtgActivityClients(date);
   const clients=[...new Set([...entries.filter(x=>(x.client||'').trim()).map(x=>x.client), ...actClients])].sort((a,b)=>a.localeCompare(b));
   const gen=entries.filter(x=>!(x.client||'').trim());
   if(!gen.length && !clients.length){ box.innerHTML='<p class="muted">No updates or reported activity for this meeting yet. Fill your accounts above.</p>'; return; }
@@ -1185,7 +1200,7 @@ function buildAgendaText(date){
   const entries=collapseAgenda(RECORDS).filter(x=>(x.date||'').slice(0,10)===date && (x.text||'').trim());
   let out='TSA Meeting Agenda - '+usDate(date)+'\n'; const gen=entries.filter(x=>!(x.client||'').trim());
   if(gen.length) out+='\n== WHOLE TEAM UPDATES ==\n'+gen.map(x=>'- '+(x.text||'')+' ('+(x.by||'')+')').join('\n')+'\n';
-  const actC=[...new Set(activityRecords().filter(x=>(x.date||'').slice(0,10)===date && (x.client||'').trim() && (x.type==='eod'||!x.type)).map(x=>x.client))];
+  const actC=mtgActivityClients(date);
   [...new Set([...entries.filter(x=>(x.client||'').trim()).map(x=>x.client), ...actC])].sort().forEach(c=>{ out+='\n== '+c+' ==\n'; out+=metricsLineText(clientDayMetrics(c,date)); const secs=['Win','Account update','Need',...new Set(entries.filter(x=>x.client===c).map(x=>x.section).filter(s=>!['Win','Account update','Need'].includes(s)))]; secs.forEach(sec=>{ entries.filter(x=>x.client===c&&x.section===sec).forEach(x=>{ out+='['+sec+'] '+(x.text||'')+' ('+(x.by||'')+')\n'; }); }); });
   const proms=collapsePromises(RECORDS).filter(x=>(x.date||'').slice(0,10)===date||String(x.done||'')!=='yes');
   if(proms.length) out+='\n== PROMISES ==\n'+proms.map(p=>'- ['+(String(p.done||'')==='yes'?'x':' ')+'] '+(p.owner||'')+': '+(p.what||'')+(p.due?' (by '+usDate(p.due)+')':'')+(p.client?' ['+p.client+']':'')).join('\n')+'\n';
@@ -1195,11 +1210,11 @@ function copyAgenda(){ const d=(document.getElementById('mtgDate').value)||today
 function buildAgendaHTML(date){
   const entries=collapseAgenda(RECORDS).filter(x=>(x.date||'').slice(0,10)===date && (x.text||'').trim());
   const gen=entries.filter(x=>!(x.client||'').trim());
-  const actC=[...new Set(activityRecords().filter(x=>(x.date||'').slice(0,10)===date && (x.client||'').trim() && (x.type==='eod'||!x.type)).map(x=>x.client))];
+  const actC=mtgActivityClients(date);
   const clients=[...new Set([...entries.filter(x=>(x.client||'').trim()).map(x=>x.client), ...actC])].sort((a,b)=>a.localeCompare(b));
   const proms=collapsePromises(RECORDS).filter(x=>(x.date||'').slice(0,10)===date||String(x.done||'')!=='yes');
   const line=x=>`<div class="entry"><span class="etext">${esc(x.text||'')}</span><span class="by">${esc(x.by||'')}</span></div>`;
-  const pmetrics=m=>!m.n?'':`<div class="pmetrics">`+mtgMetricCells(m).map(([k,v])=>`<span class="pm"><b>${v}</b> ${esc(k)}</span>`).join('')+`</div>`+(m.staff.length?`<div class="pstaff">Staff: ${esc(m.staff.join(', '))}</div>`:'');
+  const pmetrics=m=>!m.n?'':`<div class="pcov">Reviewing ${esc(m.coverage)}</div><div class="pmetrics">`+mtgMetricCells(m).map(([k,v])=>`<span class="pm"><b>${v}</b> ${esc(k)}</span>`).join('')+`</div>`+(m.staff.length?`<div class="pstaff">Staff: ${esc(m.staff.join(', '))}</div>`:'');
   let body='';
   if(gen.length) body+=`<section class="blk"><h2 class="team">Whole team updates</h2><div class="secbody">${gen.map(line).join('')}</div></section>`;
   let cards='';
@@ -1239,6 +1254,7 @@ function buildAgendaHTML(date){
     .lab{font:600 9px/1.3 -apple-system,sans-serif;letter-spacing:.05em;text-transform:uppercase;color:#7a6f57;margin-bottom:1px}
     .lab.win{color:#2f7a43}
     .lab.need{color:#b5761b}
+    .pcov{font-size:8px;color:#8a8577;text-transform:uppercase;letter-spacing:.04em;margin:0 0 2px}
     .pmetrics{display:flex;flex-wrap:wrap;gap:5px;margin:0 0 5px}
     .pm{font-size:9px;color:#6b665c;background:#f2efe6;border:1px solid #e7e0cf;padding:2px 6px;border-radius:4px}
     .pm b{color:#1c1a15;font-weight:700;font-variant-numeric:tabular-nums}
