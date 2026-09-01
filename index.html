@@ -348,6 +348,15 @@
       <div class="field full"><label>Notes</label><input type="text" name="notes" placeholder="blockers, big wins, anything the team should know"><span class="fieldhelp">Context for your manager - wins, blockers, or why the numbers look how they do.</span></div>
       <div class="full row-actions"><button class="btn gold" type="submit">Submit end of day</button></div>
     </form>
+    <div id="eodMulti" hidden>
+      <div class="rolenote">You work more than one account - fill the numbers for each account below and submit them all at once.</div>
+      <div class="filters" style="margin:0 0 6px;align-items:flex-end">
+        <div class="field"><label>Date this report is for *</label><input type="date" id="eodMultiDate" onchange="renderEodSections()" oninput="renderEodSections()"></div>
+        <span class="tag" id="eodMultiWho" style="align-self:flex-end;margin-bottom:2px"></span>
+      </div>
+      <div id="eodSections"></div>
+      <div class="row-actions" style="margin:8px 0 2px"><button class="btn gold" id="eodMultiSubmit" onclick="submitEodMulti()">Submit end of day</button></div>
+    </div>
   </section>
 
   <!-- ===== MEETING AGENDA ===== -->
@@ -893,6 +902,7 @@ function applyIdentity(){
     if(opts.length===1){ cs.innerHTML='<option>'+esc(opts[0])+'</option>'; cs.value=opts[0]; cs.disabled=true; }
     else { const cur=cs.value; cs.innerHTML='<option value="">-</option>'+opts.map(c=>'<option>'+esc(c)+'</option>').join(''); cs.value=(cur&&opts.includes(cur))?cur:''; cs.disabled=false; } });
   postcallClientChanged(); renderEodProducts();
+  renderEodTab(); // reps with 2+ accounts get the one-page, section-per-account End of Day
 }
 
 /* ---------------- tabs ---------------- */
@@ -901,7 +911,7 @@ function showTab(t){
   document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
   ['dash','reps','clients','onboarding','meeting','timeoff','deal','postcall','eod','mgreod','webinar','calllog','adminreport','data','users','settings'].forEach(x=>{ document.getElementById('tab-'+x).hidden = (x!==t); });
   // stale-while-revalidate: render instantly from the cached records, then refresh in the background
-  const render={dash:renderDash, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, timeoff:renderTimeOffTab, mgreod:renderMgrEod, webinar:renderWebinars, calllog:renderCallLog, adminreport:renderAdminReport, data:renderAll}[t];
+  const render={dash:renderDash, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, webinar:renderWebinars, calllog:renderCallLog, adminreport:renderAdminReport, data:renderAll}[t];
   if(render){ render(); syncRecords().then(()=>{ if(currentTab()===t) render(); updateNavBadges(); }); }
   updateNavBadges();
   if(t==='data'){ renderDailyEntry(); }
@@ -1004,6 +1014,64 @@ async function submitEod(e){ e.preventDefault(); const btn=e.target.querySelecto
     await addRecord(o); e.target.reset(); presetDates(); setEodRole(o.role); if(repMode()) applyIdentity(); toast('End of day submitted.'); if(!repMode()) renderDash(); ok=true; }
   catch(err){ toast('Submit failed - try again',true); }
   finally{ if(ok) btnDone(btn,'Submitted!'); else btnBusy(btn,false); } }
+/* ---- End of Day: one page, one section per account, for reps who work 2+ accounts ---- */
+const EOD_SETTER=[['hoursDialing','Hours dialing','0.25'],['newOutreach','Total dials','1'],['followUpOutreach','Follow-up outreach','1'],['connectedCalls','Connected calls','1'],['convos4min','Convos 4 min+','1'],['callsSet','Sales calls set','1'],['dqs','Disqualified (DQ)','1']];
+const EOD_CLOSER=[['hoursDialing','Hours dialing','0.25'],['newOutreach','Total dials','1'],['connectedCalls','Connected calls','1'],['newMeetings','New meetings','1'],['connectedMeetings','Connected meetings (calls taken)','1'],['followUpMeetings','Follow-up meetings','1'],['noShows','No shows','1'],['callCapacity','Call utilization (capacity)','1'],['advancedCalls','Advanced sales calls','1'],['closedDeals','Closed deals','1'],['contractsSigned','Contracts signed','1'],['contractValue','Contract value ($)','0.01'],['cashCollected','Cash collected ($)','0.01'],['depositCollected','Deposits collected ($)','0.01']];
+function renderEodTab(){
+  const multi = repMode() && teamsFor(SESSION&&SESSION.username).length>1;
+  const f=document.getElementById('eodForm'), mw=document.getElementById('eodMulti'), seg=document.getElementById('roleSegWrap');
+  if(f) f.hidden=multi;
+  if(mw) mw.hidden=!multi;
+  if(seg && multi) seg.hidden=true;
+  if(multi) renderEodSections();
+}
+function renderEodSections(){
+  const box=document.getElementById('eodSections'); if(!box) return;
+  const di=document.getElementById('eodMultiDate'); if(di&&!di.value) di.value=todayLocal();
+  const date=((di&&di.value)||todayLocal()).slice(0,10), role=SESSION.role==='setter'?'Setter':'Closer', me=(SESSION&&SESSION.name)||'';
+  const accts=teamsFor(SESSION&&SESSION.username);
+  const who=document.getElementById('eodMultiWho'); if(who) who.textContent=`${accts.length} accounts · ${role} · ${usDate(date)}`;
+  const prior={}; activityRecords().forEach(x=>{ if(x.type==='eod' && nrmName(x.rep)===nrmName(me) && (x.role||'Closer')===role && (x.date||'').slice(0,10)===date) prior[nrmName(x.client)]=x; });
+  const fields = role==='Setter'?EOD_SETTER:EOD_CLOSER;
+  const inp=(acct,f,label,step,val)=>`<div class="field"><label>${label}</label><input type="number" min="0" step="${step}" data-acct="${esc(acct)}" data-f="${f}" value="${(val===0||val)?val:''}"></div>`;
+  box.innerHTML=accts.map((c,i)=>{
+    const p=prior[nrmName(c)]||{}, v=f=>(p[f]===0||p[f])?p[f]:'';
+    let prodGrid='';
+    if(role==='Closer'){
+      const prods=productsForClient(c); let units={}; try{ units=p.productUnits?JSON.parse(p.productUnits):{}; }catch(e){}
+      if(prods.length) prodGrid=`<div class="formhead" style="margin-top:10px"><b>Units sold by offer</b></div><div class="grid3">${prods.map(pr=>`<div class="field"><label>${esc(pr)}</label><input type="number" min="0" step="1" data-acct="${esc(c)}" data-prod="${esc(pr)}" value="${(units[pr]===0||units[pr])?units[pr]:''}"></div>`).join('')}</div>`;
+    }
+    return `<div class="panel mgrsec"><h3><span class="mgrnum">${i+1}</span> ${esc(c)}${p.submittedAt?' <span class="pill good" style="margin-left:6px">saved today</span>':''}</h3><div style="padding:0 14px 14px">
+      <div class="grid3">${fields.map(f=>inp(c,f[0],f[1],f[2],v(f[0]))).join('')}</div>
+      ${prodGrid}
+      <div class="formhead" style="margin-top:10px"><b>Notes</b></div>
+      <input type="text" style="width:100%" data-acct="${esc(c)}" data-f="notes" placeholder="blockers, big wins, anything the team should know" value="${esc(p.notes||'')}">
+    </div></div>`;
+  }).join('') || '<p class="muted" style="padding:14px">No accounts assigned to you yet.</p>';
+}
+async function submitEodMulti(){
+  const btn=document.getElementById('eodMultiSubmit'); if(btn&&btn.disabled) return; btnBusy(btn,true); let ok=false;
+  try{
+    const date=((document.getElementById('eodMultiDate')||{}).value||todayLocal()).slice(0,10), role=SESSION.role==='setter'?'Setter':'Closer', me=(SESSION&&SESSION.name)||'';
+    const buckets={};
+    document.querySelectorAll('#eodSections [data-acct]').forEach(el=>{ const b=(buckets[el.dataset.acct]=buckets[el.dataset.acct]||{f:{},u:{}}); if(el.dataset.prod!==undefined) b.u[el.dataset.prod]=el.value; else b.f[el.dataset.f]=el.value; });
+    const defs = role==='Setter'?EOD_SETTER:EOD_CLOSER;
+    const jobs=[]; let filled=0;
+    Object.keys(buckets).forEach(acct=>{
+      const b=buckets[acct], f=b.f;
+      const hasData = defs.some(d=>String(f[d[0]]==null?'':f[d[0]]).trim()!=='') || Object.values(b.u).some(x=>String(x||'').trim()!=='') || String(f.notes||'').trim()!=='';
+      if(!hasData) return;
+      const o={type:'eod',rep:me,role,client:acct,date,notes:(f.notes||'').trim()};
+      defs.forEach(d=>{ o[d[0]]=parseFloat(f[d[0]])||0; });
+      const units={}; Object.keys(b.u).forEach(k=>{ const val=parseFloat(b.u[k])||0; if(val) units[k]=val; });
+      if(Object.keys(units).length) o.productUnits=JSON.stringify(units);
+      jobs.push(addRecord(o)); filled++;
+    });
+    if(!filled){ toast('Enter numbers for at least one account first.',true); btnBusy(btn,false); return; }
+    await Promise.all(jobs); renderEodSections(); toast(`End of day submitted for ${filled} account${filled>1?'s':''}.`); ok=true;
+  }catch(err){ toast('Submit failed - try again',true); }
+  finally{ if(ok) btnDone(btn,'Submitted!'); else btnBusy(btn,false); }
+}
 async function submitPostCall(e){ e.preventDefault(); const btn=e.target.querySelector('[type=submit]'); if(btn&&btn.disabled) return; btnBusy(btn,true); let ok=false, won=false;
   try{ const o=formObj(e.target); o.type='postcall'; o.role=pcRole(); if(repMode()) o.rep=SESSION.name;
     const csel=e.target.querySelector('[name=client]'); if(csel && !(o.client||'').trim()) o.client=csel.value; // locked/disabled selects drop out of FormData
