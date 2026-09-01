@@ -38,7 +38,7 @@ async function callGroq(sys, user) {
   return (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || '';
 }
 async function callGemini(sys, user) {
-  const model = process.env.REC_AI_MODEL || 'gemini-2.0-flash';
+  const model = process.env.REC_AI_MODEL || 'gemini-3.6-flash';
   const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=` + process.env.GEMINI_API_KEY, {
     method: 'POST', headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ systemInstruction: { parts: [{ text: sys }] }, contents: [{ parts: [{ text: user }] }], generationConfig: { temperature: 0.2, responseMimeType: 'application/json' } })
