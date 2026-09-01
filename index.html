@@ -124,6 +124,7 @@
   @media(max-width:480px){ .grid3{grid-template-columns:1fr} }
   .mgrsec h3{display:flex;align-items:center;gap:2px}
   .mgrnum{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:var(--gold-soft);color:var(--gold);font-size:12px;font-weight:700;margin-right:8px}
+  .navbadge{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;margin-left:8px;border-radius:9px;background:var(--bad,#c0392b);color:#fff;font-size:11px;font-weight:700;vertical-align:middle;box-shadow:0 0 0 2px rgba(192,57,43,.25)}
   .kpisec{font-family:var(--serif);font-size:15px;font-weight:700;color:var(--gold-2);margin:6px 0 8px;letter-spacing:.01em}
   .prodgrid{display:flex;flex-wrap:wrap;gap:12px}
   .produnit{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);font-weight:600}
@@ -395,7 +396,7 @@
       <div style="padding:14px">
         <div class="filters" style="margin:0 0 12px">
           <div class="field"><label>Day off</label><input type="date" id="offReqDate"></div>
-          <div class="field" style="flex:1;min-width:200px"><label>Reason (optional)</label><input type="text" id="offReqReason" placeholder="e.g. doctor, travel, personal"></div>
+          <div class="field" style="flex:1;min-width:200px"><label>Reason *</label><input type="text" id="offReqReason" required placeholder="e.g. doctor, travel, personal"></div>
           <button class="btn gold sm" style="align-self:flex-end" onclick="requestOffday()">Request</button>
         </div>
         <div id="offReqList"></div>
@@ -874,6 +875,7 @@ function applyNavAccess(){
     if(f.set.length||f.clo.length) ['dash','reps','clients','onboarding','meeting','mgreod','calllog'].forEach(t=>{ if(!allow.includes(t)) allow.push(t); });
   }
   document.querySelectorAll('#tabs button').forEach(b=>{ b.hidden = !allow.includes(b.dataset.tab); });
+  updateNavBadges();
 }
 // lock a rep's identity into the forms
 function applyIdentity(){
@@ -900,7 +902,8 @@ function showTab(t){
   ['dash','reps','clients','onboarding','meeting','timeoff','deal','postcall','eod','mgreod','webinar','calllog','adminreport','data','users','settings'].forEach(x=>{ document.getElementById('tab-'+x).hidden = (x!==t); });
   // stale-while-revalidate: render instantly from the cached records, then refresh in the background
   const render={dash:renderDash, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, timeoff:renderTimeOffTab, mgreod:renderMgrEod, webinar:renderWebinars, calllog:renderCallLog, adminreport:renderAdminReport, data:renderAll}[t];
-  if(render){ render(); syncRecords().then(()=>{ if(currentTab()===t) render(); }); }
+  if(render){ render(); syncRecords().then(()=>{ if(currentTab()===t) render(); updateNavBadges(); }); }
+  updateNavBadges();
   if(t==='data'){ renderDailyEntry(); }
   if(t==='users'){ renderUsers(); }
   if(t==='settings'){ loadSettingsForm(); }
@@ -1811,7 +1814,8 @@ function renderTimeOff(){
 }
 async function requestOffday(){
   const d=(document.getElementById('offReqDate').value||'').slice(0,10); if(!d){ toast('Pick a date',true); return; }
-  const reason=(document.getElementById('offReqReason').value||'').trim(), me=(SESSION&&SESSION.name)||'', m=repMetaForName(me);
+  const reason=(document.getElementById('offReqReason').value||'').trim(); if(!reason){ toast('Add a reason for the day off.',true); document.getElementById('offReqReason').focus(); return; }
+  const me=(SESSION&&SESSION.name)||'', m=repMetaForName(me);
   await addRecord({type:'offday',rep:me,date:d,reason,mgr:(m&&m.mgr)||'',status:'pending',by:me});
   document.getElementById('offReqReason').value=''; toast('Day-off request sent'); renderTimeOff();
 }
@@ -1839,7 +1843,21 @@ function offdayApprovalsHTML(){
     +(recent.length?`<tr><td colspan="6" style="background:var(--surface-2);font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">Recent</td></tr>`+recent.map(row).join(''):'')
     +`</tbody></table></div>`;
 }
-function renderOffdayApprovals(){ const html=offdayApprovalsHTML(); document.querySelectorAll('.offdayBox').forEach(el=>el.innerHTML=html); }
+function renderOffdayApprovals(){ const html=offdayApprovalsHTML(); document.querySelectorAll('.offdayBox').forEach(el=>el.innerHTML=html); updateNavBadges(); }
+// pending action items the logged-in approver needs to act on (currently: day-off requests to approve)
+function pendingApprovalsCount(){
+  if(!SESSION || !['admin','manager','webinarteam'].includes(SESSION.role)) return 0;
+  return offdayReqsVisible().filter(r=>r.status==='pending').length;
+}
+// red count badge on the Time Off nav item so managers see they have approvals waiting
+function updateNavBadges(){
+  const n=pendingApprovalsCount();
+  document.querySelectorAll('#tabs button[data-tab="timeoff"]').forEach(b=>{
+    let bd=b.querySelector('.navbadge');
+    if(n>0){ if(!bd){ bd=document.createElement('span'); bd.className='navbadge'; b.appendChild(bd); } bd.textContent=n; bd.title=n+' day-off request'+(n>1?'s':'')+' waiting for you'; }
+    else if(bd){ bd.remove(); }
+  });
+}
 async function actOffday(rep,date,status){
   const cur=collapseOffdays(RECORDS).find(x=>nrmName(x.rep)===nrmName(rep)&&String(x.date||'').slice(0,10)===date)||{};
   await addRecord({type:'offday',rep,date,reason:cur.reason||'',mgr:cur.mgr||'',status,by:(SESSION&&SESSION.name)||''});
