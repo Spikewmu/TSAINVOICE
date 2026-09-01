@@ -126,6 +126,8 @@
   .mgrnum{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:var(--gold-soft);color:var(--gold);font-size:12px;font-weight:700;margin-right:8px}
   .navbadge{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;margin-left:8px;border-radius:9px;background:var(--bad,#c0392b);color:#fff;font-size:11px;font-weight:700;vertical-align:middle;box-shadow:0 0 0 2px rgba(192,57,43,.25)}
   select.rolesel{font:inherit;font-size:12px;font-weight:600;padding:4px 8px;border-radius:6px;background:var(--surface-2);color:var(--ink);border:1px solid var(--border);cursor:pointer}
+  .stars{color:var(--gold);letter-spacing:1px;white-space:nowrap}
+  .recreason{color:var(--good);font-size:12px;margin-top:3px}
   .kpisec{font-family:var(--serif);font-size:15px;font-weight:700;color:var(--gold-2);margin:6px 0 8px;letter-spacing:.01em}
   .prodgrid{display:flex;flex-wrap:wrap;gap:12px}
   .produnit{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);font-weight:600}
@@ -214,6 +216,7 @@
   <button data-tab="webinar">Webinar</button>
   <button data-tab="calllog">Call Log</button>
   <button data-tab="adminreport">Admin Report</button>
+  <button data-tab="recruiting">Recruiting</button>
   <button data-tab="data">Data + Export</button>
   <button data-tab="users">Users</button>
   <button data-tab="settings">Settings</button>
@@ -489,6 +492,47 @@
       <button class="btn ghost sm" style="align-self:flex-end" onclick="renderAdminReport()">Refresh</button>
     </div>
     <div id="arBody"></div>
+  </section>
+
+  <!-- ===== RECRUITING ===== -->
+  <section id="tab-recruiting" hidden>
+    <h2 class="section">Recruiting</h2>
+    <p class="hint">Search the candidate pool, let AI rank best fit, then tag a group for a GHL SMS/email blast. Tags write to the recruiting Airtable ("Campaign Tags"); the GHL send is wired off those tags.</p>
+    <div id="rcNotice"></div>
+    <div class="panel">
+      <div class="filters" style="align-items:flex-end">
+        <div class="field" style="flex:2;min-width:280px"><label>AI best-fit search</label><input id="rcQuery" placeholder='e.g. "3+ stars who sold high-ticket coaching, US timezone"' onkeydown="if(event.key==='Enter')recRunAi()"></div>
+        <button class="btn gold sm" id="rcAiBtn" style="align-self:flex-end" onclick="recRunAi()">Rank best fit</button>
+        <button class="btn ghost sm" style="align-self:flex-end" onclick="recClearAi()">Clear AI</button>
+        <span style="flex:1"></span>
+        <span id="rcCount" class="tag" style="align-self:flex-end;margin-bottom:2px"></span>
+        <button class="btn ghost sm" style="align-self:flex-end" onclick="recLoad(true)">Refresh</button>
+      </div>
+      <div class="filters" style="align-items:flex-end;margin-top:6px">
+        <div class="field" style="max-width:110px"><label>Min stars</label><input id="rcRating" type="number" min="0" step="1" value="0" oninput="recRender()"></div>
+        <div class="field"><label>Role</label><select id="rcRole" onchange="recRender()"></select></div>
+        <div class="field"><label>Has sold</label><select id="rcSold" onchange="recRender()"></select></div>
+        <div class="field"><label>Status</label><select id="rcStatus" onchange="recRender()"></select></div>
+        <div class="field"><label>Campaign tag</label><select id="rcTag" onchange="recRender()"></select></div>
+        <div class="field"><label>Keyword</label><input id="rcKw" placeholder="name, skill, anything" oninput="recRender()"></div>
+        <div class="field" style="max-width:180px"><label>&nbsp;</label><label style="font-weight:400;color:var(--ink);display:flex;gap:6px;align-items:center"><input type="checkbox" id="rcHideStaffed" onchange="recRender()" checked> Hide currently staffed</label></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;flex-wrap:wrap">
+        <b id="rcResultCount">0 candidates</b><span style="flex:1"></span>
+        <label style="font-weight:400;color:var(--ink);display:flex;gap:6px;align-items:center;margin:0"><input type="checkbox" id="rcAiOnly" onchange="recRender()"> Best fit only</label>
+        <button class="btn ghost sm" onclick="recSelectAll(true)">Select all shown</button>
+        <button class="btn ghost sm" onclick="recSelectAll(false)">Clear</button>
+      </div>
+      <div class="tablewrap"><table id="rcTbl"></table></div>
+      <div class="filters" style="align-items:flex-end;margin-top:12px">
+        <b id="rcSelCount" style="align-self:center">0 selected</b><span style="flex:1"></span>
+        <div class="field" style="min-width:220px"><label>Campaign tag to apply</label><input id="rcCamp" placeholder="e.g. Trading-Sept" list="rcTagList"><datalist id="rcTagList"></datalist></div>
+        <button class="btn gold sm" style="align-self:flex-end" onclick="recTag('add')">Tag selected</button>
+        <button class="btn ghost sm" style="align-self:flex-end" onclick="recTag('remove')">Remove tag</button>
+      </div>
+    </div>
   </section>
 
   <!-- ===== DATA ===== -->
@@ -865,8 +909,8 @@ function startApp(){
 // base tabs a login TIER can see; per-account responsibilities add to this in applyNavAccess()
 function baseAllow(role){
   return ({
-    admin:['dash','reps','clients','onboarding','meeting','timeoff','postcall','eod','mgreod','webinar','calllog','adminreport','data','users','settings'],
-    manager:['dash','reps','clients','onboarding','meeting','timeoff','users','postcall','eod','mgreod','webinar','calllog'],
+    admin:['dash','reps','clients','onboarding','meeting','timeoff','postcall','eod','mgreod','webinar','calllog','adminreport','recruiting','data','users','settings'],
+    manager:['dash','reps','clients','onboarding','meeting','timeoff','users','postcall','eod','mgreod','webinar','calllog','recruiting'],
     founder:['dash'],
     webinarteam:['dash','meeting','timeoff','webinar'],
     closer:['dash','postcall','eod','timeoff','calllog','reps'],
@@ -909,9 +953,9 @@ function applyIdentity(){
 function wireTabs(){ document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>showTab(b.dataset.tab)); }
 function showTab(t){
   document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
-  ['dash','reps','clients','onboarding','meeting','timeoff','deal','postcall','eod','mgreod','webinar','calllog','adminreport','data','users','settings'].forEach(x=>{ document.getElementById('tab-'+x).hidden = (x!==t); });
+  ['dash','reps','clients','onboarding','meeting','timeoff','deal','postcall','eod','mgreod','webinar','calllog','adminreport','recruiting','data','users','settings'].forEach(x=>{ document.getElementById('tab-'+x).hidden = (x!==t); });
   // stale-while-revalidate: render instantly from the cached records, then refresh in the background
-  const render={dash:renderDash, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, webinar:renderWebinars, calllog:renderCallLog, adminreport:renderAdminReport, data:renderAll}[t];
+  const render={dash:renderDash, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, webinar:renderWebinars, calllog:renderCallLog, adminreport:renderAdminReport, recruiting:renderRecruiting, data:renderAll}[t];
   if(render){ render(); syncRecords().then(()=>{ if(currentTab()===t) render(); updateNavBadges(); }); }
   updateNavBadges();
   if(t==='data'){ renderDailyEntry(); }
@@ -1976,6 +2020,95 @@ async function actOffday(rep,date,status){
   await addRecord({type:'offday',rep,date,reason:cur.reason||'',mgr:cur.mgr||'',status,decisionNote,internalNote,by:(SESSION&&SESSION.name)||''});
   toast('Day off '+status); renderOffdayApprovals();
   if(document.getElementById('arBody')&&!document.getElementById('tab-adminreport').hidden) renderAdminReport();
+}
+/* ---------------- recruiting tab (Airtable candidate query + AI best-fit + tag for GHL blast) ---------------- */
+let REC_ALL=[], REC_AIRANK=null, REC_SEL=new Set(), REC_LOADING=false, REC_LOADED=false;
+function recHeaders(){ const h={'Content-Type':'application/json'}; if(SESSION&&SESSION.token)h['x-session-token']=SESSION.token; const ap=(typeof mgmtPass==='function')?mgmtPass():''; if(ap)h['x-admin-pass']=ap; return h; }
+async function recFetch(path,opts){ const o=opts||{}; o.headers=Object.assign(recHeaders(),o.headers||{}); const r=await fetch(path,o); if(r.status===401){ return {ok:false,error:'unauthorized (your login lacks recruiting access)'}; } return r.json(); }
+function recArr(v){ return Array.isArray(v)?v:(v?[v]:[]); }
+function renderRecruiting(){ if(REC_LOADED){ recRender(); } else { recLoad(); } }
+async function recLoad(force){
+  if(REC_LOADING) return; REC_LOADING=true;
+  const cnt=document.getElementById('rcCount'); if(cnt)cnt.textContent='Loading...';
+  try{
+    const j=await recFetch('/api/recruiting?action=list');
+    if(!j.ok){ document.getElementById('rcNotice').innerHTML='<div class="tag" style="display:block;color:var(--warn);border-color:var(--warn);padding:9px 12px;white-space:normal">Backend not ready: '+esc(j.error||'')+(/AIRTABLE_TOKEN/.test(j.error||'')?' — set AIRTABLE_TOKEN in Vercel.':'')+'</div>'; if(cnt)cnt.textContent=''; REC_LOADED=false; return; }
+    document.getElementById('rcNotice').innerHTML='';
+    REC_ALL=j.candidates||[]; REC_AIRANK=null; REC_SEL.clear(); REC_LOADED=true;
+    if(cnt)cnt.textContent=REC_ALL.length+' candidates';
+    recBuildFacets(); recRender();
+  }catch(e){ if(cnt)cnt.textContent='Load failed'; }
+  finally{ REC_LOADING=false; }
+}
+function recUniq(key){ const s=new Set(); REC_ALL.forEach(c=>recArr(c[key]).forEach(v=>{ if(v)s.add(v); })); return [...s].sort((a,b)=>String(a).localeCompare(String(b))); }
+function recBuildFacets(){
+  const fill=(id,vals,allLabel)=>{ const sel=document.getElementById(id); if(!sel)return; const cur=sel.value; sel.innerHTML='<option value="">'+allLabel+'</option>'+vals.map(v=>`<option>${esc(v)}</option>`).join(''); if(cur&&vals.includes(cur))sel.value=cur; };
+  fill('rcRole',recUniq('role'),'Any role'); fill('rcSold',recUniq('sold'),'Any'); fill('rcStatus',recUniq('recStatus'),'Any status'); fill('rcTag',recUniq('tags'),'Any tag');
+  const tl=document.getElementById('rcTagList'); if(tl) tl.innerHTML=recUniq('tags').map(v=>`<option value="${esc(v)}">`).join('');
+}
+function recMatch(c){
+  const minR=+(document.getElementById('rcRating').value||0);
+  const role=document.getElementById('rcRole').value, sold=document.getElementById('rcSold').value, st=document.getElementById('rcStatus').value, tag=document.getElementById('rcTag').value;
+  const hide=document.getElementById('rcHideStaffed').checked, kw=(document.getElementById('rcKw').value||'').trim().toLowerCase();
+  if((c.rating||0)<minR) return false;
+  if(role && !recArr(c.role).includes(role)) return false;
+  if(sold && String(c.sold)!==sold) return false;
+  if(st && String(c.recStatus)!==st) return false;
+  if(tag && !recArr(c.tags).includes(tag)) return false;
+  if(hide && /yes/i.test(String(c.staffed))) return false;
+  if(kw){ const blob=[c.name,c.sold,c.summary,c.recStatus,recArr(c.role).join(' '),recArr(c.achievements).join(' '),recArr(c.tech).join(' '),recArr(c.languages).join(' '),recArr(c.timezones).join(' ')].join(' ').toLowerCase(); if(blob.indexOf(kw)<0) return false; }
+  return true;
+}
+function recList(){
+  let list=REC_ALL.filter(recMatch);
+  if(REC_AIRANK){ const order=new Map(REC_AIRANK.map((r,i)=>[r.id,i])), reason=new Map(REC_AIRANK.map(r=>[r.id,r.reason]));
+    if(document.getElementById('rcAiOnly').checked) list=list.filter(c=>order.has(c.id));
+    list=list.slice().sort((a,b)=>((order.has(a.id)?order.get(a.id):9999)-(order.has(b.id)?order.get(b.id):9999)));
+    list=list.map(c=>Object.assign({},c,{_reason:reason.get(c.id)||''}));
+  }
+  return list;
+}
+function recRender(){
+  if(!document.getElementById('rcTbl')) return;
+  const list=recList();
+  document.getElementById('rcResultCount').textContent=list.length+' candidate'+(list.length===1?'':'s');
+  const stars=n=>n?('<span class="stars">'+'★'.repeat(Math.max(0,Math.min(10,n)))+'</span>'):'<span class="muted">-</span>';
+  const head='<thead><tr><th></th><th>Name</th><th>Rating</th><th>Role</th><th>Has sold</th><th>Status</th><th>Contact</th><th>Tags</th></tr></thead><tbody>';
+  const rows=list.length?list.map(c=>{
+    const links=[c.intro&&`<a href="${esc(c.intro)}" target="_blank" rel="noopener" class="linklike">intro</a>`, c.resume&&`<a href="${esc(c.resume)}" target="_blank" rel="noopener" class="linklike">resume</a>`].filter(Boolean).join(' · ');
+    const contact=[c.phone&&esc(c.phone), c.email&&('<span class="muted" style="font-size:11px">'+esc(c.email)+'</span>')].filter(Boolean).join('<br>');
+    const tags=recArr(c.tags).map(t=>`<span class="teamtag">${esc(t)}</span>`).join('')||'<span class="muted">-</span>';
+    return `<tr><td><input type="checkbox" ${REC_SEL.has(c.id)?'checked':''} onchange="recToggle('${c.id}',this.checked)"></td>`
+      +`<td><b>${esc(c.name)||'(no name)'}</b>${links?'<div style="font-size:11px">'+links+'</div>':''}${c._reason?'<div class="recreason">'+esc(c._reason)+'</div>':''}${c.summary?'<div class="muted" style="font-size:11px;max-width:340px">'+esc(String(c.summary).slice(0,140))+'</div>':''}</td>`
+      +`<td>${stars(c.rating)}</td><td>${esc(recArr(c.role).join(', '))||'<span class="muted">-</span>'}</td><td>${esc(c.sold)||'<span class="muted">-</span>'}</td><td><span class="pill">${esc(c.recStatus)||'-'}</span></td><td>${contact||'<span class="muted">-</span>'}</td><td>${tags}</td></tr>`;
+  }).join(''):'<tr><td colspan="8" class="muted" style="padding:18px">No candidates match. Loosen the filters, or Refresh.</td></tr>';
+  document.getElementById('rcTbl').innerHTML=head+rows+'</tbody>';
+  recSelCount();
+}
+function recToggle(id,on){ if(on)REC_SEL.add(id); else REC_SEL.delete(id); recSelCount(); }
+function recSelectAll(on){ recList().forEach(c=>{ if(on)REC_SEL.add(c.id); else REC_SEL.delete(c.id); }); recRender(); }
+function recSelCount(){ const e=document.getElementById('rcSelCount'); if(e)e.textContent=REC_SEL.size+' selected'; }
+async function recRunAi(){
+  const query=(document.getElementById('rcQuery').value||'').trim(); if(!query){ toast('Type what you are looking for',true); return; }
+  const btn=document.getElementById('rcAiBtn'); btn.disabled=true; btn.textContent='Ranking...';
+  try{
+    const pool=REC_ALL.filter(recMatch);
+    const j=await recFetch('/api/rec-ai',{method:'POST',body:JSON.stringify({query,candidates:pool})});
+    if(!j.ok){ toast('AI: '+(j.error||'failed'),true); }
+    else { REC_AIRANK=j.ranked||[]; document.getElementById('rcAiOnly').checked=true; toast('Ranked '+REC_AIRANK.length+' best-fit'); recRender(); }
+  }catch(e){ toast('AI request failed',true); }
+  finally{ btn.disabled=false; btn.textContent='Rank best fit'; }
+}
+function recClearAi(){ REC_AIRANK=null; document.getElementById('rcAiOnly').checked=false; document.getElementById('rcQuery').value=''; recRender(); }
+async function recTag(mode){
+  const tag=(document.getElementById('rcCamp').value||'').trim(); if(!tag){ toast('Enter a campaign tag first',true); return; }
+  if(!REC_SEL.size){ toast('Select some candidates first',true); return; }
+  const recs=[...REC_SEL].map(id=>{ const c=REC_ALL.find(x=>x.id===id), cur=recArr(c&&c.tags); const next = mode==='remove'?cur.filter(t=>t!==tag):(cur.includes(tag)?cur:[...cur,tag]); return {id,tags:next,_c:c}; });
+  const j=await recFetch('/api/recruiting?action=tag',{method:'POST',body:JSON.stringify({records:recs.map(r=>({id:r.id,tags:r.tags}))})});
+  if(!j.ok){ toast('Tag failed: '+(j.error||''),true); return; }
+  recs.forEach(r=>{ if(r._c) r._c.tags=r.tags; });
+  recBuildFacets(); recRender();
+  toast((mode==='remove'?'Removed "':'Tagged "')+tag+'" on '+j.updated+' candidate'+(j.updated===1?'':'s'));
 }
 // a rep's "team" = the client accounts they've worked (by rep or setter credit)
 function myTeamClients(){

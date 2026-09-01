@@ -1,6 +1,28 @@
 // /api/recruiting — Airtable proxy for the recruiting query + tag tool (reads the candidate pool, writes Campaign Tags).
 // Env: AIRTABLE_TOKEN (required, a Personal Access Token with data.records:read + write on the recruiting base),
-//      RECRUIT_PASS (shared passcode gating this tool), optional AIRTABLE_REC_BASE / AIRTABLE_REC_TABLE overrides.
+//      SESSION_SECRET (shared with /api/auth) + ADMIN_PASS (master fallback), optional AIRTABLE_REC_BASE / AIRTABLE_REC_TABLE overrides.
+// Access is gated by the dashboard session: a valid session token with an allowed role, or the master admin pass.
+import crypto from 'crypto';
+const REC_ROLES = ['admin', 'manager']; // roles allowed to use the recruiting tool
+function verifySession(token) {
+  try {
+    const secret = process.env.SESSION_SECRET || 'tsa-session';
+    const [body, mac] = String(token || '').split('.');
+    if (!body || !mac) return null;
+    const exp = crypto.createHmac('sha256', secret).update(body).digest('base64url');
+    if (mac.length !== exp.length || !crypto.timingSafeEqual(Buffer.from(mac), Buffer.from(exp))) return null;
+    const p = JSON.parse(Buffer.from(body, 'base64url').toString());
+    if (p.exp && Date.now() > p.exp) return null;
+    return p;
+  } catch (e) { return null; }
+}
+function authorized(req) {
+  const b = req.body || {}, q = req.query || {}, h = req.headers || {};
+  const s = verifySession(b.token || q.token || h['x-session-token'] || '');
+  if (s && REC_ROLES.includes(s.role)) return true;
+  const ap = b.adminPass || q.adminPass || h['x-admin-pass'] || '';
+  return !!(ap && (ap === process.env.ADMIN_PASS || ap === process.env.BOT_ADMIN_TOKEN));
+}
 const BASE = process.env.AIRTABLE_REC_BASE || 'appYKLdo9w2lyfmdQ';   // "TSA - Sales & Recruitment"
 const TABLE = process.env.AIRTABLE_REC_TABLE || 'tblH5pEMqh9FhMW7h'; // "New Sales Rep Apps"
 const FIELDS = [
