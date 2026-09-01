@@ -109,6 +109,16 @@
   .teamboxes label{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:500;padding:6px 10px;border:1px solid var(--border,#333);border-radius:8px;cursor:pointer;background:var(--surface-2)}
   .teamboxes input{margin:0;cursor:pointer}
   .teamtag{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;background:var(--gold-soft);color:var(--gold,#b8860b);margin:2px 3px 2px 0}
+  .rolelab{display:inline-block;min-width:62px;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:700;vertical-align:middle}
+  .roletog{position:relative;display:inline-flex;align-items:center;cursor:pointer;margin:0 6px 6px 0}
+  .roletog input{position:absolute;opacity:0;width:0;height:0}
+  .roletog span{display:inline-block;padding:6px 13px;border-radius:20px;border:1px solid var(--border);font-size:12px;font-weight:600;color:var(--muted);background:transparent;transition:background .12s,border-color .12s,color .12s}
+  .roletog:hover span{border-color:var(--gold)}
+  .roletog input:checked+span{background:var(--gold-soft);border-color:var(--gold);color:var(--navy)}
+  .roletog input:focus-visible+span{outline:2px solid var(--gold);outline-offset:1px}
+  .rolerow{display:flex;align-items:flex-start;gap:14px;padding:10px 0;border-bottom:1px solid var(--border);flex-wrap:wrap}
+  .rolerow .rname{min-width:190px;font-weight:600;padding-top:6px}
+  .heldby{font-size:10px;color:var(--muted);margin-left:2px}
   .kpisec{font-family:var(--serif);font-size:15px;font-weight:700;color:var(--gold-2);margin:6px 0 8px;letter-spacing:.01em}
   .prodgrid{display:flex;flex-wrap:wrap;gap:12px}
   .produnit{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);font-weight:600}
@@ -337,9 +347,10 @@
   <section id="tab-meeting" hidden>
     <h2 class="section">Meeting Agenda</h2>
     <p class="hint">Fill your section for each client <b>before</b> the meeting so everyone reads it first, then we discuss. Log what you commit to in <b>Promises</b> so we track who does what by when. Your name is signed to everything you add.</p>
+    <p id="mtgTarget" style="margin:0 0 10px;font-weight:600;color:var(--gold)"></p>
     <div class="filters">
       <div class="field"><label>Meeting</label><select id="mtgDate" onchange="renderMeeting()"></select></div>
-      <div class="field" style="position:relative"><label>Or pick a date</label><input type="date" id="mtgNewDate" onchange="pickMtgDate()"><span class="fieldhelp" style="position:absolute;top:100%;left:0;margin-top:3px;white-space:nowrap">Choose an upcoming day (e.g. Monday) to start its notes.</span></div>
+      <div class="field" style="position:relative"><label>Or pick a date</label><input type="date" id="mtgNewDate" onchange="pickMtgDate()"><span class="fieldhelp" style="position:absolute;top:100%;left:0;margin-top:3px;white-space:nowrap">Defaults to your next meeting (rolls to tomorrow at noon). Pick a day to prep early.</span></div>
       <button class="btn ghost sm" onclick="renderMeeting()">Refresh</button>
       <button class="btn sm" onclick="copyAgenda()">Copy for AI / paste</button>
       <button class="btn sm ghost" onclick="printAgenda()">Print</button>
@@ -516,11 +527,11 @@
         <div class="row-actions" style="margin-top:12px"><button class="btn gold sm" onclick="saveTeams()">Save teams</button><button class="btn ghost sm" onclick="cancelTeams()">Cancel</button></div>
       </div>
     </div>
-    <div class="panel" id="rolesEditPanel" hidden><h3 id="rolesEditTitle">Account roles</h3>
+    <div class="panel" id="rolesEditPanel" hidden><h3 id="rolesEditTitle">Responsibilities</h3>
       <div style="padding:14px">
-        <p class="hint">Tick the management role(s) this person holds for each account - one person can hold several roles across several clients. Saving updates the account records and scopes what this person sees. One person per role per account: ticking a box another manager holds reassigns it (their name shows in grey).</p>
-        <div class="tablewrap"><table id="rolesEditTable"></table></div>
-        <div class="row-actions" style="margin-top:12px"><button class="btn gold sm" onclick="saveRoles()">Save roles</button><button class="btn ghost sm" onclick="cancelRoles()">Cancel</button></div>
+        <p class="hint">Toggle the function(s) this person runs for each account. One person can run several, and across several accounts - e.g. someone who runs <b>Webinar</b> on some accounts and also manages <b>Setters</b> or <b>Closers</b> on others. What you turn on here unlocks the matching tabs for them (Webinar unlocks the Webinar tab; Setters/Closers unlock the manager tabs). One person per function per account: turning one on that another manager holds reassigns it (their name shows in grey).</p>
+        <div id="rolesEditTable"></div>
+        <div class="row-actions" style="margin-top:12px"><button class="btn gold sm" onclick="saveRoles()">Save responsibilities</button><button class="btn ghost sm" onclick="cancelRoles()">Cancel</button></div>
       </div>
     </div>
     <div class="panel" id="repMetaEditPanel" hidden><h3 id="repMetaTitle">Rep details</h3>
@@ -830,23 +841,39 @@ function startApp(){
   const role=SESSION.role;
   document.getElementById('whoTag').textContent = SESSION.name+' ('+roleLabel(role)+')';
   document.getElementById('storeTag').textContent = '';
-  const allow = {
+  const allow = baseAllow(role);
+  document.querySelectorAll('#tabs button').forEach(b=>{ b.hidden = !allow.includes(b.dataset.tab); });
+  fillLists(); wireTabs(); presetDates(); setPcRole('Closer');
+  ensureKey().then(()=>{
+    if(role==='admin'){ setEodRole('Closer'); Promise.all([syncRecords(),loadUsers()]).then(()=>{ fillLists(); setEodRole('Closer'); setPcRole('Closer'); applyNavAccess(); renderDash(); renderAll(); }); showTab('dash'); }
+    else if(role==='manager'){ setEodRole('Closer'); Promise.all([syncRecords(),loadUsers()]).then(()=>{ fillLists(); setEodRole('Closer'); setPcRole('Closer'); applyNavAccess(); renderDash(); }); showTab('clients'); }
+    else if(role==='founder'){ Promise.all([syncRecords(),loadUsers()]).then(()=>{ renderDash(); }); showTab('dash'); } // founder: their company only, dashboard-only, read-only, no filters
+    else if(role==='webinarteam'){ Promise.all([syncRecords(),loadUsers()]).then(()=>{ fillLists(); applyNavAccess(); renderDash(); }); showTab('dash'); } // webinar team: dashboard + webinar tab, all clients
+    else { applyIdentity(); syncRecords().then(()=>{ applyNavAccess(); applyIdentity(); }); showTab(allow[0]); }
+  });
+}
+// base tabs a login TIER can see; per-account responsibilities add to this in applyNavAccess()
+function baseAllow(role){
+  return ({
     admin:['dash','reps','clients','onboarding','meeting','postcall','eod','mgreod','webinar','calllog','adminreport','data','users','settings'],
     manager:['dash','reps','clients','onboarding','meeting','users','postcall','eod','mgreod','webinar','calllog'],
     founder:['dash'],
     webinarteam:['dash','meeting','webinar'],
     closer:['dash','postcall','eod','webinar','calllog','reps'],
     setter:['dash','postcall','eod','calllog','reps']
-  }[role] || ['eod'];
+  })[role] || ['eod'];
+}
+// access follows responsibilities: whatever this person is assigned to run (webinar / setter / closer manager on any account)
+// unlocks the matching tabs, so someone can be e.g. Webinar Team AND manage accounts. Additive only, never removes tier access.
+function applyNavAccess(){
+  const role=SESSION&&SESSION.role; if(!role) return;
+  const allow=baseAllow(role).slice();
+  if(role!=='founder'){
+    const f=managedFunctionsForUser(SESSION);
+    if(f.web.length) ['dash','meeting','webinar'].forEach(t=>{ if(!allow.includes(t)) allow.push(t); });
+    if(f.set.length||f.clo.length) ['dash','reps','clients','onboarding','meeting','mgreod','calllog'].forEach(t=>{ if(!allow.includes(t)) allow.push(t); });
+  }
   document.querySelectorAll('#tabs button').forEach(b=>{ b.hidden = !allow.includes(b.dataset.tab); });
-  fillLists(); wireTabs(); presetDates(); setPcRole('Closer');
-  ensureKey().then(()=>{
-    if(role==='admin'){ setEodRole('Closer'); Promise.all([syncRecords(),loadUsers()]).then(()=>{ fillLists(); setEodRole('Closer'); setPcRole('Closer'); renderDash(); renderAll(); }); showTab('dash'); }
-    else if(role==='manager'){ setEodRole('Closer'); Promise.all([syncRecords(),loadUsers()]).then(()=>{ fillLists(); setEodRole('Closer'); setPcRole('Closer'); renderDash(); }); showTab('clients'); }
-    else if(role==='founder'){ Promise.all([syncRecords(),loadUsers()]).then(()=>{ renderDash(); }); showTab('dash'); } // founder: their company only, dashboard-only, read-only, no filters
-    else if(role==='webinarteam'){ Promise.all([syncRecords(),loadUsers()]).then(()=>{ fillLists(); renderDash(); }); showTab('dash'); } // webinar team: dashboard + webinar tab, all clients
-    else { applyIdentity(); syncRecords().then(()=>applyIdentity()); showTab(allow[0]); }
-  });
 }
 // lock a rep's identity into the forms
 function applyIdentity(){
@@ -1138,10 +1165,16 @@ function renderWebinars(){
 function collapseAgenda(list){ const m={}; list.forEach(x=>{ if(x.type!=='agenda') return; const k=[(x.date||'').slice(0,10),(x.client||'').trim(),(x.section||''),(x.by||'').trim()].join('|'); if(!m[k]||(x.submittedAt||'')>(m[k].submittedAt||'')) m[k]=x; }); return Object.values(m); }
 function collapsePromises(list){ const m={}; list.forEach(x=>{ if(x.type!=='promise') return; const k=x.pid||x.id; if(!m[k]||(x.submittedAt||'')>(m[k].submittedAt||'')) m[k]=x; }); return Object.values(m); }
 let MTG_EXTRA='';
-function mtgDates(){ const ds=new Set([todayLocal()]); if(MTG_EXTRA)ds.add(MTG_EXTRA); collapseAgenda(RECORDS).forEach(x=>ds.add((x.date||'').slice(0,10))); collapsePromises(RECORDS).forEach(x=>ds.add((x.date||'').slice(0,10))); return [...ds].filter(Boolean).sort().reverse(); }
+// the next meeting we are prepping for: today until noon, then it rolls to tomorrow (so at 12:00 on 9-1 the default becomes 9-2)
+function nextMeetingDate(){
+  const n=new Date(), d=new Date(n.getFullYear(),n.getMonth(),n.getDate());
+  if(n.getHours()>=12) d.setDate(d.getDate()+1);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function mtgDates(){ const ds=new Set([nextMeetingDate(),todayLocal()]); if(MTG_EXTRA)ds.add(MTG_EXTRA); collapseAgenda(RECORDS).forEach(x=>ds.add((x.date||'').slice(0,10))); collapsePromises(RECORDS).forEach(x=>ds.add((x.date||'').slice(0,10))); return [...ds].filter(Boolean).sort().reverse(); }
 function pickMtgDate(){ const d=(document.getElementById('mtgNewDate').value||'').slice(0,10); if(!d)return; MTG_EXTRA=d; fillMtgSelects(); const md=document.getElementById('mtgDate'); if(md)md.value=d; renderMeeting(); }
 function fillMtgSelects(){
-  const md=document.getElementById('mtgDate'); if(md){ const cur=md.value, ds=mtgDates(); md.innerHTML=ds.map(d=>`<option value="${d}">${usDate(d)}</option>`).join(''); md.value=(cur&&ds.includes(cur))?cur:ds[0]; }
+  const md=document.getElementById('mtgDate'); if(md){ const cur=md.value, ds=mtgDates(), nmd=nextMeetingDate(); md.innerHTML=ds.map(d=>`<option value="${d}">${usDate(d)}</option>`).join(''); md.value=(cur&&ds.includes(cur))?cur:(ds.includes(nmd)?nmd:ds[0]); }
   const clients=clientNames();
   const pc=document.getElementById('prClient'); if(pc){ const cur=pc.value; pc.innerHTML='<option value="">- none -</option>'+clients.map(c=>`<option>${esc(c)}</option>`).join(''); if(cur)pc.value=cur; }
   const po=document.getElementById('prOwner'); if(po){ const cur=po.value, people=[...new Set([...(USERS_CACHE||[]).map(u=>String(u.name||'').trim()), ...leaderNames(), (SESSION&&SESSION.name)||''])].filter(Boolean).sort((a,b)=>a.localeCompare(b)); po.innerHTML=people.map(n=>`<option>${esc(n)}</option>`).join(''); po.value=(cur&&people.includes(cur))?cur:((SESSION&&SESSION.name)||people[0]||''); }
@@ -1150,7 +1183,8 @@ function renderMeeting(){
   fillMtgSelects();
   const pd=document.getElementById('prDue'); if(pd&&!pd.value) pd.value=todayLocal();
   const date=(document.getElementById('mtgDate').value)||todayLocal();
-  document.getElementById('mtgWhen').textContent='- '+usDate(date);
+  document.getElementById('mtgWhen').textContent='for the meeting on '+usDate(date);
+  const tgt=document.getElementById('mtgTarget'); if(tgt) tgt.textContent='You are filling notes for the meeting on '+usDate(date)+'.';
   const by=((SESSION&&SESSION.name)||'').trim();
   const myTeam=collapseAgenda(RECORDS).find(x=>(x.date||'').slice(0,10)===date && !(x.client||'').trim() && (x.section||'')==='Whole team' && (x.by||'').trim()===by);
   const at=document.getElementById('agTeam'); if(at) at.value=myTeam?(myTeam.text||''):'';
@@ -1338,6 +1372,17 @@ function managedClientsForUser(u){
   const keys=new Set([nrmName(u.name), nrmName(u.username)].filter(Boolean));
   if(!keys.size) return [];
   return latestClients().filter(c=>['webinarMgr','setterMgr','closerMgr'].some(f=>c[f]&&keys.has(nrmName(c[f])))).map(c=>c.name);
+}
+// which accounts a user runs, split by function (webinar / setter / closer manager)
+function managedFunctionsForUser(u){
+  const out={web:[],set:[],clo:[]}; if(!u) return out;
+  const keys=new Set([nrmName(u.name),nrmName(u.username)].filter(Boolean)); if(!keys.size) return out;
+  latestClients().forEach(c=>{
+    if(c.webinarMgr&&keys.has(nrmName(c.webinarMgr))) out.web.push(c.name);
+    if(c.setterMgr&&keys.has(nrmName(c.setterMgr))) out.set.push(c.name);
+    if(c.closerMgr&&keys.has(nrmName(c.closerMgr))) out.clo.push(c.name);
+  });
+  return out;
 }
 function managedClients(){ return managedClientsForUser(SESSION); }
 function dashScopeClients(){
@@ -1914,26 +1959,29 @@ function teamBoxesHtml(checked){
     : '<span class="muted">Add clients on the Client Overview / Settings tab first.</span>';
 }
 function roleLabel(r){ return ({admin:'Admin',manager:'Sales Manager',founder:'Founder',webinarteam:'Webinar Team',closer:'Closer',setter:'Setter'})[r]||r; }
+// a manager/admin's responsibilities, grouped by function so it reads at a glance (e.g. Keithan = Webinar on several accounts + Setters on Prime)
+function roleSummaryHTML(u){
+  const f=managedFunctionsForUser(u);
+  const line=(lab,arr)=> arr.length?`<div style="margin:2px 0"><span class="rolelab">${lab}</span>${arr.map(a=>`<span class="teamtag">${esc(a)}</span>`).join('')}</div>`:'';
+  return line('Webinar',f.web)+line('Setters',f.set)+line('Closers',f.clo);
+}
 function renderUsersTable(list){
   const isAdmin = SESSION.role==='admin';
   const users=list.slice();
   users.push({username:'tsaboss',name:'Admin (master)',role:'admin',master:true});
   document.getElementById('usersTable').innerHTML=
-    `<thead><tr><th>Name</th><th>Username</th><th>Role</th><th>Teams / accounts</th><th></th></tr></thead><tbody>`+
+    `<thead><tr><th>Name</th><th>Username</th><th>Access</th><th>Roles / accounts</th><th></th></tr></thead><tbody>`+
     users.map(u=>{
       const teams=u.master?[]:teamsFor(u.username);
-      const mgd=u.master?[]:managedClientsForUser(u);
-      const rolesBtn=` <button class="btn sm ghost" onclick="editRoles('${esc(u.username)}')">Edit roles</button>`;
+      const rolesBtn=` <button class="btn sm ghost" onclick="editRoles('${esc(u.username)}')">Responsibilities</button>`;
       const isRep=['closer','setter'].includes(u.role);
       const detailsBtn = (isAdmin&&isRep) ? ` <button class="btn sm ghost" onclick="editRepMeta('${esc(u.username)}')">Details</button>` : '';
       const teamCell = u.master ? '<span class="muted">-</span>'
         : (['closer','setter','founder'].includes(u.role)
             ? ((teams.length?teams.map(t=>`<span class="teamtag">${esc(t)}</span>`).join(''):'<span class="tag" style="color:var(--warn);border-color:var(--warn)">none - not scoped</span>')+` <button class="btn sm ghost" onclick="editTeams('${esc(u.username)}')">Edit</button>`+detailsBtn+(isRep?repMetaSummary(u.username):''))
             : (u.role==='admin'
-                ? '<span class="muted">all (admin)</span>'+(mgd.length?' &middot; '+mgd.map(t=>`<span class="teamtag">${esc(t)}</span>`).join(''):'')+rolesBtn
-                : (mgd.length
-                    ? mgd.map(t=>`<span class="teamtag">${esc(t)}</span>`).join('')
-                    : '<span class="tag" style="color:var(--warn);border-color:var(--warn)">all - none assigned yet</span>')+rolesBtn));
+                ? '<span class="muted">all (admin)</span>'+roleSummaryHTML(u)+rolesBtn
+                : ((roleSummaryHTML(u)||'<span class="tag" style="color:var(--warn);border-color:var(--warn)">no accounts assigned yet</span>')+rolesBtn)));
       const actions = u.master ? '<span class="tag">master, set in Settings</span>'
         : (isAdmin ? `<button class="btn sm ghost" style="color:var(--warn);border-color:var(--warn)" onclick="delUser('${esc(u.username)}')">Remove</button>` : '');
       return `<tr><td>${esc(u.name)}</td><td>${esc(u.username)}</td><td><span class="pill">${esc(roleLabel(u.role))}</span></td><td>${teamCell}</td><td>${actions}</td></tr>`;
@@ -1982,19 +2030,18 @@ function isMgrField(v,u){ if(!v||!u) return false; const n=nrmName(v); return n=
 function userByName(username){ return (USERS_CACHE||[]).find(x=>x.username===username)||{username,name:username}; }
 function editRoles(username){
   ROLE_EDIT=username; const u=userByName(username);
-  document.getElementById('rolesEditTitle').textContent='Account roles - '+(u.name||username);
+  document.getElementById('rolesEditTitle').textContent='Responsibilities - '+(u.name||username);
   renderRolesTable(u);
   cancelTeams(); if(typeof cancelRepMeta==='function')cancelRepMeta();
   const p=document.getElementById('rolesEditPanel'); p.hidden=false; p.scrollIntoView({behavior:'smooth',block:'nearest'});
 }
 function renderRolesTable(u){
   const cs=latestClients().slice().sort((a,b)=>String(a.name).localeCompare(String(b.name)));
-  const held=(v)=> (v && !isMgrField(v,u)) ? ` <span class="muted" style="font-size:10px">(${esc(v)})</span>` : '';
-  const cell=(c,role,f)=>`<td class="num"><label style="cursor:pointer"><input type="checkbox" data-client="${esc(c.name)}" data-role="${role}" ${isMgrField(c[f],u)?'checked':''}></label>${held(c[f])}</td>`;
-  document.getElementById('rolesEditTable').innerHTML=
-    `<thead><tr><th>Account</th><th class="num">Webinar</th><th class="num">Setter</th><th class="num">Closer</th></tr></thead><tbody>`+
-    (cs.length?cs.map(c=>`<tr><td><b>${esc(c.name)}</b></td>${cell(c,'web','webinarMgr')}${cell(c,'set','setterMgr')}${cell(c,'clo','closerMgr')}</tr>`).join('')
-      :`<tr><td colspan="4" class="muted" style="padding:14px">Add clients on the Client Overview tab first.</td></tr>`)+`</tbody>`;
+  const held=(v)=> (v && !isMgrField(v,u)) ? `<span class="heldby">${esc(v)}</span>` : '';
+  const tog=(c,role,label,f)=>`<label class="roletog" title="${esc(label)} on ${esc(c.name)}"><input type="checkbox" data-client="${esc(c.name)}" data-role="${role}" ${isMgrField(c[f],u)?'checked':''}><span>${label}</span></label>${held(c[f])}`;
+  document.getElementById('rolesEditTable').innerHTML= cs.length
+    ? cs.map(c=>`<div class="rolerow"><div class="rname">${esc(c.name)}</div><div class="rtogs">${tog(c,'web','Webinar','webinarMgr')}${tog(c,'set','Setters','setterMgr')}${tog(c,'clo','Closers','closerMgr')}</div></div>`).join('')
+    : `<p class="muted" style="padding:14px">Add clients on the Client Overview tab first.</p>`;
 }
 function cancelRoles(){ ROLE_EDIT=null; document.getElementById('rolesEditPanel').hidden=true; }
 async function saveRoles(){
