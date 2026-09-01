@@ -56,6 +56,16 @@ async function callAnthropic(sys, user) {
 }
 export default async function handler(req, res) {
   if (!authorized(req)) return res.status(401).json({ ok: false, error: 'unauthorized' });
+  // diagnostic: list the models the configured Groq key can actually use
+  if ((req.query && req.query.action) === 'models' || (req.body && req.body.action) === 'models') {
+    if (!process.env.GROQ_API_KEY) return res.status(200).json({ ok: false, error: 'no GROQ_API_KEY' });
+    try {
+      const r = await fetch('https://api.groq.com/openai/v1/models', { headers: { Authorization: 'Bearer ' + process.env.GROQ_API_KEY } });
+      const j = await r.json();
+      if (!r.ok) return res.status(200).json({ ok: false, status: r.status, error: JSON.stringify(j).slice(0, 300) });
+      return res.status(200).json({ ok: true, models: (j.data || []).map(m => m.id) });
+    } catch (e) { return res.status(200).json({ ok: false, error: String(e) }); }
+  }
   const provider = process.env.GROQ_API_KEY ? 'groq' : (process.env.GEMINI_API_KEY ? 'gemini' : (process.env.ANTHROPIC_API_KEY ? 'anthropic' : null));
   if (!provider) return res.status(200).json({ ok: false, error: 'No AI key set (GROQ_API_KEY / GEMINI_API_KEY / ANTHROPIC_API_KEY). Faceted search still works.' });
   const { query, candidates } = req.body || {};
