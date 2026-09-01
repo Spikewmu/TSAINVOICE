@@ -508,7 +508,7 @@
         <div class="full row-actions"><button class="btn gold" type="submit">Save user</button><span class="tag">Re-saving an existing username updates their role, password, and teams.</span></div>
       </form>
     </div>
-    <div class="panel"><h3>Current users <button class="btn ghost sm" style="float:right" onclick="importUsers()" title="Copy all accounts from the old backend into the new one">Import from old backend</button></h3><div class="tablewrap"><table id="usersTable"></table></div></div>
+    <div class="panel"><h3>Current users <button class="btn ghost sm" style="float:right" onclick="importUsers()" title="Copy all accounts from the old backend into the new one">Import from old backend</button></h3><div id="usersUnassigned" style="padding:0 2px 4px"></div><div class="tablewrap"><table id="usersTable"></table></div></div>
     <div class="panel" id="teamEditPanel" hidden><h3 id="teamEditTitle">Assign teams</h3>
       <div style="padding:14px">
         <p class="hint">Tick every account this person works. Saving updates only their team assignment (no password needed).</p>
@@ -2039,6 +2039,19 @@ function renderUsersTable(list){
       return `<tr><td>${esc(u.name)}</td><td>${esc(u.username)}</td><td><span class="pill">${esc(roleLabel(u.role))}</span></td><td>${teamCell}</td><td>${actions}</td></tr>`;
     }).join('')
     +`</tbody>`;
+  renderUnassigned(list);
+}
+// at-a-glance callout: who has no account/role assigned yet
+function renderUnassigned(list){
+  const box=document.getElementById('usersUnassigned'); if(!box) return;
+  const un=(list||[]).filter(u=>{
+    if(u.master||u.role==='admin') return false;
+    if(['manager','webinarteam'].includes(u.role)) return managedClientsForUser(u).length===0; // managers need at least one Responsibility
+    return teamsFor(u.username).length===0; // closers/setters/founders need at least one account
+  });
+  box.innerHTML = un.length
+    ? `<div class="tag" style="color:var(--warn);border-color:var(--warn);display:block;white-space:normal;padding:9px 12px;line-height:1.5">&#9888; <b>${un.length}</b> ${un.length===1?'person has':'people have'} no assignment yet: ${un.map(u=>`<b>${esc(u.name||u.username)}</b> <span class="muted">(${esc(roleLabel(u.role))})</span>`).join(', ')}. <span class="muted">Managers: use <b>Responsibilities</b>. Setters/closers: use <b>Edit</b>. (both on their row below.)</span></div>`
+    : `<div class="tag" style="color:var(--good);border-color:var(--good);display:block;padding:9px 12px">&#10003; Everyone has an account or role assigned.</div>`;
 }
 async function renderUsers(){
   const isAdmin = SESSION.role==='admin';
