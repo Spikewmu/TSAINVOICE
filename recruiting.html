@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TSA Recruiting</title>
+<style>
+  :root{--ground:#12100b;--surface:#1a160f;--surface-2:#221d14;--ink:#efe9dc;--muted:#a49c88;--border:#2f2a20;--gold:#c9a24a;--gold-soft:rgba(201,162,74,.15);--good:#5bbd7a;--bad:#d9714e;}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--ground);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.45}
+  header{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:12px;padding:14px 22px;background:rgba(16,13,9,.9);backdrop-filter:blur(8px);border-bottom:1px solid var(--border)}
+  header .brand{font-weight:700;font-size:18px;letter-spacing:.01em}
+  header .dot{display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--gold);margin-right:8px}
+  header .sp{flex:1}
+  main{max-width:1200px;margin:0 auto;padding:20px 22px 80px}
+  h1{font-size:22px;margin:4px 0 2px}
+  .hint{color:var(--muted);font-size:13px;margin:0 0 16px}
+  .panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:16px}
+  label{font-size:12px;color:var(--muted);font-weight:600;display:block;margin-bottom:4px}
+  input,select,textarea{font:inherit;background:var(--surface-2);color:var(--ink);border:1px solid var(--border);border-radius:8px;padding:8px 10px;width:100%}
+  .row{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end}
+  .fld{flex:1;min-width:150px}
+  .btn{appearance:none;border:1px solid var(--border);background:var(--surface-2);color:var(--ink);font:inherit;font-weight:600;padding:9px 14px;border-radius:8px;cursor:pointer}
+  .btn.gold{background:var(--gold);border-color:var(--gold);color:#1a1205}
+  .btn.sm{padding:5px 10px;font-size:13px}
+  .btn:hover{border-color:var(--gold)}
+  .aiwrap{display:flex;gap:10px;align-items:flex-end}
+  .aiwrap .fld{flex:1}
+  .tag{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;background:var(--gold-soft);color:var(--gold);margin:2px 4px 2px 0}
+  .stars{color:var(--gold);letter-spacing:1px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{padding:9px 10px;text-align:left;border-bottom:1px solid var(--border);vertical-align:top}
+  th{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+  tr:hover td{background:rgba(255,255,255,.02)}
+  .reason{color:var(--good);font-size:12px;margin-top:3px}
+  .muted{color:var(--muted)}
+  .count{font-size:13px;color:var(--muted)}
+  .bar{position:sticky;bottom:0;background:rgba(16,13,9,.95);border-top:1px solid var(--border);padding:12px 22px;margin:0 -22px -80px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+  .gate{max-width:360px;margin:12vh auto;text-align:center}
+  .pill{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;border:1px solid var(--border);color:var(--muted)}
+  .notice{background:var(--gold-soft);border:1px solid var(--gold);color:var(--gold);border-radius:8px;padding:8px 12px;font-size:13px;margin-bottom:12px}
+  a{color:var(--gold)}
+  .chk{width:auto;min-width:0}
+</style>
+</head>
+<body>
+<div id="gate" class="gate" hidden>
+  <h1>TSA Recruiting</h1>
+  <p class="hint">Enter the recruiting passcode to continue.</p>
+  <input id="gatePass" type="password" placeholder="passcode" style="margin-bottom:10px">
+  <button class="btn gold" style="width:100%" onclick="unlock()">Unlock</button>
+  <p id="gateErr" class="hint" style="color:var(--bad)" hidden>Wrong passcode.</p>
+</div>
+
+<div id="app" hidden>
+<header>
+  <span class="brand"><span class="dot"></span>TSA Recruiting</span>
+  <span class="sp"></span>
+  <span class="count" id="loadCount"></span>
+  <button class="btn sm" onclick="loadCandidates()">Refresh</button>
+</header>
+<main>
+  <h1>Find &amp; tag reps</h1>
+  <p class="hint">Search the candidate pool, let AI rank best fit, then tag a group for a GHL SMS/email blast. Tags write to Airtable ("Campaign Tags"); the GHL send is wired off those tags.</p>
+  <div id="cfgNotice"></div>
+
+  <div class="panel">
+    <div class="aiwrap">
+      <div class="fld">
+        <label>AI best-fit search</label>
+        <input id="aiQuery" placeholder='e.g. "3+ stars who have sold high-ticket coaching, US timezone"' onkeydown="if(event.key==='Enter')runAi()">
+      </div>
+      <button class="btn gold" id="aiBtn" onclick="runAi()">Rank best fit</button>
+      <button class="btn sm" onclick="clearAi()">Clear AI</button>
+    </div>
+    <div class="row" style="margin-top:14px">
+      <div class="fld" style="max-width:120px"><label>Min stars</label><input id="fRating" type="number" min="0" step="1" value="0" oninput="render()"></div>
+      <div class="fld"><label>Role (Applied For)</label><select id="fRole" onchange="render()"></select></div>
+      <div class="fld"><label>Has sold</label><select id="fSold" onchange="render()"></select></div>
+      <div class="fld"><label>Recruitment status</label><select id="fStatus" onchange="render()"></select></div>
+      <div class="fld"><label>Campaign tag</label><select id="fTag" onchange="render()"></select></div>
+      <div class="fld" style="max-width:170px"><label>&nbsp;</label><label style="font-weight:400;color:var(--ink);display:flex;gap:6px;align-items:center"><input class="chk" type="checkbox" id="fHideStaffed" onchange="render()" checked> Hide currently staffed</label></div>
+      <div class="fld"><label>Keyword</label><input id="fKw" placeholder="name, skill, anything" oninput="render()"></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;flex-wrap:wrap">
+      <b id="resultCount">0 candidates</b>
+      <span class="sp" style="flex:1"></span>
+      <label style="font-weight:400;color:var(--ink);display:flex;gap:6px;align-items:center;margin:0"><input class="chk" type="checkbox" id="aiOnly" onchange="render()"> Best fit only</label>
+      <button class="btn sm" onclick="selectAllShown(true)">Select all shown</button>
+      <button class="btn sm" onclick="selectAllShown(false)">Clear selection</button>
+    </div>
+    <div style="overflow-x:auto"><table id="tbl"></table></div>
+  </div>
+</main>
+
+<div class="bar">
+  <b id="selCount">0 selected</b>
+  <span class="sp" style="flex:1"></span>
+  <div style="min-width:220px"><input id="campName" placeholder="campaign tag, e.g. Trading-Sept" list="tagList"><datalist id="tagList"></datalist></div>
+  <button class="btn gold" onclick="tagSelected('add')">Tag selected</button>
+  <button class="btn sm" onclick="tagSelected('remove')">Remove tag</button>
+</div>
+</div>
+
+<script>
+const KEYLS='tsarec_key';
+let KEY=localStorage.getItem(KEYLS)||'';
+let ALL=[], AIRANK=null, SEL=new Set();
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function arr(v){return Array.isArray(v)?v:(v?[v]:[]);}
+function toast(m){const d=document.createElement('div');d.textContent=m;d.style.cssText='position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#222016;border:1px solid var(--gold);color:var(--ink);padding:10px 16px;border-radius:8px;z-index:20;font-size:14px';document.body.appendChild(d);setTimeout(()=>d.remove(),2600);}
+
+function unlock(){ KEY=(document.getElementById('gatePass').value||'').trim(); if(!KEY){return;} localStorage.setItem(KEYLS,KEY); document.getElementById('gate').hidden=true; document.getElementById('app').hidden=false; loadCandidates(); }
+function showGate(){ document.getElementById('app').hidden=true; document.getElementById('gate').hidden=false; }
+
+async function api(path, opts){
+  const o=opts||{}; o.headers=Object.assign({'x-recruit-key':KEY,'Content-Type':'application/json'}, o.headers||{});
+  const r=await fetch(path,o);
+  if(r.status===401){ localStorage.removeItem(KEYLS); KEY=''; document.getElementById('gateErr').hidden=false; showGate(); throw new Error('unauthorized'); }
+  return r.json();
+}
+
+async function loadCandidates(){
+  document.getElementById('loadCount').textContent='Loading...';
+  try{
+    const j=await api('/api/recruiting?action=list');
+    if(!j.ok){ document.getElementById('cfgNotice').innerHTML='<div class="notice">Backend not ready: '+esc(j.error||'')+'</div>'; document.getElementById('loadCount').textContent=''; return; }
+    document.getElementById('cfgNotice').innerHTML='';
+    ALL=j.candidates||[]; AIRANK=null; SEL.clear();
+    document.getElementById('loadCount').textContent=ALL.length+' candidates';
+    buildFacets(); render();
+  }catch(e){ if(String(e).indexOf('unauthorized')<0){ document.getElementById('loadCount').textContent='Load failed'; } }
+}
+
+function uniqVals(key){ const s=new Set(); ALL.forEach(c=>arr(c[key]).forEach(v=>{ if(v) s.add(v); })); return [...s].sort((a,b)=>a.localeCompare(b)); }
+function buildFacets(){
+  const roleSel=document.getElementById('fRole'), soldSel=document.getElementById('fSold'), stSel=document.getElementById('fStatus'), tagSel=document.getElementById('fTag');
+  const fill=(sel,vals,allLabel)=>{ const cur=sel.value; sel.innerHTML='<option value="">'+allLabel+'</option>'+vals.map(v=>`<option>${esc(v)}</option>`).join(''); if(cur&&vals.includes(cur))sel.value=cur; };
+  fill(roleSel, uniqVals('role'), 'Any role');
+  fill(soldSel, uniqVals('sold'), 'Any');
+  fill(stSel, uniqVals('recStatus'), 'Any status');
+  fill(tagSel, uniqVals('tags'), 'Any tag');
+  const tl=document.getElementById('tagList'); tl.innerHTML=uniqVals('tags').map(v=>`<option value="${esc(v)}">`).join('');
+}
+
+function matchesFacets(c){
+  const minR=+document.getElementById('fRating').value||0;
+  const role=document.getElementById('fRole').value, sold=document.getElementById('fSold').value, st=document.getElementById('fStatus').value, tag=document.getElementById('fTag').value;
+  const hideStaffed=document.getElementById('fHideStaffed').checked;
+  const kw=(document.getElementById('fKw').value||'').trim().toLowerCase();
+  if((c.rating||0)<minR) return false;
+  if(role && !arr(c.role).includes(role)) return false;
+  if(sold && String(c.sold)!==sold) return false;
+  if(st && String(c.recStatus)!==st) return false;
+  if(tag && !arr(c.tags).includes(tag)) return false;
+  if(hideStaffed && /yes/i.test(String(c.staffed))) return false;
+  if(kw){ const blob=[c.name,c.sold,c.summary,c.recStatus,arr(c.role).join(' '),arr(c.achievements).join(' '),arr(c.tech).join(' '),arr(c.languages).join(' '),arr(c.timezones).join(' ')].join(' ').toLowerCase(); if(blob.indexOf(kw)<0) return false; }
+  return true;
+}
+
+function currentList(){
+  let list=ALL.filter(matchesFacets);
+  if(AIRANK){
+    const order=new Map(AIRANK.map((r,i)=>[r.id,i])), reason=new Map(AIRANK.map(r=>[r.id,r.reason]));
+    if(document.getElementById('aiOnly').checked) list=list.filter(c=>order.has(c.id));
+    list.sort((a,b)=>{ const ai=order.has(a.id)?order.get(a.id):9999, bi=order.has(b.id)?order.get(b.id):9999; return ai-bi; });
+    list=list.map(c=>({...c, _reason:reason.get(c.id)||''}));
+  }
+  return list;
+}
+
+function render(){
+  const list=currentList();
+  document.getElementById('resultCount').textContent=list.length+' candidate'+(list.length===1?'':'s');
+  const stars=n=>n?('<span class="stars">'+'★'.repeat(Math.max(0,Math.min(10,n)))+'</span>'):'<span class="muted">-</span>';
+  const head='<thead><tr><th></th><th>Name</th><th>Rating</th><th>Role</th><th>Has sold</th><th>Status</th><th>Contact</th><th>Tags</th></tr></thead><tbody>';
+  const rows=list.length?list.map(c=>{
+    const links=[c.intro&&`<a href="${esc(c.intro)}" target="_blank" rel="noopener">intro</a>`, c.resume&&`<a href="${esc(c.resume)}" target="_blank" rel="noopener">resume</a>`].filter(Boolean).join(' · ');
+    const contact=[c.phone&&esc(c.phone), c.email&&('<span class="muted" style="font-size:11px">'+esc(c.email)+'</span>')].filter(Boolean).join('<br>');
+    const tags=arr(c.tags).map(t=>`<span class="tag">${esc(t)}</span>`).join('')||'<span class="muted">-</span>';
+    return `<tr><td><input class="chk" type="checkbox" ${SEL.has(c.id)?'checked':''} onchange="toggleSel('${c.id}',this.checked)"></td>`
+      +`<td><b>${esc(c.name)||'(no name)'}</b>${links?'<div style="font-size:11px">'+links+'</div>':''}${c._reason?'<div class="reason">'+esc(c._reason)+'</div>':''}${c.summary?'<div class="muted" style="font-size:11px;max-width:340px">'+esc(String(c.summary).slice(0,140))+'</div>':''}</td>`
+      +`<td>${stars(c.rating)}</td><td>${esc(arr(c.role).join(', '))||'<span class="muted">-</span>'}</td><td>${esc(c.sold)||'<span class="muted">-</span>'}</td><td><span class="pill">${esc(c.recStatus)||'-'}</span></td><td>${contact||'<span class="muted">-</span>'}</td><td>${tags}</td></tr>`;
+  }).join(''):'<tr><td colspan="8" class="muted" style="padding:18px">No candidates match. Loosen the filters.</td></tr>';
+  document.getElementById('tbl').innerHTML=head+rows+'</tbody>';
+  updateSelCount();
+}
+function toggleSel(id,on){ if(on)SEL.add(id); else SEL.delete(id); updateSelCount(); }
+function selectAllShown(on){ currentList().forEach(c=>{ if(on)SEL.add(c.id); else SEL.delete(c.id); }); render(); }
+function updateSelCount(){ document.getElementById('selCount').textContent=SEL.size+' selected'; }
+
+async function runAi(){
+  const query=(document.getElementById('aiQuery').value||'').trim(); if(!query){ toast('Type what you are looking for'); return; }
+  const btn=document.getElementById('aiBtn'); btn.disabled=true; btn.textContent='Ranking...';
+  try{
+    const pool=ALL.filter(matchesFacets); // AI ranks within the current facet filter
+    const j=await api('/api/rec-ai',{method:'POST',body:JSON.stringify({query, candidates:pool})});
+    if(!j.ok){ toast('AI: '+(j.error||'failed')); }
+    else { AIRANK=j.ranked||[]; document.getElementById('aiOnly').checked=true; toast('Ranked '+AIRANK.length+' best-fit'); render(); }
+  }catch(e){ if(String(e).indexOf('unauthorized')<0) toast('AI request failed'); }
+  finally{ btn.disabled=false; btn.textContent='Rank best fit'; }
+}
+function clearAi(){ AIRANK=null; document.getElementById('aiOnly').checked=false; document.getElementById('aiQuery').value=''; render(); }
+
+async function tagSelected(mode){
+  const tag=(document.getElementById('campName').value||'').trim();
+  if(!tag){ toast('Enter a campaign tag first'); return; }
+  if(!SEL.size){ toast('Select some candidates first'); return; }
+  const recs=[...SEL].map(id=>{ const c=ALL.find(x=>x.id===id); const cur=arr(c&&c.tags); let next;
+    if(mode==='remove') next=cur.filter(t=>t!==tag); else next=cur.includes(tag)?cur:[...cur,tag];
+    return {id, tags:next, _c:c}; });
+  const j=await api('/api/recruiting?action=tag',{method:'POST',body:JSON.stringify({records:recs.map(r=>({id:r.id,tags:r.tags}))})});
+  if(!j.ok){ toast('Tag failed: '+(j.error||'')); return; }
+  recs.forEach(r=>{ if(r._c) r._c.tags=r.tags; }); // update local
+  buildFacets(); render();
+  toast((mode==='remove'?'Removed "':'Tagged "')+tag+'" on '+j.updated+' candidate'+(j.updated===1?'':'s'));
+}
+
+// boot
+if(KEY){ document.getElementById('app').hidden=false; loadCandidates(); } else { showGate(); }
+</script>
+</body>
+</html>
