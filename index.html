@@ -207,6 +207,7 @@
   <button data-tab="onboarding">Onboarding</button>
   <button data-tab="postcall">Post-Call Checkout</button>
   <button data-tab="eod">End of Day</button>
+  <button data-tab="timeoff">Time Off</button>
   <button data-tab="mgreod">Manager EOD</button>
   <button data-tab="webinar">Webinar</button>
   <button data-tab="calllog">Call Log</button>
@@ -384,6 +385,23 @@
       </div>
       <div class="tablewrap"><table id="promisesTable"></table></div>
     </div></div>
+  </section>
+
+  <!-- ===== TIME OFF ===== -->
+  <section id="tab-timeoff" hidden>
+    <h2 class="section">Time Off</h2>
+    <p class="hint">Request a day off and track its status. Your assigned manager approves it; an approved day off shows as a neutral marker and does not count as a missed report.</p>
+    <div class="panel" id="timeOffPanel" hidden><h3>Request a day off</h3>
+      <div style="padding:14px">
+        <div class="filters" style="margin:0 0 12px">
+          <div class="field"><label>Day off</label><input type="date" id="offReqDate"></div>
+          <div class="field" style="flex:1;min-width:200px"><label>Reason (optional)</label><input type="text" id="offReqReason" placeholder="e.g. doctor, travel, personal"></div>
+          <button class="btn gold sm" style="align-self:flex-end" onclick="requestOffday()">Request</button>
+        </div>
+        <div id="offReqList"></div>
+      </div>
+    </div>
+    <div class="panel" id="timeOffApprovals" hidden><h3>Day-off requests <span style="font-weight:400;color:var(--muted);font-size:12px">- approve or deny for the reps you manage</span></h3><div class="offdayBox"></div></div>
   </section>
 
   <!-- ===== MANAGER EOD ===== -->
@@ -594,16 +612,6 @@
         <div class="filters" style="margin:0 0 12px"><div class="field"><label>Day</label><input type="date" id="eodCheckDate" onchange="renderEodCheck()"></div><span id="eodCheckSummary" class="tag" style="align-self:flex-end;margin-bottom:2px"></span></div>
         <div style="margin-bottom:12px"><div style="font-size:12px;text-transform:uppercase;color:var(--muted);font-weight:700;letter-spacing:.02em">Setters</div><div class="chiprow" id="eodCheckSetters" style="margin-top:6px"></div></div>
         <div><div style="font-size:12px;text-transform:uppercase;color:var(--muted);font-weight:700;letter-spacing:.02em">Closers</div><div class="chiprow" id="eodCheckClosers" style="margin-top:6px"></div></div>
-      </div>
-    </div>
-    <div class="panel" id="timeOffPanel" hidden><h3>Time off <span style="font-weight:400;color:var(--muted);font-size:12px">- request a day off, your manager approves it</span></h3>
-      <div style="padding:14px">
-        <div class="filters" style="margin:0 0 12px">
-          <div class="field"><label>Day off</label><input type="date" id="offReqDate"></div>
-          <div class="field" style="flex:1;min-width:200px"><label>Reason (optional)</label><input type="text" id="offReqReason" placeholder="e.g. doctor, travel, personal"></div>
-          <button class="btn gold sm" style="align-self:flex-end" onclick="requestOffday()">Request</button>
-        </div>
-        <div id="offReqList"></div>
       </div>
     </div>
     <div class="filters" style="align-items:flex-end">
@@ -847,12 +855,12 @@ function startApp(){
 // base tabs a login TIER can see; per-account responsibilities add to this in applyNavAccess()
 function baseAllow(role){
   return ({
-    admin:['dash','reps','clients','onboarding','meeting','postcall','eod','mgreod','webinar','calllog','adminreport','data','users','settings'],
-    manager:['dash','reps','clients','onboarding','meeting','users','postcall','eod','mgreod','webinar','calllog'],
+    admin:['dash','reps','clients','onboarding','meeting','timeoff','postcall','eod','mgreod','webinar','calllog','adminreport','data','users','settings'],
+    manager:['dash','reps','clients','onboarding','meeting','timeoff','users','postcall','eod','mgreod','webinar','calllog'],
     founder:['dash'],
-    webinarteam:['dash','meeting','webinar'],
-    closer:['dash','postcall','eod','webinar','calllog','reps'],
-    setter:['dash','postcall','eod','calllog','reps']
+    webinarteam:['dash','meeting','timeoff','webinar'],
+    closer:['dash','postcall','eod','timeoff','webinar','calllog','reps'],
+    setter:['dash','postcall','eod','timeoff','calllog','reps']
   })[role] || ['eod'];
 }
 // access follows responsibilities: whatever this person is assigned to run (webinar / setter / closer manager on any account)
@@ -889,9 +897,9 @@ function applyIdentity(){
 function wireTabs(){ document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>showTab(b.dataset.tab)); }
 function showTab(t){
   document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
-  ['dash','reps','clients','onboarding','meeting','deal','postcall','eod','mgreod','webinar','calllog','adminreport','data','users','settings'].forEach(x=>{ document.getElementById('tab-'+x).hidden = (x!==t); });
+  ['dash','reps','clients','onboarding','meeting','timeoff','deal','postcall','eod','mgreod','webinar','calllog','adminreport','data','users','settings'].forEach(x=>{ document.getElementById('tab-'+x).hidden = (x!==t); });
   // stale-while-revalidate: render instantly from the cached records, then refresh in the background
-  const render={dash:renderDash, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, mgreod:renderMgrEod, webinar:renderWebinars, calllog:renderCallLog, adminreport:renderAdminReport, data:renderAll}[t];
+  const render={dash:renderDash, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, timeoff:renderTimeOffTab, mgreod:renderMgrEod, webinar:renderWebinars, calllog:renderCallLog, adminreport:renderAdminReport, data:renderAll}[t];
   if(render){ render(); syncRecords().then(()=>{ if(currentTab()===t) render(); }); }
   if(t==='data'){ renderDailyEntry(); }
   if(t==='users'){ renderUsers(); }
@@ -1779,7 +1787,17 @@ async function saveRepMeta(){
   document.getElementById('repMetaEditPanel').hidden=true; REPMETA_EDIT=null; toast('Rep details saved'); renderUsers();
 }
 function repMetaSummary(username){ const m=repMetaFor(username); if(!m) return ''; const bits=[]; if(m.startDate)bits.push('hired '+usDate(m.startDate)); if(m.endDate)bits.push('left '+usDate(m.endDate)); if(m.mgr)bits.push('mgr: '+m.mgr); return bits.length?`<div class="muted" style="font-size:11px;margin-top:3px">${esc(bits.join(' · '))}</div>`:''; }
-// ---- Reps tab: rep requests a day off (routes to their assigned manager) ----
+// ---- Time Off tab: reps request; managers/admins approve ----
+function renderTimeOffTab(){
+  renderTimeOff(); // request form + this rep's own requests (reps only)
+  const ap=document.getElementById('timeOffApprovals');
+  const canApprove = SESSION && ['admin','manager','webinarteam'].includes(SESSION.role);
+  if(ap) ap.hidden = !canApprove;
+  renderOffdayApprovals();
+  // if a user is neither a rep nor an approver, show a gentle note
+  const p=document.getElementById('timeOffPanel');
+  if(p && p.hidden && ap && ap.hidden){ /* nothing to show */ }
+}
 function renderTimeOff(){
   const panel=document.getElementById('timeOffPanel'); if(!panel) return;
   if(!repMode()){ panel.hidden=true; return; }
@@ -1850,7 +1868,6 @@ function repFiltered(){
 function renderReps(){
   const rm=repMode();
   renderEodCheck();
-  renderTimeOff();
   // rep sees their ASSIGNED teams; if none assigned yet, fall back to the accounts they've submitted for
   const assigned = rm ? teamsFor(SESSION&&SESSION.username) : [];
   REP_SCOPE = rm ? (assigned.length?assigned:myTeamClients()) : null;
