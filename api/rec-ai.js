@@ -32,7 +32,7 @@ function parseRanked(txt) {
 async function callGroq(sys, user) {
   const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST', headers: { 'content-type': 'application/json', Authorization: 'Bearer ' + process.env.GROQ_API_KEY },
-    body: JSON.stringify({ model: process.env.REC_AI_MODEL || 'llama-3.3-70b-versatile', temperature: 0.2, response_format: { type: 'json_object' }, messages: [{ role: 'system', content: sys }, { role: 'user', content: user }] })
+    body: JSON.stringify({ model: process.env.REC_AI_MODEL || 'llama-3.1-8b-instant', temperature: 0.2, response_format: { type: 'json_object' }, messages: [{ role: 'system', content: sys }, { role: 'user', content: user }] })
   });
   const j = await r.json(); if (!r.ok) throw new Error('groq ' + r.status + ' ' + JSON.stringify(j).slice(0, 200));
   return (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || '';
