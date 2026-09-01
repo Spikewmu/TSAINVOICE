@@ -39,9 +39,18 @@ function sval(v) {
   if (typeof v === 'object') { if (v.name) return v.name; if (v.value != null && v.state !== 'error') return String(v.value); return ''; }
   return v;
 }
+export const config = { maxDuration: 60 }; // give the multi-page Airtable fetch room (esp. on slow/504 responses)
 async function atFetch(path, opts) {
   const key = process.env.AIRTABLE_TOKEN;
   return fetch('https://api.airtable.com/v0/' + path, { ...(opts || {}), headers: { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json', ...((opts && opts.headers) || {}) } });
+}
+// GET with a couple of retries on transient Airtable errors (429/5xx incl. 504 gateway timeouts)
+async function atGet(path, tries = 3) {
+  for (let i = 0; i < tries; i++) {
+    const r = await atFetch(path, { method: 'GET' });
+    if (r.ok || i === tries - 1 || ![429, 500, 502, 503, 504].includes(r.status)) return r;
+    await new Promise(res => setTimeout(res, 700 * (i + 1)));
+  }
 }
 export default async function handler(req, res) {
   if (!authorized(req)) return res.status(401).json({ ok: false, error: 'unauthorized' });
@@ -67,8 +76,8 @@ export default async function handler(req, res) {
       let records = [], offset;
       const qs = FIELDS.map(f => 'fields%5B%5D=' + encodeURIComponent(f)).join('&');
       do {
-        const r = await atFetch(`${BASE}/${TABLE}?pageSize=100&${qs}` + (offset ? `&offset=${encodeURIComponent(offset)}` : ''), { method: 'GET' });
-        if (!r.ok) { const t = await r.text(); return res.status(200).json({ ok: false, error: 'airtable ' + r.status + ' ' + t.slice(0, 300) }); }
+        const r = await atGet(`${BASE}/${TABLE}?pageSize=100&${qs}` + (offset ? `&offset=${encodeURIComponent(offset)}` : ''));
+        if (!r.ok) { const t = await r.text(); return res.status(200).json({ ok: false, error: 'airtable ' + r.status + ' ' + t.slice(0, 160) }); }
         const j = await r.json(); records = records.concat(j.records || []); offset = j.offset;
       } while (offset);
       const out = records.map(rec => { const f = rec.fields || {}; return {

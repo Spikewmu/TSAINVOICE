@@ -2026,18 +2026,31 @@ let REC_ALL=[], REC_AIRANK=null, REC_SEL=new Set(), REC_LOADING=false, REC_LOADE
 function recHeaders(){ const h={'Content-Type':'application/json'}; if(SESSION&&SESSION.token)h['x-session-token']=SESSION.token; const ap=(typeof mgmtPass==='function')?mgmtPass():''; if(ap)h['x-admin-pass']=ap; return h; }
 async function recFetch(path,opts){ const o=opts||{}; o.headers=Object.assign(recHeaders(),o.headers||{}); const r=await fetch(path,o); if(r.status===401){ return {ok:false,error:'unauthorized (your login lacks recruiting access)'}; } return r.json(); }
 function recArr(v){ return Array.isArray(v)?v:(v?[v]:[]); }
-function renderRecruiting(){ if(REC_LOADED){ recRender(); } else { recLoad(); } }
-async function recLoad(force){
+function recCacheSave(){ try{ localStorage.setItem('tsarec_cache', JSON.stringify({t:Date.now(), c:REC_ALL})); }catch(e){} }
+function recCacheLoad(){ try{ const o=JSON.parse(localStorage.getItem('tsarec_cache')||'null'); return (o&&Array.isArray(o.c))?o:null; }catch(e){ return null; } }
+function renderRecruiting(){
+  if(REC_LOADED){ recRender(); return; }
+  const cache=recCacheLoad();
+  if(cache && cache.c.length){ // show cached candidates instantly, refresh in the background if stale
+    REC_ALL=cache.c; REC_LOADED=true; recBuildFacets(); recRender();
+    const cnt=document.getElementById('rcCount'); if(cnt)cnt.textContent=REC_ALL.length+' candidates (cached)';
+    if(Date.now()-cache.t > 10*60*1000) recLoad(true, true);
+  } else { recLoad(); }
+}
+async function recLoad(force, silent){
   if(REC_LOADING) return; REC_LOADING=true;
-  const cnt=document.getElementById('rcCount'); if(cnt)cnt.textContent='Loading...';
+  const cnt=document.getElementById('rcCount'); if(cnt&&!silent)cnt.textContent='Loading...';
   try{
     const j=await recFetch('/api/recruiting?action=list');
-    if(!j.ok){ document.getElementById('rcNotice').innerHTML='<div class="tag" style="display:block;color:var(--warn);border-color:var(--warn);padding:9px 12px;white-space:normal">Backend not ready: '+esc(j.error||'')+(/AIRTABLE_TOKEN/.test(j.error||'')?' — set AIRTABLE_TOKEN in Vercel.':'')+'</div>'; if(cnt)cnt.textContent=''; REC_LOADED=false; return; }
+    if(!j.ok){
+      if(!silent){ const rl=/504|timeout|Gateway/i.test(j.error||''); document.getElementById('rcNotice').innerHTML='<div class="tag" style="display:block;color:var(--warn);border-color:var(--warn);padding:9px 12px;white-space:normal">'+(rl?'Airtable was slow to respond (timeout). Hit Refresh to try again.':('Backend not ready: '+esc(j.error||'')+(/AIRTABLE_TOKEN/.test(j.error||'')?' — set AIRTABLE_TOKEN in Vercel.':'')))+'</div>'; if(cnt)cnt.textContent=REC_ALL.length?REC_ALL.length+' candidates (cached)':''; }
+      return;
+    }
     document.getElementById('rcNotice').innerHTML='';
-    REC_ALL=j.candidates||[]; REC_AIRANK=null; REC_SEL.clear(); REC_LOADED=true;
+    REC_ALL=j.candidates||[]; REC_AIRANK=null; if(!silent)REC_SEL.clear(); REC_LOADED=true; recCacheSave();
     if(cnt)cnt.textContent=REC_ALL.length+' candidates';
     recBuildFacets(); recRender();
-  }catch(e){ if(cnt)cnt.textContent='Load failed'; }
+  }catch(e){ if(cnt&&!silent)cnt.textContent='Load failed'; }
   finally{ REC_LOADING=false; }
 }
 function recUniq(key){ const s=new Set(); REC_ALL.forEach(c=>recArr(c[key]).forEach(v=>{ if(v)s.add(v); })); return [...s].sort((a,b)=>String(a).localeCompare(String(b))); }
