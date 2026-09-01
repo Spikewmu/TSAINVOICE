@@ -387,6 +387,7 @@
 
       <div class="full row-actions"><button class="btn gold" type="submit">Submit manager EOD</button></div>
     </form>
+    <div class="panel"><h3>Day-off requests <span style="font-weight:400;color:var(--muted);font-size:12px">- approve or deny time off for the reps you manage</span></h3><div class="offdayBox"></div></div>
     <div class="panel"><h3>Recent manager EODs <span style="font-weight:400;color:var(--muted);font-size:12px">- latest per manager, account + day</span></h3><div class="tablewrap"><table id="mgrEodTable"></table></div></div>
   </section>
 
@@ -447,6 +448,7 @@
       <span id="arSummary" class="tag" style="align-self:flex-end;margin-bottom:2px"></span>
       <button class="btn ghost sm" style="align-self:flex-end" onclick="renderAdminReport()">Refresh</button>
     </div>
+    <div class="panel"><h3>Day-off requests <span style="font-weight:400;color:var(--muted);font-size:12px">- pending approvals across all reps</span></h3><div class="offdayBox"></div></div>
     <div id="arBody"></div>
   </section>
 
@@ -509,6 +511,17 @@
         <div class="row-actions" style="margin-top:12px"><button class="btn gold sm" onclick="saveRoles()">Save roles</button><button class="btn ghost sm" onclick="cancelRoles()">Cancel</button></div>
       </div>
     </div>
+    <div class="panel" id="repMetaEditPanel" hidden><h3 id="repMetaTitle">Rep details</h3>
+      <div style="padding:14px">
+        <p class="hint">Hire and termination dates keep pre-employment and post-termination days from counting as missed reports (and feed churn per offer on the Admin Report). The assigned manager is who approves this rep's days off.</p>
+        <div class="filters" style="margin:0">
+          <div class="field"><label>Start / hire date</label><input type="date" id="rmStart"></div>
+          <div class="field"><label>Termination date</label><input type="date" id="rmEnd"><span class="fieldhelp">Leave blank if still active.</span></div>
+          <div class="field"><label>Assigned manager</label><select id="rmMgr"></select><span class="fieldhelp">Approves this rep's time off.</span></div>
+        </div>
+        <div class="row-actions" style="margin-top:12px"><button class="btn gold sm" onclick="saveRepMeta()">Save details</button><button class="btn ghost sm" onclick="cancelRepMeta()">Cancel</button></div>
+      </div>
+    </div>
   </section>
 
   <!-- ===== CLIENT OVERVIEW ===== -->
@@ -568,6 +581,16 @@
         <div class="filters" style="margin:0 0 12px"><div class="field"><label>Day</label><input type="date" id="eodCheckDate" onchange="renderEodCheck()"></div><span id="eodCheckSummary" class="tag" style="align-self:flex-end;margin-bottom:2px"></span></div>
         <div style="margin-bottom:12px"><div style="font-size:12px;text-transform:uppercase;color:var(--muted);font-weight:700;letter-spacing:.02em">Setters</div><div class="chiprow" id="eodCheckSetters" style="margin-top:6px"></div></div>
         <div><div style="font-size:12px;text-transform:uppercase;color:var(--muted);font-weight:700;letter-spacing:.02em">Closers</div><div class="chiprow" id="eodCheckClosers" style="margin-top:6px"></div></div>
+      </div>
+    </div>
+    <div class="panel" id="timeOffPanel" hidden><h3>Time off <span style="font-weight:400;color:var(--muted);font-size:12px">- request a day off, your manager approves it</span></h3>
+      <div style="padding:14px">
+        <div class="filters" style="margin:0 0 12px">
+          <div class="field"><label>Day off</label><input type="date" id="offReqDate"></div>
+          <div class="field" style="flex:1;min-width:200px"><label>Reason (optional)</label><input type="text" id="offReqReason" placeholder="e.g. doctor, travel, personal"></div>
+          <button class="btn gold sm" style="align-self:flex-end" onclick="requestOffday()">Request</button>
+        </div>
+        <div id="offReqList"></div>
       </div>
     </div>
     <div class="filters">
@@ -1071,6 +1094,7 @@ function renderMgrEod(){
   if(sel){ const cur=sel.value; sel.innerHTML=clist.map(c=>`<option>${esc(c)}</option>`).join(''); if(cur&&clist.includes(cur))sel.value=cur; }
   const d=document.querySelector('#mgrEodForm [name=date]'); if(d&&!d.value) d.value=todayLocal();
   renderMgrEodTable();
+  renderOffdayApprovals();
 }
 function renderMgrEodTable(){
   const t=document.getElementById('mgrEodTable'); if(!t) return;
@@ -1511,8 +1535,8 @@ function repPeriodStats(name, role, range){
   const sub=new Set(recs.map(x=>(x.date||'').slice(0,10)));
   let hours=0,dials=0,connected=0,sets=0,connMeet=0,deals=0,cash=0;
   recs.forEach(x=>{ hours+=x.hoursDialing||0; dials+=x.newOutreach||0; connected+=x.connectedCalls||0; sets+=x.callsSet||0; connMeet+=x.connectedMeetings||0; deals+=x.closedDeals||0; cash+=x.cashCollected||0; });
-  const elapsed=range.elapsed||range.weekdays;
-  return {sub:elapsed.filter(d=>sub.has(d)).length, exp:elapsed.length, missed:elapsed.filter(d=>!sub.has(d)).length, hours:Math.round(hours*10)/10, dials, connRate:dials?connected/dials:0, sets, connMeet, deals, cash, closeRate:connMeet?deals/connMeet:0};
+  const elapsed=range.elapsed||range.weekdays, acc=accountableDays(name,elapsed); // only days they were employed and not on an approved day off count toward exp/missed
+  return {sub:acc.filter(d=>sub.has(d)).length, exp:acc.length, missed:acc.filter(d=>!sub.has(d)).length, hours:Math.round(hours*10)/10, dials, connRate:dials?connected/dials:0, sets, connMeet, deals, cash, closeRate:connMeet?deals/connMeet:0};
 }
 function mgrPeriodStats(name, range){
   const inR=new Set(range.days);
@@ -1527,26 +1551,59 @@ function renderAdminReport(){
   const view=(document.getElementById('arView')||{}).value||'day', date=di.value;
   const setters=repNames('setter'), closers=repNames('closer'), managers=managerNames();
   if(view==='day') renderAdminDay(date,setters,closers,managers); else renderAdminPeriod(view,date,setters,closers,managers);
+  renderOffdayApprovals();
 }
 function renderAdminDay(day,setters,closers,managers){
+  const accToday=n=>accountableDays(n,[day]).length>0; // employed that day and not on an approved day off
   const sIn=setters.filter(n=>submittedEod(n,day)).length, cIn=closers.filter(n=>submittedEod(n,day)).length, mIn=managers.filter(n=>submittedMgrEod(n,day)).length;
-  const miss=(setters.length-sIn)+(closers.length-cIn)+(managers.length-mIn);
-  arSummaryBar(`${usDate(day)} - Setters ${sIn}/${setters.length} · Closers ${cIn}/${closers.length} · Managers ${mIn}/${managers.length}`+(miss?` · ${miss} missing`:' · all in'), miss);
-  const range={days:[day],weekdays:[day]}, ok=b=>`<span style="color:${b?'var(--good)':'var(--bad)'};font-weight:700">${b?'✓':'✗'}</span>`;
-  const setRows=setters.map(n=>{const s=repPeriodStats(n,'Setter',range);return `<tr><td>${esc(n)}</td><td>${ok(s.sub>0)}</td><td class="num">${s.hours}</td><td class="num">${s.dials}</td><td class="num">${pct(s.connRate)}</td><td class="num">${s.sets}</td></tr>`;}).join('');
-  const cloRows=closers.map(n=>{const s=repPeriodStats(n,'Closer',range);return `<tr><td>${esc(n)}</td><td>${ok(s.sub>0)}</td><td class="num">${s.hours}</td><td class="num">${s.connMeet}</td><td class="num">${pct(s.closeRate)}</td><td class="num">${s.deals}</td><td class="num">${money(s.cash)}</td></tr>`;}).join('');
-  const mgrRows=managers.map(n=>`<tr><td>${esc(n)}</td><td>${ok(submittedMgrEod(n,day))}</td></tr>`).join('');
+  const sAcc=setters.filter(accToday).length, cAcc=closers.filter(accToday).length;
+  const miss=(sAcc-sIn)+(cAcc-cIn)+(managers.length-mIn); // approved days off / pre-hire days are not held against anyone
+  arSummaryBar(`${usDate(day)} - Setters ${sIn}/${sAcc} · Closers ${cIn}/${cAcc} · Managers ${mIn}/${managers.length}`+(miss?` · ${miss} missing`:' · all in'), miss);
+  const range={days:[day],weekdays:[day]};
+  const setRows=setters.map(n=>{const s=repPeriodStats(n,'Setter',range);return `<tr><td>${esc(n)}</td><td>${dayMark(n,day,submittedEod(n,day))}</td><td class="num">${s.hours}</td><td class="num">${s.dials}</td><td class="num">${pct(s.connRate)}</td><td class="num">${s.sets}</td></tr>`;}).join('');
+  const cloRows=closers.map(n=>{const s=repPeriodStats(n,'Closer',range);return `<tr><td>${esc(n)}</td><td>${dayMark(n,day,submittedEod(n,day))}</td><td class="num">${s.hours}</td><td class="num">${s.connMeet}</td><td class="num">${pct(s.closeRate)}</td><td class="num">${s.deals}</td><td class="num">${money(s.cash)}</td></tr>`;}).join('');
+  const okM=b=>`<span style="color:${b?'var(--good)':'var(--bad)'};font-weight:700">${b?'✓':'✗'}</span>`;
+  const mgrRows=managers.map(n=>`<tr><td>${esc(n)}</td><td>${okM(submittedMgrEod(n,day))}</td></tr>`).join('');
   const gd=[]; for(let i=6;i>=0;i--) gd.push(isoOffset(day,-i));
   const dow=d=>['Su','Mo','Tu','We','Th','Fr','Sa'][new Date(d+'T00:00:00').getDay()];
   const cell=b=>`<td class="num" style="color:${b?'var(--good)':'var(--bad)'};font-weight:700">${b?'✓':'✗'}</td>`;
-  const grows=(names,role,fn)=>names.map(n=>`<tr><td>${esc(n)}</td><td class="muted" style="font-size:11px">${role}</td>`+gd.map(d=>cell(fn(n,d))).join('')+`</tr>`).join('');
+  const grows=(names,role)=>names.map(n=>`<tr><td>${esc(n)}</td><td class="muted" style="font-size:11px">${role}</td>`+gd.map(d=>`<td class="num">${dayMark(n,d,submittedEod(n,d))}</td>`).join('')+`</tr>`).join('');
+  const mgrows=names=>names.map(n=>`<tr><td>${esc(n)}</td><td class="muted" style="font-size:11px">Manager</td>`+gd.map(d=>cell(submittedMgrEod(n,d))).join('')+`</tr>`).join('');
   const ghead=`<thead><tr><th>Person</th><th>Role</th>`+gd.map(d=>`<th class="num" style="white-space:nowrap">${dow(d)} ${(+d.slice(5,7))}-${(+d.slice(8,10))}</th>`).join('')+`</tr></thead>`;
   const ggrp=l=>`<tr><td colspan="${2+gd.length}" style="background:var(--surface-2);font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--gold)">${l}</td></tr>`;
   document.getElementById('arBody').innerHTML=
-    `<div class="panel"><h3>Setters <span style="font-weight:400;color:var(--muted);font-size:12px">- ${sIn}/${setters.length} submitted ${usDate(day)}</span></h3><div class="tablewrap"><table>${setters.length?`<thead><tr><th>Setter</th><th>Report</th><th class="num">Hours</th><th class="num">Dials</th><th class="num">Conn%</th><th class="num">Sets</th></tr></thead><tbody>${setRows}</tbody>`:'<tbody><tr><td class="muted" style="padding:14px">No setters.</td></tr></tbody>'}</table></div></div>`
-   +`<div class="panel"><h3>Closers <span style="font-weight:400;color:var(--muted);font-size:12px">- ${cIn}/${closers.length} submitted ${usDate(day)}</span></h3><div class="tablewrap"><table>${closers.length?`<thead><tr><th>Closer</th><th>Report</th><th class="num">Hours</th><th class="num">Calls</th><th class="num">Close%</th><th class="num">Deals</th><th class="num">Cash</th></tr></thead><tbody>${cloRows}</tbody>`:'<tbody><tr><td class="muted" style="padding:14px">No closers.</td></tr></tbody>'}</table></div></div>`
+    `<div class="panel"><h3>Setters <span style="font-weight:400;color:var(--muted);font-size:12px">- ${sIn}/${sAcc} submitted ${usDate(day)}</span></h3><div class="tablewrap"><table>${setters.length?`<thead><tr><th>Setter</th><th>Report</th><th class="num">Hours</th><th class="num">Dials</th><th class="num">Conn%</th><th class="num">Sets</th></tr></thead><tbody>${setRows}</tbody>`:'<tbody><tr><td class="muted" style="padding:14px">No setters.</td></tr></tbody>'}</table></div></div>`
+   +`<div class="panel"><h3>Closers <span style="font-weight:400;color:var(--muted);font-size:12px">- ${cIn}/${cAcc} submitted ${usDate(day)}</span></h3><div class="tablewrap"><table>${closers.length?`<thead><tr><th>Closer</th><th>Report</th><th class="num">Hours</th><th class="num">Calls</th><th class="num">Close%</th><th class="num">Deals</th><th class="num">Cash</th></tr></thead><tbody>${cloRows}</tbody>`:'<tbody><tr><td class="muted" style="padding:14px">No closers.</td></tr></tbody>'}</table></div></div>`
    +`<div class="panel"><h3>Managers (Manager EOD) <span style="font-weight:400;color:var(--muted);font-size:12px">- ${mIn}/${managers.length} submitted ${usDate(day)}</span></h3><div class="tablewrap"><table>${managers.length?`<thead><tr><th>Manager</th><th>Report</th></tr></thead><tbody>${mgrRows}</tbody>`:'<tbody><tr><td class="muted" style="padding:14px">No managers assigned (set them on Client Overview).</td></tr></tbody>'}</table></div></div>`
-   +`<div class="panel"><h3>Last 7 days <span style="font-weight:400;color:var(--muted);font-size:12px">- submitted (green) vs missing (red)</span></h3><div class="tablewrap"><table>${ghead}<tbody>${ggrp('Setters')}${grows(setters,'Setter',submittedEod)}${ggrp('Closers')}${grows(closers,'Closer',submittedEod)}${ggrp('Managers')}${grows(managers,'Manager',submittedMgrEod)}</tbody></table></div></div>`;
+   +eodDetailsHTML(day)
+   +`<div class="panel"><h3>Last 7 days <span style="font-weight:400;color:var(--muted);font-size:12px">- ✓ submitted · <span style="color:var(--bad)">✗</span> missed · ○ approved day off · – not employed</span></h3><div class="tablewrap"><table>${ghead}<tbody>${ggrp('Setters')}${grows(setters,'Setter')}${ggrp('Closers')}${grows(closers,'Closer')}${ggrp('Managers')}${mgrows(managers)}</tbody></table></div></div>`;
+}
+// day status marker: green check if submitted, neutral circle for an approved day off, dash if not yet hired / after termination, red X otherwise
+function dayMark(name,day,submitted){
+  if(submitted) return '<span style="color:var(--good);font-weight:700">✓</span>';
+  if(offdayStatus(name,day)==='approved') return '<span title="Approved day off" style="color:var(--muted);font-weight:700">○</span>';
+  const m=repMetaForName(name), s=m&&m.startDate?m.startDate.slice(0,10):null, e=m&&m.endDate?m.endDate.slice(0,10):null;
+  if((s&&day<s)||(e&&day>e)) return '<span title="Not employed on this day" class="muted">–</span>';
+  return '<span style="color:var(--bad);font-weight:700">✗</span>';
+}
+// the actual submitted report text/numbers for a day, in a friendly one-page format
+function eodDetailsHTML(day){
+  const num=v=>v||0;
+  const eods=activityRecords().filter(x=>x.type==='eod'&&String(x.date||'').slice(0,10)===day).sort((a,b)=>String(a.rep||'').localeCompare(String(b.rep||'')));
+  const mgeods=collapseMgrEod(RECORDS).filter(x=>String(x.date||'').slice(0,10)===day).sort((a,b)=>String(a.by||'').localeCompare(String(b.by||'')));
+  const card=(title,sub,body,note)=>`<div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px"><div style="font-weight:600">${title}${sub?` <span class="muted" style="font-weight:400;font-size:12px">${sub}</span>`:''}</div><div style="font-size:12px;color:var(--muted);margin-top:3px">${body}</div>${note?`<div style="margin-top:6px;font-size:13px">${note}</div>`:''}</div>`;
+  const eodCards=eods.map(x=>{
+    const setter=(x.role==='Setter');
+    const stats=setter?`${num(x.hoursDialing)}h · ${num(x.newOutreach)} dials · ${num(x.connectedCalls)} conn · ${num(x.callsSet)} sets`
+                      :`${num(x.hoursDialing)}h · ${num(x.connectedMeetings)} calls · ${num(x.closedDeals)} deals · ${money(x.cashCollected)}`;
+    const note=[x.notes&&('"'+esc(x.notes)+'"'), x.dqReason&&('DQ: '+esc(x.dqReason))].filter(Boolean).join(' · ');
+    return card(`${esc(x.rep||'')} <span class="pill">${esc(x.role||'Closer')}</span>`, esc(x.client||''), stats, note);
+  }).join('');
+  const mgrCards=mgeods.map(x=>card(`${esc(x.by||'')} <span class="pill">Manager</span>`, esc(x.client||''),
+    `Setters ${num(x.settersWorking)} (${num(x.setterDials)} dials, ${num(x.setterSets)} sets, ${num(x.setterEods)} EOD) · Closers ${num(x.closersWorking)} (${num(x.closerCalls)} calls, ${num(x.showRate)}% show, ${num(x.closeRate)}% close, ${money(x.cash)}, ${num(x.closerEods)} EOD)`,
+    x.bottleneck?('"'+esc(x.bottleneck)+'"'):'')).join('');
+  const inner=(eodCards+mgrCards)||'<p class="muted" style="padding:10px">No reports submitted this day.</p>';
+  return `<div class="panel"><h3>Report details <span style="font-weight:400;color:var(--muted);font-size:12px">- what each person actually reported ${usDate(day)}</span></h3><div style="padding:4px 2px">${inner}</div></div>`;
 }
 function renderAdminPeriod(view,date,setters,closers,managers){
   const range=periodRange(view,date), label=view==='week'?`Week of ${usDate(range.start)}`:usMonth(range.start.slice(0,7));
@@ -1561,7 +1618,104 @@ function renderAdminPeriod(view,date,setters,closers,managers){
     `<div class="panel"><h3>Setters <span style="font-weight:400;color:var(--muted);font-size:12px">- ${esc(label)}</span></h3><div class="tablewrap"><table>${setters.length?`<thead><tr><th>Setter</th><th class="num">Days</th><th class="num">Missed</th><th class="num">Hours</th><th class="num">Dials</th><th class="num">Conn%</th><th class="num">Sets</th></tr></thead><tbody>${setRows}</tbody>`:'<tbody><tr><td class="muted" style="padding:14px">No setters.</td></tr></tbody>'}</table></div></div>`
    +`<div class="panel"><h3>Closers <span style="font-weight:400;color:var(--muted);font-size:12px">- ${esc(label)}</span></h3><div class="tablewrap"><table>${closers.length?`<thead><tr><th>Closer</th><th class="num">Days</th><th class="num">Missed</th><th class="num">Hours</th><th class="num">Calls</th><th class="num">Close%</th><th class="num">Deals</th><th class="num">Cash</th></tr></thead><tbody>${cloRows}</tbody>`:'<tbody><tr><td class="muted" style="padding:14px">No closers.</td></tr></tbody>'}</table></div></div>`
    +`<div class="panel"><h3>Managers (Manager EOD) <span style="font-weight:400;color:var(--muted);font-size:12px">- ${esc(label)}</span></h3><div class="tablewrap"><table>${managers.length?`<thead><tr><th>Manager</th><th class="num">Days</th><th class="num">Missed</th><th class="num">EODs</th></tr></thead><tbody>${mgrRows}</tbody>`:'<tbody><tr><td class="muted" style="padding:14px">No managers assigned.</td></tr></tbody>'}</table></div></div>`
-   +`<p class="hint" style="margin-top:8px">"Days" = weekdays submitted out of weekdays in the period. "Missed" counts weekday no-shows only, weekend work still counts in the totals but weekends are not held against anyone.</p>`;
+   +churnPanelHTML()
+   +`<p class="hint" style="margin-top:8px">"Days" = accountable weekdays submitted out of accountable weekdays in the period (approved days off and pre-hire / post-termination days are excluded). "Missed" counts weekday no-shows only, weekend work still counts in the totals but weekends are not held against anyone.</p>`;
+}
+// churn per offer: of the setters/closers assigned to each account, how many have a termination date on file
+function churnPanelHTML(){
+  const reps=(USERS_CACHE||[]).filter(u=>['setter','closer'].includes(u.role));
+  const rows=clientNames().map(c=>{
+    const team=reps.filter(u=>teamsFor(u.username).includes(c));
+    const left=team.filter(u=>{const m=repMetaFor(u.username);return m&&m.endDate;});
+    return {c,total:team.length,left:left.length,rate:team.length?left.length/team.length:0};
+  }).filter(r=>r.total>0).sort((a,b)=>b.rate-a.rate||b.total-a.total);
+  const body=rows.length?rows.map(r=>`<tr><td>${esc(r.c)}</td><td class="num">${r.total}</td><td class="num" style="${r.left?'color:var(--bad);font-weight:700':''}">${r.left}</td><td class="num">${pct(r.rate)}</td></tr>`).join('')
+    :'<tr><td colspan="4" class="muted" style="padding:14px">No reps assigned to accounts yet, or no termination dates on file. Set hire / termination dates under Users &rsaquo; Details.</td></tr>';
+  return `<div class="panel"><h3>Churn by offer <span style="font-weight:400;color:var(--muted);font-size:12px">- reps assigned vs terminated (all-time)</span></h3><div class="tablewrap"><table><thead><tr><th>Offer / account</th><th class="num">Reps</th><th class="num">Left</th><th class="num">Churn</th></tr></thead><tbody>${body}</tbody></table></div></div>`;
+}
+/* ---- rep meta (hire / termination date + assigned manager) + off-day approvals ---- */
+function repMetaMap(){ const m={}; RECORDS.forEach(x=>{ if(x.type!=='repmeta')return; const k=nrmName(x.username||x.name); if(!k)return; if(!m[k]||(x.submittedAt||'')>(m[k].submittedAt||'')) m[k]=x; }); return m; }
+function repMetaFor(username){ return repMetaMap()[nrmName(username)]||null; }
+// admin report identifies reps by display name; map name -> account -> meta
+function repMetaForName(name){ const n=nrmName(name), map=repMetaMap(); if(map[n]) return map[n]; const u=(USERS_CACHE||[]).find(x=>nrmName(x.name)===n||nrmName(x.username)===n); return (u&&map[nrmName(u.username)])||null; }
+function collapseOffdays(list){ const m={}; list.forEach(x=>{ if(x.type!=='offday')return; const k=nrmName(x.rep)+'|'+String(x.date||'').slice(0,10); if(!m[k]||(x.submittedAt||'')>(m[k].submittedAt||'')) m[k]=x; }); return Object.values(m); }
+function offdayStatus(name,day){ const n=nrmName(name), d=String(day||'').slice(0,10); const r=collapseOffdays(RECORDS).find(x=>nrmName(x.rep)===n && String(x.date||'').slice(0,10)===d); return r?r.status:null; }
+// the days in a set a rep is actually accountable for: within their employment window and not an approved day off
+function accountableDays(name, days){
+  const m=repMetaForName(name), start=m&&m.startDate?m.startDate.slice(0,10):null, end=m&&m.endDate?m.endDate.slice(0,10):null;
+  const off=new Set(collapseOffdays(RECORDS).filter(x=>nrmName(x.rep)===nrmName(name)&&x.status==='approved').map(x=>String(x.date||'').slice(0,10)));
+  return days.filter(d=>(!start||d>=start)&&(!end||d<=end)&&!off.has(d));
+}
+// ---- Users tab: per-rep details editor (hire / termination / assigned manager) ----
+let REPMETA_EDIT=null;
+function editRepMeta(username){
+  REPMETA_EDIT=username; const u=userByName(username), m=repMetaFor(username)||{};
+  document.getElementById('repMetaTitle').textContent='Rep details - '+(u.name||username);
+  document.getElementById('rmStart').value=m.startDate?m.startDate.slice(0,10):'';
+  document.getElementById('rmEnd').value=m.endDate?m.endDate.slice(0,10):'';
+  const sel=document.getElementById('rmMgr'), people=mgrPeople();
+  sel.innerHTML='<option value="">- none -</option>'+people.map(p=>`<option>${esc(p)}</option>`).join('');
+  if(m.mgr&&!people.includes(m.mgr)) sel.add(new Option(m.mgr,m.mgr));
+  sel.value=m.mgr||'';
+  if(typeof cancelTeams==='function')cancelTeams(); if(typeof cancelRoles==='function')cancelRoles();
+  const p=document.getElementById('repMetaEditPanel'); p.hidden=false; p.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+function cancelRepMeta(){ REPMETA_EDIT=null; document.getElementById('repMetaEditPanel').hidden=true; }
+async function saveRepMeta(){
+  if(!REPMETA_EDIT) return; const u=userByName(REPMETA_EDIT);
+  const startDate=(document.getElementById('rmStart').value||'').slice(0,10), endDate=(document.getElementById('rmEnd').value||'').slice(0,10), mgr=document.getElementById('rmMgr').value||'';
+  await addRecord({type:'repmeta',username:u.username,name:u.name||u.username,startDate,endDate,mgr});
+  document.getElementById('repMetaEditPanel').hidden=true; REPMETA_EDIT=null; toast('Rep details saved'); renderUsers();
+}
+function repMetaSummary(username){ const m=repMetaFor(username); if(!m) return ''; const bits=[]; if(m.startDate)bits.push('hired '+usDate(m.startDate)); if(m.endDate)bits.push('left '+usDate(m.endDate)); if(m.mgr)bits.push('mgr: '+m.mgr); return bits.length?`<div class="muted" style="font-size:11px;margin-top:3px">${esc(bits.join(' · '))}</div>`:''; }
+// ---- Reps tab: rep requests a day off (routes to their assigned manager) ----
+function renderTimeOff(){
+  const panel=document.getElementById('timeOffPanel'); if(!panel) return;
+  if(!repMode()){ panel.hidden=true; return; }
+  panel.hidden=false;
+  const d=document.getElementById('offReqDate'); if(d&&!d.value) d.value=todayLocal();
+  const me=(SESSION&&SESSION.name)||'';
+  const mine=collapseOffdays(RECORDS).filter(x=>nrmName(x.rep)===nrmName(me)).sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))).slice(0,10);
+  document.getElementById('offReqList').innerHTML = mine.length
+    ? `<div class="tablewrap"><table><thead><tr><th>Day</th><th>Reason</th><th>Status</th></tr></thead><tbody>${mine.map(r=>`<tr><td>${esc(usDate(r.date))}</td><td>${esc(r.reason||'')}</td><td>${offdayPill(r.status)}</td></tr>`).join('')}</tbody></table></div>`
+    : '<span class="muted" style="font-size:12px">No time-off requests yet.</span>';
+}
+async function requestOffday(){
+  const d=(document.getElementById('offReqDate').value||'').slice(0,10); if(!d){ toast('Pick a date',true); return; }
+  const reason=(document.getElementById('offReqReason').value||'').trim(), me=(SESSION&&SESSION.name)||'', m=repMetaForName(me);
+  await addRecord({type:'offday',rep:me,date:d,reason,mgr:(m&&m.mgr)||'',status:'pending',by:me});
+  document.getElementById('offReqReason').value=''; toast('Day-off request sent'); renderTimeOff();
+}
+// ---- Manager / admin: approve or deny day-off requests ----
+function offdayPill(s){ const c=s==='approved'?'var(--good)':s==='denied'?'var(--bad)':'var(--warn)'; return `<span class="pill" style="color:${c};border-color:${c}">${esc(s||'')}</span>`; }
+function offdayReqsVisible(){
+  const all=collapseOffdays(RECORDS).sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')));
+  if(SESSION&&SESSION.role==='admin') return all;
+  const me=(SESSION&&SESSION.name)||'', managed=new Set(managedClients());
+  return all.filter(r=>{
+    if(nrmName(r.mgr)===nrmName(me)) return true;
+    const u=(USERS_CACHE||[]).find(x=>nrmName(x.name)===nrmName(r.rep)||nrmName(x.username)===nrmName(r.rep));
+    return !!(u && teamsFor(u.username).some(c=>managed.has(c)));
+  });
+}
+function offdayApprovalsHTML(){
+  const canAct=SESSION&&(SESSION.role==='admin'||SESSION.role==='manager');
+  const reqs=offdayReqsVisible(), pend=reqs.filter(r=>r.status==='pending'), recent=reqs.filter(r=>r.status!=='pending').slice(0,12);
+  const btns=r=>`${(canAct&&r.status!=='approved')?`<button class="btn sm gold" onclick="actOffday('${esc(r.rep)}','${String(r.date||'').slice(0,10)}','approved')">Approve</button> `:''}${(canAct&&r.status!=='denied')?`<button class="btn sm ghost" onclick="actOffday('${esc(r.rep)}','${String(r.date||'').slice(0,10)}','denied')">Deny</button>`:''}`;
+  const row=r=>`<tr><td style="white-space:nowrap">${esc(usDate(r.date))}</td><td>${esc(r.rep)}</td><td>${esc(r.reason||'')}</td><td>${esc(r.mgr||'')}</td><td>${offdayPill(r.status)}</td><td>${btns(r)}</td></tr>`;
+  if(!reqs.length) return '<p class="muted" style="padding:12px">No day-off requests.</p>';
+  const head=`<thead><tr><th>Day</th><th>Rep</th><th>Reason</th><th>Assigned mgr</th><th>Status</th><th></th></tr></thead>`;
+  return `<div class="tablewrap"><table>${head}<tbody>`
+    +(pend.length?`<tr><td colspan="6" style="background:var(--surface-2);font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--gold)">Pending</td></tr>`+pend.map(row).join(''):'')
+    +(recent.length?`<tr><td colspan="6" style="background:var(--surface-2);font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">Recent</td></tr>`+recent.map(row).join(''):'')
+    +`</tbody></table></div>`;
+}
+function renderOffdayApprovals(){ const html=offdayApprovalsHTML(); document.querySelectorAll('.offdayBox').forEach(el=>el.innerHTML=html); }
+async function actOffday(rep,date,status){
+  const cur=collapseOffdays(RECORDS).find(x=>nrmName(x.rep)===nrmName(rep)&&String(x.date||'').slice(0,10)===date)||{};
+  await addRecord({type:'offday',rep,date,reason:cur.reason||'',mgr:cur.mgr||'',status,by:(SESSION&&SESSION.name)||''});
+  toast('Day off '+status); renderOffdayApprovals();
+  if(document.getElementById('arBody')&&!document.getElementById('tab-adminreport').hidden) renderAdminReport();
 }
 // a rep's "team" = the client accounts they've worked (by rep or setter credit)
 function myTeamClients(){
@@ -1586,6 +1740,7 @@ function repFiltered(){
 function renderReps(){
   const rm=repMode();
   renderEodCheck();
+  renderTimeOff();
   // rep sees their ASSIGNED teams; if none assigned yet, fall back to the accounts they've submitted for
   const assigned = rm ? teamsFor(SESSION&&SESSION.username) : [];
   REP_SCOPE = rm ? (assigned.length?assigned:myTeamClients()) : null;
@@ -1756,9 +1911,11 @@ function renderUsersTable(list){
       const teams=u.master?[]:teamsFor(u.username);
       const mgd=u.master?[]:managedClientsForUser(u);
       const rolesBtn=` <button class="btn sm ghost" onclick="editRoles('${esc(u.username)}')">Edit roles</button>`;
+      const isRep=['closer','setter'].includes(u.role);
+      const detailsBtn = (isAdmin&&isRep) ? ` <button class="btn sm ghost" onclick="editRepMeta('${esc(u.username)}')">Details</button>` : '';
       const teamCell = u.master ? '<span class="muted">-</span>'
         : (['closer','setter','founder'].includes(u.role)
-            ? ((teams.length?teams.map(t=>`<span class="teamtag">${esc(t)}</span>`).join(''):'<span class="tag" style="color:var(--warn);border-color:var(--warn)">none - not scoped</span>')+` <button class="btn sm ghost" onclick="editTeams('${esc(u.username)}')">Edit</button>`)
+            ? ((teams.length?teams.map(t=>`<span class="teamtag">${esc(t)}</span>`).join(''):'<span class="tag" style="color:var(--warn);border-color:var(--warn)">none - not scoped</span>')+` <button class="btn sm ghost" onclick="editTeams('${esc(u.username)}')">Edit</button>`+detailsBtn+(isRep?repMetaSummary(u.username):''))
             : (u.role==='admin'
                 ? '<span class="muted">all (admin)</span>'+(mgd.length?' &middot; '+mgd.map(t=>`<span class="teamtag">${esc(t)}</span>`).join(''):'')+rolesBtn
                 : (mgd.length
