@@ -183,6 +183,7 @@
   <button data-tab="mgreod">Manager EOD</button>
   <button data-tab="webinar">Webinar</button>
   <button data-tab="calllog">Call Log</button>
+  <button data-tab="adminreport">Admin Report</button>
   <button data-tab="data">Data + Export</button>
   <button data-tab="users">Users</button>
   <button data-tab="settings">Settings</button>
@@ -434,6 +435,21 @@
       <button class="btn ghost sm" onclick="renderCallLog()">Refresh</button>
     </div>
     <div class="panel" style="margin-top:6px"><div class="tablewrap"><table id="callLogTable"></table></div></div>
+  </section>
+
+  <!-- ===== ADMIN REPORT ===== -->
+  <section id="tab-adminreport" hidden>
+    <h2 class="section">Admin Report</h2>
+    <p class="hint">Leadership-only at-a-glance of who submitted their reports, so you do not have to check three places. Green = submitted, red = missing. Pick a day for the detail, and use the 7-day grid to spot who is chronically not checking out.</p>
+    <div class="filters" style="margin:0 0 4px">
+      <div class="field"><label>Day</label><input type="date" id="arDate" onchange="renderAdminReport()"></div>
+      <span id="arSummary" class="tag" style="align-self:flex-end;margin-bottom:2px"></span>
+      <button class="btn ghost sm" style="align-self:flex-end" onclick="renderAdminReport()">Refresh</button>
+    </div>
+    <div class="panel"><h3>Setter reports <span id="arSetSum" style="font-weight:400;color:var(--muted);font-size:12px"></span></h3><div style="padding:14px"><div class="chiprow" id="arSetters"></div></div></div>
+    <div class="panel"><h3>Closer reports <span id="arCloSum" style="font-weight:400;color:var(--muted);font-size:12px"></span></h3><div style="padding:14px"><div class="chiprow" id="arClosers"></div></div></div>
+    <div class="panel"><h3>Manager reports (Manager EOD) <span id="arMgrSum" style="font-weight:400;color:var(--muted);font-size:12px"></span></h3><div style="padding:14px"><div class="chiprow" id="arManagers"></div></div></div>
+    <div class="panel"><h3>Last 7 days <span style="font-weight:400;color:var(--muted);font-size:12px">- submitted (green) vs missing (red)</span></h3><div class="tablewrap"><table id="arGrid"></table></div></div>
   </section>
 
   <!-- ===== DATA ===== -->
@@ -781,7 +797,7 @@ function startApp(){
   document.getElementById('whoTag').textContent = SESSION.name+' ('+roleLabel(role)+')';
   document.getElementById('storeTag').textContent = '';
   const allow = {
-    admin:['dash','reps','clients','onboarding','meeting','postcall','eod','mgreod','webinar','calllog','data','users','settings'],
+    admin:['dash','reps','clients','onboarding','meeting','postcall','eod','mgreod','webinar','calllog','adminreport','data','users','settings'],
     manager:['dash','reps','clients','onboarding','meeting','users','postcall','eod','mgreod','webinar','calllog'],
     founder:['dash'],
     webinarteam:['dash','meeting','webinar'],
@@ -820,9 +836,9 @@ function applyIdentity(){
 function wireTabs(){ document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>showTab(b.dataset.tab)); }
 function showTab(t){
   document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
-  ['dash','reps','clients','onboarding','meeting','deal','postcall','eod','mgreod','webinar','calllog','data','users','settings'].forEach(x=>{ document.getElementById('tab-'+x).hidden = (x!==t); });
+  ['dash','reps','clients','onboarding','meeting','deal','postcall','eod','mgreod','webinar','calllog','adminreport','data','users','settings'].forEach(x=>{ document.getElementById('tab-'+x).hidden = (x!==t); });
   // stale-while-revalidate: render instantly from the cached records, then refresh in the background
-  const render={dash:renderDash, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, mgreod:renderMgrEod, webinar:renderWebinars, calllog:renderCallLog, data:renderAll}[t];
+  const render={dash:renderDash, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, mgreod:renderMgrEod, webinar:renderWebinars, calllog:renderCallLog, adminreport:renderAdminReport, data:renderAll}[t];
   if(render){ render(); syncRecords().then(()=>{ if(currentTab()===t) render(); }); }
   if(t==='data'){ renderDailyEntry(); }
   if(t==='users'){ renderUsers(); }
@@ -1476,6 +1492,39 @@ function renderEodCheck(){
   const sum=document.getElementById('eodCheckSummary');
   sum.textContent=`Setters ${sIn}/${setters.length} · Closers ${cIn}/${closers.length} submitted`+(miss?` · ${miss} missing`:' · all in');
   sum.style.color=miss?'var(--warn)':'var(--good)'; sum.style.borderColor=miss?'var(--warn)':'var(--good)';
+}
+/* ---------------- admin report: submission compliance across setters/closers/managers ---------------- */
+// everyone assigned as a webinar/setter/closer manager on any client = who should submit a Manager EOD
+function managerNames(){ const s=new Set(); latestClients().forEach(c=>['webinarMgr','setterMgr','closerMgr'].forEach(f=>{ const v=(c[f]||'').trim(); if(v)s.add(v); })); return [...s].sort((a,b)=>a.localeCompare(b)); }
+function submittedMgrEod(name, day){ const n=nrmName(name); return RECORDS.some(x=>x.type==='mgreod' && nrmName(x.by)===n && String(x.date||'').slice(0,10)===day); }
+function isoOffset(iso,delta){ const s=(iso||todayLocal()).slice(0,10), y=+s.slice(0,4),m=+s.slice(5,7),d=+s.slice(8,10); const dt=new Date(y,m-1,d+delta); return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`; }
+function renderAdminReport(){
+  const di=document.getElementById('arDate'); if(!di) return; if(!di.value) di.value=todayLocal();
+  const day=di.value;
+  const setters=repNames('setter'), closers=repNames('closer'), managers=managerNames();
+  const chip=(n,fn)=>{ const ok=fn(n,day); return `<span class="chip" style="background:${ok?'var(--good-soft)':'var(--warn-soft)'};color:${ok?'var(--good)':'var(--warn)'};font-weight:600">${ok?'✓':'✗'} ${esc(n)}</span>`; };
+  const g=id=>document.getElementById(id);
+  g('arSetters').innerHTML=setters.length?setters.map(n=>chip(n,submittedEod)).join(''):'<span class="muted" style="font-size:12px">No setters.</span>';
+  g('arClosers').innerHTML=closers.length?closers.map(n=>chip(n,submittedEod)).join(''):'<span class="muted" style="font-size:12px">No closers.</span>';
+  g('arManagers').innerHTML=managers.length?managers.map(n=>chip(n,submittedMgrEod)).join(''):'<span class="muted" style="font-size:12px">No managers assigned (set them on Client Overview).</span>';
+  const sIn=setters.filter(n=>submittedEod(n,day)).length, cIn=closers.filter(n=>submittedEod(n,day)).length, mIn=managers.filter(n=>submittedMgrEod(n,day)).length;
+  const miss=(setters.length-sIn)+(closers.length-cIn)+(managers.length-mIn);
+  g('arSetSum').textContent=setters.length?`(${sIn}/${setters.length})`:''; g('arCloSum').textContent=closers.length?`(${cIn}/${closers.length})`:''; g('arMgrSum').textContent=managers.length?`(${mIn}/${managers.length})`:'';
+  const sum=g('arSummary');
+  sum.textContent=`${usDate(day)} - Setters ${sIn}/${setters.length} · Closers ${cIn}/${closers.length} · Managers ${mIn}/${managers.length}`+(miss?` · ${miss} missing`:' · all in');
+  sum.style.color=miss?'var(--warn)':'var(--good)'; sum.style.borderColor=miss?'var(--warn)':'var(--good)';
+  // 7-day trailing grid
+  const days=[]; for(let i=6;i>=0;i--) days.push(isoOffset(day,-i));
+  const dow=d=>['Su','Mo','Tu','We','Th','Fr','Sa'][new Date(d+'T00:00:00').getDay()];
+  const cell=ok=>`<td class="num" style="color:${ok?'var(--good)':'var(--bad)'};font-weight:700">${ok?'✓':'✗'}</td>`;
+  const rowsFor=(names,role,fn)=>names.map(n=>`<tr><td>${esc(n)}</td><td class="muted" style="font-size:11px">${role}</td>`+days.map(d=>cell(fn(n,d))).join('')+`</tr>`).join('');
+  const head=`<thead><tr><th>Person</th><th>Role</th>`+days.map(d=>`<th class="num" style="white-space:nowrap">${dow(d)} ${(+d.slice(5,7))}-${(+d.slice(8,10))}</th>`).join('')+`</tr></thead>`;
+  const grp=(label,n,total)=>`<tr><td colspan="${2+days.length}" style="background:var(--surface-2);font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--gold)">${label} - ${n}/${total} on ${usDate(day)}</td></tr>`;
+  g('arGrid').innerHTML=head+`<tbody>`
+    +grp('Setters',sIn,setters.length)+rowsFor(setters,'Setter',submittedEod)
+    +grp('Closers',cIn,closers.length)+rowsFor(closers,'Closer',submittedEod)
+    +grp('Managers',mIn,managers.length)+rowsFor(managers,'Manager',submittedMgrEod)
+    +`</tbody>`;
 }
 // a rep's "team" = the client accounts they've worked (by rep or setter credit)
 function myTeamClients(){
