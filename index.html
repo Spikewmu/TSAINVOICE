@@ -519,6 +519,7 @@
     <div class="panel" id="rolesEditPanel" hidden><h3 id="rolesEditTitle">Responsibilities</h3>
       <div style="padding:14px">
         <p class="hint">Toggle the function(s) this person runs for each account. One person can run several, and across several accounts - e.g. someone who runs <b>Webinar</b> on some accounts and also manages <b>Setters</b> or <b>Closers</b> on others. What you turn on here unlocks the matching tabs for them (Webinar unlocks the Webinar tab; Setters/Closers unlock the manager tabs). One person per function per account: turning one on that another manager holds reassigns it (their name shows in grey).</p>
+        <p class="hint" style="margin:-6px 0 4px"><b>Hire and termination dates</b> are set separately, with the <b>Hire / dates</b> button on the person's row above.</p>
         <div id="rolesEditTable"></div>
         <div class="row-actions" style="margin-top:12px"><button class="btn gold sm" onclick="saveRoles()">Save responsibilities</button><button class="btn ghost sm" onclick="cancelRoles()">Cancel</button></div>
       </div>
@@ -1760,7 +1761,7 @@ function accountableDays(name, days){
 let REPMETA_EDIT=null;
 function editRepMeta(username){
   REPMETA_EDIT=username; const u=userByName(username), m=repMetaFor(username)||{};
-  document.getElementById('repMetaTitle').textContent='Rep details - '+(u.name||username);
+  document.getElementById('repMetaTitle').textContent='Hire / termination dates - '+(u.name||username);
   document.getElementById('rmStart').value=m.startDate?m.startDate.slice(0,10):'';
   document.getElementById('rmEnd').value=m.endDate?m.endDate.slice(0,10):'';
   const sel=document.getElementById('rmMgr'), people=mgrPeople();
@@ -2025,14 +2026,14 @@ function renderUsersTable(list){
     users.map(u=>{
       const teams=u.master?[]:teamsFor(u.username);
       const rolesBtn=` <button class="btn sm ghost" onclick="editRoles('${esc(u.username)}')">Responsibilities</button>`;
-      const isRep=['closer','setter'].includes(u.role);
-      const detailsBtn = (isAdmin&&isRep) ? ` <button class="btn sm ghost" onclick="editRepMeta('${esc(u.username)}')">Details</button>` : '';
+      const isStaff = !u.master && u.role!=='founder'; // real team members (setters/closers/managers/admins) have hire/termination dates
+      const datesBtn = (isAdmin&&isStaff) ? ` <button class="btn sm ghost" onclick="editRepMeta('${esc(u.username)}')">Hire / dates</button>` : '';
       const teamCell = u.master ? '<span class="muted">-</span>'
         : (['closer','setter','founder'].includes(u.role)
-            ? ((teams.length?teams.map(t=>`<span class="teamtag">${esc(t)}</span>`).join(''):'<span class="tag" style="color:var(--warn);border-color:var(--warn)">none - not scoped</span>')+` <button class="btn sm ghost" onclick="editTeams('${esc(u.username)}')">Edit</button>`+detailsBtn+(isRep?repMetaSummary(u.username):''))
+            ? ((teams.length?teams.map(t=>`<span class="teamtag">${esc(t)}</span>`).join(''):'<span class="tag" style="color:var(--warn);border-color:var(--warn)">none - not scoped</span>')+` <button class="btn sm ghost" onclick="editTeams('${esc(u.username)}')">Edit</button>`+datesBtn+(isStaff?repMetaSummary(u.username):''))
             : (u.role==='admin'
-                ? '<span class="muted">all (admin)</span>'+roleSummaryHTML(u)+rolesBtn
-                : ((roleSummaryHTML(u)||'<span class="tag" style="color:var(--warn);border-color:var(--warn)">no accounts assigned yet</span>')+rolesBtn)));
+                ? '<span class="muted">all (admin)</span>'+roleSummaryHTML(u)+rolesBtn+datesBtn+repMetaSummary(u.username)
+                : ((roleSummaryHTML(u)||'<span class="tag" style="color:var(--warn);border-color:var(--warn)">no accounts assigned yet</span>')+rolesBtn+datesBtn+repMetaSummary(u.username))));
       const actions = u.master ? '<span class="tag">master, set in Settings</span>'
         : (isAdmin ? `<button class="btn sm ghost" style="color:var(--warn);border-color:var(--warn)" onclick="delUser('${esc(u.username)}')">Remove</button>` : '');
       return `<tr><td>${esc(u.name)}</td><td>${esc(u.username)}</td><td><span class="pill">${esc(roleLabel(u.role))}</span></td><td>${teamCell}</td><td>${actions}</td></tr>`;
