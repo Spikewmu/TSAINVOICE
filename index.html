@@ -451,7 +451,9 @@
     <h2 class="section">Call Log</h2>
     <p class="hint">Every post-call checkout, newest first, from closers and setters. Review any call's outcome and open the recording. Reps see their own account; managers and admins see everything.</p>
     <div class="filters">
-      <div class="field"><label>Month</label><select id="clMonth" onchange="renderCallLog()"></select></div>
+      <div class="field"><label>From</label><input type="date" id="clFrom" onchange="renderCallLog()"></div>
+      <div class="field"><label>To</label><input type="date" id="clTo" onchange="renderCallLog()"></div>
+      <div class="field"><label>Quick range</label><div class="row-actions"><button class="btn ghost sm" onclick="rangePreset('clFrom','clTo','week','renderCallLog')">This week</button><button class="btn ghost sm" onclick="rangePreset('clFrom','clTo','month','renderCallLog')">This month</button><button class="btn ghost sm" onclick="rangePreset('clFrom','clTo','30','renderCallLog')">Last 30d</button><button class="btn ghost sm" onclick="rangePreset('clFrom','clTo','all','renderCallLog')">All time</button></div></div>
       <div class="field"><label>Client</label><select id="clClient" onchange="renderCallLog()"></select></div>
       <div class="field"><label>Type</label><select id="clRole" onchange="renderCallLog()"><option value="">All calls</option><option value="Closer">Closing calls</option><option value="Setter">Conversations</option></select></div>
       <div class="field"><label>Rep</label><select id="clRep" onchange="renderCallLog()"></select></div>
@@ -464,10 +466,11 @@
   <!-- ===== ADMIN REPORT ===== -->
   <section id="tab-adminreport" hidden>
     <h2 class="section">Admin Report</h2>
-    <p class="hint">Leadership-only. See who submitted their reports (Setter / Closer / Manager EOD) AND their performance, in one place. Green = submitted, red = missing. <b>Day</b> = who checked out that day + a 7-day grid; <b>Week / Month</b> = how many days each person missed + their totals for the period.</p>
-    <div class="filters" style="margin:0 0 8px">
-      <div class="field"><label>View</label><select id="arView" onchange="renderAdminReport()"><option value="day">Day</option><option value="week">Week</option><option value="month">Month</option></select></div>
-      <div class="field"><label>Date</label><input type="date" id="arDate" onchange="renderAdminReport()"></div>
+    <p class="hint">Leadership-only. See who submitted their reports (Setter / Closer / Manager EOD) AND their performance over any date range. Pick a <b>From</b> and <b>To</b> date (or a quick range). Tables cover the whole range; a day-by-day grid shows for ranges of 16 days or fewer.</p>
+    <div class="filters" style="margin:0 0 8px;align-items:flex-end">
+      <div class="field"><label>From</label><input type="date" id="arFrom" onchange="renderAdminReport()"></div>
+      <div class="field"><label>To</label><input type="date" id="arTo" onchange="renderAdminReport()"></div>
+      <div class="field"><label>Quick range</label><div class="row-actions"><button class="btn ghost sm" onclick="setArPreset('yesterday')">Yesterday</button><button class="btn ghost sm" onclick="setArPreset('week')">This week</button><button class="btn ghost sm" onclick="setArPreset('month')">This month</button><button class="btn ghost sm" onclick="setArPreset('30')">Last 30d</button></div></div>
       <span id="arSummary" class="tag" style="align-self:flex-end;margin-bottom:2px"></span>
       <button class="btn ghost sm" style="align-self:flex-end" onclick="renderAdminReport()">Refresh</button>
     </div>
@@ -616,9 +619,11 @@
         <div id="offReqList"></div>
       </div>
     </div>
-    <div class="filters">
-      <div class="field"><label>Month</label><select id="rMonth"></select></div>
-      <div class="field"><label>Client</label><select id="rClient"></select></div>
+    <div class="filters" style="align-items:flex-end">
+      <div class="field"><label>From</label><input type="date" id="rFrom" onchange="renderReps()"></div>
+      <div class="field"><label>To</label><input type="date" id="rTo" onchange="renderReps()"></div>
+      <div class="field"><label>Quick range</label><div class="row-actions"><button class="btn ghost sm" onclick="rangePreset('rFrom','rTo','week','renderReps')">This week</button><button class="btn ghost sm" onclick="rangePreset('rFrom','rTo','month','renderReps')">This month</button><button class="btn ghost sm" onclick="rangePreset('rFrom','rTo','30','renderReps')">Last 30d</button><button class="btn ghost sm" onclick="rangePreset('rFrom','rTo','all','renderReps')">All time</button></div></div>
+      <div class="field"><label>Client</label><select id="rClient" onchange="renderReps()"></select></div>
       <button class="btn ghost sm" onclick="renderReps()">Refresh</button>
     </div>
     <div class="panel"><h3>Setters</h3><div class="tablewrap"><table id="setterTable"></table></div></div>
@@ -1090,8 +1095,6 @@ function collapsePostcall(list){
 }
 /* ---------------- call log ---------------- */
 function fillCallLogFilters(recs){
-  const months=[...new Set(recs.map(x=>monthKey(x.date)).filter(Boolean))].sort().reverse();
-  const fm=document.getElementById('clMonth'); if(fm){ const cur=fm.value; fm.innerHTML='<option value="">All months</option>'+months.map(m=>`<option value="${m}">${usMonth(m)}</option>`).join(''); if(cur)fm.value=cur; }
   const sc=dashScopeClients(), clist=sc?sc.filter(c=>c!==' none'):clientNames();
   const fc=document.getElementById('clClient'); if(fc){ const cc=fc.value; fc.innerHTML='<option value="">'+(sc?('My account'+(clist.length>1?'s':'')):'All clients')+'</option>'+clist.map(c=>`<option>${esc(c)}</option>`).join(''); if(cc)fc.value=cc; }
   const fr=document.getElementById('clRep'); if(fr){ const cur=fr.value, reps=[...new Set(recs.map(x=>String(x.rep||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b)); fr.innerHTML='<option value="">All reps</option>'+reps.map(n=>`<option>${esc(n)}</option>`).join(''); if(reps.includes(cur))fr.value=cur; }
@@ -1101,8 +1104,8 @@ function callLogPill(o){ const good=/^(Won|Booked)/.test(o||''), bad=/^(Lost|No-
 function renderCallLog(){
   const recs=collapsePostcall(RECORDS); fillCallLogFilters(recs);
   const gv=id=>{ const e=document.getElementById(id); return e?e.value:''; };
-  const m=gv('clMonth'),c=gv('clClient'),r=gv('clRole'),rep=gv('clRep'),oc=gv('clOutcome'),sc=dashScopeClients();
-  const rows=recs.filter(x=>(!m||monthKey(x.date)===m)&&(!c||x.client===c)&&(!r||(x.role||'')===r)&&(!rep||String(x.rep||'').trim()===rep)&&(!oc||(x.outcome||'')===oc)&&(!sc||sc.includes(x.client)))
+  const from=gv('clFrom').slice(0,10),to=gv('clTo').slice(0,10),c=gv('clClient'),r=gv('clRole'),rep=gv('clRep'),oc=gv('clOutcome'),sc=dashScopeClients();
+  const rows=recs.filter(x=>((!from&&!to)||inRange(x.date,from,to))&&(!c||x.client===c)&&(!r||(x.role||'')===r)&&(!rep||String(x.rep||'').trim()===rep)&&(!oc||(x.outcome||'')===oc)&&(!sc||sc.includes(x.client)))
     .sort((a,b)=>((b.date||'')+(b.submittedAt||'')).localeCompare((a.date||'')+(a.submittedAt||'')));
   const cols=`<colgroup><col style="width:9%"><col style="width:15%"><col style="width:13%"><col style="width:12%"><col style="width:23%"><col style="width:10%"><col style="width:11%"><col style="width:7%"></colgroup>`;
   const head=`${cols}<thead><tr><th>Date</th><th>Client</th><th>Type</th><th>Rep</th><th>Lead</th><th>Source</th><th>Outcome</th><th>Call</th></tr></thead><tbody>`;
@@ -1605,43 +1608,54 @@ function mgrPeriodStats(name, range){
 }
 function arSummaryBar(txt,miss){ const sum=document.getElementById('arSummary'); if(!sum)return; sum.textContent=txt; sum.style.color=miss?'var(--warn)':'var(--good)'; sum.style.borderColor=miss?'var(--warn)':'var(--good)'; }
 function renderAdminReport(){
-  const di=document.getElementById('arDate'); if(!di) return; if(!di.value) di.value=isoOffset(todayLocal(),-1); // default to yesterday
-  const view=(document.getElementById('arView')||{}).value||'day', date=di.value;
+  const fi=document.getElementById('arFrom'), ti=document.getElementById('arTo'); if(!fi||!ti) return;
+  if(!ti.value) ti.value=isoOffset(todayLocal(),-1);   // default To = yesterday
+  if(!fi.value) fi.value=ti.value;                     // default = single day (yesterday)
+  let start=fi.value.slice(0,10), end=ti.value.slice(0,10);
+  if(end<start){ const t=start; start=end; end=t; fi.value=start; ti.value=end; } // keep From <= To
+  const range=rangeFromTo(start,end);
   const setters=repNames('setter'), closers=repNames('closer'), managers=managerNames();
-  if(view==='day') renderAdminDay(date,setters,closers,managers); else renderAdminPeriod(view,date,setters,closers,managers);
+  renderAdminRange(range,setters,closers,managers);
   renderOffdayApprovals();
 }
-function renderAdminDay(day,setters,closers,managers){
-  const accToday=n=>accountableDays(n,[day]).length>0; // employed that day and not on an approved day off
-  const sIn=setters.filter(n=>submittedEod(n,day)).length, cIn=closers.filter(n=>submittedEod(n,day)).length, mIn=managers.filter(n=>submittedMgrEod(n,day)).length;
-  const sAcc=setters.filter(accToday).length, cAcc=closers.filter(accToday).length;
-  const miss=(sAcc-sIn)+(cAcc-cIn)+(managers.length-mIn); // approved days off / pre-hire days are not held against anyone
-  arSummaryBar(`${usDate(day)} - Setters ${sIn}/${sAcc} · Closers ${cIn}/${cAcc} · Managers ${mIn}/${managers.length}`+(miss?` · ${miss} missing`:' · all in'), miss);
-  const range={days:[day],weekdays:[day]};
-  const setRows=setters.map(n=>{const s=repPeriodStats(n,'Setter',range);return `<tr><td>${esc(n)}</td><td>${dayMark(n,day,submittedEod(n,day))}</td><td class="num">${s.hours}</td><td class="num">${s.dials}</td><td class="num">${pct(s.connRate)}</td><td class="num">${s.sets}</td></tr>`;}).join('');
-  const cloRows=closers.map(n=>{const s=repPeriodStats(n,'Closer',range);return `<tr><td>${esc(n)}</td><td>${dayMark(n,day,submittedEod(n,day))}</td><td class="num">${s.hours}</td><td class="num">${s.connMeet}</td><td class="num">${pct(s.closeRate)}</td><td class="num">${s.deals}</td><td class="num">${money(s.cash)}</td></tr>`;}).join('');
-  const okM=b=>`<span style="color:${b?'var(--good)':'var(--bad)'};font-weight:700">${b?'✓':'✗'}</span>`;
-  const mgrRows=managers.map(n=>`<tr><td>${esc(n)}</td><td>${okM(submittedMgrEod(n,day))}</td></tr>`).join('');
-  const gd=[]; for(let i=6;i>=0;i--) gd.push(isoOffset(day,-i));
-  const dow=d=>['Su','Mo','Tu','We','Th','Fr','Sa'][new Date(d+'T00:00:00').getDay()];
-  const cell=b=>`<td class="num" style="color:${b?'var(--good)':'var(--bad)'};font-weight:700">${b?'✓':'✗'}</td>`;
-  const grows=(names,role)=>names.map(n=>`<tr><td>${esc(n)}</td><td class="muted" style="font-size:11px">${role}</td>`+gd.map(d=>`<td class="num">${dayMark(n,d,submittedEod(n,d))}</td>`).join('')+`</tr>`).join('');
-  const mgrows=names=>names.map(n=>`<tr><td>${esc(n)}</td><td class="muted" style="font-size:11px">Manager</td>`+gd.map(d=>cell(submittedMgrEod(n,d))).join('')+`</tr>`).join('');
-  const ghead=`<thead><tr><th>Person</th><th>Role</th>`+gd.map(d=>`<th class="num" style="white-space:nowrap">${dow(d)} ${(+d.slice(5,7))}-${(+d.slice(8,10))}</th>`).join('')+`</tr></thead>`;
-  const ggrp=l=>`<tr><td colspan="${2+gd.length}" style="background:var(--surface-2);font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--gold)">${l}</td></tr>`;
-  document.getElementById('arBody').innerHTML=
-    `<div class="panel"><h3>Setters <span style="font-weight:400;color:var(--muted);font-size:12px">- ${sIn}/${sAcc} submitted ${usDate(day)}</span></h3><div class="tablewrap"><table>${setters.length?`<thead><tr><th>Setter</th><th>Report</th><th class="num">Hours</th><th class="num">Dials</th><th class="num">Conn%</th><th class="num">Sets</th></tr></thead><tbody>${setRows}</tbody>`:'<tbody><tr><td class="muted" style="padding:14px">No setters.</td></tr></tbody>'}</table></div></div>`
-   +`<div class="panel"><h3>Closers <span style="font-weight:400;color:var(--muted);font-size:12px">- ${cIn}/${cAcc} submitted ${usDate(day)}</span></h3><div class="tablewrap"><table>${closers.length?`<thead><tr><th>Closer</th><th>Report</th><th class="num">Hours</th><th class="num">Calls</th><th class="num">Close%</th><th class="num">Deals</th><th class="num">Cash</th></tr></thead><tbody>${cloRows}</tbody>`:'<tbody><tr><td class="muted" style="padding:14px">No closers.</td></tr></tbody>'}</table></div></div>`
-   +`<div class="panel"><h3>Managers (Manager EOD) <span style="font-weight:400;color:var(--muted);font-size:12px">- ${mIn}/${managers.length} submitted ${usDate(day)}</span></h3><div class="tablewrap"><table>${managers.length?`<thead><tr><th>Manager</th><th>Report</th></tr></thead><tbody>${mgrRows}</tbody>`:'<tbody><tr><td class="muted" style="padding:14px">No managers assigned (set them on Client Overview).</td></tr></tbody>'}</table></div></div>`
-   +eodDetailsHTML(day)
-   +`<div class="panel"><h3>Last 7 days <span style="font-weight:400;color:var(--muted);font-size:12px">- ✓ submitted · <span style="color:var(--bad)">✗</span> missed · ○ approved day off · – not employed</span></h3><div class="tablewrap"><table>${ghead}<tbody>${ggrp('Setters')}${grows(setters,'Setter')}${ggrp('Closers')}${grows(closers,'Closer')}${ggrp('Managers')}${mgrows(managers)}</tbody></table></div></div>`;
+// build a range from an explicit start/end (inclusive). elapsed = weekdays already fully past (today never counts as missed)
+function rangeFromTo(start,end){
+  const days=[]; let cur=start, guard=0; while(cur<=end && guard++<800){ days.push(cur); cur=isoOffset(cur,1); }
+  const weekdays=days.filter(d=>{ const w=new Date(d+'T00:00:00').getDay(); return w>=1&&w<=5; });
+  const today=todayLocal(), elapsed=weekdays.filter(d=>d<today);
+  return {start,end,days,weekdays,elapsed,single:start===end};
 }
-// day status marker: green check if submitted, neutral circle for an approved day off, dash if not yet hired / after termination, red X otherwise
+function setArPreset(p){
+  const t=todayLocal(); let from,to;
+  if(p==='yesterday'){ from=to=isoOffset(t,-1); }
+  else if(p==='today'){ from=to=t; }
+  else if(p==='week'){ const dow=new Date(t+'T00:00:00').getDay(); from=isoOffset(t,dow===0?-6:1-dow); to=t; }
+  else if(p==='month'){ from=t.slice(0,7)+'-01'; to=t; }
+  else { from=isoOffset(t,-29); to=t; } // last 30 days
+  const fi=document.getElementById('arFrom'), ti=document.getElementById('arTo'); if(fi)fi.value=from; if(ti)ti.value=to;
+  renderAdminReport();
+}
+// generic date-range helpers reused by the Call Log + Rep Breakdown filters
+function inRange(d,from,to){ d=String(d||'').slice(0,10); if(!d) return false; if(from&&d<from) return false; if(to&&d>to) return false; return true; }
+function rangePreset(fromId,toId,p,fn){
+  const t=todayLocal(); let from='',to='';
+  if(p==='today'){ from=to=t; }
+  else if(p==='yesterday'){ from=to=isoOffset(t,-1); }
+  else if(p==='week'){ const dow=new Date(t+'T00:00:00').getDay(); from=isoOffset(t,dow===0?-6:1-dow); to=t; }
+  else if(p==='month'){ from=t.slice(0,7)+'-01'; to=t; }
+  else if(p==='30'){ from=isoOffset(t,-29); to=t; }
+  // 'all' leaves both blank = no date filter
+  const f=document.getElementById(fromId), tt=document.getElementById(toId); if(f)f.value=from; if(tt)tt.value=to;
+  if(fn&&window[fn]) window[fn]();
+}
+// day status marker: green check if submitted, neutral circle for an approved day off, dash if not yet hired / after termination,
+// a muted dot for today / future (not due yet), red X for a real weekday miss
 function dayMark(name,day,submitted){
   if(submitted) return '<span style="color:var(--good);font-weight:700">✓</span>';
   if(offdayStatus(name,day)==='approved') return '<span title="Approved day off" style="color:var(--muted);font-weight:700">○</span>';
   const m=repMetaForName(name), s=m&&m.startDate?m.startDate.slice(0,10):null, e=m&&m.endDate?m.endDate.slice(0,10):null;
   if((s&&day<s)||(e&&day>e)) return '<span title="Not employed on this day" class="muted">–</span>';
+  if(day>=todayLocal()) return '<span title="Not due yet" class="muted">·</span>';
   return '<span style="color:var(--bad);font-weight:700">✗</span>';
 }
 // the actual submitted report text/numbers for a day, in a friendly one-page format
@@ -1663,11 +1677,11 @@ function eodDetailsHTML(day){
   const inner=(eodCards+mgrCards)||'<p class="muted" style="padding:10px">No reports submitted this day.</p>';
   return `<div class="panel"><h3>Report details <span style="font-weight:400;color:var(--muted);font-size:12px">- what each person actually reported ${usDate(day)}</span></h3><div style="padding:4px 2px">${inner}</div></div>`;
 }
-function renderAdminPeriod(view,date,setters,closers,managers){
-  const range=periodRange(view,date), label=view==='week'?`Week of ${usDate(range.start)}`:usMonth(range.start.slice(0,7));
+function renderAdminRange(range,setters,closers,managers){
+  const label=range.single?usDate(range.start):`${usDate(range.start)} to ${usDate(range.end)}`;
   const setS=setters.map(n=>({n,s:repPeriodStats(n,'Setter',range)})), cloS=closers.map(n=>({n,s:repPeriodStats(n,'Closer',range)})), mgrS=managers.map(n=>({n,s:mgrPeriodStats(n,range)}));
   const totMiss=[...setS,...cloS,...mgrS].reduce((a,x)=>a+x.s.missed,0);
-  arSummaryBar(`${label} - ${range.elapsed.length}/${range.weekdays.length} weekdays elapsed · ${totMiss} missed reports total`, totMiss);
+  arSummaryBar(`${label} - ${range.elapsed.length}/${range.weekdays.length} accountable weekdays · ${totMiss} missed report${totMiss===1?'':'s'}`, totMiss);
   const mc=s=>`<td class="num">${s.sub}/${s.exp}</td><td class="num" style="${s.missed?'color:var(--bad);font-weight:700':''}">${s.missed}</td>`;
   const setRows=setS.map(({n,s})=>`<tr><td>${esc(n)}</td>${mc(s)}<td class="num">${s.hours}</td><td class="num">${s.dials}</td><td class="num">${pct(s.connRate)}</td><td class="num">${s.sets}</td></tr>`).join('');
   const cloRows=cloS.map(({n,s})=>`<tr><td>${esc(n)}</td>${mc(s)}<td class="num">${s.hours}</td><td class="num">${s.connMeet}</td><td class="num">${pct(s.closeRate)}</td><td class="num">${s.deals}</td><td class="num">${money(s.cash)}</td></tr>`).join('');
@@ -1677,7 +1691,23 @@ function renderAdminPeriod(view,date,setters,closers,managers){
    +`<div class="panel"><h3>Closers <span style="font-weight:400;color:var(--muted);font-size:12px">- ${esc(label)}</span></h3><div class="tablewrap"><table>${closers.length?`<thead><tr><th>Closer</th><th class="num">Days</th><th class="num">Missed</th><th class="num">Hours</th><th class="num">Calls</th><th class="num">Close%</th><th class="num">Deals</th><th class="num">Cash</th></tr></thead><tbody>${cloRows}</tbody>`:'<tbody><tr><td class="muted" style="padding:14px">No closers.</td></tr></tbody>'}</table></div></div>`
    +`<div class="panel"><h3>Managers (Manager EOD) <span style="font-weight:400;color:var(--muted);font-size:12px">- ${esc(label)}</span></h3><div class="tablewrap"><table>${managers.length?`<thead><tr><th>Manager</th><th class="num">Days</th><th class="num">Missed</th><th class="num">EODs</th></tr></thead><tbody>${mgrRows}</tbody>`:'<tbody><tr><td class="muted" style="padding:14px">No managers assigned.</td></tr></tbody>'}</table></div></div>`
    +churnPanelHTML()
-   +`<p class="hint" style="margin-top:8px">"Days" = accountable weekdays submitted out of accountable weekdays in the period (approved days off and pre-hire / post-termination days are excluded). "Missed" counts weekday no-shows only, weekend work still counts in the totals but weekends are not held against anyone.</p>`;
+   +dayGridHTML(range,setters,closers,managers)
+   +(range.single?eodDetailsHTML(range.start):'')
+   +`<p class="hint" style="margin-top:8px">"Days" = accountable weekdays submitted out of accountable weekdays in the range (approved days off and pre-hire / post-termination days are excluded). "Missed" counts weekday no-shows only; weekend work still counts in the totals but weekends are not held against anyone.</p>`;
+}
+// day-by-day grid across the selected range (only for ranges of 16 days or fewer, so it stays readable)
+function dayGridHTML(range,setters,closers,managers){
+  const gd=range.days;
+  if(gd.length>16) return `<div class="panel"><h3>Day-by-day</h3><p class="muted" style="padding:12px">Range is ${gd.length} days - choose 16 days or fewer to see the day-by-day grid. The tables above already cover the whole range.</p></div>`;
+  const dow=d=>['Su','Mo','Tu','We','Th','Fr','Sa'][new Date(d+'T00:00:00').getDay()];
+  const mgrMark=(n,d)=> submittedMgrEod(n,d)?'<span style="color:var(--good);font-weight:700">✓</span>':(d>=todayLocal()?'<span class="muted">·</span>':'<span style="color:var(--bad);font-weight:700">✗</span>');
+  const grows=(names,role,mark)=>names.map(n=>`<tr><td>${esc(n)}</td><td class="muted" style="font-size:11px">${role}</td>`+gd.map(d=>`<td class="num">${mark(n,d)}</td>`).join('')+`</tr>`).join('');
+  const ghead=`<thead><tr><th>Person</th><th>Role</th>`+gd.map(d=>`<th class="num" style="white-space:nowrap">${dow(d)} ${(+d.slice(5,7))}-${(+d.slice(8,10))}</th>`).join('')+`</tr></thead>`;
+  const ggrp=l=>`<tr><td colspan="${2+gd.length}" style="background:var(--surface-2);font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--gold)">${l}</td></tr>`;
+  const body=(setters.length?ggrp('Setters')+grows(setters,'Setter',(n,d)=>dayMark(n,d,submittedEod(n,d))):'')
+    +(closers.length?ggrp('Closers')+grows(closers,'Closer',(n,d)=>dayMark(n,d,submittedEod(n,d))):'')
+    +(managers.length?ggrp('Managers')+grows(managers,'Manager',mgrMark):'');
+  return `<div class="panel"><h3>Day-by-day <span style="font-weight:400;color:var(--muted);font-size:12px">- ✓ submitted · <span style="color:var(--bad)">✗</span> missed · ○ approved day off · – not employed · · not due yet</span></h3><div class="tablewrap"><table>${ghead}<tbody>${body||'<tr><td class="muted" style="padding:14px">No one to show.</td></tr>'}</tbody></table></div></div>`;
 }
 // churn per offer: of the setters/closers assigned to each account, how many have a termination date on file
 function churnPanelHTML(){
@@ -1781,19 +1811,18 @@ function myTeamClients(){
   activityRecords().forEach(x=>{ if((String(x.rep||'').trim()===me)||(String(x.setter||'').trim()===me)){ if(x.client) set.add(x.client); } });
   return [...set];
 }
+let REP_RANGE_INIT=false;
 function buildRepFilters(){
-  const months=[...new Set(RECORDS.map(x=>monthKey(x.date)).filter(Boolean))].sort().reverse();
-  const fm=document.getElementById('rMonth'),cur=fm.value,first=fm.options.length===0;
-  fm.innerHTML='<option value="">All months</option>'+months.map(m=>`<option value="${m}">${usMonth(m)}</option>`).join('');
-  if(cur)fm.value=cur; else if(first&&months[0])fm.value=months[0]; // only default to the latest month on first build; keep an explicit "All months" choice
+  const rf=document.getElementById('rFrom'), rt=document.getElementById('rTo');
+  if(!REP_RANGE_INIT){ const t=todayLocal(); if(rf&&!rf.value)rf.value=t.slice(0,7)+'-01'; if(rt&&!rt.value)rt.value=t; REP_RANGE_INIT=true; } // default to this month on first open; user can widen or clear to All time
   const fc=document.getElementById('rClient'),cc=fc.value;
   const clients=REP_SCOPE?REP_SCOPE:clientNames();
   fc.innerHTML='<option value="">All'+(REP_SCOPE?' my accounts':' clients')+'</option>'+clients.map(c=>`<option>${esc(c)}</option>`).join('');
   if(cc&&clients.includes(cc))fc.value=cc;
 }
 function repFiltered(){
-  const m=document.getElementById('rMonth').value, c=document.getElementById('rClient').value;
-  return activityRecords().filter(x=>(!m||monthKey(x.date)===m)&&(!c||x.client===c)&&(!REP_SCOPE||REP_SCOPE.includes(x.client)));
+  const from=(document.getElementById('rFrom').value||'').slice(0,10), to=(document.getElementById('rTo').value||'').slice(0,10), c=document.getElementById('rClient').value;
+  return activityRecords().filter(x=>((!from&&!to)||inRange(x.date,from,to))&&(!c||x.client===c)&&(!REP_SCOPE||REP_SCOPE.includes(x.client)));
 }
 function renderReps(){
   const rm=repMode();
