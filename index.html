@@ -1305,9 +1305,9 @@ function dashScopeClients(){
 function filtered(){ const m=document.getElementById('fMonth').value,c=document.getElementById('fClient').value,r=document.getElementById('fRole').value,sc=dashScopeClients(); return activityRecords().filter(x=>(!m||monthKey(x.date)===m)&&(!c||x.client===c)&&(!r||x.role===r)&&(!sc||sc.includes(x.client))); }
 function buildFilterOptions(){
   const months=[...new Set(RECORDS.map(x=>monthKey(x.date)).filter(Boolean))].sort().reverse();
-  const fm=document.getElementById('fMonth'),cur=fm.value;
+  const fm=document.getElementById('fMonth'),cur=fm.value,first=fm.options.length===0;
   fm.innerHTML='<option value="">All months</option>'+months.map(m=>`<option value="${m}">${usMonth(m)}</option>`).join('');
-  if(cur)fm.value=cur; else if(months[0])fm.value=months[0];
+  if(cur)fm.value=cur; else if(first&&months[0])fm.value=months[0]; // default to latest month only on first build; keep an explicit "All months" choice
   const fc=document.getElementById('fClient'),cc=fc.value;
   const sc=dashScopeClients(), clist=sc?sc.filter(c=>c!==' none'):clientNames();
   fc.innerHTML='<option value="">'+(sc?('My account'+(clist.length>1?'s':'')):'All clients')+'</option>'+clist.map(c=>`<option>${esc(c)}</option>`).join('');
@@ -1485,9 +1485,9 @@ function myTeamClients(){
 }
 function buildRepFilters(){
   const months=[...new Set(RECORDS.map(x=>monthKey(x.date)).filter(Boolean))].sort().reverse();
-  const fm=document.getElementById('rMonth'),cur=fm.value;
+  const fm=document.getElementById('rMonth'),cur=fm.value,first=fm.options.length===0;
   fm.innerHTML='<option value="">All months</option>'+months.map(m=>`<option value="${m}">${usMonth(m)}</option>`).join('');
-  if(cur)fm.value=cur; else if(months[0])fm.value=months[0];
+  if(cur)fm.value=cur; else if(first&&months[0])fm.value=months[0]; // only default to the latest month on first build; keep an explicit "All months" choice
   const fc=document.getElementById('rClient'),cc=fc.value;
   const clients=REP_SCOPE?REP_SCOPE:clientNames();
   fc.innerHTML='<option value="">All'+(REP_SCOPE?' my accounts':' clients')+'</option>'+clients.map(c=>`<option>${esc(c)}</option>`).join('');
