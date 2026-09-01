@@ -440,16 +440,14 @@
   <!-- ===== ADMIN REPORT ===== -->
   <section id="tab-adminreport" hidden>
     <h2 class="section">Admin Report</h2>
-    <p class="hint">Leadership-only at-a-glance of who submitted their reports, so you do not have to check three places. Green = submitted, red = missing. Pick a day for the detail, and use the 7-day grid to spot who is chronically not checking out.</p>
-    <div class="filters" style="margin:0 0 4px">
-      <div class="field"><label>Day</label><input type="date" id="arDate" onchange="renderAdminReport()"></div>
+    <p class="hint">Leadership-only. See who submitted their reports (Setter / Closer / Manager EOD) AND their performance, in one place. Green = submitted, red = missing. <b>Day</b> = who checked out that day + a 7-day grid; <b>Week / Month</b> = how many days each person missed + their totals for the period.</p>
+    <div class="filters" style="margin:0 0 8px">
+      <div class="field"><label>View</label><select id="arView" onchange="renderAdminReport()"><option value="day">Day</option><option value="week">Week</option><option value="month">Month</option></select></div>
+      <div class="field"><label>Date</label><input type="date" id="arDate" onchange="renderAdminReport()"></div>
       <span id="arSummary" class="tag" style="align-self:flex-end;margin-bottom:2px"></span>
       <button class="btn ghost sm" style="align-self:flex-end" onclick="renderAdminReport()">Refresh</button>
     </div>
-    <div class="panel"><h3>Setter reports <span id="arSetSum" style="font-weight:400;color:var(--muted);font-size:12px"></span></h3><div style="padding:14px"><div class="chiprow" id="arSetters"></div></div></div>
-    <div class="panel"><h3>Closer reports <span id="arCloSum" style="font-weight:400;color:var(--muted);font-size:12px"></span></h3><div style="padding:14px"><div class="chiprow" id="arClosers"></div></div></div>
-    <div class="panel"><h3>Manager reports (Manager EOD) <span id="arMgrSum" style="font-weight:400;color:var(--muted);font-size:12px"></span></h3><div style="padding:14px"><div class="chiprow" id="arManagers"></div></div></div>
-    <div class="panel"><h3>Last 7 days <span style="font-weight:400;color:var(--muted);font-size:12px">- submitted (green) vs missing (red)</span></h3><div class="tablewrap"><table id="arGrid"></table></div></div>
+    <div id="arBody"></div>
   </section>
 
   <!-- ===== DATA ===== -->
@@ -1498,33 +1496,69 @@ function renderEodCheck(){
 function managerNames(){ const s=new Set(); latestClients().forEach(c=>['webinarMgr','setterMgr','closerMgr'].forEach(f=>{ const v=(c[f]||'').trim(); if(v)s.add(v); })); return [...s].sort((a,b)=>a.localeCompare(b)); }
 function submittedMgrEod(name, day){ const n=nrmName(name); return RECORDS.some(x=>x.type==='mgreod' && nrmName(x.by)===n && String(x.date||'').slice(0,10)===day); }
 function isoOffset(iso,delta){ const s=(iso||todayLocal()).slice(0,10), y=+s.slice(0,4),m=+s.slice(5,7),d=+s.slice(8,10); const dt=new Date(y,m-1,d+delta); return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`; }
+function periodRange(view,date){
+  const s=(date||todayLocal()).slice(0,10); let start=s,end=s;
+  if(view==='week'){ const dow=new Date(s+'T00:00:00').getDay(); start=isoOffset(s, dow===0?-6:1-dow); end=isoOffset(start,6); }
+  else if(view==='month'){ const y=+s.slice(0,4),m=+s.slice(5,7); start=`${y}-${String(m).padStart(2,'0')}-01`; const last=new Date(y,m,0).getDate(); end=`${y}-${String(m).padStart(2,'0')}-${String(last).padStart(2,'0')}`; }
+  const days=[]; let cur=start; while(cur<=end){ days.push(cur); cur=isoOffset(cur,1); }
+  const weekdays=days.filter(d=>{ const w=new Date(d+'T00:00:00').getDay(); return w>=1&&w<=5; });
+  return {view,start,end,days,weekdays};
+}
+function repPeriodStats(name, role, range){
+  const n=String(name||'').trim().toLowerCase(), inR=new Set(range.days);
+  const recs=activityRecords().filter(x=>(x.type==='eod'||!x.type) && String(x.rep||'').trim().toLowerCase()===n && (x.role||'Closer')===role && inR.has((x.date||'').slice(0,10)));
+  const sub=new Set(recs.map(x=>(x.date||'').slice(0,10)));
+  let hours=0,dials=0,connected=0,sets=0,connMeet=0,deals=0,cash=0;
+  recs.forEach(x=>{ hours+=x.hoursDialing||0; dials+=x.newOutreach||0; connected+=x.connectedCalls||0; sets+=x.callsSet||0; connMeet+=x.connectedMeetings||0; deals+=x.closedDeals||0; cash+=x.cashCollected||0; });
+  return {sub:sub.size, exp:range.weekdays.length, missed:range.weekdays.filter(d=>!sub.has(d)).length, hours:Math.round(hours*10)/10, dials, connRate:dials?connected/dials:0, sets, connMeet, deals, cash, closeRate:connMeet?deals/connMeet:0};
+}
+function mgrPeriodStats(name, range){
+  const inR=new Set(range.days);
+  const recs=RECORDS.filter(x=>x.type==='mgreod' && nrmName(x.by)===nrmName(name) && inR.has((x.date||'').slice(0,10)));
+  const sub=new Set(recs.map(x=>(x.date||'').slice(0,10)));
+  return {sub:sub.size, exp:range.weekdays.length, missed:range.weekdays.filter(d=>!sub.has(d)).length, count:recs.length};
+}
+function arSummaryBar(txt,miss){ const sum=document.getElementById('arSummary'); if(!sum)return; sum.textContent=txt; sum.style.color=miss?'var(--warn)':'var(--good)'; sum.style.borderColor=miss?'var(--warn)':'var(--good)'; }
 function renderAdminReport(){
-  const di=document.getElementById('arDate'); if(!di) return; if(!di.value) di.value=todayLocal();
-  const day=di.value;
+  const di=document.getElementById('arDate'); if(!di) return; if(!di.value) di.value=isoOffset(todayLocal(),-1); // default to yesterday
+  const view=(document.getElementById('arView')||{}).value||'day', date=di.value;
   const setters=repNames('setter'), closers=repNames('closer'), managers=managerNames();
-  const chip=(n,fn)=>{ const ok=fn(n,day); return `<span class="chip" style="background:${ok?'var(--good-soft)':'var(--warn-soft)'};color:${ok?'var(--good)':'var(--warn)'};font-weight:600">${ok?'✓':'✗'} ${esc(n)}</span>`; };
-  const g=id=>document.getElementById(id);
-  g('arSetters').innerHTML=setters.length?setters.map(n=>chip(n,submittedEod)).join(''):'<span class="muted" style="font-size:12px">No setters.</span>';
-  g('arClosers').innerHTML=closers.length?closers.map(n=>chip(n,submittedEod)).join(''):'<span class="muted" style="font-size:12px">No closers.</span>';
-  g('arManagers').innerHTML=managers.length?managers.map(n=>chip(n,submittedMgrEod)).join(''):'<span class="muted" style="font-size:12px">No managers assigned (set them on Client Overview).</span>';
+  if(view==='day') renderAdminDay(date,setters,closers,managers); else renderAdminPeriod(view,date,setters,closers,managers);
+}
+function renderAdminDay(day,setters,closers,managers){
   const sIn=setters.filter(n=>submittedEod(n,day)).length, cIn=closers.filter(n=>submittedEod(n,day)).length, mIn=managers.filter(n=>submittedMgrEod(n,day)).length;
   const miss=(setters.length-sIn)+(closers.length-cIn)+(managers.length-mIn);
-  g('arSetSum').textContent=setters.length?`(${sIn}/${setters.length})`:''; g('arCloSum').textContent=closers.length?`(${cIn}/${closers.length})`:''; g('arMgrSum').textContent=managers.length?`(${mIn}/${managers.length})`:'';
-  const sum=g('arSummary');
-  sum.textContent=`${usDate(day)} - Setters ${sIn}/${setters.length} · Closers ${cIn}/${closers.length} · Managers ${mIn}/${managers.length}`+(miss?` · ${miss} missing`:' · all in');
-  sum.style.color=miss?'var(--warn)':'var(--good)'; sum.style.borderColor=miss?'var(--warn)':'var(--good)';
-  // 7-day trailing grid
-  const days=[]; for(let i=6;i>=0;i--) days.push(isoOffset(day,-i));
+  arSummaryBar(`${usDate(day)} - Setters ${sIn}/${setters.length} · Closers ${cIn}/${closers.length} · Managers ${mIn}/${managers.length}`+(miss?` · ${miss} missing`:' · all in'), miss);
+  const range={days:[day],weekdays:[day]}, ok=b=>`<span style="color:${b?'var(--good)':'var(--bad)'};font-weight:700">${b?'✓':'✗'}</span>`;
+  const setRows=setters.map(n=>{const s=repPeriodStats(n,'Setter',range);return `<tr><td>${esc(n)}</td><td>${ok(s.sub>0)}</td><td class="num">${s.hours}</td><td class="num">${s.dials}</td><td class="num">${pct(s.connRate)}</td><td class="num">${s.sets}</td></tr>`;}).join('');
+  const cloRows=closers.map(n=>{const s=repPeriodStats(n,'Closer',range);return `<tr><td>${esc(n)}</td><td>${ok(s.sub>0)}</td><td class="num">${s.hours}</td><td class="num">${s.connMeet}</td><td class="num">${pct(s.closeRate)}</td><td class="num">${s.deals}</td><td class="num">${money(s.cash)}</td></tr>`;}).join('');
+  const mgrRows=managers.map(n=>`<tr><td>${esc(n)}</td><td>${ok(submittedMgrEod(n,day))}</td></tr>`).join('');
+  const gd=[]; for(let i=6;i>=0;i--) gd.push(isoOffset(day,-i));
   const dow=d=>['Su','Mo','Tu','We','Th','Fr','Sa'][new Date(d+'T00:00:00').getDay()];
-  const cell=ok=>`<td class="num" style="color:${ok?'var(--good)':'var(--bad)'};font-weight:700">${ok?'✓':'✗'}</td>`;
-  const rowsFor=(names,role,fn)=>names.map(n=>`<tr><td>${esc(n)}</td><td class="muted" style="font-size:11px">${role}</td>`+days.map(d=>cell(fn(n,d))).join('')+`</tr>`).join('');
-  const head=`<thead><tr><th>Person</th><th>Role</th>`+days.map(d=>`<th class="num" style="white-space:nowrap">${dow(d)} ${(+d.slice(5,7))}-${(+d.slice(8,10))}</th>`).join('')+`</tr></thead>`;
-  const grp=(label,n,total)=>`<tr><td colspan="${2+days.length}" style="background:var(--surface-2);font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--gold)">${label} - ${n}/${total} on ${usDate(day)}</td></tr>`;
-  g('arGrid').innerHTML=head+`<tbody>`
-    +grp('Setters',sIn,setters.length)+rowsFor(setters,'Setter',submittedEod)
-    +grp('Closers',cIn,closers.length)+rowsFor(closers,'Closer',submittedEod)
-    +grp('Managers',mIn,managers.length)+rowsFor(managers,'Manager',submittedMgrEod)
-    +`</tbody>`;
+  const cell=b=>`<td class="num" style="color:${b?'var(--good)':'var(--bad)'};font-weight:700">${b?'✓':'✗'}</td>`;
+  const grows=(names,role,fn)=>names.map(n=>`<tr><td>${esc(n)}</td><td class="muted" style="font-size:11px">${role}</td>`+gd.map(d=>cell(fn(n,d))).join('')+`</tr>`).join('');
+  const ghead=`<thead><tr><th>Person</th><th>Role</th>`+gd.map(d=>`<th class="num" style="white-space:nowrap">${dow(d)} ${(+d.slice(5,7))}-${(+d.slice(8,10))}</th>`).join('')+`</tr></thead>`;
+  const ggrp=l=>`<tr><td colspan="${2+gd.length}" style="background:var(--surface-2);font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--gold)">${l}</td></tr>`;
+  document.getElementById('arBody').innerHTML=
+    `<div class="panel"><h3>Setters <span style="font-weight:400;color:var(--muted);font-size:12px">- ${sIn}/${setters.length} submitted ${usDate(day)}</span></h3><div class="tablewrap"><table>${setters.length?`<thead><tr><th>Setter</th><th>Report</th><th class="num">Hours</th><th class="num">Dials</th><th class="num">Conn%</th><th class="num">Sets</th></tr></thead><tbody>${setRows}</tbody>`:'<tbody><tr><td class="muted" style="padding:14px">No setters.</td></tr></tbody>'}</table></div></div>`
+   +`<div class="panel"><h3>Closers <span style="font-weight:400;color:var(--muted);font-size:12px">- ${cIn}/${closers.length} submitted ${usDate(day)}</span></h3><div class="tablewrap"><table>${closers.length?`<thead><tr><th>Closer</th><th>Report</th><th class="num">Hours</th><th class="num">Calls</th><th class="num">Close%</th><th class="num">Deals</th><th class="num">Cash</th></tr></thead><tbody>${cloRows}</tbody>`:'<tbody><tr><td class="muted" style="padding:14px">No closers.</td></tr></tbody>'}</table></div></div>`
+   +`<div class="panel"><h3>Managers (Manager EOD) <span style="font-weight:400;color:var(--muted);font-size:12px">- ${mIn}/${managers.length} submitted ${usDate(day)}</span></h3><div class="tablewrap"><table>${managers.length?`<thead><tr><th>Manager</th><th>Report</th></tr></thead><tbody>${mgrRows}</tbody>`:'<tbody><tr><td class="muted" style="padding:14px">No managers assigned (set them on Client Overview).</td></tr></tbody>'}</table></div></div>`
+   +`<div class="panel"><h3>Last 7 days <span style="font-weight:400;color:var(--muted);font-size:12px">- submitted (green) vs missing (red)</span></h3><div class="tablewrap"><table>${ghead}<tbody>${ggrp('Setters')}${grows(setters,'Setter',submittedEod)}${ggrp('Closers')}${grows(closers,'Closer',submittedEod)}${ggrp('Managers')}${grows(managers,'Manager',submittedMgrEod)}</tbody></table></div></div>`;
+}
+function renderAdminPeriod(view,date,setters,closers,managers){
+  const range=periodRange(view,date), label=view==='week'?`Week of ${usDate(range.start)}`:usMonth(range.start.slice(0,7));
+  const setS=setters.map(n=>({n,s:repPeriodStats(n,'Setter',range)})), cloS=closers.map(n=>({n,s:repPeriodStats(n,'Closer',range)})), mgrS=managers.map(n=>({n,s:mgrPeriodStats(n,range)}));
+  const totMiss=[...setS,...cloS,...mgrS].reduce((a,x)=>a+x.s.missed,0);
+  arSummaryBar(`${label} - ${range.weekdays.length} weekdays · ${totMiss} missed reports total`, totMiss);
+  const mc=s=>`<td class="num">${s.sub}/${s.exp}</td><td class="num" style="${s.missed?'color:var(--bad);font-weight:700':''}">${s.missed}</td>`;
+  const setRows=setS.map(({n,s})=>`<tr><td>${esc(n)}</td>${mc(s)}<td class="num">${s.hours}</td><td class="num">${s.dials}</td><td class="num">${pct(s.connRate)}</td><td class="num">${s.sets}</td></tr>`).join('');
+  const cloRows=cloS.map(({n,s})=>`<tr><td>${esc(n)}</td>${mc(s)}<td class="num">${s.hours}</td><td class="num">${s.connMeet}</td><td class="num">${pct(s.closeRate)}</td><td class="num">${s.deals}</td><td class="num">${money(s.cash)}</td></tr>`).join('');
+  const mgrRows=mgrS.map(({n,s})=>`<tr><td>${esc(n)}</td><td class="num">${s.sub}/${s.exp}</td><td class="num" style="${s.missed?'color:var(--bad);font-weight:700':''}">${s.missed}</td><td class="num">${s.count}</td></tr>`).join('');
+  document.getElementById('arBody').innerHTML=
+    `<div class="panel"><h3>Setters <span style="font-weight:400;color:var(--muted);font-size:12px">- ${esc(label)}</span></h3><div class="tablewrap"><table>${setters.length?`<thead><tr><th>Setter</th><th class="num">Days</th><th class="num">Missed</th><th class="num">Hours</th><th class="num">Dials</th><th class="num">Conn%</th><th class="num">Sets</th></tr></thead><tbody>${setRows}</tbody>`:'<tbody><tr><td class="muted" style="padding:14px">No setters.</td></tr></tbody>'}</table></div></div>`
+   +`<div class="panel"><h3>Closers <span style="font-weight:400;color:var(--muted);font-size:12px">- ${esc(label)}</span></h3><div class="tablewrap"><table>${closers.length?`<thead><tr><th>Closer</th><th class="num">Days</th><th class="num">Missed</th><th class="num">Hours</th><th class="num">Calls</th><th class="num">Close%</th><th class="num">Deals</th><th class="num">Cash</th></tr></thead><tbody>${cloRows}</tbody>`:'<tbody><tr><td class="muted" style="padding:14px">No closers.</td></tr></tbody>'}</table></div></div>`
+   +`<div class="panel"><h3>Managers (Manager EOD) <span style="font-weight:400;color:var(--muted);font-size:12px">- ${esc(label)}</span></h3><div class="tablewrap"><table>${managers.length?`<thead><tr><th>Manager</th><th class="num">Days</th><th class="num">Missed</th><th class="num">EODs</th></tr></thead><tbody>${mgrRows}</tbody>`:'<tbody><tr><td class="muted" style="padding:14px">No managers assigned.</td></tr></tbody>'}</table></div></div>`
+   +`<p class="hint" style="margin-top:8px">"Days" = weekdays submitted out of weekdays in the period. "Missed" counts weekday no-shows only, weekend work still counts in the totals but weekends are not held against anyone.</p>`;
 }
 // a rep's "team" = the client accounts they've worked (by rep or setter credit)
 function myTeamClients(){
