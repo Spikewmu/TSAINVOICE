@@ -32,10 +32,21 @@
   header.app .who{color:#fff;font-size:13px;font-weight:600}
   header.app .logout{appearance:none;border:1px solid rgba(201,162,74,.3);background:transparent;color:#cdbfa0;font:inherit;font-size:12.5px;padding:5px 11px;border-radius:8px;cursor:pointer}
   header.app .logout:hover{background:rgba(255,255,255,.08)}
-  nav.tabs{position:sticky;top:51px;z-index:15;display:flex;gap:6px;background:rgba(20,16,11,.6);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border-bottom:1px solid var(--glass-brd);padding:0 12px;overflow-x:auto}
-  nav.tabs button{appearance:none;border:none;background:none;font:inherit;color:var(--muted);padding:13px 15px;cursor:pointer;border-bottom:2.5px solid transparent;white-space:nowrap;font-weight:500}
-  nav.tabs button.active{color:var(--navy);border-bottom-color:var(--gold)}
-  main{max-width:1120px;margin:0 auto;padding:22px 18px 60px}
+  .shell{display:flex;align-items:flex-start;max-width:1360px;margin:0 auto}
+  nav.tabs{position:sticky;top:51px;z-index:15;display:flex;flex-direction:column;gap:2px;background:rgba(20,16,11,.6);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border-right:1px solid var(--glass-brd);padding:12px 8px;width:210px;min-width:210px;height:calc(100vh - 51px);overflow-y:auto}
+  nav.tabs button{appearance:none;border:none;background:none;font:inherit;color:var(--muted);padding:10px 12px;cursor:pointer;border-left:2.5px solid transparent;border-radius:8px;white-space:nowrap;font-weight:500;text-align:left;width:100%}
+  nav.tabs button:hover{background:rgba(255,255,255,.05);color:var(--ink)}
+  nav.tabs button.active{color:var(--navy);border-left-color:var(--gold);background:rgba(201,162,74,.13)}
+  main{flex:1;min-width:0;max-width:1120px;padding:22px 22px 60px}
+  @media(max-width:860px){
+    .shell{display:block}
+    nav.tabs{flex-direction:row;width:auto;min-width:0;height:auto;overflow-x:auto;overflow-y:hidden;border-right:none;border-bottom:1px solid var(--glass-brd);padding:0 12px;gap:6px}
+    nav.tabs button{border-left:none;border-bottom:2.5px solid transparent;border-radius:0;width:auto;padding:13px 15px}
+    nav.tabs button:hover{background:none}
+    nav.tabs button.active{border-left:none;border-bottom-color:var(--gold);background:none}
+    main{padding:22px 16px 60px}
+  }
+  #usersTable td:nth-child(4){white-space:normal;vertical-align:top}
   h2.section{font-family:var(--serif);font-weight:700;font-size:24px;margin:4px 0 2px;letter-spacing:-.01em}
   .hint{color:var(--muted);font-size:13px;margin:0 0 16px}
   .filters{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 18px;align-items:end}
@@ -172,6 +183,7 @@
   <button class="logout" onclick="logout()">Sign out</button>
 </header>
 
+<div class="shell">
 <nav class="tabs" id="tabs">
   <button data-tab="dash" class="active">Dashboard</button>
   <button data-tab="meeting">Meeting</button>
@@ -514,7 +526,7 @@
     <div class="panel" id="repMetaEditPanel" hidden><h3 id="repMetaTitle">Rep details</h3>
       <div style="padding:14px">
         <p class="hint">Hire and termination dates keep pre-employment and post-termination days from counting as missed reports (and feed churn per offer on the Admin Report). The assigned manager is who approves this rep's days off.</p>
-        <div class="filters" style="margin:0">
+        <div class="filters" style="margin:0;align-items:flex-start">
           <div class="field"><label>Start / hire date</label><input type="date" id="rmStart"></div>
           <div class="field"><label>Termination date</label><input type="date" id="rmEnd"><span class="fieldhelp">Leave blank if still active.</span></div>
           <div class="field"><label>Assigned manager</label><select id="rmMgr"></select><span class="fieldhelp">Approves this rep's time off.</span></div>
@@ -642,6 +654,7 @@
     <div class="row-actions"><button class="btn gold" onclick="saveSettings()">Save settings</button></div>
   </section>
 </main>
+</div><!-- /.shell -->
 </div>
 
 <div class="modal" id="pwModal" hidden onclick="if(event.target===this)closeChangePw()">
