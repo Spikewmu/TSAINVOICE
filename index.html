@@ -1502,7 +1502,8 @@ function periodRange(view,date){
   else if(view==='month'){ const y=+s.slice(0,4),m=+s.slice(5,7); start=`${y}-${String(m).padStart(2,'0')}-01`; const last=new Date(y,m,0).getDate(); end=`${y}-${String(m).padStart(2,'0')}-${String(last).padStart(2,'0')}`; }
   const days=[]; let cur=start; while(cur<=end){ days.push(cur); cur=isoOffset(cur,1); }
   const weekdays=days.filter(d=>{ const w=new Date(d+'T00:00:00').getDay(); return w>=1&&w<=5; });
-  return {view,start,end,days,weekdays};
+  const today=todayLocal(), elapsed=weekdays.filter(d=>d<today); // only weekdays that have already passed count toward "missed" (never future days)
+  return {view,start,end,days,weekdays,elapsed};
 }
 function repPeriodStats(name, role, range){
   const n=String(name||'').trim().toLowerCase(), inR=new Set(range.days);
@@ -1510,13 +1511,15 @@ function repPeriodStats(name, role, range){
   const sub=new Set(recs.map(x=>(x.date||'').slice(0,10)));
   let hours=0,dials=0,connected=0,sets=0,connMeet=0,deals=0,cash=0;
   recs.forEach(x=>{ hours+=x.hoursDialing||0; dials+=x.newOutreach||0; connected+=x.connectedCalls||0; sets+=x.callsSet||0; connMeet+=x.connectedMeetings||0; deals+=x.closedDeals||0; cash+=x.cashCollected||0; });
-  return {sub:sub.size, exp:range.weekdays.length, missed:range.weekdays.filter(d=>!sub.has(d)).length, hours:Math.round(hours*10)/10, dials, connRate:dials?connected/dials:0, sets, connMeet, deals, cash, closeRate:connMeet?deals/connMeet:0};
+  const elapsed=range.elapsed||range.weekdays;
+  return {sub:elapsed.filter(d=>sub.has(d)).length, exp:elapsed.length, missed:elapsed.filter(d=>!sub.has(d)).length, hours:Math.round(hours*10)/10, dials, connRate:dials?connected/dials:0, sets, connMeet, deals, cash, closeRate:connMeet?deals/connMeet:0};
 }
 function mgrPeriodStats(name, range){
   const inR=new Set(range.days);
   const recs=RECORDS.filter(x=>x.type==='mgreod' && nrmName(x.by)===nrmName(name) && inR.has((x.date||'').slice(0,10)));
   const sub=new Set(recs.map(x=>(x.date||'').slice(0,10)));
-  return {sub:sub.size, exp:range.weekdays.length, missed:range.weekdays.filter(d=>!sub.has(d)).length, count:recs.length};
+  const elapsed=range.elapsed||range.weekdays;
+  return {sub:elapsed.filter(d=>sub.has(d)).length, exp:elapsed.length, missed:elapsed.filter(d=>!sub.has(d)).length, count:recs.length};
 }
 function arSummaryBar(txt,miss){ const sum=document.getElementById('arSummary'); if(!sum)return; sum.textContent=txt; sum.style.color=miss?'var(--warn)':'var(--good)'; sum.style.borderColor=miss?'var(--warn)':'var(--good)'; }
 function renderAdminReport(){
@@ -1549,7 +1552,7 @@ function renderAdminPeriod(view,date,setters,closers,managers){
   const range=periodRange(view,date), label=view==='week'?`Week of ${usDate(range.start)}`:usMonth(range.start.slice(0,7));
   const setS=setters.map(n=>({n,s:repPeriodStats(n,'Setter',range)})), cloS=closers.map(n=>({n,s:repPeriodStats(n,'Closer',range)})), mgrS=managers.map(n=>({n,s:mgrPeriodStats(n,range)}));
   const totMiss=[...setS,...cloS,...mgrS].reduce((a,x)=>a+x.s.missed,0);
-  arSummaryBar(`${label} - ${range.weekdays.length} weekdays · ${totMiss} missed reports total`, totMiss);
+  arSummaryBar(`${label} - ${range.elapsed.length}/${range.weekdays.length} weekdays elapsed · ${totMiss} missed reports total`, totMiss);
   const mc=s=>`<td class="num">${s.sub}/${s.exp}</td><td class="num" style="${s.missed?'color:var(--bad);font-weight:700':''}">${s.missed}</td>`;
   const setRows=setS.map(({n,s})=>`<tr><td>${esc(n)}</td>${mc(s)}<td class="num">${s.hours}</td><td class="num">${s.dials}</td><td class="num">${pct(s.connRate)}</td><td class="num">${s.sets}</td></tr>`).join('');
   const cloRows=cloS.map(({n,s})=>`<tr><td>${esc(n)}</td>${mc(s)}<td class="num">${s.hours}</td><td class="num">${s.connMeet}</td><td class="num">${pct(s.closeRate)}</td><td class="num">${s.deals}</td><td class="num">${money(s.cash)}</td></tr>`).join('');
