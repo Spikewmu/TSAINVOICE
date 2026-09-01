@@ -1600,14 +1600,24 @@ function renderEodCheck(){
   panel.hidden=false;
   const di=document.getElementById('eodCheckDate'); if(!di.value) di.value=todayLocal();
   const day=di.value;
-  const chip=(n)=>{ const ok=submittedEod(n,day); return `<span class="chip" style="background:${ok?'var(--good-soft)':'var(--warn-soft)'};color:${ok?'var(--good)':'var(--warn)'};font-weight:600">${ok?'✓':'✗'} ${esc(n)}</span>`; };
+  // approved day off = neutral chip (not counted missing); pre-hire / post-termination days are omitted entirely
+  const chip=(n)=>{
+    const ok=submittedEod(n,day);
+    if(ok) return `<span class="chip" style="background:var(--good-soft);color:var(--good);font-weight:600">✓ ${esc(n)}</span>`;
+    if(offdayStatus(n,day)==='approved') return `<span class="chip" style="background:var(--surface-2);color:var(--muted);font-weight:600" title="Approved day off">○ ${esc(n)} (off)</span>`;
+    if(accountableDays(n,[day]).length===0) return ''; // not employed that day
+    return `<span class="chip" style="background:var(--warn-soft);color:var(--warn);font-weight:600">✗ ${esc(n)}</span>`;
+  };
   const setters=repNames('setter'), closers=repNames('closer');
-  document.getElementById('eodCheckSetters').innerHTML=setters.length?setters.map(chip).join(''):'<span class="muted" style="font-size:12px">No setters yet.</span>';
-  document.getElementById('eodCheckClosers').innerHTML=closers.length?closers.map(chip).join(''):'<span class="muted" style="font-size:12px">No closers yet.</span>';
+  const sChips=setters.map(chip).filter(Boolean).join(''), cChips=closers.map(chip).filter(Boolean).join('');
+  document.getElementById('eodCheckSetters').innerHTML=sChips||'<span class="muted" style="font-size:12px">No setters working today.</span>';
+  document.getElementById('eodCheckClosers').innerHTML=cChips||'<span class="muted" style="font-size:12px">No closers working today.</span>';
+  const acc=n=>accountableDays(n,[day]).length>0; // employed and not on an approved day off
+  const sAcc=setters.filter(acc).length, cAcc=closers.filter(acc).length;
   const sIn=setters.filter(n=>submittedEod(n,day)).length, cIn=closers.filter(n=>submittedEod(n,day)).length;
-  const miss=(setters.length-sIn)+(closers.length-cIn);
+  const miss=(sAcc-sIn)+(cAcc-cIn);
   const sum=document.getElementById('eodCheckSummary');
-  sum.textContent=`Setters ${sIn}/${setters.length} · Closers ${cIn}/${closers.length} submitted`+(miss?` · ${miss} missing`:' · all in');
+  sum.textContent=`Setters ${sIn}/${sAcc} · Closers ${cIn}/${cAcc} submitted`+(miss?` · ${miss} missing`:' · all in');
   sum.style.color=miss?'var(--warn)':'var(--good)'; sum.style.borderColor=miss?'var(--warn)':'var(--good)';
 }
 /* ---------------- admin report: submission compliance across setters/closers/managers ---------------- */
@@ -1808,9 +1818,14 @@ function renderTimeOff(){
   const d=document.getElementById('offReqDate'); if(d&&!d.value) d.value=todayLocal();
   const me=(SESSION&&SESSION.name)||'';
   const mine=collapseOffdays(RECORDS).filter(x=>nrmName(x.rep)===nrmName(me)).sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))).slice(0,10);
+  const unseen=new Set(myUnseenDecisions().map(offdayKey));
+  const newTag=r=> (r.status!=='pending' && unseen.has(offdayKey(r))) ? ' <span class="pill" style="color:#fff;background:var(--bad,#c0392b);border-color:transparent">new</span>' : '';
+  // rep sees the manager's note to them (decisionNote), never the internal staff note
+  const mgrNote=r=> r.decisionNote ? `<div style="font-size:12px;color:var(--muted);margin-top:2px">Manager: ${esc(r.decisionNote)}</div>` : '';
   document.getElementById('offReqList').innerHTML = mine.length
-    ? `<div class="tablewrap"><table><thead><tr><th>Day</th><th>Reason</th><th>Status</th></tr></thead><tbody>${mine.map(r=>`<tr><td>${esc(usDate(r.date))}</td><td>${esc(r.reason||'')}</td><td>${offdayPill(r.status)}</td></tr>`).join('')}</tbody></table></div>`
+    ? `<div class="tablewrap"><table><thead><tr><th>Day</th><th>Reason</th><th>Status</th></tr></thead><tbody>${mine.map(r=>`<tr><td style="white-space:nowrap">${esc(usDate(r.date))}</td><td>${esc(r.reason||'')}</td><td>${offdayPill(r.status)}${newTag(r)}${mgrNote(r)}</td></tr>`).join('')}</tbody></table></div>`
     : '<span class="muted" style="font-size:12px">No time-off requests yet.</span>';
+  markMyDecisionsSeen(); // opening the tab clears the "new" indicator
 }
 async function requestOffday(){
   const d=(document.getElementById('offReqDate').value||'').slice(0,10); if(!d){ toast('Pick a date',true); return; }
@@ -1832,16 +1847,33 @@ function offdayReqsVisible(){
   });
 }
 function offdayApprovalsHTML(){
-  const canAct=SESSION&&(SESSION.role==='admin'||SESSION.role==='manager');
+  const canAct=SESSION&&['admin','manager','webinarteam'].includes(SESSION.role); // managers + admins can decide and see internal notes
   const reqs=offdayReqsVisible(), pend=reqs.filter(r=>r.status==='pending'), recent=reqs.filter(r=>r.status!=='pending').slice(0,12);
-  const btns=r=>`${(canAct&&r.status!=='approved')?`<button class="btn sm gold" onclick="actOffday('${esc(r.rep)}','${String(r.date||'').slice(0,10)}','approved')">Approve</button> `:''}${(canAct&&r.status!=='denied')?`<button class="btn sm ghost" onclick="actOffday('${esc(r.rep)}','${String(r.date||'').slice(0,10)}','denied')">Deny</button>`:''}`;
-  const row=r=>`<tr><td style="white-space:nowrap">${esc(usDate(r.date))}</td><td>${esc(r.rep)}</td><td>${esc(r.reason||'')}</td><td>${esc(r.mgr||'')}</td><td>${offdayPill(r.status)}</td><td>${btns(r)}</td></tr>`;
   if(!reqs.length) return '<p class="muted" style="padding:12px">No day-off requests.</p>';
-  const head=`<thead><tr><th>Day</th><th>Rep</th><th>Reason</th><th>Assigned mgr</th><th>Status</th><th></th></tr></thead>`;
-  return `<div class="tablewrap"><table>${head}<tbody>`
-    +(pend.length?`<tr><td colspan="6" style="background:var(--surface-2);font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--gold)">Pending</td></tr>`+pend.map(row).join(''):'')
-    +(recent.length?`<tr><td colspan="6" style="background:var(--surface-2);font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">Recent</td></tr>`+recent.map(row).join(''):'')
-    +`</tbody></table></div>`;
+  const grp=(l,c)=>`<div style="font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:${c};margin:10px 2px 6px">${l}</div>`;
+  const card=(r)=>{
+    const k=nrmName(r.rep)+'|'+String(r.date||'').slice(0,10), dd=String(r.date||'').slice(0,10);
+    const decNote=r.decisionNote?`<div style="font-size:12px;margin-top:4px"><b>Note to rep:</b> ${esc(r.decisionNote)}</div>`:'';
+    const intNote=(canAct&&r.internalNote)?`<div style="font-size:12px;margin-top:4px;color:var(--warn)"><b>Internal (staff only):</b> ${esc(r.internalNote)}</div>`:'';
+    let actions='';
+    if(canAct){
+      actions=`<div style="margin-top:8px;display:flex;flex-direction:column;gap:6px;max-width:560px">
+        <input class="odnote" data-k="${k}" placeholder="Note to rep (they will see this)" value="${esc(r.decisionNote||'')}">
+        <input class="odint" data-k="${k}" placeholder="Internal note - staff only, the rep will NOT see this" value="${esc(r.internalNote||'')}">
+        <div class="row-actions">${r.status!=='approved'?`<button class="btn sm gold" onclick="actOffday('${esc(r.rep)}','${dd}','approved')">Approve</button>`:''} ${r.status!=='denied'?`<button class="btn sm ghost" onclick="actOffday('${esc(r.rep)}','${dd}','denied')">Deny</button>`:''}</div>
+      </div>`;
+    }
+    return `<div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px">
+      <div><b>${esc(r.rep)}</b> <span class="muted">- ${esc(usDate(r.date))}</span> ${offdayPill(r.status)}</div>
+      ${r.reason?`<div style="font-size:13px;margin-top:2px">Reason: ${esc(r.reason)}</div>`:''}
+      <div class="muted" style="font-size:11px;margin-top:2px">Assigned mgr: ${esc(r.mgr||'-')}</div>
+      ${decNote}${intNote}${actions}
+    </div>`;
+  };
+  return `<div style="padding:4px 2px">`
+    +(pend.length?grp('Pending','var(--gold)')+pend.map(card).join(''):'')
+    +(recent.length?grp('Recent','var(--muted)')+recent.map(card).join(''):'')
+    +`</div>`;
 }
 function renderOffdayApprovals(){ const html=offdayApprovalsHTML(); document.querySelectorAll('.offdayBox').forEach(el=>el.innerHTML=html); updateNavBadges(); }
 // pending action items the logged-in approver needs to act on (currently: day-off requests to approve)
@@ -1849,18 +1881,31 @@ function pendingApprovalsCount(){
   if(!SESSION || !['admin','manager','webinarteam'].includes(SESSION.role)) return 0;
   return offdayReqsVisible().filter(r=>r.status==='pending').length;
 }
-// red count badge on the Time Off nav item so managers see they have approvals waiting
+// rep-side: their own requests that got a decision (approved/denied) they have not viewed yet
+function offdaySeenSet(){ try{ return new Set(JSON.parse(localStorage.getItem('tsa_offday_seen')||'[]')); }catch(e){ return new Set(); } }
+function offdayKey(r){ return nrmName(r.rep)+'|'+String(r.date||'').slice(0,10)+'|'+(r.status||'')+'|'+(r.submittedAt||''); }
+function myDecidedOffdays(){ const me=(SESSION&&SESSION.name)||''; if(!me) return []; return collapseOffdays(RECORDS).filter(x=>nrmName(x.rep)===nrmName(me)&&(x.status==='approved'||x.status==='denied')); }
+function myUnseenDecisions(){ const seen=offdaySeenSet(); return myDecidedOffdays().filter(r=>!seen.has(offdayKey(r))); }
+function markMyDecisionsSeen(){ try{ const seen=offdaySeenSet(); myDecidedOffdays().forEach(r=>seen.add(offdayKey(r))); localStorage.setItem('tsa_offday_seen', JSON.stringify([...seen])); }catch(e){} }
+// red count badge on the Time Off nav item: managers see approvals waiting; reps see decisions on their requests
 function updateNavBadges(){
-  const n=pendingApprovalsCount();
+  let n=0, title='';
+  if(SESSION && ['admin','manager','webinarteam'].includes(SESSION.role)){ n=pendingApprovalsCount(); title=`${n} day-off request${n>1?'s':''} waiting for you`; }
+  else if(SESSION && ['setter','closer'].includes(SESSION.role)){ n=myUnseenDecisions().length; title=`${n} update${n>1?'s':''} on your time-off requests`; }
   document.querySelectorAll('#tabs button[data-tab="timeoff"]').forEach(b=>{
     let bd=b.querySelector('.navbadge');
-    if(n>0){ if(!bd){ bd=document.createElement('span'); bd.className='navbadge'; b.appendChild(bd); } bd.textContent=n; bd.title=n+' day-off request'+(n>1?'s':'')+' waiting for you'; }
+    if(n>0){ if(!bd){ bd=document.createElement('span'); bd.className='navbadge'; b.appendChild(bd); } bd.textContent=n; bd.title=title; }
     else if(bd){ bd.remove(); }
   });
 }
 async function actOffday(rep,date,status){
+  date=String(date).slice(0,10);
+  const k=nrmName(rep)+'|'+date;
+  // note inputs live in whichever .offdayBox the manager is looking at; take the one they typed into, else the first
+  const pick=cls=>{ const els=[...document.querySelectorAll(cls+'[data-k="'+k+'"]')], w=els.find(e=>(e.value||'').trim()); return ((w||els[0]||{}).value||'').trim(); };
+  const decisionNote=pick('.odnote'), internalNote=pick('.odint');
   const cur=collapseOffdays(RECORDS).find(x=>nrmName(x.rep)===nrmName(rep)&&String(x.date||'').slice(0,10)===date)||{};
-  await addRecord({type:'offday',rep,date,reason:cur.reason||'',mgr:cur.mgr||'',status,by:(SESSION&&SESSION.name)||''});
+  await addRecord({type:'offday',rep,date,reason:cur.reason||'',mgr:cur.mgr||'',status,decisionNote,internalNote,by:(SESSION&&SESSION.name)||''});
   toast('Day off '+status); renderOffdayApprovals();
   if(document.getElementById('arBody')&&!document.getElementById('tab-adminreport').hidden) renderAdminReport();
 }
