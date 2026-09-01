@@ -44,12 +44,25 @@ async function atFetch(path, opts) {
   return fetch('https://api.airtable.com/v0/' + path, { ...(opts || {}), headers: { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json', ...((opts && opts.headers) || {}) } });
 }
 export default async function handler(req, res) {
-  const pass = process.env.RECRUIT_PASS;
-  const given = (req.query && req.query.key) || (req.headers && req.headers['x-recruit-key']) || '';
-  if (pass && given !== pass) return res.status(401).json({ ok: false, error: 'unauthorized' });
+  if (!authorized(req)) return res.status(401).json({ ok: false, error: 'unauthorized' });
   if (!process.env.AIRTABLE_TOKEN) return res.status(200).json({ ok: false, error: 'AIRTABLE_TOKEN not set on the server' });
   const action = (req.query && req.query.action) || (req.body && req.body.action) || 'list';
   try {
+    if (action === 'diag') {
+      const tok = process.env.AIRTABLE_TOKEN || '';
+      const info = { hasToken: !!tok, tokenPrefix: tok.slice(0, 3), tokenLen: tok.length, base: BASE, table: TABLE };
+      try {
+        const r = await atFetch('meta/bases', { method: 'GET' });
+        const j = await r.json();
+        if (r.ok) { info.visibleBases = (j.bases || []).map(b => ({ id: b.id, name: b.name })); info.baseInTokenAccess = (j.bases || []).some(b => b.id === BASE); }
+        else info.metaBasesError = r.status + ' ' + JSON.stringify(j).slice(0, 160);
+      } catch (e) { info.metaBasesError = String(e); }
+      try {
+        const r2 = await atFetch(`${BASE}/${TABLE}?maxRecords=1`, { method: 'GET' });
+        info.readTableStatus = r2.status; if (!r2.ok) info.readTableError = (await r2.text()).slice(0, 200);
+      } catch (e) { info.readTableError = String(e); }
+      return res.status(200).json({ ok: true, diag: info });
+    }
     if (action === 'list') {
       let records = [], offset;
       const qs = FIELDS.map(f => 'fields%5B%5D=' + encodeURIComponent(f)).join('&');
