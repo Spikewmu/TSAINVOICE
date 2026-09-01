@@ -527,14 +527,15 @@
     <h2 class="section">Users</h2>
     <p class="hint">Create a login for each rep, pick their role, and assign the team(s) / account(s) they work. Setters see only the setter end-of-day form; closers see the closed-deal + closer forms; both see a Rep Breakdown scoped to their assigned teams. Admins see everything.</p>
     <div class="panel">
-      <h3>Add or update a user</h3>
+      <h3>Add a user</h3>
+      <p class="hint" style="margin:-4px 0 10px">Create a new login here. To change someone who already exists, use the controls on their row below - <b>Access</b> dropdown for role, <b>Edit</b> for teams, <b>Hire / dates</b> for dates, <b>Reset password</b> to set a new password.</p>
       <form class="grid" id="userForm" onsubmit="saveUser(event)" style="box-shadow:none;border:none">
         <div class="field"><label>Full name *</label><input name="name" required placeholder="Bree Smith"></div>
         <div class="field"><label>Username *</label><input name="username" required placeholder="bree" autocomplete="off"></div>
         <div class="field"><label>Role *</label><select name="role" required><option value="closer">Closer</option><option value="setter">Setter</option><option value="admin">Admin</option></select></div>
         <div class="field"><label>Password *</label><input name="password" type="text" required placeholder="set a password"></div>
         <div class="field full"><label>Teams / accounts (assign one or more)</label><div id="newUserTeams" class="teamboxes"></div></div>
-        <div class="full row-actions"><button class="btn gold" type="submit">Save user</button><span class="tag">Re-saving an existing username updates their role, password, and teams.</span></div>
+        <div class="full row-actions"><button class="btn gold" type="submit">Save user</button><span class="tag">Creating a new login. Existing users: change them on their row below (no need to re-enter a password).</span></div>
       </form>
     </div>
     <div class="panel"><h3>Current users <button class="btn ghost sm" style="float:right" onclick="importUsers()" title="Copy all accounts from the old backend into the new one">Import from old backend</button></h3><div id="usersUnassigned" style="padding:0 2px 4px"></div><div class="tablewrap"><table id="usersTable"></table></div></div>
@@ -2184,7 +2185,7 @@ function renderUsersTable(list){
                 ? '<span class="muted">all (admin)</span>'+roleSummaryHTML(u)+rolesBtn+datesBtn+repMetaSummary(u.username)
                 : ((roleSummaryHTML(u)||'<span class="tag" style="color:var(--warn);border-color:var(--warn)">no accounts assigned yet</span>')+rolesBtn+datesBtn+repMetaSummary(u.username))));
       const actions = u.master ? '<span class="tag">master, set in Settings</span>'
-        : (isAdmin ? `<button class="btn sm ghost" style="color:var(--warn);border-color:var(--warn)" onclick="delUser('${esc(u.username)}')">Remove</button>` : '');
+        : (isAdmin ? `<button class="btn sm ghost" onclick="resetPassword('${esc(u.username)}')">Reset password</button> <button class="btn sm ghost" style="color:var(--warn);border-color:var(--warn)" onclick="delUser('${esc(u.username)}')">Remove</button>` : '');
       // inline role change - no password needed (backend keeps the existing password on a role-only update)
       const roleOpts = isAdmin ? ['closer','setter','manager','webinarteam','founder','admin'] : ['closer','setter'];
       const canEditRole = !u.master && (isAdmin || (SESSION.role==='manager' && ['closer','setter'].includes(u.role)));
@@ -2282,6 +2283,20 @@ async function saveRoles(){
   await Promise.all(jobs);
   document.getElementById('rolesEditPanel').hidden=true; ROLE_EDIT=null;
   toast('Roles updated'); fillLists(); renderUsers(); setTimeout(renderUsers, 800);
+}
+// admin resets an existing user's password (the admin types the new one); role + teams stay as they are
+async function resetPassword(username){
+  if(username==='tsaboss'){ toast('Change the master password in Settings',true); return; }
+  const u=userByName(username);
+  const pw=prompt('Set a NEW password for '+(u.name||username)+':');
+  if(pw===null) return; // cancelled
+  if(!pw || pw.length<6){ toast('Password must be at least 6 characters',true); return; }
+  const user={username, name:u.name||username, role:u.role, password:pw};
+  let ok=false;
+  if(SESSION && SESSION.token){ const res=await authApi({action:'saveUser', token:SESSION.token, user}); ok=!!(res&&res.ok); if(!ok) toast('Reset failed'+(res&&res.error?': '+res.error:''),true); }
+  else if(CFG.endpoint){ const res=await api({action:'saveUser', ...authFields(), user}); ok=!!(res&&res.ok); if(!ok) toast('Reset failed',true); }
+  else { const i=LOCAL_USERS.findIndex(x=>x.username===username); if(i>=0){ LOCAL_USERS[i].passHash=await sha(pw); save(LS.users,LOCAL_USERS); ok=true; } }
+  if(ok) toast('Password reset for '+(u.name||username)+'. Share the new password with them.');
 }
 // change a user's role in place, no password required (the backend keeps the existing password when none is sent)
 async function changeUserRole(username, role){
