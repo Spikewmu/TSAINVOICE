@@ -2094,7 +2094,8 @@ async function recRunAi(){
   try{
     const pool=REC_ALL.filter(recMatch).slice().sort((a,b)=>(b.rating||0)-(a.rating||0)); // send best-rated first (free AI tier caps how many we can send)
     const j=await recFetch('/api/rec-ai',{method:'POST',body:JSON.stringify({query,candidates:pool})});
-    if(!j.ok){ toast('AI: '+(j.error||'failed'),true); }
+    if(!j.ok){ const rl=/Rate limit|429/.test(j.error||''); toast(rl?'AI is busy (free-tier rate limit) - wait ~30s and try again.':('AI: '+(j.error||'failed')),true); }
+    else if(!(j.ranked||[]).length){ REC_AIRANK=[]; document.getElementById('rcAiOnly').checked=false; toast('AI found no strong matches - try broadening the query or filters.'); recRender(); }
     else { REC_AIRANK=j.ranked||[]; document.getElementById('rcAiOnly').checked=true; toast('Ranked '+REC_AIRANK.length+' best-fit'); recRender(); }
   }catch(e){ toast('AI request failed',true); }
   finally{ btn.disabled=false; btn.textContent='Rank best fit'; }
