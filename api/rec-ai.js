@@ -32,7 +32,7 @@ function parseRanked(txt) {
 async function callGroq(sys, user) {
   const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST', headers: { 'content-type': 'application/json', Authorization: 'Bearer ' + process.env.GROQ_API_KEY },
-    body: JSON.stringify({ model: process.env.REC_AI_MODEL || 'openai/gpt-oss-20b', temperature: 0.2, max_tokens: 2500, messages: [{ role: 'system', content: sys }, { role: 'user', content: user + '\n\nRespond with ONLY the JSON object, nothing else.' }] })
+    body: JSON.stringify({ model: process.env.REC_AI_MODEL || 'openai/gpt-oss-20b', temperature: 0.2, max_tokens: 1400, messages: [{ role: 'system', content: sys }, { role: 'user', content: user + '\n\nRespond with ONLY the JSON object, nothing else.' }] })
   });
   const j = await r.json(); if (!r.ok) throw new Error('groq ' + r.status + ' ' + JSON.stringify(j).slice(0, 200));
   return (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || '';
@@ -70,7 +70,8 @@ export default async function handler(req, res) {
   if (!provider) return res.status(200).json({ ok: false, error: 'No AI key set (GROQ_API_KEY / GEMINI_API_KEY / ANTHROPIC_API_KEY). Faceted search still works.' });
   const { query, candidates } = req.body || {};
   if (!query || !Array.isArray(candidates) || !candidates.length) return res.status(200).json({ ok: false, error: 'query and candidates required' });
-  const rows = candidates.slice(0, 400).map(c => ({ id: c.id, name: c.name, rating: c.rating, role: c.role, sold: c.sold, achievements: c.achievements, tz: c.timezones, tech: c.tech, lang: c.languages, summary: String(c.summary || '').slice(0, 300) }));
+  // keep the payload small — free Groq tiers cap tokens-per-minute, so send a lean, bounded set
+  const rows = candidates.slice(0, 60).map(c => ({ id: c.id, name: c.name, rating: c.rating, role: c.role, sold: c.sold, tz: c.timezones, summary: String(c.summary || '').slice(0, 120) }));
   const sys = 'You are a recruiting assistant for a sales-staffing agency. Given a HIRING QUERY and a JSON list of candidates, choose the BEST-FIT candidates and rank them best-first. Weigh the star rating, what they have sold, achievements, timezone, and the call summary. Return ONLY JSON of the form {"ranked":[{"id":"rec...","reason":"<=12 words why they fit"}]}. Include only genuinely relevant candidates (max 40). No prose outside the JSON.';
   const user = 'HIRING QUERY:\n' + query + '\n\nCANDIDATES (JSON):\n' + JSON.stringify(rows);
   try {

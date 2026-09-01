@@ -2092,7 +2092,7 @@ async function recRunAi(){
   const query=(document.getElementById('rcQuery').value||'').trim(); if(!query){ toast('Type what you are looking for',true); return; }
   const btn=document.getElementById('rcAiBtn'); btn.disabled=true; btn.textContent='Ranking...';
   try{
-    const pool=REC_ALL.filter(recMatch);
+    const pool=REC_ALL.filter(recMatch).slice().sort((a,b)=>(b.rating||0)-(a.rating||0)); // send best-rated first (free AI tier caps how many we can send)
     const j=await recFetch('/api/rec-ai',{method:'POST',body:JSON.stringify({query,candidates:pool})});
     if(!j.ok){ toast('AI: '+(j.error||'failed'),true); }
     else { REC_AIRANK=j.ranked||[]; document.getElementById('rcAiOnly').checked=true; toast('Ranked '+REC_AIRANK.length+' best-fit'); recRender(); }
