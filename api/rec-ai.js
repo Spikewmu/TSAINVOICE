@@ -71,7 +71,7 @@ export default async function handler(req, res) {
   const { query, candidates } = req.body || {};
   if (!query || !Array.isArray(candidates) || !candidates.length) return res.status(200).json({ ok: false, error: 'query and candidates required' });
   // keep the payload small — free Groq tiers cap tokens-per-minute, so send a lean, bounded set
-  const rows = candidates.slice(0, 60).map(c => ({ id: c.id, name: c.name, rating: c.rating, role: c.role, sold: c.sold, tz: c.timezones, summary: String(c.summary || '').slice(0, 120) }));
+  const rows = candidates.slice(0, 40).map(c => ({ id: c.id, name: c.name, rating: c.rating, role: c.role, sold: c.sold, tz: c.timezones, summary: String(c.summary || '').slice(0, 120) }));
   const sys = 'You are a recruiting assistant for a sales-staffing agency. Given a HIRING QUERY and a JSON list of candidates, choose the BEST-FIT candidates and rank them best-first. Weigh the star rating, what they have sold, achievements, timezone, and the call summary. Return ONLY JSON of the form {"ranked":[{"id":"rec...","reason":"<=12 words why they fit"}]}. Include only genuinely relevant candidates (max 40). No prose outside the JSON.';
   const user = 'HIRING QUERY:\n' + query + '\n\nCANDIDATES (JSON):\n' + JSON.stringify(rows);
   try {
