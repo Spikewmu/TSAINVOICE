@@ -1952,6 +1952,7 @@ function editTeams(username){
   TEAM_EDIT=username;
   document.getElementById('teamEditTitle').textContent='Assign teams - '+username;
   document.getElementById('teamEditBoxes').innerHTML=teamBoxesHtml(teamsFor(username));
+  if(typeof cancelRoles==='function')cancelRoles(); if(typeof cancelRepMeta==='function')cancelRepMeta();
   const p=document.getElementById('teamEditPanel'); p.hidden=false; p.scrollIntoView({behavior:'smooth',block:'nearest'});
 }
 function cancelTeams(){ TEAM_EDIT=null; document.getElementById('teamEditPanel').hidden=true; }
@@ -1970,7 +1971,7 @@ function editRoles(username){
   ROLE_EDIT=username; const u=userByName(username);
   document.getElementById('rolesEditTitle').textContent='Account roles - '+(u.name||username);
   renderRolesTable(u);
-  cancelTeams();
+  cancelTeams(); if(typeof cancelRepMeta==='function')cancelRepMeta();
   const p=document.getElementById('rolesEditPanel'); p.hidden=false; p.scrollIntoView({behavior:'smooth',block:'nearest'});
 }
 function renderRolesTable(u){
