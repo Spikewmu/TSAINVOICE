@@ -76,6 +76,9 @@ export default async function handler(req, res) {
   const user = 'HIRING QUERY:\n' + query + '\n\nCANDIDATES (JSON):\n' + JSON.stringify(rows);
   try {
     const txt = provider === 'groq' ? await callGroq(sys, user) : provider === 'gemini' ? await callGemini(sys, user) : await callAnthropic(sys, user);
-    return res.status(200).json({ ok: true, provider, ranked: parseRanked(txt) });
+    const ranked = parseRanked(txt);
+    const resp = { ok: true, provider, ranked };
+    if (!ranked.length && (req.body && req.body.debug)) resp._raw = String(txt || '').slice(0, 600);
+    return res.status(200).json(resp);
   } catch (e) { return res.status(200).json({ ok: false, error: String(e && e.message || e) }); }
 }
