@@ -38,7 +38,7 @@ async function callGroq(sys, user) {
   return (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || '';
 }
 async function callGemini(sys, user) {
-  const model = process.env.REC_AI_MODEL || 'gemini-1.5-flash';
+  const model = process.env.REC_AI_MODEL || 'gemini-2.0-flash';
   const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=` + process.env.GEMINI_API_KEY, {
     method: 'POST', headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ systemInstruction: { parts: [{ text: sys }] }, contents: [{ parts: [{ text: user }] }], generationConfig: { temperature: 0.2, responseMimeType: 'application/json' } })
@@ -66,7 +66,9 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, models: (j.data || []).map(m => m.id) });
     } catch (e) { return res.status(200).json({ ok: false, error: String(e) }); }
   }
-  const provider = process.env.GROQ_API_KEY ? 'groq' : (process.env.GEMINI_API_KEY ? 'gemini' : (process.env.ANTHROPIC_API_KEY ? 'anthropic' : null));
+  // prefer Gemini (most generous free tier), then Groq, then Anthropic; REC_AI_PROVIDER can force one
+  const provider = (process.env.REC_AI_PROVIDER || '').trim() ||
+    (process.env.GEMINI_API_KEY ? 'gemini' : process.env.GROQ_API_KEY ? 'groq' : process.env.ANTHROPIC_API_KEY ? 'anthropic' : null);
   if (!provider) return res.status(200).json({ ok: false, error: 'No AI key set (GROQ_API_KEY / GEMINI_API_KEY / ANTHROPIC_API_KEY). Faceted search still works.' });
   const { query, candidates } = req.body || {};
   if (!query || !Array.isArray(candidates) || !candidates.length) return res.status(200).json({ ok: false, error: 'query and candidates required' });
