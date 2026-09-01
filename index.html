@@ -119,6 +119,11 @@
   .rolerow{display:flex;align-items:flex-start;gap:14px;padding:10px 0;border-bottom:1px solid var(--border);flex-wrap:wrap}
   .rolerow .rname{min-width:190px;font-weight:600;padding-top:6px}
   .heldby{font-size:10px;color:var(--muted);margin-left:2px}
+  .grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px 14px}
+  @media(max-width:720px){ .grid3{grid-template-columns:repeat(2,minmax(0,1fr))} }
+  @media(max-width:480px){ .grid3{grid-template-columns:1fr} }
+  .mgrsec h3{display:flex;align-items:center;gap:2px}
+  .mgrnum{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:var(--gold-soft);color:var(--gold);font-size:12px;font-weight:700;margin-right:8px}
   .kpisec{font-family:var(--serif);font-size:15px;font-weight:700;color:var(--gold-2);margin:6px 0 8px;letter-spacing:.01em}
   .prodgrid{display:flex;flex-wrap:wrap;gap:12px}
   .produnit{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);font-weight:600}
@@ -384,32 +389,13 @@
   <!-- ===== MANAGER EOD ===== -->
   <section id="tab-mgreod" hidden>
     <h2 class="section">Manager End of Day</h2>
-    <p class="hint">Managers fill this at the end of each day, one per account you run, so we can see team output and where the constraint is. Managers get held accountable the same way reps do. The raw numbers also auto-roll onto the Meeting agenda.</p>
-    <form class="grid" id="mgrEodForm" onsubmit="submitMgrEod(event)">
-      <div class="formhead"><b>Account &amp; day</b></div>
-      <div class="field"><label>Date *</label><input type="date" name="date" required></div>
-      <div class="field"><label>Client / account *</label><select name="client" required></select></div>
-
-      <div class="formhead"><b>Setters</b></div>
-      <div class="field"><label>Setters working today</label><input type="number" name="settersWorking" min="0" step="1"></div>
-      <div class="field"><label>Total hours</label><input type="number" name="setterHours" min="0" step="0.1"></div>
-      <div class="field"><label>Total inputs (dials)</label><input type="number" name="setterDials" min="0" step="1"></div>
-      <div class="field"><label>Total sets</label><input type="number" name="setterSets" min="0" step="1"></div>
-      <div class="field"><label>Setter EOD checkouts completed</label><input type="number" name="setterEods" min="0" step="1"><span class="fieldhelp">How many of your setters submitted their end-of-day report.</span></div>
-
-      <div class="formhead"><b>Closers</b></div>
-      <div class="field"><label>Closers working today</label><input type="number" name="closersWorking" min="0" step="1"></div>
-      <div class="field"><label>Calls taken</label><input type="number" name="closerCalls" min="0" step="1"></div>
-      <div class="field"><label>Show rate (%)</label><input type="number" name="showRate" min="0" max="100" step="1"></div>
-      <div class="field"><label>Close rate (%)</label><input type="number" name="closeRate" min="0" max="100" step="1"></div>
-      <div class="field"><label>Cash collected ($)</label><input type="number" name="cash" min="0" step="0.01"></div>
-      <div class="field"><label>Closer EOD checkouts completed</label><input type="number" name="closerEods" min="0" step="1"><span class="fieldhelp">How many of your closers submitted their end-of-day report.</span></div>
-
-      <div class="formhead"><b>Constraint</b><span class="sub">what held the team back</span></div>
-      <div class="field full"><label>Bottleneck / notes</label><textarea name="bottleneck" rows="2" placeholder="If reps missed KPIs: who was the bottleneck, what happened (sick, half day, left early), did they meet KPIs?"></textarea></div>
-
-      <div class="full row-actions"><button class="btn gold" type="submit">Submit manager EOD</button></div>
-    </form>
+    <p class="hint">Fill the end-of-day numbers for <b>every offer you manage</b> in one place, then submit once. Each offer is its own section below. Leave a section blank if there is nothing to report for it. Managers get held accountable the same way reps do; the raw numbers also auto-roll onto the Meeting agenda.</p>
+    <div class="filters" style="margin:0 0 6px;align-items:flex-end">
+      <div class="field"><label>Date *</label><input type="date" id="mgrEodDate" onchange="renderMgrEod()"></div>
+      <span class="tag" id="mgrEodWho" style="align-self:flex-end;margin-bottom:2px"></span>
+    </div>
+    <div id="mgrEodSections"></div>
+    <div class="row-actions" style="margin:8px 0 2px"><button class="btn gold" id="mgrEodSubmit" onclick="submitMgrEod()">Submit manager EOD</button></div>
     <div class="panel"><h3>Day-off requests <span style="font-weight:400;color:var(--muted);font-size:12px">- approve or deny time off for the reps you manage</span></h3><div class="offdayBox"></div></div>
     <div class="panel"><h3>Recent manager EODs <span style="font-weight:400;color:var(--muted);font-size:12px">- latest per manager, account + day</span></h3><div class="tablewrap"><table id="mgrEodTable"></table></div></div>
   </section>
@@ -1131,11 +1117,34 @@ async function submitWebinar(e){ e.preventDefault(); const btn=e.target.querySel
   finally{ if(ok) btnDone(btn,'Submitted!'); else btnBusy(btn,false); } }
 /* ---------------- manager EOD ---------------- */
 function collapseMgrEod(list){ const m={}; list.forEach(x=>{ if(x.type!=='mgreod')return; const k=[(x.date||'').slice(0,10),(x.client||'').trim(),(x.by||'').trim()].join('|'); if(!m[k]||(x.submittedAt||'')>(m[k].submittedAt||'')) m[k]=x; }); return Object.values(m); }
+// the offers a manager fills an EOD for = the accounts they run (any function); admins/unassigned fall back to all in-scope clients
+function mgrEodClients(){
+  const mine=managedClientsForUser(SESSION);
+  if(mine.length) return mine;
+  const sc=dashScopeClients(); return sc?sc.filter(c=>c!==' none'):clientNames();
+}
+const MGR_SET_FIELDS=[['settersWorking','Setters working today','1'],['setterHours','Total hours','0.1'],['setterDials','Total inputs (dials)','1'],['setterSets','Total sets','1'],['setterEods','Setter EOD checkouts','1']];
+const MGR_CLO_FIELDS=[['closersWorking','Closers working today','1'],['closerCalls','Calls taken','1'],['showRate','Show rate (%)','1'],['closeRate','Close rate (%)','1'],['cash','Cash collected ($)','0.01'],['closerEods','Closer EOD checkouts','1']];
+const MGR_NUM_FIELDS=[...MGR_SET_FIELDS,...MGR_CLO_FIELDS].map(f=>f[0]);
 function renderMgrEod(){
-  const sc=dashScopeClients(), clist=sc?sc.filter(c=>c!==' none'):clientNames();
-  const sel=document.querySelector('#mgrEodForm [name=client]');
-  if(sel){ const cur=sel.value; sel.innerHTML=clist.map(c=>`<option>${esc(c)}</option>`).join(''); if(cur&&clist.includes(cur))sel.value=cur; }
-  const d=document.querySelector('#mgrEodForm [name=date]'); if(d&&!d.value) d.value=todayLocal();
+  const di=document.getElementById('mgrEodDate'); if(di&&!di.value) di.value=todayLocal();
+  const date=((di&&di.value)||todayLocal()).slice(0,10), by=(SESSION&&SESSION.name)||'';
+  const accts=mgrEodClients();
+  const who=document.getElementById('mgrEodWho'); if(who){ who.textContent=accts.length?`${accts.length} offer${accts.length>1?'s':''} you manage · ${usDate(date)}`:'No offers assigned'; }
+  const prior={}; collapseMgrEod(RECORDS).forEach(x=>{ if((x.date||'').slice(0,10)===date && nrmName(x.by)===nrmName(by)) prior[nrmName(x.client)]=x; });
+  const inp=(acct,f,label,step,val)=>`<div class="field"><label>${label}</label><input type="number" min="0" step="${step}" data-acct="${esc(acct)}" data-f="${f}" value="${(val===0||val)?val:''}"></div>`;
+  const box=document.getElementById('mgrEodSections');
+  box.innerHTML = accts.length ? accts.map((c,i)=>{
+    const p=prior[nrmName(c)]||{}, v=f=>(p[f]===0||p[f])?p[f]:'';
+    return `<div class="panel mgrsec"><h3><span class="mgrnum">${i+1}</span> ${esc(c)}${p.submittedAt?' <span class="pill good" style="font-weight:600;margin-left:6px">saved today</span>':''}</h3><div style="padding:0 14px 14px">
+      <div class="formhead" style="margin-top:4px"><b>Setters</b></div>
+      <div class="grid3">${MGR_SET_FIELDS.map(f=>inp(c,f[0],f[1],f[2],v(f[0]))).join('')}</div>
+      <div class="formhead" style="margin-top:12px"><b>Closers</b></div>
+      <div class="grid3">${MGR_CLO_FIELDS.map(f=>inp(c,f[0],f[1],f[2],v(f[0]))).join('')}</div>
+      <div class="formhead" style="margin-top:12px"><b>Constraint</b> <span class="sub">what held the team back</span></div>
+      <textarea rows="2" style="width:100%" data-acct="${esc(c)}" data-f="bottleneck" placeholder="If reps missed KPIs: who was the bottleneck, what happened (sick, half day, left early), did they meet KPIs?">${esc(p.bottleneck||'')}</textarea>
+    </div></div>`;
+  }).join('') : '<p class="muted" style="padding:14px">You are not set up as a manager on any account yet. Ask an admin to assign your offers under Users &rsaquo; Responsibilities.</p>';
   renderMgrEodTable();
   renderOffdayApprovals();
 }
@@ -1146,14 +1155,27 @@ function renderMgrEodTable(){
   const head=`<thead><tr><th>Date</th><th>Account</th><th>Manager</th><th class="num">Setters</th><th class="num">Dials</th><th class="num">Sets</th><th class="num">Set EOD</th><th class="num">Closers</th><th class="num">Calls</th><th class="num">Show%</th><th class="num">Close%</th><th class="num">Cash</th><th class="num">Clo EOD</th><th>Bottleneck</th></tr></thead><tbody>`;
   t.innerHTML=head+(rows.length?rows.map(x=>`<tr><td style="white-space:nowrap">${esc(usDate(x.date))}</td><td>${esc(x.client)}</td><td>${esc(x.by||'')}</td><td class="num">${x.settersWorking||0}</td><td class="num">${x.setterDials||0}</td><td class="num">${x.setterSets||0}</td><td class="num">${x.setterEods||0}</td><td class="num">${x.closersWorking||0}</td><td class="num">${x.closerCalls||0}</td><td class="num">${x.showRate||0}%</td><td class="num">${x.closeRate||0}%</td><td class="num">${money(x.cash)}</td><td class="num">${x.closerEods||0}</td><td>${esc(x.bottleneck||'')}</td></tr>`).join(''):`<tr><td colspan="14" class="muted" style="padding:16px">No manager EODs yet.</td></tr>`)+`</tbody>`;
 }
-async function submitMgrEod(e){ e.preventDefault(); const btn=e.target.querySelector('[type=submit]'); if(btn&&btn.disabled) return; btnBusy(btn,true); let ok=false;
-  try{ const o=formObj(e.target); o.type='mgreod'; o.by=(SESSION&&SESSION.name)||'';
-    ['settersWorking','setterHours','setterDials','setterSets','setterEods','closersWorking','closerCalls','showRate','closeRate','cash','closerEods'].forEach(k=>{ o[k]=parseFloat(o[k])||0; });
-    const csel=e.target.querySelector('[name=client]'); if(csel && !(o.client||'').trim()) o.client=csel.value;
-    if(!(o.client||'').trim()){ toast('Choose a client / account first.',true); return; }
-    await addRecord(o); e.target.reset(); renderMgrEod(); toast('Manager EOD submitted.'); ok=true; }
-  catch(err){ toast('Submit failed - try again',true); }
-  finally{ if(ok) btnDone(btn,'Submitted!'); else btnBusy(btn,false); } }
+async function submitMgrEod(){
+  const btn=document.getElementById('mgrEodSubmit'); if(btn&&btn.disabled) return; btnBusy(btn,true); let ok=false;
+  try{
+    const date=((document.getElementById('mgrEodDate')||{}).value||todayLocal()).slice(0,10), by=(SESSION&&SESSION.name)||'';
+    // bucket every field by its offer (data-acct), so one submit covers all offers the manager runs
+    const buckets={};
+    document.querySelectorAll('#mgrEodSections [data-acct]').forEach(el=>{ const b=(buckets[el.dataset.acct]=buckets[el.dataset.acct]||{}); b[el.dataset.f]=el.value; });
+    const jobs=[]; let filled=0;
+    Object.keys(buckets).forEach(acct=>{
+      const b=buckets[acct];
+      const hasData = MGR_NUM_FIELDS.some(f=>String(b[f]==null?'':b[f]).trim()!=='') || String(b.bottleneck||'').trim()!=='';
+      if(!hasData) return; // skip offers left blank
+      const o={type:'mgreod',date,client:acct,by,bottleneck:(b.bottleneck||'').trim()};
+      MGR_NUM_FIELDS.forEach(f=>{ o[f]=parseFloat(b[f])||0; });
+      jobs.push(addRecord(o)); filled++;
+    });
+    if(!filled){ toast('Enter numbers for at least one offer first.',true); btnBusy(btn,false); return; }
+    await Promise.all(jobs); renderMgrEod(); toast(`Manager EOD submitted for ${filled} offer${filled>1?'s':''}.`); ok=true;
+  }catch(err){ toast('Submit failed - try again',true); }
+  finally{ if(ok) btnDone(btn,'Submitted!'); else btnBusy(btn,false); }
+}
 function renderWebinars(){
   const sc=dashScopeClients();
   const rows=RECORDS.filter(x=>x.type==='webinar'&&(!sc||sc.includes(x.client))).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
