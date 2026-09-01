@@ -222,9 +222,9 @@
     <h2 class="section" id="dashTitle">Dashboard</h2>
     <p class="hint" id="dashHint">Live view of everything submitted. Filter by month, client, and role.</p>
     <div class="filters" id="dashFilters">
-      <div class="field"><label>Month</label><select id="fMonth"></select></div>
-      <div class="field"><label>Client</label><select id="fClient"></select></div>
-      <div class="field"><label>Role</label><select id="fRole"><option value="">All</option><option>Closer</option><option>Setter</option></select></div>
+      <div class="field"><label>Month</label><select id="fMonth" onchange="renderDash()"></select></div>
+      <div class="field"><label>Client</label><select id="fClient" onchange="renderDash()"></select></div>
+      <div class="field"><label>Role</label><select id="fRole" onchange="renderDash()"><option value="">All</option><option>Closer</option><option>Setter</option></select></div>
       <button class="btn ghost sm" onclick="renderDash()">Refresh</button>
     </div>
     <div class="kpisec">Closers - deals &amp; cash</div>
@@ -355,7 +355,7 @@
     <p id="mtgTarget" style="margin:0 0 10px;font-weight:600;color:var(--gold)"></p>
     <div class="filters">
       <div class="field"><label>Meeting</label><select id="mtgDate" onchange="renderMeeting()"></select></div>
-      <div class="field" style="position:relative"><label>Or pick a date</label><input type="date" id="mtgNewDate" onchange="pickMtgDate()"><span class="fieldhelp" style="position:absolute;top:100%;left:0;margin-top:3px;white-space:nowrap">Defaults to your next meeting (rolls to tomorrow at noon). Pick a day to prep early.</span></div>
+      <div class="field" style="position:relative"><label>Or pick a date</label><input type="date" id="mtgNewDate" onchange="pickMtgDate()" oninput="pickMtgDate()"><span class="fieldhelp" style="position:absolute;top:100%;left:0;margin-top:3px;white-space:nowrap">Defaults to your next meeting (rolls to tomorrow at noon). Pick a day to prep early.</span></div>
       <button class="btn ghost sm" onclick="renderMeeting()">Refresh</button>
       <button class="btn sm" onclick="copyAgenda()">Copy for AI / paste</button>
       <button class="btn sm ghost" onclick="printAgenda()">Print</button>
@@ -391,7 +391,7 @@
     <h2 class="section">Manager End of Day</h2>
     <p class="hint">Fill the end-of-day numbers for <b>every offer you manage</b> in one place, then submit once. Each offer is its own section below. Leave a section blank if there is nothing to report for it. Managers get held accountable the same way reps do; the raw numbers also auto-roll onto the Meeting agenda.</p>
     <div class="filters" style="margin:0 0 6px;align-items:flex-end">
-      <div class="field"><label>Date *</label><input type="date" id="mgrEodDate" onchange="renderMgrEod()"></div>
+      <div class="field"><label>Date *</label><input type="date" id="mgrEodDate" onchange="renderMgrEod()" oninput="renderMgrEod()"></div>
       <span class="tag" id="mgrEodWho" style="align-self:flex-end;margin-bottom:2px"></span>
     </div>
     <div id="mgrEodSections"></div>
@@ -437,8 +437,8 @@
     <h2 class="section">Call Log</h2>
     <p class="hint">Every post-call checkout, newest first, from closers and setters. Review any call's outcome and open the recording. Reps see their own account; managers and admins see everything.</p>
     <div class="filters">
-      <div class="field"><label>From</label><input type="date" id="clFrom" onchange="renderCallLog()"></div>
-      <div class="field"><label>To</label><input type="date" id="clTo" onchange="renderCallLog()"></div>
+      <div class="field"><label>From</label><input type="date" id="clFrom" onchange="renderCallLog()" oninput="renderCallLog()"></div>
+      <div class="field"><label>To</label><input type="date" id="clTo" onchange="renderCallLog()" oninput="renderCallLog()"></div>
       <div class="field"><label>Quick range</label><div class="row-actions"><button class="btn ghost sm" onclick="rangePreset('clFrom','clTo','week','renderCallLog')">This week</button><button class="btn ghost sm" onclick="rangePreset('clFrom','clTo','month','renderCallLog')">This month</button><button class="btn ghost sm" onclick="rangePreset('clFrom','clTo','30','renderCallLog')">Last 30d</button><button class="btn ghost sm" onclick="rangePreset('clFrom','clTo','all','renderCallLog')">All time</button></div></div>
       <div class="field"><label>Client</label><select id="clClient" onchange="renderCallLog()"></select></div>
       <div class="field"><label>Type</label><select id="clRole" onchange="renderCallLog()"><option value="">All calls</option><option value="Closer">Closing calls</option><option value="Setter">Conversations</option></select></div>
@@ -454,8 +454,8 @@
     <h2 class="section">Admin Report</h2>
     <p class="hint">Leadership-only. See who submitted their reports (Setter / Closer / Manager EOD) AND their performance over any date range. Pick a <b>From</b> and <b>To</b> date (or a quick range). Tables cover the whole range; a day-by-day grid shows for ranges of 16 days or fewer.</p>
     <div class="filters" style="margin:0 0 8px;align-items:flex-end">
-      <div class="field"><label>From</label><input type="date" id="arFrom" onchange="renderAdminReport()"></div>
-      <div class="field"><label>To</label><input type="date" id="arTo" onchange="renderAdminReport()"></div>
+      <div class="field"><label>From</label><input type="date" id="arFrom" onchange="renderAdminReport()" oninput="renderAdminReport()"></div>
+      <div class="field"><label>To</label><input type="date" id="arTo" onchange="renderAdminReport()" oninput="renderAdminReport()"></div>
       <div class="field"><label>Quick range</label><div class="row-actions"><button class="btn ghost sm" onclick="setArPreset('yesterday')">Yesterday</button><button class="btn ghost sm" onclick="setArPreset('week')">This week</button><button class="btn ghost sm" onclick="setArPreset('month')">This month</button><button class="btn ghost sm" onclick="setArPreset('30')">Last 30d</button></div></div>
       <span id="arSummary" class="tag" style="align-self:flex-end;margin-bottom:2px"></span>
       <button class="btn ghost sm" style="align-self:flex-end" onclick="renderAdminReport()">Refresh</button>
@@ -607,8 +607,8 @@
       </div>
     </div>
     <div class="filters" style="align-items:flex-end">
-      <div class="field"><label>From</label><input type="date" id="rFrom" onchange="renderReps()"></div>
-      <div class="field"><label>To</label><input type="date" id="rTo" onchange="renderReps()"></div>
+      <div class="field"><label>From</label><input type="date" id="rFrom" onchange="renderReps()" oninput="renderReps()"></div>
+      <div class="field"><label>To</label><input type="date" id="rTo" onchange="renderReps()" oninput="renderReps()"></div>
       <div class="field"><label>Quick range</label><div class="row-actions"><button class="btn ghost sm" onclick="rangePreset('rFrom','rTo','week','renderReps')">This week</button><button class="btn ghost sm" onclick="rangePreset('rFrom','rTo','month','renderReps')">This month</button><button class="btn ghost sm" onclick="rangePreset('rFrom','rTo','30','renderReps')">Last 30d</button><button class="btn ghost sm" onclick="rangePreset('rFrom','rTo','all','renderReps')">All time</button></div></div>
       <div class="field"><label>Client</label><select id="rClient" onchange="renderReps()"></select></div>
       <button class="btn ghost sm" onclick="renderReps()">Refresh</button>
