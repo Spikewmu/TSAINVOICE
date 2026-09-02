@@ -651,6 +651,7 @@
         <div class="field" style="min-width:180px"><label>Campaign tag to apply</label><input id="rcCampTop" placeholder="e.g. Trading-Sept" list="rcTagList"></div>
         <button class="btn gold sm" style="align-self:flex-end" onclick="recTag('add')">Tag selected</button>
         <button class="btn ghost sm" style="align-self:flex-end" onclick="recTag('remove')">Remove tag</button>
+        <button class="btn sm" style="align-self:flex-end" onclick="recMessage()">Message</button>
         <button class="btn sm" style="align-self:flex-end" onclick="giOpen()">Group interview</button>
         <button class="btn sm" style="align-self:flex-end" onclick="offerOpen()">Send offer</button>
       </div>
@@ -660,6 +661,7 @@
         <div class="field" style="min-width:220px"><label>Campaign tag to apply</label><input id="rcCamp" placeholder="e.g. Trading-Sept" list="rcTagList"><datalist id="rcTagList"></datalist></div>
         <button class="btn gold sm" style="align-self:flex-end" onclick="recTag('add')">Tag selected</button>
         <button class="btn ghost sm" style="align-self:flex-end" onclick="recTag('remove')">Remove tag</button>
+        <button class="btn sm" style="align-self:flex-end" onclick="recMessage()">Message</button>
         <button class="btn sm" style="align-self:flex-end" onclick="giOpen()">Group interview</button>
         <button class="btn sm" style="align-self:flex-end" onclick="offerOpen()">Send offer</button>
       </div>
@@ -2675,6 +2677,17 @@ function toggleNotif(e){ if(e) e.stopPropagation(); const p=document.getElementB
 function notifGo(tab){ const p=document.getElementById('notifPanel'); if(p) p.hidden=true; showTab(tab); }
 document.addEventListener('click',e=>{ const p=document.getElementById('notifPanel'); if(p && !p.hidden && !(e.target.closest && e.target.closest('.notifwrap'))) p.hidden=true; });
 function setTabBadge(tab,n,title){ document.querySelectorAll('#tabs button[data-tab="'+tab+'"]').forEach(b=>{ let bd=b.querySelector('.navbadge'); if(n>0){ if(!bd){ bd=document.createElement('span'); bd.className='navbadge'; b.appendChild(bd);} bd.textContent=n; bd.title=title||''; } else if(bd){ bd.remove(); } }); }
+// start a conversation from the search view: claim the selected candidate(s), then jump into the Messages thread
+async function recMessage(){
+  if(!REC_SEL.size){ toast('Select a candidate first (checkbox), then Message',true); return; }
+  const sel=[...REC_SEL].map(id=>REC_ALL.find(x=>x.id===id)).filter(Boolean);
+  const ok=await claimMany(sel.map(c=>({id:c.id,name:c.name}))); // claims the free ones for me; skips any owned by others
+  if(!ok.length){ toast('Those candidates are already owned by other recruiters',true); return; }
+  recRender();
+  showTab('messages');
+  if(ok.length===1){ msgOpen(ok[0].id); toast('Conversation started with '+(ok[0].name||'the candidate')); }
+  else { toast('Claimed '+ok.length+' candidates - open any to message'); }
+}
 function recRender(){
   const tb=document.getElementById('rcTplBtn'); if(tb) tb.style.display=(SESSION&&SESSION.role==='admin')?'':'none';
   if(REC_VIEW==='pipeline'){ recRenderBoard(); return; }
