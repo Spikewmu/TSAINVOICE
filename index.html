@@ -145,10 +145,10 @@
   select.rolesel{font:inherit;font-size:12px;font-weight:600;padding:4px 8px;border-radius:6px;background:var(--surface-2);color:var(--ink);border:1px solid var(--border);cursor:pointer}
   .stars{color:var(--gold);letter-spacing:1px;white-space:nowrap}
   .recreason{color:var(--good);font-size:12px;margin-top:3px}
-  .kanban{display:flex;gap:12px;overflow-x:auto;padding-bottom:10px;align-items:flex-start}
-  .kcol{flex:0 0 216px;background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:9px;min-height:90px}
-  .kcol.drop{border-color:var(--gold);background:rgba(201,162,74,.08)}
-  .kcol>h4{margin:2px 4px 9px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:700;display:flex;justify-content:space-between;gap:6px}
+  .kanban{display:flex;gap:12px;overflow-x:auto;padding-bottom:10px;align-items:stretch}
+  .kcol{flex:0 0 216px;background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:9px;height:70vh;overflow-y:auto}
+  .kcol.drop{border-color:var(--gold);background:rgba(201,162,74,.10)}
+  .kcol>h4{position:sticky;top:0;background:var(--surface-2);margin:0 0 9px;padding:2px 4px 6px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:700;display:flex;justify-content:space-between;gap:6px;z-index:1}
   .kcol>h4 .kcount{color:var(--ink);opacity:.65}
   .kcard{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:7px;cursor:grab}
   .kcard:hover{border-color:var(--gold)}
