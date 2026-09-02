@@ -838,10 +838,10 @@
     <label style="font-size:12px;color:var(--muted);font-weight:600">Invite preview (canned template)</label>
     <textarea id="giPreview" rows="9" readonly style="width:100%;margin-top:4px;font-size:12.5px;background:var(--surface-2)"></textarea>
     <div id="giErr" class="fieldhelp" style="color:var(--warn);margin-top:8px" hidden></div>
-    <div class="row-actions" style="margin-top:14px;flex-wrap:wrap">
-      <button class="btn gold sm" onclick="giEmail()">Open email draft</button>
-      <button class="btn sm" onclick="giCopy()">Copy invite</button>
-      <button class="btn sm" onclick="giMarkInvited()">Mark invited &rarr; Booked</button>
+    <p class="fieldhelp" style="margin:10px 0 0">Sending happens inside the platform - the app emails candidates directly, so recruiters never see anyone's email or phone number. "Mark invited" moves them into the pipeline and queues the invite.</p>
+    <div class="row-actions" style="margin-top:12px;flex-wrap:wrap">
+      <button class="btn gold sm" onclick="giMarkInvited()">Mark invited &rarr; Booked</button>
+      <button class="btn ghost sm" onclick="giCopy()">Copy text</button>
       <button class="btn ghost sm" onclick="giClose()">Close</button>
     </div>
   </div>
@@ -863,10 +863,10 @@
     <label style="font-size:12px;color:var(--muted);font-weight:600">Offer preview (canned template)</label>
     <textarea id="ofPreview" rows="11" readonly style="width:100%;margin-top:4px;font-size:12.5px;background:var(--surface-2)"></textarea>
     <div id="ofErr" class="fieldhelp" style="color:var(--warn);margin-top:8px" hidden></div>
-    <div class="row-actions" style="margin-top:14px;flex-wrap:wrap">
-      <button class="btn gold sm" onclick="offerEmail()">Open email draft</button>
-      <button class="btn sm" onclick="offerCopy()">Copy offer</button>
-      <button class="btn sm" onclick="offerMarkSent()">Mark offer sent &rarr; Offer Sent</button>
+    <p class="fieldhelp" style="margin:10px 0 0">Sending happens inside the platform - the app emails candidates directly, so recruiters never see anyone's email or phone number. "Mark offer sent" moves them into the pipeline and queues the offer.</p>
+    <div class="row-actions" style="margin-top:12px;flex-wrap:wrap">
+      <button class="btn gold sm" onclick="offerMarkSent()">Mark offer sent &rarr; Offer Sent</button>
+      <button class="btn ghost sm" onclick="offerCopy()">Copy text</button>
       <button class="btn ghost sm" onclick="offerClose()">Close</button>
     </div>
   </div>
@@ -1042,7 +1042,7 @@ async function tryGate(){
   }
   document.getElementById('gateErr').hidden=false;
 }
-function setSession(s){ SESSION=s; save(LS.auth,s); startApp(); }
+function setSession(s){ SESSION=s; save(LS.auth,s); try{ localStorage.removeItem('tsarec_cache'); }catch(e){} /* drop any prior user's cached candidates so a new login (e.g. a recruiter) never reads them - the server re-fetches with the right redaction */ startApp(); }
 function logout(){ SESSION=null; localStorage.removeItem(LS.auth); location.reload(); }
 /* ---- change own password (click your name, top right) ---- */
 function openChangePw(){
@@ -2407,18 +2407,11 @@ function giTemplate(){
   return { subject:fillTpl(t.subject,map), body:fillBody(t.body,map) };
 }
 function giRender(){
-  const sel=giSel(), t=giTemplate(), withEmail=sel.filter(c=>c.email).length;
-  const cc=document.getElementById('giCount'); if(cc) cc.textContent=`${sel.length} candidate${sel.length===1?'':'s'} selected (${withEmail} with an email on file)`;
+  const sel=giSel(), t=giTemplate(), withEmail=sel.filter(c=>c.email).length, canSee=SESSION&&SESSION.role!=='recruiter';
+  const cc=document.getElementById('giCount'); if(cc) cc.textContent=`${sel.length} candidate${sel.length===1?'':'s'} selected`+(canSee?` (${withEmail} reachable by email)`:'');
   const pv=document.getElementById('giPreview'); if(pv) pv.value='Subject: '+t.subject+'\n\n'+t.body;
 }
 function giCopy(){ const t=giTemplate(); navigator.clipboard.writeText('Subject: '+t.subject+'\n\n'+t.body).then(()=>toast('Invite copied'),()=>toast('Copy failed',true)); }
-function giEmail(){
-  const emails=[...new Set(giSel().map(c=>c.email).filter(Boolean))];
-  if(!emails.length){ toast('None of the selected candidates have an email on file',true); return; }
-  const t=giTemplate();
-  window.location.href='mailto:?bcc='+encodeURIComponent(emails.join(','))+'&subject='+encodeURIComponent(t.subject)+'&body='+encodeURIComponent(t.body);
-  toast('Opening your email with '+emails.length+" candidate"+(emails.length===1?'':'s')+' bcc’d');
-}
 async function giMarkInvited(){
   const sel=giSel(); if(!sel.length) return;
   const date=(document.getElementById('giDate').value||'').slice(0,10);
@@ -2456,18 +2449,11 @@ function offerTemplate(){
   return { subject:fillTpl(t.subject,map), body:fillBody(t.body,map) };
 }
 function offerRender(){
-  const sel=ofSel(), t=offerTemplate(), withEmail=sel.filter(c=>c.email).length;
-  const cc=document.getElementById('ofCount'); if(cc) cc.textContent=`${sel.length} candidate${sel.length===1?'':'s'} selected (${withEmail} with an email on file)`+(sel.length>1?' - offers go out individually, one per candidate':'');
+  const sel=ofSel(), t=offerTemplate(), withEmail=sel.filter(c=>c.email).length, canSee=SESSION&&SESSION.role!=='recruiter';
+  const cc=document.getElementById('ofCount'); if(cc) cc.textContent=`${sel.length} candidate${sel.length===1?'':'s'} selected`+(canSee?` (${withEmail} reachable by email)`:'')+(sel.length>1?' - offers go out individually, one per candidate':'');
   const pv=document.getElementById('ofPreview'); if(pv) pv.value='Subject: '+t.subject+'\n\n'+t.body;
 }
 function offerCopy(){ const t=offerTemplate(); navigator.clipboard.writeText('Subject: '+t.subject+'\n\n'+t.body).then(()=>toast('Offer copied'),()=>toast('Copy failed',true)); }
-function offerEmail(){
-  const emails=[...new Set(ofSel().map(c=>c.email).filter(Boolean))];
-  if(!emails.length){ toast('None of the selected candidates have an email on file',true); return; }
-  const t=offerTemplate();
-  window.location.href='mailto:'+encodeURIComponent(emails.join(','))+'?subject='+encodeURIComponent(t.subject)+'&body='+encodeURIComponent(t.body);
-  toast('Opening your email with '+emails.length+' recipient'+(emails.length===1?'':'s'));
-}
 async function offerMarkSent(){
   const sel=ofSel(); if(!sel.length) return;
   const j=await recFetch('/api/recruiting?action=stage',{method:'POST',body:JSON.stringify({records:sel.map(c=>({id:c.id,status:'Offer Sent'}))})});
@@ -2487,15 +2473,16 @@ function recRender(){
   const list=recList();
   document.getElementById('rcResultCount').textContent=list.length+' candidate'+(list.length===1?'':'s');
   const stars=n=>n?('<span class="stars">'+'★'.repeat(Math.max(0,Math.min(10,n)))+'</span>'):'<span class="muted">-</span>';
-  const head='<thead><tr><th></th><th>Name</th><th>Rating</th><th>Role</th><th>Has sold</th><th>Status</th><th>Contact</th><th>Tags</th></tr></thead><tbody>';
+  const showContact = SESSION && SESSION.role !== 'recruiter'; // recruiters never see candidate emails or phone numbers
+  const head='<thead><tr><th></th><th>Name</th><th>Rating</th><th>Role</th><th>Has sold</th><th>Status</th>'+(showContact?'<th>Contact</th>':'')+'<th>Tags</th></tr></thead><tbody>';
   const rows=list.length?list.map(c=>{
     const links=[c.intro&&`<a href="${esc(c.intro)}" target="_blank" rel="noopener" class="linklike">intro</a>`, c.resume&&`<a href="${esc(c.resume)}" target="_blank" rel="noopener" class="linklike">resume</a>`].filter(Boolean).join(' · ');
-    const contact=[c.phone&&esc(c.phone), c.email&&('<span class="muted" style="font-size:11px">'+esc(c.email)+'</span>')].filter(Boolean).join('<br>');
+    const contact=showContact?[c.phone&&esc(c.phone), c.email&&('<span class="muted" style="font-size:11px">'+esc(c.email)+'</span>')].filter(Boolean).join('<br>'):'';
     const tags=recArr(c.tags).map(t=>`<span class="teamtag">${esc(t)}</span>`).join('')||'<span class="muted">-</span>';
     return `<tr><td><input type="checkbox" ${REC_SEL.has(c.id)?'checked':''} onchange="recToggle('${c.id}',this.checked)"></td>`
       +`<td><b>${esc(c.name)||'(no name)'}</b>${links?'<div style="font-size:11px">'+links+'</div>':''}${c._reason?'<div class="recreason">'+esc(c._reason)+'</div>':''}${c.summary?'<div class="muted" style="font-size:11px;max-width:340px">'+esc(String(c.summary).slice(0,140))+'</div>':''}</td>`
-      +`<td>${stars(c.rating)}</td><td>${esc(recArr(c.role).join(', '))||'<span class="muted">-</span>'}</td><td>${esc(c.sold)||'<span class="muted">-</span>'}</td><td><span class="pill">${esc(c.recStatus)||'-'}</span></td><td>${contact||'<span class="muted">-</span>'}</td><td>${tags}</td></tr>`;
-  }).join(''):'<tr><td colspan="8" class="muted" style="padding:18px">No candidates match. Loosen the filters, or Refresh.</td></tr>';
+      +`<td>${stars(c.rating)}</td><td>${esc(recArr(c.role).join(', '))||'<span class="muted">-</span>'}</td><td>${esc(c.sold)||'<span class="muted">-</span>'}</td><td><span class="pill">${esc(c.recStatus)||'-'}</span></td>`+(showContact?`<td>${contact||'<span class="muted">-</span>'}</td>`:'')+`<td>${tags}</td></tr>`;
+  }).join(''):`<tr><td colspan="${showContact?8:7}" class="muted" style="padding:18px">No candidates match. Loosen the filters, or Refresh.</td></tr>`;
   document.getElementById('rcTbl').innerHTML=head+rows+'</tbody>';
   recSelCount();
 }

@@ -16,12 +16,14 @@ function verifySession(token) {
     return p;
   } catch (e) { return null; }
 }
-function authorized(req) {
+// returns { ok, role } for the caller: a valid session with an allowed role, or the master admin pass (treated as admin)
+function sessionInfo(req) {
   const b = req.body || {}, q = req.query || {}, h = req.headers || {};
   const s = verifySession(b.token || q.token || h['x-session-token'] || '');
-  if (s && REC_ROLES.includes(s.role)) return true;
+  if (s && REC_ROLES.includes(s.role)) return { ok: true, role: s.role };
   const ap = b.adminPass || q.adminPass || h['x-admin-pass'] || '';
-  return !!(ap && (ap === process.env.ADMIN_PASS || ap === process.env.BOT_ADMIN_TOKEN));
+  if (ap && (ap === process.env.ADMIN_PASS || ap === process.env.BOT_ADMIN_TOKEN)) return { ok: true, role: 'admin' };
+  return { ok: false, role: null };
 }
 const BASE = process.env.AIRTABLE_REC_BASE || 'appYKLdo9w2lyfmdQ';   // "TSA - Sales & Recruitment"
 const TABLE = process.env.AIRTABLE_REC_TABLE || 'tblH5pEMqh9FhMW7h'; // "New Sales Rep Apps"
@@ -53,7 +55,9 @@ async function atGet(path, tries = 3) {
   }
 }
 export default async function handler(req, res) {
-  if (!authorized(req)) return res.status(401).json({ ok: false, error: 'unauthorized' });
+  const sess = sessionInfo(req);
+  if (!sess.ok) return res.status(401).json({ ok: false, error: 'unauthorized' });
+  const redactContact = sess.role === 'recruiter'; // recruiters must never receive candidate emails or phone numbers
   if (!process.env.AIRTABLE_TOKEN) return res.status(200).json({ ok: false, error: 'AIRTABLE_TOKEN not set on the server' });
   const action = (req.query && req.query.action) || (req.body && req.body.action) || 'list';
   try {
@@ -90,8 +94,8 @@ export default async function handler(req, res) {
         recStatus: sval(f['Recruitment Status']),
         appStatus: sval(f['Application Status']),
         staffed: sval(f['Currently Staffed?']),
-        phone: sval(f['Contact Number']),
-        email: sval(f['Contact Email']),
+        phone: redactContact ? '' : sval(f['Contact Number']),
+        email: redactContact ? '' : sval(f['Contact Email']),
         timezones: sval(f['What Time Zones Are You Open To Working?']),
         tech: sval(f['Software / Tech']),
         languages: sval(f['What languages are you fluent in?']),
