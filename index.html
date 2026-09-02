@@ -184,6 +184,25 @@
   .bubble .bmeta{display:block;color:var(--muted);font-size:10.5px;margin-top:4px}
   .chanpill{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;border-radius:4px;padding:1px 5px;border:1px solid var(--border);color:var(--muted)}
   @media(max-width:760px){ .msgwrap{flex-direction:column} .msglist{flex:none;max-height:none;border-right:none;border-bottom:1px solid var(--border)} }
+  .progwrap{display:flex;align-items:center;gap:12px;margin:6px 0 18px}
+  .progbar{flex:1;height:10px;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;overflow:hidden}
+  .progbar > i{display:block;height:100%;background:var(--gold);border-radius:6px;transition:width .3s}
+  .modcard{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:10px}
+  .modcard.done{border-color:var(--good,#3ddc84)}
+  .modcard .modhead{display:flex;align-items:flex-start;gap:11px}
+  .modstep{flex:0 0 26px;height:26px;border-radius:50%;background:var(--surface-2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--muted)}
+  .modcard.done .modstep{background:var(--good,#3ddc84);border-color:var(--good,#3ddc84);color:#08210f}
+  .modcard h4{margin:0;font-size:15px}
+  .modcard .modbody{color:var(--muted);font-size:13.5px;line-height:1.5;margin:8px 0 0;white-space:pre-wrap}
+  .gradbadge{display:inline-flex;align-items:center;gap:7px;background:rgba(61,220,132,.14);border:1px solid var(--good,#3ddc84);color:var(--good,#3ddc84);border-radius:999px;padding:5px 13px;font-weight:700;font-size:13px}
+  .quizq{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:10px}
+  .quizq .qtext{font-weight:600;margin-bottom:9px}
+  .quizopt{display:flex;align-items:center;gap:9px;padding:7px 9px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;cursor:pointer}
+  .quizopt:hover{border-color:var(--gold)}
+  .quizopt.sel{border-color:var(--gold);background:rgba(201,162,74,.10)}
+  .quizopt.correct{border-color:var(--good,#3ddc84);background:rgba(61,220,132,.12)}
+  .quizopt.wrong{border-color:var(--bad,#c0392b);background:rgba(192,57,43,.12)}
+  .trrow{display:grid;grid-template-columns:1.4fr 1fr auto;gap:10px;align-items:center;padding:11px 13px;border:1px solid var(--border);border-radius:10px;margin-bottom:8px;background:var(--surface)}
   .kpisec{font-family:var(--serif);font-size:15px;font-weight:700;color:var(--gold-2);margin:6px 0 8px;letter-spacing:.01em}
   .prodgrid{display:flex;flex-wrap:wrap;gap:12px}
   .produnit{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);font-weight:600}
@@ -280,6 +299,7 @@
     <div class="navsub">
       <button data-tab="postcall">Post-Call Checkout</button>
       <button data-tab="eod">End of Day</button>
+      <button data-tab="training">Rep Onboarding</button>
       <button data-tab="timeoff">Time Off</button>
     </div>
   </div>
@@ -692,6 +712,17 @@
     </div>
   </section>
 
+  <!-- ===== REP ONBOARDING ===== -->
+  <section id="tab-training" hidden>
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <h2 class="section" style="margin-bottom:0">Rep Onboarding</h2>
+      <span style="flex:1"></span>
+      <button class="btn ghost sm" id="trEditBtn" style="display:none" onclick="trEditOpen()">Edit curriculum</button>
+    </div>
+    <p class="hint" id="trHint"></p>
+    <div id="trainingWrap"></div>
+  </section>
+
   <!-- ===== DATA ===== -->
   <section id="tab-data" hidden>
     <h2 class="section">Data + Export</h2>
@@ -957,6 +988,20 @@
   </div>
 </div>
 
+<div class="modal" id="trModal" hidden onclick="if(event.target===this)trEditClose()">
+  <div class="modalcard" style="width:min(700px,95vw);max-height:90vh;overflow:auto">
+    <h3 style="margin:0 0 2px">Edit onboarding curriculum</h3>
+    <p class="hint" style="margin:0 0 12px">The modules and certification quiz as JSON. Each module has a title, body, and optional link; each quiz question has options and the index of the correct answer (0 = first). passPct is the score needed to graduate. Admins only; applies for everyone.</p>
+    <textarea id="trJson" rows="20" style="width:100%;font-size:12px;font-family:ui-monospace,Menlo,Consolas,monospace"></textarea>
+    <div id="trErr" class="fieldhelp" style="color:var(--warn);margin:8px 0" hidden></div>
+    <div class="row-actions" style="margin-top:12px;flex-wrap:wrap">
+      <button class="btn gold sm" onclick="trEditSave()">Save curriculum</button>
+      <button class="btn ghost sm" onclick="trResetDefault()">Reset to default</button>
+      <button class="btn ghost sm" onclick="trEditClose()">Close</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal" id="pwModal" hidden onclick="if(event.target===this)closeChangePw()">
   <div class="modalcard">
     <h3 style="margin:0 0 4px">Change password</h3>
@@ -1147,13 +1192,13 @@ function startApp(){
 // base tabs a login TIER can see; per-account responsibilities add to this in applyNavAccess()
 function baseAllow(role){
   return ({
-    admin:['dash','reps','clients','onboarding','meeting','promises','timeoff','postcall','eod','mgreod','webinar','calllog','adminreport','recruiting','messages','data','users','settings'],
-    manager:['dash','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','eod','mgreod','webinar','calllog','recruiting','messages'],
+    admin:['dash','reps','clients','onboarding','meeting','promises','timeoff','postcall','eod','training','mgreod','webinar','calllog','adminreport','recruiting','messages','data','users','settings'],
+    manager:['dash','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','eod','training','mgreod','webinar','calllog','recruiting','messages'],
     founder:['dash'],
     recruiter:['dash','recruiting','messages','timeoff'],
     webinarteam:['dash','meeting','promises','timeoff','webinar'],
-    closer:['dash','postcall','eod','timeoff','calllog','reps'],
-    setter:['dash','postcall','eod','timeoff','calllog','reps']
+    closer:['dash','postcall','eod','training','timeoff','calllog','reps'],
+    setter:['dash','postcall','eod','training','timeoff','calllog','reps']
   })[role] || ['eod'];
 }
 // access follows responsibilities: whatever this person is assigned to run (webinar / setter / closer manager on any account)
@@ -1200,9 +1245,9 @@ function showTab(t){
   document.querySelectorAll('#tabs button[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
   document.querySelectorAll('#tabs .navgroup').forEach(g=>{ if(g.querySelector('button[data-tab="'+t+'"]')) g.classList.remove('collapsed'); }); // reveal the active tab's group
 
-  ['dash','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','eod','mgreod','webinar','calllog','adminreport','recruiting','messages','data','users','settings'].forEach(x=>{ document.getElementById('tab-'+x).hidden = (x!==t); });
+  ['dash','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','eod','training','mgreod','webinar','calllog','adminreport','recruiting','messages','data','users','settings'].forEach(x=>{ document.getElementById('tab-'+x).hidden = (x!==t); });
   // stale-while-revalidate: render instantly from the cached records, then refresh in the background
-  const render={dash:renderDash, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, promises:renderPromisesTab, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, webinar:renderWebinars, calllog:renderCallLog, adminreport:renderAdminReport, recruiting:renderRecruiting, messages:renderMessages, data:renderAll}[t];
+  const render={dash:renderDash, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, promises:renderPromisesTab, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, webinar:renderWebinars, calllog:renderCallLog, adminreport:renderAdminReport, recruiting:renderRecruiting, messages:renderMessages, training:renderTraining, data:renderAll}[t];
   if(render){ render(); syncRecords().then(()=>{ if(currentTab()===t) render(); updateNavBadges(); }); }
   updateNavBadges();
   if(t==='data'){ renderDailyEntry(); }
@@ -2693,6 +2738,92 @@ async function recMessage(){
   showTab('messages');
   if(ok.length===1){ msgOpen(ok[0].id); toast('Conversation started with '+(ok[0].name||'the candidate')); }
   else { toast('Claimed '+ok.length+' candidates - open any to message'); }
+}
+/* ===== rep onboarding: self-serve modules + certification quiz (editable default curriculum) ===== */
+const REP_ONB_DEFAULT={
+  passPct:80,
+  modules:[
+    {id:'m1',title:'Welcome to The Sales Agency',body:'Who we are, how we work, and what great looks like here. Read this, then mark it complete.\n\n(Add your welcome video or doc link under Edit curriculum.)',link:''},
+    {id:'m2',title:'Know the offer + the client',body:'You cannot sell what you do not understand. Learn the offer you are assigned to, who it is for, and the transformation it delivers.',link:''},
+    {id:'m3',title:'The sales framework / script',body:'Our call flow start to finish: open, discovery, pitch, price, close. Study the framework and internalize the flow.',link:''},
+    {id:'m4',title:'Objection handling',body:'The common objections (money, time, spouse, "think about it") and how to acknowledge, isolate, and handle each without being pushy.',link:''},
+    {id:'m5',title:'Tools + daily flow',body:'The dashboard, GHL, logging a Post-Call Checkout after every call, and submitting your End of Day numbers.',link:''},
+    {id:'m6',title:'Compliance + the do-not list',body:'Contact only through approved channels, never use personal contact info you found elsewhere, honor opt-outs, and follow the do-not list.',link:''}
+  ],
+  quiz:[
+    {q:'When do you log a call outcome?',options:['Immediately after each call','At the end of the day','Only if it closed','You do not'],answer:0},
+    {q:'What comes first on a discovery call?',options:['Pitch the price','Build rapport and understand their situation','Send the contract','Ask them to buy'],answer:1},
+    {q:'A prospect says "I need to think about it." Best move?',options:['End the call','Acknowledge, isolate the real concern, then handle it','Immediately discount','Ignore it'],answer:1},
+    {q:'Where do your end-of-day numbers go?',options:['A text to your manager','The dashboard End of Day form','Email','Nowhere'],answer:1},
+    {q:'You may contact a lead using a personal cell you found online.',options:['True','False'],answer:1}
+  ]
+};
+function repOnbConfig(){ let best=null; RECORDS.forEach(x=>{ if(x.type==='reponbconfig'){ if(!best||(x.submittedAt||'')>(best.submittedAt||'')) best=x; } }); if(best&&best.config){ try{ const c=(typeof best.config==='string')?JSON.parse(best.config):best.config; if(c&&Array.isArray(c.modules)&&Array.isArray(c.quiz)) return c; }catch(e){} } return REP_ONB_DEFAULT; }
+function repProgress(user){ const m={}, u=nrm(user); RECORDS.forEach(x=>{ if(x.type!=='reponb'||nrm(x.user)!==u)return; if(!m[x.key]||(x.submittedAt||'')>(m[x.key].submittedAt||'')) m[x.key]=x; }); return m; }
+function repModulesDone(user,cfg){ const p=repProgress(user); return (cfg||repOnbConfig()).modules.filter(mo=>p[mo.id]&&p[mo.id].done).length; }
+function repQuizRec(user){ return repProgress(user)['quiz']; }
+function repGraduated(user){ const q=repQuizRec(user); return !!(q&&q.passed); }
+function repOnbPct(user){ const cfg=repOnbConfig(), total=cfg.modules.length+1, done=repModulesDone(user,cfg)+(repGraduated(user)?1:0); return Math.round(done/total*100); }
+async function repMarkModule(id){ await addRecord({type:'reponb',user:(SESSION&&SESSION.username)||'',name:(SESSION&&SESSION.name)||'',key:id,done:true,at:new Date().toISOString()}); renderTraining(); }
+function renderTraining(){
+  const sec=document.getElementById('tab-training'); if(!sec) return;
+  const admin=isOversight();
+  const eb=document.getElementById('trEditBtn'); if(eb) eb.style.display=(SESSION&&SESSION.role==='admin')?'':'none';
+  const hint=document.getElementById('trHint'), wrap=document.getElementById('trainingWrap');
+  if(admin){ if(hint) hint.textContent='Every rep’s onboarding progress. Reps complete this themselves; you can see where each one stands.'; wrap.innerHTML=trainingRoster(); return; }
+  if(hint) hint.textContent='Work through each module, then pass the certification to graduate.';
+  wrap.innerHTML=trainingSelf((SESSION&&SESSION.username)||'');
+}
+function trainingSelf(user){
+  const cfg=repOnbConfig(), p=repProgress(user), total=cfg.modules.length, doneCount=repModulesDone(user,cfg), pct=repOnbPct(user), grad=repGraduated(user), allModsDone=doneCount>=total;
+  let h=`<div class="progwrap"><b>${pct}%</b><div class="progbar"><i style="width:${pct}%"></i></div>${grad?'<span class="gradbadge"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Graduated</span>':''}</div>`;
+  cfg.modules.forEach((mo,i)=>{ const done=p[mo.id]&&p[mo.id].done;
+    h+=`<div class="modcard${done?' done':''}"><div class="modhead"><span class="modstep">${done?'✓':(i+1)}</span><div style="flex:1"><h4>${esc(mo.title)}</h4><div class="modbody">${esc(mo.body)}</div>${mo.link?`<div style="margin-top:8px"><a href="${esc(mo.link)}" target="_blank" rel="noopener" class="linklike" style="font-size:13px">Open material</a></div>`:''}<div style="margin-top:10px">${done?'<span class="muted" style="font-size:12px">Completed</span>':`<button class="btn sm" onclick="repMarkModule('${mo.id}')">Mark complete</button>`}</div></div></div></div>`;
+  });
+  h+=`<h3 class="section" style="margin-top:22px">Certification</h3>`;
+  if(!allModsDone) h+=`<p class="hint">Finish all ${total} modules to unlock the certification quiz.</p>`;
+  else if(grad){ const q=repQuizRec(user); h+=`<p class="hint">You passed with ${q.score}%. You are certified and ready to sell. Nice work.</p>`; }
+  else h+=`<div id="quizArea">${quizHTML(cfg)}</div>`;
+  return h;
+}
+let QUIZ_ANS={};
+function quizHTML(cfg){
+  QUIZ_ANS={};
+  let h=`<p class="hint">Pick the best answer for each. You need ${cfg.passPct}% to pass.</p>`;
+  cfg.quiz.forEach((qq,qi)=>{ h+=`<div class="quizq" data-qi="${qi}"><div class="qtext">${qi+1}. ${esc(qq.q)}</div>`+qq.options.map((op,oi)=>`<div class="quizopt" data-qi="${qi}" data-oi="${oi}" onclick="quizPick(${qi},${oi})">${esc(op)}</div>`).join('')+`</div>`; });
+  h+=`<div id="quizResult" class="fieldhelp" style="margin:6px 0"></div><button class="btn gold sm" onclick="submitQuiz()">Submit certification</button>`;
+  return h;
+}
+function quizPick(qi,oi){ QUIZ_ANS[qi]=oi; document.querySelectorAll('.quizopt[data-qi="'+qi+'"]').forEach(e=>e.classList.toggle('sel', (+e.dataset.oi)===oi)); }
+async function submitQuiz(){
+  const cfg=repOnbConfig();
+  if(Object.keys(QUIZ_ANS).length<cfg.quiz.length){ toast('Answer every question first',true); return; }
+  let correct=0;
+  cfg.quiz.forEach((qq,qi)=>{ const pick=QUIZ_ANS[qi]; document.querySelectorAll('.quizq[data-qi="'+qi+'"] .quizopt').forEach(e=>{ const oi=+e.dataset.oi; if(oi===qq.answer) e.classList.add('correct'); else if(oi===pick) e.classList.add('wrong'); }); if(pick===qq.answer) correct++; });
+  const score=Math.round(correct/cfg.quiz.length*100), passed=score>=cfg.passPct;
+  document.getElementById('quizResult').innerHTML=`You scored <b>${score}%</b> (${correct}/${cfg.quiz.length}). `+(passed?'<span style="color:var(--good,#3ddc84)">Passed - you are certified!</span>':'<span style="color:var(--warn)">Not quite. Review the modules and try again.</span>');
+  await addRecord({type:'reponb',user:(SESSION&&SESSION.username)||'',name:(SESSION&&SESSION.name)||'',key:'quiz',done:passed,passed,score,at:new Date().toISOString()});
+  if(passed) setTimeout(renderTraining,1400); else setTimeout(()=>{ QUIZ_ANS={}; renderTraining(); },2600);
+}
+function trainingRoster(){
+  const cfg=repOnbConfig(), reps=(USERS_CACHE||[]).filter(u=>['closer','setter'].includes(u.role)), hires=RECORDS.filter(x=>x.type==='hire');
+  let h='';
+  const pending=hires.filter(hn=>!reps.some(u=>nrm(u.name)===nrm(hn.name)));
+  if(pending.length) h+=`<div class="tag" style="color:var(--gold);border-color:var(--gold);display:block;white-space:normal;padding:9px 12px;line-height:1.5;margin-bottom:12px">${pending.length} newly hired candidate${pending.length>1?'s have':' has'} accepted and need a login (Users tab) to start onboarding: ${pending.map(hn=>esc(hn.name||'candidate')).join(', ')}.</div>`;
+  if(!reps.length) return h+'<p class="hint">No setters or closers on the roster yet.</p>';
+  h+=reps.map(u=>{ const pct=repOnbPct(u.username), grad=repGraduated(u.username), md=repModulesDone(u.username,cfg);
+    return `<div class="trrow"><div><b>${esc(u.name||u.username)}</b> <span class="muted" style="font-size:12px">${esc(roleLabel(u.role))}</span></div><div><div class="progbar" style="height:8px"><i style="width:${pct}%"></i></div><span class="muted" style="font-size:11px">${md}/${cfg.modules.length} modules${grad?', certified':''}</span></div><div>${grad?'<span class="gradbadge" style="font-size:12px;padding:3px 10px">Graduated</span>':`<span class="pill">${pct}%</span>`}</div></div>`;
+  }).join('');
+  return h;
+}
+function trEditOpen(){ if(!(SESSION&&SESSION.role==='admin')){ toast('Admins only',true); return; } document.getElementById('trJson').value=JSON.stringify(repOnbConfig(),null,2); document.getElementById('trErr').hidden=true; document.getElementById('trModal').hidden=false; }
+function trEditClose(){ document.getElementById('trModal').hidden=true; }
+function trResetDefault(){ document.getElementById('trJson').value=JSON.stringify(REP_ONB_DEFAULT,null,2); }
+async function trEditSave(){
+  let cfg; try{ cfg=JSON.parse(document.getElementById('trJson').value); }catch(e){ const el=document.getElementById('trErr'); el.hidden=false; el.textContent='Invalid JSON: '+e.message; return; }
+  if(!cfg||!Array.isArray(cfg.modules)||!Array.isArray(cfg.quiz)){ const el=document.getElementById('trErr'); el.hidden=false; el.textContent='Needs a modules array and a quiz array.'; return; }
+  await addRecord({type:'reponbconfig',config:JSON.stringify(cfg),by:(SESSION&&SESSION.name)||''});
+  trEditClose(); toast('Curriculum saved'); renderTraining();
 }
 function recRender(){
   const tb=document.getElementById('rcTplBtn'); if(tb) tb.style.display=(SESSION&&SESSION.role==='admin')?'':'none';
