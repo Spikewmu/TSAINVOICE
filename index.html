@@ -155,6 +155,22 @@
   .kcard.dragging{opacity:.4}
   .kcard .kmeta{color:var(--muted);font-size:11px;margin-top:3px}
   .kcard .klinks{font-size:11px;margin-top:3px}
+  .ownedby{display:inline-block;font-size:10.5px;font-weight:700;letter-spacing:.02em;color:var(--gold);border:1px solid var(--gold);border-radius:999px;padding:1px 7px;margin-left:6px;white-space:nowrap}
+  .ownedby.mine{color:#3ddc84;border-color:#3ddc84}
+  .msgwrap{display:flex;min-height:60vh}
+  .msglist{flex:0 0 310px;border-right:1px solid var(--border);overflow-y:auto;max-height:72vh}
+  .msgthread{flex:1;overflow-y:auto;max-height:72vh;padding:14px 16px}
+  .msgitem{padding:10px 13px;border-bottom:1px solid var(--border);cursor:pointer}
+  .msgitem:hover,.msgitem.active{background:var(--surface-2)}
+  .msgitem .mi-name{font-weight:700}
+  .msgitem .mi-meta{color:var(--muted);font-size:11px;margin-top:2px;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+  .msgitem .mi-last{color:var(--muted);font-size:11.5px;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .bubble{max-width:78%;padding:8px 11px;border-radius:12px;margin:6px 0;font-size:13px;line-height:1.4;white-space:pre-wrap;word-break:break-word}
+  .bubble.out{background:rgba(201,162,74,.14);border:1px solid var(--gold);margin-left:auto;border-bottom-right-radius:3px}
+  .bubble.in{background:var(--surface-2);border:1px solid var(--border);border-bottom-left-radius:3px}
+  .bubble .bmeta{display:block;color:var(--muted);font-size:10.5px;margin-top:4px}
+  .chanpill{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;border-radius:4px;padding:1px 5px;border:1px solid var(--border);color:var(--muted)}
+  @media(max-width:760px){ .msgwrap{flex-direction:column} .msglist{flex:none;max-height:none;border-right:none;border-bottom:1px solid var(--border)} }
   .kpisec{font-family:var(--serif);font-size:15px;font-weight:700;color:var(--gold-2);margin:6px 0 8px;letter-spacing:.01em}
   .prodgrid{display:flex;flex-wrap:wrap;gap:12px}
   .produnit{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);font-weight:600}
@@ -268,6 +284,7 @@
     <button class="navhead"><svg class="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0112 0M19 8v6M22 11h-6"/></svg><span class="nlabel">Recruiting</span><svg class="nchev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
     <div class="navsub">
       <button data-tab="recruiting">Recruiting</button>
+      <button data-tab="messages">Messages</button>
     </div>
   </div>
   <div class="navgroup collapsed">
@@ -630,6 +647,26 @@
     <div class="panel" id="rcBoardPanel" hidden>
       <p class="hint" style="margin:0 0 10px">Drag a candidate between stages to update their recruitment status. The board respects the filters above, so narrow it (role, stars, keyword) before dragging.</p>
       <div id="rcBoard" class="kanban"></div>
+    </div>
+  </section>
+
+  <!-- ===== MESSAGES ===== -->
+  <section id="tab-messages" hidden>
+    <h2 class="section">Messages</h2>
+    <p class="hint" id="msgHint"></p>
+    <div class="panel" style="padding:0;overflow:hidden">
+      <div class="filters" style="align-items:flex-end;padding:12px 14px;margin:0;border-bottom:1px solid var(--border)">
+        <div class="field" style="max-width:140px"><label>Channel</label><select id="msgChan" onchange="renderMessages()"><option value="">All</option><option value="text">Text</option><option value="email">Email</option></select></div>
+        <div class="field" id="msgOwnerWrap" style="max-width:190px;display:none"><label>Recruiter</label><select id="msgOwner" onchange="renderMessages()"></select></div>
+        <div class="field"><label>Search</label><input id="msgSearch" placeholder="candidate name" oninput="renderMessages()"></div>
+        <span style="flex:1"></span>
+        <button class="btn ghost sm" style="align-self:flex-end" onclick="msgLoad(true)">Refresh</button>
+        <span id="msgCount" class="tag" style="align-self:flex-end;margin-bottom:2px"></span>
+      </div>
+      <div class="msgwrap">
+        <div class="msglist" id="msgList"></div>
+        <div class="msgthread" id="msgThread"><div class="muted" style="padding:24px">Select a conversation on the left.</div></div>
+      </div>
     </div>
   </section>
 
@@ -1087,10 +1124,10 @@ function startApp(){
 // base tabs a login TIER can see; per-account responsibilities add to this in applyNavAccess()
 function baseAllow(role){
   return ({
-    admin:['dash','reps','clients','onboarding','meeting','promises','timeoff','postcall','eod','mgreod','webinar','calllog','adminreport','recruiting','data','users','settings'],
-    manager:['dash','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','eod','mgreod','webinar','calllog','recruiting'],
+    admin:['dash','reps','clients','onboarding','meeting','promises','timeoff','postcall','eod','mgreod','webinar','calllog','adminreport','recruiting','messages','data','users','settings'],
+    manager:['dash','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','eod','mgreod','webinar','calllog','recruiting','messages'],
     founder:['dash'],
-    recruiter:['dash','recruiting','timeoff'],
+    recruiter:['dash','recruiting','messages','timeoff'],
     webinarteam:['dash','meeting','promises','timeoff','webinar'],
     closer:['dash','postcall','eod','timeoff','calllog','reps'],
     setter:['dash','postcall','eod','timeoff','calllog','reps']
@@ -1142,7 +1179,7 @@ function showTab(t){
 
   ['dash','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','eod','mgreod','webinar','calllog','adminreport','recruiting','data','users','settings'].forEach(x=>{ document.getElementById('tab-'+x).hidden = (x!==t); });
   // stale-while-revalidate: render instantly from the cached records, then refresh in the background
-  const render={dash:renderDash, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, promises:renderPromisesTab, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, webinar:renderWebinars, calllog:renderCallLog, adminreport:renderAdminReport, recruiting:renderRecruiting, data:renderAll}[t];
+  const render={dash:renderDash, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, promises:renderPromisesTab, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, webinar:renderWebinars, calllog:renderCallLog, adminreport:renderAdminReport, recruiting:renderRecruiting, messages:renderMessages, data:renderAll}[t];
   if(render){ render(); syncRecords().then(()=>{ if(currentTab()===t) render(); updateNavBadges(); }); }
   updateNavBadges();
   if(t==='data'){ renderDailyEntry(); }
@@ -2336,7 +2373,7 @@ function recRenderBoard(){
     const items=byStage[key]||[];
     const cards=items.map(c=>{
       const links=[c.intro&&`<a href="${esc(c.intro)}" target="_blank" rel="noopener" class="linklike">intro</a>`, c.resume&&`<a href="${esc(c.resume)}" target="_blank" rel="noopener" class="linklike">resume</a>`].filter(Boolean).join(' · ');
-      return `<div class="kcard" draggable="true" data-id="${c.id}"><b>${esc(c.name||'(no name)')}</b> ${c.rating?'<span class="stars">'+'★'.repeat(Math.min(5,c.rating))+'</span>':''}<div class="kmeta">${esc(recArr(c.role).join(', ')||'-')}${c.sold?' · '+esc(c.sold):''}</div>${links?'<div class="klinks">'+links+'</div>':''}</div>`;
+      return `<div class="kcard" draggable="true" data-id="${c.id}"><b>${esc(c.name||'(no name)')}</b> ${c.rating?'<span class="stars">'+'★'.repeat(Math.min(5,c.rating))+'</span>':''}${ownerBadge(c.id)}<div class="kmeta">${esc(recArr(c.role).join(', ')||'-')}${c.sold?' · '+esc(c.sold):''}</div>${links?'<div class="klinks">'+links+'</div>':''}</div>`;
     }).join('')||'<div class="muted" style="font-size:11px;padding:6px 4px">-</div>';
     return `<div class="kcol" data-stage="${esc(key)}"><h4><span>${esc(label)}</span><span class="kcount">${items.length}</span></h4>${cards}</div>`;
   }).join('');
@@ -2359,6 +2396,7 @@ async function recSetStage(id,status){
   const prev=c.recStatus; c.recStatus=status; recRenderBoard(); // optimistic
   const j=await recFetch('/api/recruiting?action=stage',{method:'POST',body:JSON.stringify({records:[{id,status}]})});
   if(!j.ok){ c.recStatus=prev; recRenderBoard(); toast('Stage update failed: '+(j.error||''),true); return; }
+  if(status==='Not Looking'){ const cl=claimMap()[id]; if(cl&&cl.owner&&cl.status!=='released') releaseClaim(id); } // dead stage frees the candidate for anyone
   recCacheSave(); recBuildFacets(); toast((c.name||'Candidate')+' → '+(status||'Unsorted'));
 }
 /* ---- email templates: admin-editable canned copy with {{merge}} fields, stored as latest-wins records so they apply for everyone ---- */
@@ -2413,7 +2451,10 @@ function giRender(){
 }
 function giCopy(){ const t=giTemplate(); navigator.clipboard.writeText('Subject: '+t.subject+'\n\n'+t.body).then(()=>toast('Invite copied'),()=>toast('Copy failed',true)); }
 async function giMarkInvited(){
-  const sel=giSel(); if(!sel.length) return;
+  let sel=giSel(); if(!sel.length) return;
+  const okList=await claimMany(sel.map(c=>({id:c.id,name:c.name}))); // claim the free ones for me; skip any owned by other recruiters
+  sel=okList.map(x=>REC_ALL.find(c=>c.id===x.id)).filter(Boolean);
+  if(!sel.length){ const e=document.getElementById('giErr'); e.hidden=false; e.textContent='All selected candidates are owned by other recruiters.'; return; }
   const date=(document.getElementById('giDate').value||'').slice(0,10);
   const j=await recFetch('/api/recruiting?action=stage',{method:'POST',body:JSON.stringify({records:sel.map(c=>({id:c.id,status:'Booked Recruitment Call'}))})});
   if(!j.ok){ const e=document.getElementById('giErr'); e.hidden=false; e.textContent='Could not update stages: '+(j.error||''); return; }
@@ -2455,7 +2496,10 @@ function offerRender(){
 }
 function offerCopy(){ const t=offerTemplate(); navigator.clipboard.writeText('Subject: '+t.subject+'\n\n'+t.body).then(()=>toast('Offer copied'),()=>toast('Copy failed',true)); }
 async function offerMarkSent(){
-  const sel=ofSel(); if(!sel.length) return;
+  let sel=ofSel(); if(!sel.length) return;
+  const okList=await claimMany(sel.map(c=>({id:c.id,name:c.name}))); // claim the free ones for me; skip any owned by other recruiters
+  sel=okList.map(x=>REC_ALL.find(c=>c.id===x.id)).filter(Boolean);
+  if(!sel.length){ const e=document.getElementById('ofErr'); e.hidden=false; e.textContent='All selected candidates are owned by other recruiters.'; return; }
   const j=await recFetch('/api/recruiting?action=stage',{method:'POST',body:JSON.stringify({records:sel.map(c=>({id:c.id,status:'Offer Sent'}))})});
   if(!j.ok){ const e=document.getElementById('ofErr'); e.hidden=false; e.textContent='Could not update stages: '+(j.error||''); return; }
   sel.forEach(c=>c.recStatus='Offer Sent');
@@ -2465,6 +2509,111 @@ async function offerMarkSent(){
   await recFetch('/api/recruiting?action=tag',{method:'POST',body:JSON.stringify({records:tagRecs})});
   recCacheSave(); recBuildFacets(); recRender();
   offerClose(); toast('Moved '+sel.length+' to Offer Sent and tagged "'+tag+'"');
+}
+/* ===== candidate ownership (claims) + messaging hub =====
+   Claims are stored in the shared records table (no contact PII) so everyone can see WHO owns WHOM.
+   Message CONTENT lives server-side only (api/messages, scoped by role) and is never in the client record pull. */
+const CLAIM_STALE_DAYS=14;
+function nrm(s){ return String(s||'').trim().toLowerCase(); }
+function claimMap(){ const m={}; RECORDS.forEach(x=>{ if(x.type!=='claim'||!x.candId)return; if(!m[x.candId]||(x.submittedAt||'')>(m[x.candId].submittedAt||'')) m[x.candId]=x; }); return m; }
+function claimActive(cl){ // does this claim currently hold the candidate?
+  if(!cl||!cl.owner||cl.status==='released') return false;
+  const anchor=cl.lastInboundAt||cl.claimedAt||cl.submittedAt; // auto-release after silence: anchor on the candidate's last reply, else the claim date
+  if(anchor){ const days=(Date.now()-new Date(anchor).getTime())/86400000; if(days>CLAIM_STALE_DAYS) return false; }
+  return true;
+}
+function ownerOf(candId){ const cl=claimMap()[candId]; return claimActive(cl)?{owner:cl.owner,ownerName:cl.ownerName||cl.owner,claim:cl}:null; }
+function isOversight(){ return SESSION&&(SESSION.role==='admin'||SESSION.role==='manager'); }
+function canActOn(candId){ if(!SESSION) return false; if(isOversight()) return true; const o=ownerOf(candId); return !o||nrm(o.owner)===nrm(SESSION.username); }
+function ownerBadge(candId){ const o=ownerOf(candId); if(!o) return ''; const mine=SESSION&&nrm(o.owner)===nrm(SESSION.username); return `<span class="ownedby${mine?' mine':''}" title="Conversation owner">${mine?'You':esc(o.ownerName||o.owner)}</span>`; }
+async function claimCandidate(candId,candName){ // claim if free; false if blocked (owned by someone else and I'm not oversight)
+  if(!canActOn(candId)){ const o=ownerOf(candId); toast('Owned by '+((o&&o.ownerName)||'another recruiter')+' - only they or an admin can contact this candidate.',true); return false; }
+  if(!ownerOf(candId)){ await addRecord({type:'claim',candId,candName:candName||'',owner:(SESSION.username||''),ownerName:(SESSION.name||SESSION.username||''),claimedAt:new Date().toISOString(),status:'active',by:(SESSION.name||'')}); }
+  return true;
+}
+async function claimMany(list){ // list of {id,name}; returns the subset I'm allowed to act on (claiming free ones for me)
+  const ok=[]; for(const c of list){ if(await claimCandidate(c.id,c.name)) ok.push(c); } return ok;
+}
+function releaseClaim(candId){ if(!isOversight()&&!iOwnClaim(candId)) return; const cl=claimMap()[candId]||{}; addRecord({type:'claim',candId,candName:cl.candName||'',owner:'',ownerName:'',status:'released',by:(SESSION&&SESSION.name)||''}).then(()=>{ toast('Released'); renderMessages(); if(document.getElementById('rcTbl'))recRender(); }); }
+function iOwnClaim(candId){ const o=ownerOf(candId); return !!(o&&SESSION&&nrm(o.owner)===nrm(SESSION.username)); }
+async function reassignClaim(candId){
+  if(!isOversight()){ toast('Managers/admins only',true); return; }
+  const opts=(USERS_CACHE||[]).filter(u=>['recruiter','manager','admin'].includes(u.role));
+  const who=prompt('Reassign to which username?\n\n'+opts.map(u=>u.username+'  ('+(u.name||'')+', '+u.role+')').join('\n'));
+  if(who===null) return; const u=opts.find(x=>nrm(x.username)===nrm(who));
+  if(!u){ toast('No user with that username',true); return; }
+  const cl=claimMap()[candId]||{};
+  await addRecord({type:'claim',candId,candName:cl.candName||'',owner:u.username,ownerName:u.name||u.username,claimedAt:new Date().toISOString(),status:'active',by:(SESSION&&SESSION.name)||''});
+  toast('Reassigned to '+(u.name||u.username)); renderMessages(); if(document.getElementById('rcTbl'))recRender();
+}
+function recStageFor(candId){ const c=(REC_ALL||[]).find(x=>x.id===candId); return c?c.recStatus:''; }
+function relTime(iso){ if(!iso) return ''; const d=(Date.now()-new Date(iso).getTime())/1000; if(d<60)return 'just now'; if(d<3600)return Math.floor(d/60)+'m ago'; if(d<86400)return Math.floor(d/3600)+'h ago'; if(d<86400*7)return Math.floor(d/86400)+'d ago'; return usDate(String(iso).slice(0,10)); }
+
+/* messaging: content is server-side (api/messages). Endpoint may be un-provisioned (no Twilio / messages table yet) - degrade gracefully. */
+let MSG_ACTIVE=null, MSG_BY_CAND={}, MSG_AVAILABLE=null, MSG_LOADING=false;
+function msgHeaders(){ return {'Content-Type':'application/json','x-session-token':(SESSION&&SESSION.token)||''}; }
+async function msgApi(action,body){ try{ const r=await fetch('/api/messages?action='+action,{method:'POST',headers:msgHeaders(),body:JSON.stringify(body||{})}); if(r.status===404){ MSG_AVAILABLE=false; return {ok:false,error:'not-provisioned'}; } const j=await r.json(); if(j&&j.error==='not-provisioned') MSG_AVAILABLE=false; else if(j&&j.ok) MSG_AVAILABLE=true; return j; }catch(e){ return {ok:false,error:String(e)}; } }
+async function msgLoad(force){
+  if(MSG_LOADING) return; MSG_LOADING=true;
+  if(!(REC_ALL&&REC_ALL.length)) { try{ await recLoad(false,true); }catch(e){} } // names/stages for the list
+  const j=await msgApi('threads',{});
+  if(j&&j.ok&&Array.isArray(j.messages)){ MSG_BY_CAND={}; j.messages.forEach(m=>{ (MSG_BY_CAND[m.candId]=MSG_BY_CAND[m.candId]||[]).push(m); }); }
+  MSG_LOADING=false; renderMessages();
+}
+function msgConversations(){
+  const cm=claimMap(), list=[];
+  Object.keys(cm).forEach(candId=>{ const cl=cm[candId]; if(!claimActive(cl))return; if(!isOversight()&&nrm(cl.owner)!==nrm(SESSION.username))return; list.push(cl); });
+  return list.sort((a,b)=>((b.lastInboundAt||b.claimedAt||b.submittedAt||'')).localeCompare(a.lastInboundAt||a.claimedAt||a.submittedAt||''));
+}
+function renderMessages(){
+  const sec=document.getElementById('tab-messages'); if(!sec) return;
+  if(MSG_AVAILABLE===null && !MSG_LOADING){ msgLoad(); } // first open: pull message content (and candidate names) once
+  const admin=isOversight();
+  const hint=document.getElementById('msgHint'); if(hint) hint.textContent=admin?'Every conversation across the team - who is talking to which candidate, over email and text.':'Your conversations with the candidates you have contacted. Anyone you have started with stays assigned to you.';
+  const ow=document.getElementById('msgOwnerWrap'); if(ow) ow.style.display=admin?'':'none';
+  let convos=msgConversations();
+  if(admin){ const sel=document.getElementById('msgOwner'); if(sel){ const owners=[...new Map(convos.map(c=>[nrm(c.owner),c.ownerName||c.owner])).entries()]; const cur=sel.value; sel.innerHTML='<option value="">All recruiters</option>'+owners.map(([u,n])=>`<option value="${esc(u)}">${esc(n)}</option>`).join(''); sel.value=cur; } }
+  const ownerF=admin?((document.getElementById('msgOwner')||{}).value||''):''; const q=nrm((document.getElementById('msgSearch')||{}).value); const chan=(document.getElementById('msgChan')||{}).value||'';
+  if(ownerF) convos=convos.filter(c=>nrm(c.owner)===ownerF);
+  if(q) convos=convos.filter(c=>nrm(c.candName).includes(q));
+  if(chan) convos=convos.filter(c=>(MSG_BY_CAND[c.candId]||[]).some(m=>m.channel===chan));
+  const cc=document.getElementById('msgCount'); if(cc) cc.textContent=convos.length+' conversation'+(convos.length===1?'':'s');
+  const li=convos.map(c=>{ const msgs=MSG_BY_CAND[c.candId]||[]; const last=msgs[msgs.length-1]; const stage=recStageFor(c.candId);
+    return `<div class="msgitem${MSG_ACTIVE===c.candId?' active':''}" onclick="msgOpen('${c.candId}')"><div class="mi-name">${esc(c.candName||'(candidate)')}</div>`
+      +`<div class="mi-meta">${admin?ownerBadge(c.candId):''}${stage?'<span class="chanpill">'+esc(stage)+'</span>':''}<span>${esc(relTime(c.lastInboundAt||c.claimedAt||c.submittedAt))}</span></div>`
+      +`<div class="mi-last">${last?(esc((last.dir==='in'?'':'You: ')+String(last.body||'').slice(0,80))):'<span class="muted">No messages yet</span>'}</div></div>`;
+  }).join('')||'<div class="muted" style="padding:18px">No conversations yet. Start one from the Recruiting search (Group interview / Send offer claims the candidate for you).</div>';
+  document.getElementById('msgList').innerHTML=li;
+  if(MSG_ACTIVE && convos.some(c=>c.candId===MSG_ACTIVE)) msgRenderThread(MSG_ACTIVE);
+  else { MSG_ACTIVE=null; document.getElementById('msgThread').innerHTML='<div class="muted" style="padding:24px">Select a conversation on the left.</div>'; }
+}
+function msgOpen(candId){ MSG_ACTIVE=candId; msgRenderThread(candId); document.querySelectorAll('#msgList .msgitem').forEach(e=>e.classList.remove('active')); if(!(MSG_BY_CAND[candId])) msgApi('thread',{candId}).then(j=>{ if(j&&j.ok&&Array.isArray(j.messages)){ MSG_BY_CAND[candId]=j.messages; msgRenderThread(candId); } }); renderMessages(); }
+function msgRenderThread(candId){
+  const cl=claimMap()[candId]||{}; const admin=isOversight(); const mine=iOwnClaim(candId); const stage=recStageFor(candId);
+  const bubbles=(MSG_BY_CAND[candId]||[]).map(m=>`<div class="bubble ${m.dir==='in'?'in':'out'}">${esc(m.body||'')}<span class="bmeta">${m.dir==='in'?'Candidate':esc(m.byName||m.by||'Sent')} · ${esc((m.channel||'').toUpperCase())} · ${esc(relTime(m.at||m.submittedAt))}</span></div>`).join('');
+  const notReady = MSG_AVAILABLE===false;
+  const canSend = (admin||mine) && !notReady;
+  const head=`<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;border-bottom:1px solid var(--border);padding-bottom:10px;margin-bottom:12px">`
+    +`<b style="font-size:15px">${esc(cl.candName||recStageFor(candId)||'Candidate')}</b>`+ownerBadge(candId)+(stage?`<span class="chanpill">${esc(stage)}</span>`:'')
+    +`<span style="flex:1"></span>`+(admin?`<button class="btn ghost sm" onclick="reassignClaim('${candId}')">Reassign</button><button class="btn ghost sm" onclick="releaseClaim('${candId}')">Release</button>`:(mine?`<button class="btn ghost sm" onclick="releaseClaim('${candId}')">Release</button>`:''))+`</div>`;
+  const body=bubbles||'<div class="muted" style="padding:10px 0">No messages in this conversation yet.</div>';
+  const banner = notReady ? `<div class="fieldhelp" style="color:var(--warn);margin:10px 0">Sending is not connected yet. Once Twilio + the private messages table are set up, you can text and email candidates right here and their replies land in this thread.</div>` : '';
+  const composer = canSend ? `<div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">
+      <div class="filters" style="align-items:flex-end;margin:0 0 8px"><div class="field" style="max-width:130px"><label>Send as</label><select id="msgSendChan"><option value="text">Text</option><option value="email">Email</option></select></div><div class="field" id="msgSubjWrap" style="display:none"><label>Subject</label><input id="msgSubj"></div></div>
+      <textarea id="msgBody" rows="3" placeholder="Type a message to the candidate..." style="width:100%"></textarea>
+      <div class="row-actions" style="margin-top:8px"><button class="btn gold sm" onclick="msgSend('${candId}')">Send</button><span class="fieldhelp" style="align-self:center">The app sends from the agency account - you never see the candidate's contact info.</span></div>
+    </div>` : (notReady?'':'<div class="fieldhelp" style="margin-top:10px">View only - this candidate is owned by another recruiter.</div>');
+  document.getElementById('msgThread').innerHTML=head+banner+'<div>'+body+'</div>'+composer;
+  const cs=document.getElementById('msgSendChan'); if(cs) cs.onchange=()=>{ const w=document.getElementById('msgSubjWrap'); if(w) w.style.display=cs.value==='email'?'':'none'; };
+}
+async function msgSend(candId){
+  const chan=(document.getElementById('msgSendChan')||{}).value||'text'; const body=(document.getElementById('msgBody')||{}).value.trim(); const subject=(document.getElementById('msgSubj')||{}).value||'';
+  if(!body){ toast('Type a message first',true); return; }
+  if(!canActOn(candId)){ toast('You do not own this conversation',true); return; }
+  const j=await msgApi('send',{candId,channel:chan,body,subject});
+  if(!j||!j.ok){ toast('Send failed: '+((j&&j.error)||'messaging not connected'),true); return; }
+  (MSG_BY_CAND[candId]=MSG_BY_CAND[candId]||[]).push({candId,dir:'out',channel:chan,body,subject,byName:(SESSION&&SESSION.name)||'',at:new Date().toISOString()});
+  document.getElementById('msgBody').value=''; msgRenderThread(candId); toast('Sent');
 }
 function recRender(){
   const tb=document.getElementById('rcTplBtn'); if(tb) tb.style.display=(SESSION&&SESSION.role==='admin')?'':'none';
@@ -2480,7 +2629,7 @@ function recRender(){
     const contact=showContact?[c.phone&&esc(c.phone), c.email&&('<span class="muted" style="font-size:11px">'+esc(c.email)+'</span>')].filter(Boolean).join('<br>'):'';
     const tags=recArr(c.tags).map(t=>`<span class="teamtag">${esc(t)}</span>`).join('')||'<span class="muted">-</span>';
     return `<tr><td><input type="checkbox" ${REC_SEL.has(c.id)?'checked':''} onchange="recToggle('${c.id}',this.checked)"></td>`
-      +`<td><b>${esc(c.name)||'(no name)'}</b>${links?'<div style="font-size:11px">'+links+'</div>':''}${c._reason?'<div class="recreason">'+esc(c._reason)+'</div>':''}${c.summary?'<div class="muted" style="font-size:11px;max-width:340px">'+esc(String(c.summary).slice(0,140))+'</div>':''}</td>`
+      +`<td><b>${esc(c.name)||'(no name)'}</b>${ownerBadge(c.id)}${links?'<div style="font-size:11px">'+links+'</div>':''}${c._reason?'<div class="recreason">'+esc(c._reason)+'</div>':''}${c.summary?'<div class="muted" style="font-size:11px;max-width:340px">'+esc(String(c.summary).slice(0,140))+'</div>':''}</td>`
       +`<td>${stars(c.rating)}</td><td>${esc(recArr(c.role).join(', '))||'<span class="muted">-</span>'}</td><td>${esc(c.sold)||'<span class="muted">-</span>'}</td><td><span class="pill">${esc(c.recStatus)||'-'}</span></td>`+(showContact?`<td>${contact||'<span class="muted">-</span>'}</td>`:'')+`<td>${tags}</td></tr>`;
   }).join(''):`<tr><td colspan="${showContact?8:7}" class="muted" style="padding:18px">No candidates match. Loosen the filters, or Refresh.</td></tr>`;
   document.getElementById('rcTbl').innerHTML=head+rows+'</tbody>';
