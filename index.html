@@ -614,6 +614,7 @@
         <div class="field" style="min-width:220px"><label>Campaign tag to apply</label><input id="rcCamp" placeholder="e.g. Trading-Sept" list="rcTagList"><datalist id="rcTagList"></datalist></div>
         <button class="btn gold sm" style="align-self:flex-end" onclick="recTag('add')">Tag selected</button>
         <button class="btn ghost sm" style="align-self:flex-end" onclick="recTag('remove')">Remove tag</button>
+        <button class="btn sm" style="align-self:flex-end" onclick="giOpen()">Group interview</button>
       </div>
     </div>
     <div class="panel" id="rcBoardPanel" hidden>
@@ -807,6 +808,33 @@
   </section>
 </main>
 </div><!-- /.shell -->
+</div>
+
+<div class="modal" id="giModal" hidden onclick="if(event.target===this)giClose()">
+  <div class="modalcard" style="width:min(600px,95vw)">
+    <h3 style="margin:0 0 2px">Group interview invite</h3>
+    <p class="hint" id="giCount" style="margin:0 0 14px"></p>
+    <div class="filters" style="align-items:flex-end;margin:0 0 10px">
+      <div class="field"><label>Position</label><input id="giPosition" value="Closer" oninput="giRender()"></div>
+      <div class="field"><label>Company</label><input id="giCompany" value="The Sales Agency" oninput="giRender()"></div>
+    </div>
+    <div class="filters" style="align-items:flex-end;margin:0 0 10px">
+      <div class="field"><label>Date</label><input type="date" id="giDate" oninput="giRender()"></div>
+      <div class="field"><label>Time</label><input type="time" id="giTime" oninput="giRender()"></div>
+      <div class="field"><label>Time zone</label><input id="giTz" value="ET" oninput="giRender()"></div>
+    </div>
+    <div class="field" style="margin-bottom:10px"><label>Meeting link (Google Meet / Zoom)</label><input id="giLink" placeholder="https://meet.google.com/..." oninput="giRender()"></div>
+    <div class="field" style="margin-bottom:10px"><label>What to bring / notes</label><input id="giBring" value="Resume, a working headset, and be ready to do a live role-play." oninput="giRender()"></div>
+    <label style="font-size:12px;color:var(--muted);font-weight:600">Invite preview (canned template)</label>
+    <textarea id="giPreview" rows="9" readonly style="width:100%;margin-top:4px;font-size:12.5px;background:var(--surface-2)"></textarea>
+    <div id="giErr" class="fieldhelp" style="color:var(--warn);margin-top:8px" hidden></div>
+    <div class="row-actions" style="margin-top:14px;flex-wrap:wrap">
+      <button class="btn gold sm" onclick="giEmail()">Open email draft</button>
+      <button class="btn sm" onclick="giCopy()">Copy invite</button>
+      <button class="btn sm" onclick="giMarkInvited()">Mark invited &rarr; Booked</button>
+      <button class="btn ghost sm" onclick="giClose()">Close</button>
+    </div>
+  </div>
 </div>
 
 <div class="modal" id="pwModal" hidden onclick="if(event.target===this)closeChangePw()">
@@ -2271,6 +2299,48 @@ async function recSetStage(id,status){
   const j=await recFetch('/api/recruiting?action=stage',{method:'POST',body:JSON.stringify({records:[{id,status}]})});
   if(!j.ok){ c.recStatus=prev; recRenderBoard(); toast('Stage update failed: '+(j.error||''),true); return; }
   recCacheSave(); recBuildFacets(); toast((c.name||'Candidate')+' → '+(status||'Unsorted'));
+}
+/* ---- group interview composer (canned template + auto-populated fields; interim send via mail client until platform email lands) ---- */
+function giSel(){ return [...REC_SEL].map(id=>REC_ALL.find(x=>x.id===id)).filter(Boolean); }
+function giOpen(){
+  if(!REC_SEL.size){ toast('Select candidates first (checkboxes in the Search view)',true); return; }
+  const d=document.getElementById('giDate'); if(d&&!d.value){ const t=new Date(); t.setDate(t.getDate()+1); d.value=`${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`; }
+  document.getElementById('giErr').hidden=true;
+  giRender(); document.getElementById('giModal').hidden=false;
+}
+function giClose(){ document.getElementById('giModal').hidden=true; }
+function giTemplate(){
+  const g=id=>((document.getElementById(id)||{}).value||'').trim();
+  const company=g('giCompany')||'The Sales Agency', position=g('giPosition')||'Sales', date=g('giDate'), time=g('giTime'), tz=g('giTz'), link=g('giLink'), bring=g('giBring');
+  const when=(date?usDate(date):'[date]')+(time?' at '+fmt12(time):'')+(tz?' '+tz:'');
+  const subject=`${company} - ${position} group interview (${date?usDate(date):'date TBD'})`;
+  const body=`Hi,\n\nYou're invited to a group interview with ${company} for the ${position} role.\n\nWhen: ${when}\nWhere: ${link||'[meeting link]'}\n\nWhat to bring: ${bring||'-'}\n\nPlease join a few minutes early and reply to confirm your spot.\n\n- ${company} Recruiting`;
+  return { subject, body };
+}
+function giRender(){
+  const sel=giSel(), t=giTemplate(), withEmail=sel.filter(c=>c.email).length;
+  const cc=document.getElementById('giCount'); if(cc) cc.textContent=`${sel.length} candidate${sel.length===1?'':'s'} selected (${withEmail} with an email on file)`;
+  const pv=document.getElementById('giPreview'); if(pv) pv.value='Subject: '+t.subject+'\n\n'+t.body;
+}
+function giCopy(){ const t=giTemplate(); navigator.clipboard.writeText('Subject: '+t.subject+'\n\n'+t.body).then(()=>toast('Invite copied'),()=>toast('Copy failed',true)); }
+function giEmail(){
+  const emails=[...new Set(giSel().map(c=>c.email).filter(Boolean))];
+  if(!emails.length){ toast('None of the selected candidates have an email on file',true); return; }
+  const t=giTemplate();
+  window.location.href='mailto:?bcc='+encodeURIComponent(emails.join(','))+'&subject='+encodeURIComponent(t.subject)+'&body='+encodeURIComponent(t.body);
+  toast('Opening your email with '+emails.length+" candidate"+(emails.length===1?'':'s')+' bcc’d');
+}
+async function giMarkInvited(){
+  const sel=giSel(); if(!sel.length) return;
+  const date=(document.getElementById('giDate').value||'').slice(0,10);
+  const j=await recFetch('/api/recruiting?action=stage',{method:'POST',body:JSON.stringify({records:sel.map(c=>({id:c.id,status:'Booked Recruitment Call'}))})});
+  if(!j.ok){ const e=document.getElementById('giErr'); e.hidden=false; e.textContent='Could not update stages: '+(j.error||''); return; }
+  sel.forEach(c=>c.recStatus='Booked Recruitment Call');
+  const tag='Group interview '+(date?usDate(date):'');
+  const tagRecs=sel.map(c=>{ const cur=recArr(c.tags), next=cur.includes(tag)?cur:[...cur,tag]; c.tags=next; return {id:c.id,tags:next}; });
+  await recFetch('/api/recruiting?action=tag',{method:'POST',body:JSON.stringify({records:tagRecs})});
+  recCacheSave(); recBuildFacets(); recRender();
+  giClose(); toast('Moved '+sel.length+' to Booked Recruitment Call and tagged "'+tag+'"');
 }
 function recRender(){
   if(REC_VIEW==='pipeline'){ recRenderBoard(); return; }
