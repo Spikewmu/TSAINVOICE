@@ -145,6 +145,16 @@
   select.rolesel{font:inherit;font-size:12px;font-weight:600;padding:4px 8px;border-radius:6px;background:var(--surface-2);color:var(--ink);border:1px solid var(--border);cursor:pointer}
   .stars{color:var(--gold);letter-spacing:1px;white-space:nowrap}
   .recreason{color:var(--good);font-size:12px;margin-top:3px}
+  .kanban{display:flex;gap:12px;overflow-x:auto;padding-bottom:10px;align-items:flex-start}
+  .kcol{flex:0 0 216px;background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:9px;min-height:90px}
+  .kcol.drop{border-color:var(--gold);background:rgba(201,162,74,.08)}
+  .kcol>h4{margin:2px 4px 9px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:700;display:flex;justify-content:space-between;gap:6px}
+  .kcol>h4 .kcount{color:var(--ink);opacity:.65}
+  .kcard{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:7px;cursor:grab}
+  .kcard:hover{border-color:var(--gold)}
+  .kcard.dragging{opacity:.4}
+  .kcard .kmeta{color:var(--muted);font-size:11px;margin-top:3px}
+  .kcard .klinks{font-size:11px;margin-top:3px}
   .kpisec{font-family:var(--serif);font-size:15px;font-weight:700;color:var(--gold-2);margin:6px 0 8px;letter-spacing:.01em}
   .prodgrid{display:flex;flex-wrap:wrap;gap:12px}
   .produnit{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);font-weight:600}
@@ -571,6 +581,7 @@
     <h2 class="section">Recruiting</h2>
     <p class="hint">Search the candidate pool, let AI rank best fit, then tag a group for a GHL SMS/email blast. Tags write to the recruiting Airtable ("Campaign Tags"); the GHL send is wired off those tags.</p>
     <div id="rcNotice"></div>
+    <div class="seg" id="rcViewSeg" style="margin:0 0 12px"><button class="on" onclick="recSetView('search')">Search</button><button onclick="recSetView('pipeline')">Pipeline</button></div>
     <div class="panel">
       <div class="filters" style="align-items:flex-end">
         <div class="field" style="flex:2;min-width:280px"><label>AI best-fit search</label><input id="rcQuery" placeholder='e.g. "3+ stars who sold high-ticket coaching, US timezone"' onkeydown="if(event.key==='Enter')recRunAi()"></div>
@@ -590,7 +601,7 @@
         <div class="field" style="max-width:180px"><label>&nbsp;</label><label style="font-weight:400;color:var(--ink);display:flex;gap:6px;align-items:center"><input type="checkbox" id="rcHideStaffed" onchange="recRender()" checked> Hide currently staffed</label></div>
       </div>
     </div>
-    <div class="panel">
+    <div class="panel" id="rcSearchPanel">
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;flex-wrap:wrap">
         <b id="rcResultCount">0 candidates</b><span style="flex:1"></span>
         <label style="font-weight:400;color:var(--ink);display:flex;gap:6px;align-items:center;margin:0"><input type="checkbox" id="rcAiOnly" onchange="recRender()"> Best fit only</label>
@@ -604,6 +615,10 @@
         <button class="btn gold sm" style="align-self:flex-end" onclick="recTag('add')">Tag selected</button>
         <button class="btn ghost sm" style="align-self:flex-end" onclick="recTag('remove')">Remove tag</button>
       </div>
+    </div>
+    <div class="panel" id="rcBoardPanel" hidden>
+      <p class="hint" style="margin:0 0 10px">Drag a candidate between stages to update their recruitment status. The board respects the filters above, so narrow it (role, stars, keyword) before dragging.</p>
+      <div id="rcBoard" class="kanban"></div>
     </div>
   </section>
 
@@ -2213,7 +2228,52 @@ function recList(){
   }
   return list;
 }
+let REC_VIEW='search';
+const REC_STAGES=['Standby','Booked Recruitment Call','Needs Updated Resume and Intro Video','Finished Resume and Intro Video','Company Applications sent','Interviewing','Hired','Not Looking'];
+function recSetView(v){
+  REC_VIEW=v;
+  document.querySelectorAll('#rcViewSeg button').forEach((b,i)=>b.classList.toggle('on',(i===0)===(v==='search')));
+  const sp=document.getElementById('rcSearchPanel'), bp=document.getElementById('rcBoardPanel');
+  if(sp) sp.hidden = v!=='search'; if(bp) bp.hidden = v!=='pipeline';
+  recRender();
+}
+function recRenderBoard(){
+  const board=document.getElementById('rcBoard'); if(!board) return;
+  const list=REC_ALL.filter(recMatch);
+  const cols=[['','Unsorted'],...REC_STAGES.map(s=>[s,s])];
+  const byStage={}; cols.forEach(([k])=>byStage[k]=[]);
+  list.forEach(c=>{ const s=REC_STAGES.includes(c.recStatus)?c.recStatus:''; byStage[s].push(c); });
+  board.innerHTML=cols.map(([key,label])=>{
+    const items=byStage[key]||[];
+    const cards=items.map(c=>{
+      const links=[c.intro&&`<a href="${esc(c.intro)}" target="_blank" rel="noopener" class="linklike">intro</a>`, c.resume&&`<a href="${esc(c.resume)}" target="_blank" rel="noopener" class="linklike">resume</a>`].filter(Boolean).join(' · ');
+      return `<div class="kcard" draggable="true" data-id="${c.id}"><b>${esc(c.name||'(no name)')}</b> ${c.rating?'<span class="stars">'+'★'.repeat(Math.min(5,c.rating))+'</span>':''}<div class="kmeta">${esc(recArr(c.role).join(', ')||'-')}${c.sold?' · '+esc(c.sold):''}</div>${links?'<div class="klinks">'+links+'</div>':''}</div>`;
+    }).join('')||'<div class="muted" style="font-size:11px;padding:6px 4px">-</div>';
+    return `<div class="kcol" data-stage="${esc(key)}"><h4><span>${esc(label)}</span><span class="kcount">${items.length}</span></h4>${cards}</div>`;
+  }).join('');
+  recWireDnd();
+}
+function recWireDnd(){
+  const board=document.getElementById('rcBoard'); if(!board) return;
+  board.querySelectorAll('.kcard').forEach(card=>{
+    card.ondragstart=e=>{ e.dataTransfer.setData('text/plain',card.dataset.id); e.dataTransfer.effectAllowed='move'; card.classList.add('dragging'); };
+    card.ondragend=()=>card.classList.remove('dragging');
+  });
+  board.querySelectorAll('.kcol').forEach(col=>{
+    col.ondragover=e=>{ e.preventDefault(); col.classList.add('drop'); };
+    col.ondragleave=()=>col.classList.remove('drop');
+    col.ondrop=e=>{ e.preventDefault(); col.classList.remove('drop'); const id=e.dataTransfer.getData('text/plain'); if(id) recSetStage(id,col.dataset.stage); };
+  });
+}
+async function recSetStage(id,status){
+  const c=REC_ALL.find(x=>x.id===id); if(!c) return; if((c.recStatus||'')===(status||'')) return;
+  const prev=c.recStatus; c.recStatus=status; recRenderBoard(); // optimistic
+  const j=await recFetch('/api/recruiting?action=stage',{method:'POST',body:JSON.stringify({records:[{id,status}]})});
+  if(!j.ok){ c.recStatus=prev; recRenderBoard(); toast('Stage update failed: '+(j.error||''),true); return; }
+  recCacheSave(); recBuildFacets(); toast((c.name||'Candidate')+' → '+(status||'Unsorted'));
+}
 function recRender(){
+  if(REC_VIEW==='pipeline'){ recRenderBoard(); return; }
   if(!document.getElementById('rcTbl')) return;
   const list=recList();
   document.getElementById('rcResultCount').textContent=list.length+' candidate'+(list.length===1?'':'s');

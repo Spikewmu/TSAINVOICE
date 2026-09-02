@@ -115,6 +115,19 @@ export default async function handler(req, res) {
       }
       return res.status(200).json({ ok: true, updated });
     }
+    if (action === 'stage') {
+      // move a candidate's pipeline stage = the "Recruitment Status" singleSelect
+      const recs = (req.body && req.body.records) || [];
+      if (!recs.length) return res.status(200).json({ ok: false, error: 'no records' });
+      let updated = 0;
+      for (let i = 0; i < recs.length; i += 10) {
+        const batch = recs.slice(i, i + 10).map(x => ({ id: x.id, fields: { 'Recruitment Status': x.status ? x.status : null } }));
+        const r = await atFetch(`${BASE}/${TABLE}`, { method: 'PATCH', body: JSON.stringify({ records: batch, typecast: true }) });
+        if (!r.ok) { const t = await r.text(); return res.status(200).json({ ok: false, error: 'airtable ' + r.status + ' ' + t.slice(0, 300), updated }); }
+        const j = await r.json(); updated += (j.records || []).length;
+      }
+      return res.status(200).json({ ok: true, updated });
+    }
     return res.status(200).json({ ok: false, error: 'unknown action' });
   } catch (e) { return res.status(200).json({ ok: false, error: String(e) }); }
 }
