@@ -5,7 +5,7 @@
 // Optional REC_AI_MODEL overrides the model for the chosen provider. Faceted search works even with no key.
 // Access gated by the dashboard session (same as /api/recruiting): valid session token w/ allowed role, or master admin pass.
 import crypto from 'crypto';
-const REC_ROLES = ['admin', 'manager'];
+const REC_ROLES = ['admin', 'manager', 'recruiter'];
 function verifySession(token) {
   try {
     const secret = process.env.SESSION_SECRET || 'tsa-session';

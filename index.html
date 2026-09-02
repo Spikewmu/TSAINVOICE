@@ -45,9 +45,9 @@
   nav.tabs .navhead:hover{background:rgba(255,255,255,.05);border-color:var(--gold)}
   nav.tabs .navhead .nlabel{flex:1}
   nav.tabs .navhead .ni{width:19px;height:19px;flex:0 0 auto;opacity:.9}
-  nav.tabs .navhead::after{content:'\25be';font-size:13px;line-height:1;color:var(--muted);transition:transform .15s}
+  nav.tabs .navhead .nchev{width:18px;height:18px;flex:0 0 auto;color:var(--muted);transition:transform .18s}
   nav.tabs .navgroup:not(.collapsed) .navhead{border-color:var(--gold);color:var(--gold)}
-  nav.tabs .navgroup:not(.collapsed) .navhead::after{transform:rotate(180deg);color:var(--gold)}
+  nav.tabs .navgroup:not(.collapsed) .navhead .nchev{transform:rotate(180deg);color:var(--gold)}
   nav.tabs .navgroup.collapsed .navsub{display:none}
   nav.tabs .navsub{display:flex;flex-direction:column;gap:1px;padding:3px 0}
   main{flex:1;min-width:0;max-width:1120px;padding:22px 22px 60px}
@@ -223,14 +223,14 @@
 <nav class="tabs" id="tabs">
   <button data-tab="dash" class="active">Dashboard</button>
   <div class="navgroup collapsed">
-    <button class="navhead"><svg class="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/></svg><span class="nlabel">Meetings</span></button>
+    <button class="navhead"><svg class="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/></svg><span class="nlabel">Meetings</span><svg class="nchev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
     <div class="navsub">
       <button data-tab="meeting">Meeting</button>
       <button data-tab="promises">Promises</button>
     </div>
   </div>
   <div class="navgroup collapsed">
-    <button class="navhead"><svg class="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14v-2a8 8 0 0116 0v2"/><rect x="2" y="14" width="4" height="6" rx="1"/><rect x="18" y="14" width="4" height="6" rx="1"/></svg><span class="nlabel">Setter / Closer tools</span></button>
+    <button class="navhead"><svg class="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14v-2a8 8 0 0116 0v2"/><rect x="2" y="14" width="4" height="6" rx="1"/><rect x="18" y="14" width="4" height="6" rx="1"/></svg><span class="nlabel">Setter / Closer tools</span><svg class="nchev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
     <div class="navsub">
       <button data-tab="postcall">Post-Call Checkout</button>
       <button data-tab="eod">End of Day</button>
@@ -238,7 +238,7 @@
     </div>
   </div>
   <div class="navgroup collapsed">
-    <button class="navhead"><svg class="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="1"/><path d="M9 7h.01M15 7h.01M9 11h.01M15 11h.01M9 15h6"/></svg><span class="nlabel">Clients</span></button>
+    <button class="navhead"><svg class="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="1"/><path d="M9 7h.01M15 7h.01M9 11h.01M15 11h.01M9 15h6"/></svg><span class="nlabel">Clients</span><svg class="nchev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
     <div class="navsub">
       <button data-tab="clients">Client Overview</button>
       <button data-tab="onboarding">Onboarding</button>
@@ -246,7 +246,7 @@
     </div>
   </div>
   <div class="navgroup collapsed">
-    <button class="navhead"><svg class="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-8M2 20h20"/></svg><span class="nlabel">Reporting</span></button>
+    <button class="navhead"><svg class="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-8M2 20h20"/></svg><span class="nlabel">Reporting</span><svg class="nchev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
     <div class="navsub">
       <button data-tab="reps">Rep Breakdown</button>
       <button data-tab="mgreod">Manager EOD</button>
@@ -255,13 +255,13 @@
     </div>
   </div>
   <div class="navgroup collapsed">
-    <button class="navhead"><svg class="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0112 0M19 8v6M22 11h-6"/></svg><span class="nlabel">Recruiting</span></button>
+    <button class="navhead"><svg class="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0112 0M19 8v6M22 11h-6"/></svg><span class="nlabel">Recruiting</span><svg class="nchev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
     <div class="navsub">
       <button data-tab="recruiting">Recruiting</button>
     </div>
   </div>
   <div class="navgroup collapsed">
-    <button class="navhead"><svg class="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4-3 7-7 8-4-1-7-4-7-8V6z"/></svg><span class="nlabel">Admin</span></button>
+    <button class="navhead"><svg class="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4-3 7-7 8-4-1-7-4-7-8V6z"/></svg><span class="nlabel">Admin</span><svg class="nchev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
     <div class="navsub">
       <button data-tab="data">Data + Export</button>
       <button data-tab="users">Users</button>
@@ -976,6 +976,7 @@ function startApp(){
     else if(role==='manager'){ setEodRole('Closer'); Promise.all([syncRecords(),loadUsers()]).then(()=>{ fillLists(); setEodRole('Closer'); setPcRole('Closer'); applyNavAccess(); renderDash(); }); showTab('clients'); }
     else if(role==='founder'){ Promise.all([syncRecords(),loadUsers()]).then(()=>{ renderDash(); }); showTab('dash'); } // founder: their company only, dashboard-only, read-only, no filters
     else if(role==='webinarteam'){ Promise.all([syncRecords(),loadUsers()]).then(()=>{ fillLists(); applyNavAccess(); renderDash(); }); showTab('dash'); } // webinar team: dashboard + webinar tab, all clients
+    else if(role==='recruiter'){ Promise.all([syncRecords(),loadUsers()]).then(()=>{ fillLists(); applyNavAccess(); renderDash(); }); showTab('recruiting'); } // recruiter: dashboard scoped to their client + Recruiting + Time Off
     else { applyIdentity(); syncRecords().then(()=>{ applyNavAccess(); applyIdentity(); }); showTab(allow[0]); }
   });
 }
@@ -985,6 +986,7 @@ function baseAllow(role){
     admin:['dash','reps','clients','onboarding','meeting','promises','timeoff','postcall','eod','mgreod','webinar','calllog','adminreport','recruiting','data','users','settings'],
     manager:['dash','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','eod','mgreod','webinar','calllog','recruiting'],
     founder:['dash'],
+    recruiter:['dash','recruiting','timeoff'],
     webinarteam:['dash','meeting','promises','timeoff','webinar'],
     closer:['dash','postcall','eod','timeoff','calllog','reps'],
     setter:['dash','postcall','eod','timeoff','calllog','reps']
@@ -1663,6 +1665,8 @@ function dashScopeClients(){
     if(r==='founder') return [' none'];         // founder must be assigned; show nothing until then
     const mine=myTeamClients(); return mine.length?mine:[' none'];  // reps fall back to accounts they've worked
   }
+  // recruiter: dashboard scoped to their assigned client(s) via Edit teams (fall back to all if unassigned)
+  if(r==='recruiter'){ const t=teamsFor(SESSION.username); return t.length?t:null; }
   // managers + webinar team see only the accounts they manage (fall back to all if unassigned, so nobody is locked out)
   if(r==='manager'||r==='webinarteam'){ const m=managedClients(); return m.length?m:null; }
   return null;
@@ -2433,7 +2437,7 @@ function teamBoxesHtml(checked){
   return clients.length ? clients.map(c=>`<label><input type="checkbox" value="${esc(c)}" ${checked.includes(c)?'checked':''}>${esc(c)}</label>`).join('')
     : '<span class="muted">Add clients on the Client Overview / Settings tab first.</span>';
 }
-function roleLabel(r){ return ({admin:'Admin',manager:'Sales Manager',founder:'Founder',webinarteam:'Webinar Team',closer:'Closer',setter:'Setter'})[r]||r; }
+function roleLabel(r){ return ({admin:'Admin',manager:'Sales Manager',founder:'Founder',webinarteam:'Webinar Team',recruiter:'Recruiter',closer:'Closer',setter:'Setter'})[r]||r; }
 // a manager/admin's responsibilities, grouped by function so it reads at a glance (e.g. Keithan = Webinar on several accounts + Setters on Prime)
 function roleSummaryHTML(u){
   const f=managedFunctionsForUser(u);
@@ -2452,7 +2456,7 @@ function renderUsersTable(list){
       const isStaff = !u.master && u.role!=='founder'; // real team members (setters/closers/managers/admins) have hire/termination dates
       const datesBtn = (isAdmin&&isStaff) ? ` <button class="btn sm ghost" onclick="editRepMeta('${esc(u.username)}')">Hire / dates</button>` : '';
       const teamCell = u.master ? '<span class="muted">-</span>'
-        : (['closer','setter','founder'].includes(u.role)
+        : (['closer','setter','founder','recruiter'].includes(u.role)
             ? ((teams.length?teams.map(t=>`<span class="teamtag">${esc(t)}</span>`).join(''):'<span class="tag" style="color:var(--warn);border-color:var(--warn)">none - not scoped</span>')+` <button class="btn sm ghost" onclick="editTeams('${esc(u.username)}')">Edit</button>`+datesBtn+(isStaff?repMetaSummary(u.username):''))
             : (u.role==='admin'
                 ? '<span class="muted">all (admin)</span>'+roleSummaryHTML(u)+rolesBtn+datesBtn+repMetaSummary(u.username)
@@ -2460,7 +2464,7 @@ function renderUsersTable(list){
       const actions = u.master ? '<span class="tag">master, set in Settings</span>'
         : (isAdmin ? `<button class="btn sm ghost" onclick="resetPassword('${esc(u.username)}')">Reset password</button> <button class="btn sm ghost" style="color:var(--warn);border-color:var(--warn)" onclick="delUser('${esc(u.username)}')">Remove</button>` : '');
       // inline role change - no password needed (backend keeps the existing password on a role-only update)
-      const roleOpts = isAdmin ? ['closer','setter','manager','webinarteam','founder','admin'] : ['closer','setter'];
+      const roleOpts = isAdmin ? ['closer','setter','recruiter','manager','webinarteam','founder','admin'] : ['closer','setter'];
       const canEditRole = !u.master && (isAdmin || (SESSION.role==='manager' && ['closer','setter'].includes(u.role)));
       const accessCell = canEditRole
         ? `<select class="rolesel" onchange="changeUserRole('${esc(u.username)}', this.value)">${roleOpts.map(r=>`<option value="${r}" ${u.role===r?'selected':''}>${esc(roleLabel(r))}</option>`).join('')}</select>`
@@ -2486,7 +2490,7 @@ async function renderUsers(){
   const isAdmin = SESSION.role==='admin';
   // managers can only create closer/setter; admins can also create manager/admin
   const roleSel=document.querySelector('#userForm [name=role]');
-  if(roleSel) roleSel.innerHTML = '<option value="closer">Closer</option><option value="setter">Setter</option>'+(isAdmin?'<option value="manager">Sales Manager</option><option value="webinarteam">Webinar Team</option><option value="founder">Founder Access (client)</option><option value="admin">Admin</option>':'');
+  if(roleSel) roleSel.innerHTML = '<option value="closer">Closer</option><option value="setter">Setter</option>'+(isAdmin?'<option value="recruiter">Recruiter</option><option value="manager">Sales Manager</option><option value="webinarteam">Webinar Team</option><option value="founder">Founder Access (client)</option><option value="admin">Admin</option>':'');
   const nt=document.getElementById('newUserTeams'); if(nt) nt.innerHTML=teamBoxesHtml([]);
   const tbl=document.getElementById('usersTable');
   // cache-first: draw whatever we already have instantly, spinner only on a cold load

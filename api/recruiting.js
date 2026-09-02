@@ -3,7 +3,7 @@
 //      SESSION_SECRET (shared with /api/auth) + ADMIN_PASS (master fallback), optional AIRTABLE_REC_BASE / AIRTABLE_REC_TABLE overrides.
 // Access is gated by the dashboard session: a valid session token with an allowed role, or the master admin pass.
 import crypto from 'crypto';
-const REC_ROLES = ['admin', 'manager']; // roles allowed to use the recruiting tool
+const REC_ROLES = ['admin', 'manager', 'recruiter']; // roles allowed to use the recruiting tool
 function verifySession(token) {
   try {
     const secret = process.env.SESSION_SECRET || 'tsa-session';
