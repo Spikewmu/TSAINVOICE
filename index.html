@@ -4,7 +4,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>TSA Sales Tracking + Invoicing</title>
+<title>TSA Sales HQ V2.0</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;0,800;1,600&display=swap" rel="stylesheet">
@@ -142,6 +142,19 @@
   .mgrsec h3{display:flex;align-items:center;gap:2px}
   .mgrnum{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:var(--gold-soft);color:var(--gold);font-size:12px;font-weight:700;margin-right:8px}
   .navbadge{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;margin-left:8px;border-radius:9px;background:var(--bad,#c0392b);color:#fff;font-size:11px;font-weight:700;vertical-align:middle;box-shadow:0 0 0 2px rgba(192,57,43,.25)}
+  .notifwrap{position:relative;display:inline-block}
+  .notifbell{position:relative;background:transparent;border:none;color:var(--ink);cursor:pointer;padding:6px;border-radius:8px;display:inline-flex;align-items:center;line-height:0}
+  .notifbell:hover{background:var(--surface-2)}
+  .notifbell .navbadge{position:absolute;top:-2px;right:-4px;margin:0;min-width:17px;height:17px;font-size:10.5px}
+  .notifpanel{position:absolute;right:0;top:calc(100% + 8px);width:320px;max-width:90vw;background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:0 12px 34px rgba(0,0,0,.4);z-index:60;overflow:hidden}
+  .notifpanel h4{margin:0;padding:12px 14px;font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);border-bottom:1px solid var(--border)}
+  .notifitem{display:flex;gap:11px;align-items:flex-start;padding:11px 14px;border-bottom:1px solid var(--border);cursor:pointer}
+  .notifitem:last-child{border-bottom:none}
+  .notifitem:hover{background:var(--surface-2)}
+  .notifitem .ni-ic{flex:0 0 30px;height:30px;border-radius:8px;background:var(--surface-2);display:flex;align-items:center;justify-content:center;color:var(--gold)}
+  .notifitem .ni-tx{flex:1;font-size:13px;line-height:1.35}
+  .notifitem .ni-tx small{display:block;color:var(--muted);font-size:11px;margin-top:1px}
+  .notifempty{padding:22px 14px;text-align:center;color:var(--muted);font-size:13px}
   select.rolesel{font:inherit;font-size:12px;font-weight:600;padding:4px 8px;border-radius:6px;background:var(--surface-2);color:var(--ink);border:1px solid var(--border);cursor:pointer}
   .stars{color:var(--gold);letter-spacing:1px;white-space:nowrap}
   .recreason{color:var(--good);font-size:12px;margin-top:3px}
@@ -226,7 +239,7 @@
 <div id="gate" class="gate">
   <div class="top">
     <div class="dot">TSA</div>
-    <h2 style="margin:.2em 0;font-family:var(--serif);font-weight:700;font-size:26px">Sales Tracking + Invoicing</h2>
+    <h2 style="margin:.2em 0;font-family:var(--serif);font-weight:700;font-size:26px">Sales HQ V2.0</h2>
     <p class="hint" style="margin:.3em 0 0">Sign in with the username and password your manager set up.</p>
   </div>
   <div class="field"><label for="gUser">Username</label><input id="gUser" autocomplete="username" placeholder="username"></div>
@@ -238,9 +251,16 @@
 <!-- ============ APP ============ -->
 <div id="app" hidden>
 <header class="app">
-  <div class="brand"><span class="dot"></span> TSA Sales Tracking + Invoicing</div>
+  <div class="brand"><span class="dot"></span> TSA Sales HQ V2.0</div>
   <div class="sub" id="storeTag"></div>
   <div class="spacer"></div>
+  <div class="notifwrap">
+    <button class="notifbell" id="notifBell" onclick="toggleNotif(event)" title="Notifications" aria-label="Notifications">
+      <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+      <span class="navbadge" id="notifCount" hidden></span>
+    </button>
+    <div class="notifpanel" id="notifPanel" hidden></div>
+  </div>
   <div class="who" id="whoTag" onclick="openChangePw()" style="cursor:pointer" title="Change your password"></div>
   <button class="logout" onclick="logout()">Sign out</button>
 </header>
@@ -1119,6 +1139,7 @@ function startApp(){
     else if(role==='webinarteam'){ Promise.all([syncRecords(),loadUsers()]).then(()=>{ fillLists(); applyNavAccess(); renderDash(); }); showTab('dash'); } // webinar team: dashboard + webinar tab, all clients
     else if(role==='recruiter'){ Promise.all([syncRecords(),loadUsers()]).then(()=>{ fillLists(); applyNavAccess(); renderDash(); }); showTab('recruiting'); } // recruiter: dashboard scoped to their client + Recruiting + Time Off
     else { applyIdentity(); syncRecords().then(()=>{ applyNavAccess(); applyIdentity(); }); showTab(allow[0]); }
+    startMsgPolling(); // background unread-message polling for the badge + notifications (self-gates by role)
   });
 }
 // base tabs a login TIER can see; per-account responsibilities add to this in applyNavAccess()
@@ -1171,13 +1192,13 @@ function applyIdentity(){
 /* ---------------- tabs ---------------- */
 function wireTabs(){
   document.querySelectorAll('#tabs button[data-tab]').forEach(b=>b.onclick=()=>showTab(b.dataset.tab));
-  document.querySelectorAll('#tabs .navhead').forEach(h=>h.onclick=()=>h.closest('.navgroup').classList.toggle('collapsed'));
+  document.querySelectorAll('#tabs .navhead').forEach(h=>h.onclick=()=>{ h.closest('.navgroup').classList.toggle('collapsed'); updateNavBadges(); });
 }
 function showTab(t){
   document.querySelectorAll('#tabs button[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
   document.querySelectorAll('#tabs .navgroup').forEach(g=>{ if(g.querySelector('button[data-tab="'+t+'"]')) g.classList.remove('collapsed'); }); // reveal the active tab's group
 
-  ['dash','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','eod','mgreod','webinar','calllog','adminreport','recruiting','data','users','settings'].forEach(x=>{ document.getElementById('tab-'+x).hidden = (x!==t); });
+  ['dash','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','eod','mgreod','webinar','calllog','adminreport','recruiting','messages','data','users','settings'].forEach(x=>{ document.getElementById('tab-'+x).hidden = (x!==t); });
   // stale-while-revalidate: render instantly from the cached records, then refresh in the background
   const render={dash:renderDash, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, promises:renderPromisesTab, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, webinar:renderWebinars, calllog:renderCallLog, adminreport:renderAdminReport, recruiting:renderRecruiting, messages:renderMessages, data:renderAll}[t];
   if(render){ render(); syncRecords().then(()=>{ if(currentTab()===t) render(); updateNavBadges(); }); }
@@ -2274,14 +2295,23 @@ function myUnseenDecisions(){ const seen=offdaySeenSet(); return myDecidedOffday
 function markMyDecisionsSeen(){ try{ const seen=offdaySeenSet(); myDecidedOffdays().forEach(r=>seen.add(offdayKey(r))); localStorage.setItem('tsa_offday_seen', JSON.stringify([...seen])); }catch(e){} }
 // red count badge on the Time Off nav item: managers see approvals waiting; reps see decisions on their requests
 function updateNavBadges(){
+  // Time Off: managers see approvals waiting; reps see decisions on their requests
   let n=0, title='';
   if(SESSION && ['admin','manager','webinarteam'].includes(SESSION.role)){ n=pendingApprovalsCount(); title=`${n} day-off request${n>1?'s':''} waiting for you`; }
   else if(SESSION && ['setter','closer'].includes(SESSION.role)){ n=myUnseenDecisions().length; title=`${n} update${n>1?'s':''} on your time-off requests`; }
-  document.querySelectorAll('#tabs button[data-tab="timeoff"]').forEach(b=>{
-    let bd=b.querySelector('.navbadge');
-    if(n>0){ if(!bd){ bd=document.createElement('span'); bd.className='navbadge'; b.appendChild(bd); } bd.textContent=n; bd.title=title; }
-    else if(bd){ bd.remove(); }
+  setTabBadge('timeoff', n, title);
+  // Messages: unread candidate replies in my threads
+  const mu=(SESSION && ['admin','manager','recruiter'].includes(SESSION.role))?msgUnreadCount():0;
+  setTabBadge('messages', mu, `${mu} new message${mu>1?'s':''}`);
+  // bubble child badges up to a COLLAPSED group's header so they aren't missed
+  document.querySelectorAll('#tabs .navgroup').forEach(g=>{
+    const head=g.querySelector('.navhead'); if(!head) return;
+    let sum=0; g.querySelectorAll('.navsub button[data-tab] .navbadge').forEach(b=>sum+=(parseInt(b.textContent,10)||0));
+    let hb=head.querySelector('.navbadge');
+    if(sum>0 && g.classList.contains('collapsed')){ if(!hb){ hb=document.createElement('span'); hb.className='navbadge'; head.insertBefore(hb, head.querySelector('.nchev')); } hb.textContent=sum; hb.title='New items in this section'; }
+    else if(hb){ hb.remove(); }
   });
+  renderNotifBell();
 }
 async function actOffday(rep,date,status){
   date=String(date).slice(0,10);
@@ -2558,7 +2588,7 @@ async function msgLoad(force){
   if(!(REC_ALL&&REC_ALL.length)) { try{ await recLoad(false,true); }catch(e){} } // names/stages for the list
   const j=await msgApi('threads',{});
   if(j&&j.ok&&Array.isArray(j.messages)){ MSG_BY_CAND={}; j.messages.forEach(m=>{ (MSG_BY_CAND[m.candId]=MSG_BY_CAND[m.candId]||[]).push(m); }); }
-  MSG_LOADING=false; renderMessages();
+  MSG_LOADING=false; renderMessages(); updateNavBadges();
 }
 function msgConversations(){
   const cm=claimMap(), list=[];
@@ -2587,7 +2617,7 @@ function renderMessages(){
   if(MSG_ACTIVE && convos.some(c=>c.candId===MSG_ACTIVE)) msgRenderThread(MSG_ACTIVE);
   else { MSG_ACTIVE=null; document.getElementById('msgThread').innerHTML='<div class="muted" style="padding:24px">Select a conversation on the left.</div>'; }
 }
-function msgOpen(candId){ MSG_ACTIVE=candId; msgRenderThread(candId); document.querySelectorAll('#msgList .msgitem').forEach(e=>e.classList.remove('active')); if(!(MSG_BY_CAND[candId])) msgApi('thread',{candId}).then(j=>{ if(j&&j.ok&&Array.isArray(j.messages)){ MSG_BY_CAND[candId]=j.messages; msgRenderThread(candId); } }); renderMessages(); }
+function msgOpen(candId){ MSG_ACTIVE=candId; msgMarkSeen(candId); msgRenderThread(candId); document.querySelectorAll('#msgList .msgitem').forEach(e=>e.classList.remove('active')); if(!(MSG_BY_CAND[candId])) msgApi('thread',{candId}).then(j=>{ if(j&&j.ok&&Array.isArray(j.messages)){ MSG_BY_CAND[candId]=j.messages; msgMarkSeen(candId); msgRenderThread(candId); } }); renderMessages(); updateNavBadges(); }
 function msgRenderThread(candId){
   const cl=claimMap()[candId]||{}; const admin=isOversight(); const mine=iOwnClaim(candId); const stage=recStageFor(candId);
   const bubbles=(MSG_BY_CAND[candId]||[]).map(m=>`<div class="bubble ${m.dir==='in'?'in':'out'}">${esc(m.body||'')}<span class="bmeta">${m.dir==='in'?'Candidate':esc(m.byName||m.by||'Sent')} · ${esc((m.channel||'').toUpperCase())} · ${esc(relTime(m.at||m.submittedAt))}</span></div>`).join('');
@@ -2615,6 +2645,36 @@ async function msgSend(candId){
   (MSG_BY_CAND[candId]=MSG_BY_CAND[candId]||[]).push({candId,dir:'out',channel:chan,body,subject,byName:(SESSION&&SESSION.name)||'',at:new Date().toISOString()});
   document.getElementById('msgBody').value=''; msgRenderThread(candId); toast('Sent');
 }
+/* unread tracking + background polling so a new candidate reply raises a badge from anywhere */
+function msgSeen(){ try{ return JSON.parse(localStorage.getItem('tsamsg_seen')||'{}')||{}; }catch(e){ return {}; } }
+function msgMarkSeen(candId){ try{ const s=msgSeen(); s[candId]=new Date().toISOString(); localStorage.setItem('tsamsg_seen',JSON.stringify(s)); }catch(e){} }
+function msgUnreadList(){ const seen=msgSeen(), out=[]; msgConversations().forEach(c=>{ const s=seen[c.candId]||''; (MSG_BY_CAND[c.candId]||[]).forEach(m=>{ if(m.dir==='in' && String(m.at||m.submittedAt||'')>s) out.push({candId:c.candId,candName:c.candName,m}); }); }); return out; }
+function msgUnreadCount(){ return msgUnreadList().length; }
+function startMsgPolling(){
+  if(!(SESSION && ['admin','manager','recruiter'].includes(SESSION.role))) return;
+  msgLoad();
+  if(!window._msgTimer){ window._msgTimer=setInterval(()=>{ if(MSG_AVAILABLE!==false) msgLoad(); }, 60000); }
+}
+/* header notification center: messages + time-off + anything else that needs attention */
+const NICO={ msg:'<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>',
+  clock:'<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>' };
+function buildNotifications(){
+  const items=[];
+  const mu=(SESSION && ['admin','manager','recruiter'].includes(SESSION.role))?msgUnreadCount():0;
+  if(mu>0) items.push({n:mu,ic:NICO.msg,text:mu+' new message'+(mu>1?'s':''),sub:'Candidate replies waiting',tab:'messages'});
+  if(SESSION && ['admin','manager','webinarteam'].includes(SESSION.role)){ const p=pendingApprovalsCount(); if(p>0) items.push({n:p,ic:NICO.clock,text:p+' time-off request'+(p>1?'s':''),sub:'Waiting for your approval',tab:'timeoff'}); }
+  if(SESSION && ['setter','closer'].includes(SESSION.role)){ const d=myUnseenDecisions().length; if(d>0) items.push({n:d,ic:NICO.clock,text:d+' time-off update'+(d>1?'s':''),sub:'Decision on your request',tab:'timeoff'}); }
+  return items;
+}
+function renderNotifPanel(items){ const panel=document.getElementById('notifPanel'); if(!panel) return; items=items||buildNotifications();
+  panel.innerHTML='<h4>Notifications</h4>'+(items.length?items.map(i=>`<div class="notifitem" onclick="notifGo('${i.tab}')"><span class="ni-ic">${i.ic}</span><span class="ni-tx">${esc(i.text)}<small>${esc(i.sub||'')}</small></span></div>`).join(''):'<div class="notifempty">You are all caught up.</div>'); }
+function renderNotifBell(){ const items=buildNotifications(), total=items.reduce((s,i)=>s+(i.n||0),0);
+  const b=document.getElementById('notifCount'); if(b){ if(total>0){ b.hidden=false; b.textContent=total>99?'99+':String(total); } else b.hidden=true; }
+  const p=document.getElementById('notifPanel'); if(p && !p.hidden) renderNotifPanel(items); }
+function toggleNotif(e){ if(e) e.stopPropagation(); const p=document.getElementById('notifPanel'); if(!p) return; if(p.hidden){ renderNotifPanel(); p.hidden=false; } else p.hidden=true; }
+function notifGo(tab){ const p=document.getElementById('notifPanel'); if(p) p.hidden=true; showTab(tab); }
+document.addEventListener('click',e=>{ const p=document.getElementById('notifPanel'); if(p && !p.hidden && !(e.target.closest && e.target.closest('.notifwrap'))) p.hidden=true; });
+function setTabBadge(tab,n,title){ document.querySelectorAll('#tabs button[data-tab="'+tab+'"]').forEach(b=>{ let bd=b.querySelector('.navbadge'); if(n>0){ if(!bd){ bd=document.createElement('span'); bd.className='navbadge'; b.appendChild(bd);} bd.textContent=n; bd.title=title||''; } else if(bd){ bd.remove(); } }); }
 function recRender(){
   const tb=document.getElementById('rcTplBtn'); if(tb) tb.style.display=(SESSION&&SESSION.role==='admin')?'':'none';
   if(REC_VIEW==='pipeline'){ recRenderBoard(); return; }
