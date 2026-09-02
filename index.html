@@ -37,13 +37,24 @@
   nav.tabs button{appearance:none;border:none;background:none;font:inherit;color:var(--muted);padding:10px 12px;cursor:pointer;border-left:2.5px solid transparent;border-radius:8px;white-space:nowrap;font-weight:500;text-align:left;width:100%}
   nav.tabs button:hover{background:rgba(255,255,255,.05);color:var(--ink)}
   nav.tabs button.active{color:var(--navy);border-left-color:var(--gold);background:rgba(201,162,74,.13)}
+  nav.tabs .navgroup{display:flex;flex-direction:column;margin-top:2px}
+  nav.tabs .navhead{color:var(--muted);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:11px 12px 4px;display:flex;align-items:center;gap:7px;border-left:2.5px solid transparent}
+  nav.tabs .navhead::before{content:'\25be';font-size:9px;color:var(--muted);transition:transform .15s}
+  nav.tabs .navhead:hover{background:none;color:var(--ink)}
+  nav.tabs .navgroup.collapsed .navhead::before{transform:rotate(-90deg)}
+  nav.tabs .navgroup.collapsed .navsub{display:none}
+  nav.tabs .navsub{display:flex;flex-direction:column;gap:2px}
   main{flex:1;min-width:0;max-width:1120px;padding:22px 22px 60px}
   @media(max-width:860px){
     .shell{display:block}
-    nav.tabs{flex-direction:row;width:auto;min-width:0;height:auto;overflow-x:auto;overflow-y:hidden;border-right:none;border-bottom:1px solid var(--glass-brd);padding:0 12px;gap:6px}
+    nav.tabs{flex-direction:row;flex-wrap:wrap;width:auto;min-width:0;height:auto;overflow-x:auto;overflow-y:hidden;border-right:none;border-bottom:1px solid var(--glass-brd);padding:0 12px;gap:6px}
     nav.tabs button{border-left:none;border-bottom:2.5px solid transparent;border-radius:0;width:auto;padding:13px 15px}
     nav.tabs button:hover{background:none}
     nav.tabs button.active{border-left:none;border-bottom-color:var(--gold);background:none}
+    nav.tabs .navgroup{flex-direction:row;margin-top:0}
+    nav.tabs .navhead{display:none}
+    nav.tabs .navgroup.collapsed .navsub{display:flex}
+    nav.tabs .navsub{flex-direction:row}
     main{padding:22px 16px 60px}
   }
   #usersTable td:nth-child(4){white-space:normal;vertical-align:top}
@@ -205,21 +216,52 @@
 <div class="shell">
 <nav class="tabs" id="tabs">
   <button data-tab="dash" class="active">Dashboard</button>
-  <button data-tab="meeting">Meeting</button>
-  <button data-tab="reps">Rep Breakdown</button>
-  <button data-tab="clients">Client Overview</button>
-  <button data-tab="onboarding">Onboarding</button>
-  <button data-tab="postcall">Post-Call Checkout</button>
-  <button data-tab="eod">End of Day</button>
-  <button data-tab="timeoff">Time Off</button>
-  <button data-tab="mgreod">Manager EOD</button>
-  <button data-tab="webinar">Webinar</button>
-  <button data-tab="calllog">Call Log</button>
-  <button data-tab="adminreport">Admin Report</button>
-  <button data-tab="recruiting">Recruiting</button>
-  <button data-tab="data">Data + Export</button>
-  <button data-tab="users">Users</button>
-  <button data-tab="settings">Settings</button>
+  <div class="navgroup">
+    <button class="navhead">Meetings</button>
+    <div class="navsub">
+      <button data-tab="meeting">Meeting</button>
+      <button data-tab="promises">Promises</button>
+    </div>
+  </div>
+  <div class="navgroup">
+    <button class="navhead">Setter / Closer tools</button>
+    <div class="navsub">
+      <button data-tab="postcall">Post-Call Checkout</button>
+      <button data-tab="eod">End of Day</button>
+      <button data-tab="timeoff">Time Off</button>
+    </div>
+  </div>
+  <div class="navgroup">
+    <button class="navhead">Clients</button>
+    <div class="navsub">
+      <button data-tab="clients">Client Overview</button>
+      <button data-tab="onboarding">Onboarding</button>
+      <button data-tab="webinar">Webinar</button>
+    </div>
+  </div>
+  <div class="navgroup">
+    <button class="navhead">Reporting</button>
+    <div class="navsub">
+      <button data-tab="reps">Rep Breakdown</button>
+      <button data-tab="mgreod">Manager EOD</button>
+      <button data-tab="calllog">Call Log</button>
+      <button data-tab="adminreport">Admin Report</button>
+    </div>
+  </div>
+  <div class="navgroup">
+    <button class="navhead">Recruiting</button>
+    <div class="navsub">
+      <button data-tab="recruiting">Recruiting</button>
+    </div>
+  </div>
+  <div class="navgroup">
+    <button class="navhead">Admin</button>
+    <div class="navsub">
+      <button data-tab="data">Data + Export</button>
+      <button data-tab="users">Users</button>
+      <button data-tab="settings">Settings</button>
+    </div>
+  </div>
 </nav>
 
 <main>
@@ -399,6 +441,30 @@
       </div>
       <div class="tablewrap"><table id="promisesTable"></table></div>
     </div></div>
+  </section>
+
+  <!-- ===== PROMISES & COMMITMENTS ===== -->
+  <section id="tab-promises" hidden>
+    <h2 class="section">Promises &amp; Commitments</h2>
+    <p class="hint">Everything anyone committed to, in one place. Log a commitment, check it off when done (completed ones stay visible for the record), and review a whole month at a glance for accountability.</p>
+    <div class="panel">
+      <div class="filters" style="align-items:flex-end">
+        <div class="field"><label>Month</label><select id="pmMonth" onchange="renderPromisesTab()"></select></div>
+        <div class="field"><label>Status</label><select id="pmStatus" onchange="renderPromisesTab()"><option value="">All</option><option value="open">Open</option><option value="overdue">Overdue</option><option value="done">Done</option></select></div>
+        <div class="field"><label>Who</label><select id="pmWho" onchange="renderPromisesTab()"></select></div>
+        <span id="pmSummary" class="tag" style="align-self:flex-end;margin-bottom:2px"></span>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="filters" style="align-items:flex-end;margin:0 0 4px">
+        <div class="field"><label>Who</label><select id="pmAddOwner"></select></div>
+        <div class="field" style="flex:2;min-width:220px"><label>Commitment</label><input id="pmAddWhat" placeholder="what you will get done"></div>
+        <div class="field"><label>By when</label><input type="date" id="pmAddDue"></div>
+        <div class="field"><label>Client</label><select id="pmAddClient"></select></div>
+        <button class="btn gold sm" style="align-self:flex-end" onclick="addPromiseTab()">Log commitment</button>
+      </div>
+    </div>
+    <div class="panel"><div class="tablewrap"><table id="pmTable"></table></div></div>
   </section>
 
   <!-- ===== TIME OFF ===== -->
@@ -896,7 +962,8 @@ function startApp(){
   document.getElementById('whoTag').textContent = SESSION.name+' ('+roleLabel(role)+')';
   document.getElementById('storeTag').textContent = '';
   const allow = baseAllow(role);
-  document.querySelectorAll('#tabs button').forEach(b=>{ b.hidden = !allow.includes(b.dataset.tab); });
+  document.querySelectorAll('#tabs button[data-tab]').forEach(b=>{ b.hidden = !allow.includes(b.dataset.tab); });
+  pruneNavGroups();
   fillLists(); wireTabs(); presetDates(); setPcRole('Closer');
   ensureKey().then(()=>{
     if(role==='admin'){ setEodRole('Closer'); Promise.all([syncRecords(),loadUsers()]).then(()=>{ fillLists(); setEodRole('Closer'); setPcRole('Closer'); applyNavAccess(); renderDash(); renderAll(); }); showTab('dash'); }
@@ -909,10 +976,10 @@ function startApp(){
 // base tabs a login TIER can see; per-account responsibilities add to this in applyNavAccess()
 function baseAllow(role){
   return ({
-    admin:['dash','reps','clients','onboarding','meeting','timeoff','postcall','eod','mgreod','webinar','calllog','adminreport','recruiting','data','users','settings'],
-    manager:['dash','reps','clients','onboarding','meeting','timeoff','users','postcall','eod','mgreod','webinar','calllog','recruiting'],
+    admin:['dash','reps','clients','onboarding','meeting','promises','timeoff','postcall','eod','mgreod','webinar','calllog','adminreport','recruiting','data','users','settings'],
+    manager:['dash','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','eod','mgreod','webinar','calllog','recruiting'],
     founder:['dash'],
-    webinarteam:['dash','meeting','timeoff','webinar'],
+    webinarteam:['dash','meeting','promises','timeoff','webinar'],
     closer:['dash','postcall','eod','timeoff','calllog','reps'],
     setter:['dash','postcall','eod','timeoff','calllog','reps']
   })[role] || ['eod'];
@@ -927,9 +994,12 @@ function applyNavAccess(){
     if(f.web.length) ['dash','meeting','webinar'].forEach(t=>{ if(!allow.includes(t)) allow.push(t); });
     if(f.set.length||f.clo.length) ['dash','reps','clients','onboarding','meeting','mgreod','calllog'].forEach(t=>{ if(!allow.includes(t)) allow.push(t); });
   }
-  document.querySelectorAll('#tabs button').forEach(b=>{ b.hidden = !allow.includes(b.dataset.tab); });
+  document.querySelectorAll('#tabs button[data-tab]').forEach(b=>{ b.hidden = !allow.includes(b.dataset.tab); });
+  pruneNavGroups();
   updateNavBadges();
 }
+// hide a nav group whose tabs are all hidden for this role
+function pruneNavGroups(){ document.querySelectorAll('#tabs .navgroup').forEach(g=>{ g.hidden = ![...g.querySelectorAll('button[data-tab]')].some(b=>!b.hidden); }); }
 // lock a rep's identity into the forms
 function applyIdentity(){
   const myRole = SESSION.role==='setter' ? 'Setter' : 'Closer';
@@ -950,12 +1020,15 @@ function applyIdentity(){
 }
 
 /* ---------------- tabs ---------------- */
-function wireTabs(){ document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>showTab(b.dataset.tab)); }
+function wireTabs(){
+  document.querySelectorAll('#tabs button[data-tab]').forEach(b=>b.onclick=()=>showTab(b.dataset.tab));
+  document.querySelectorAll('#tabs .navhead').forEach(h=>h.onclick=()=>h.closest('.navgroup').classList.toggle('collapsed'));
+}
 function showTab(t){
-  document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
-  ['dash','reps','clients','onboarding','meeting','timeoff','deal','postcall','eod','mgreod','webinar','calllog','adminreport','recruiting','data','users','settings'].forEach(x=>{ document.getElementById('tab-'+x).hidden = (x!==t); });
+  document.querySelectorAll('#tabs button[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
+  ['dash','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','eod','mgreod','webinar','calllog','adminreport','recruiting','data','users','settings'].forEach(x=>{ document.getElementById('tab-'+x).hidden = (x!==t); });
   // stale-while-revalidate: render instantly from the cached records, then refresh in the background
-  const render={dash:renderDash, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, webinar:renderWebinars, calllog:renderCallLog, adminreport:renderAdminReport, recruiting:renderRecruiting, data:renderAll}[t];
+  const render={dash:renderDash, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, promises:renderPromisesTab, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, webinar:renderWebinars, calllog:renderCallLog, adminreport:renderAdminReport, recruiting:renderRecruiting, data:renderAll}[t];
   if(render){ render(); syncRecords().then(()=>{ if(currentTab()===t) render(); updateNavBadges(); }); }
   updateNavBadges();
   if(t==='data'){ renderDailyEntry(); }
@@ -1428,7 +1501,46 @@ function addPromise(){
 }
 function togglePromise(pid,checked){
   const cur=collapsePromises(RECORDS).find(x=>String(x.pid||x.id)===pid); if(!cur) return;
-  addRecord({type:'promise', pid, date:cur.date, owner:cur.owner, what:cur.what, due:cur.due, client:cur.client, done:checked?'yes':'', by:(SESSION&&SESSION.name)||''}).then(()=>renderMeeting());
+  addRecord({type:'promise', pid, date:cur.date, owner:cur.owner, what:cur.what, due:cur.due, client:cur.client, done:checked?'yes':'', by:(SESSION&&SESSION.name)||''}).then(()=>{
+    const mt=document.getElementById('tab-meeting'), pt=document.getElementById('tab-promises');
+    if(mt&&!mt.hidden) renderMeeting();
+    if(pt&&!pt.hidden) renderPromisesTab();
+  });
+}
+/* ---- Promises & Commitments dedicated tab: all commitments, monthly view, completed kept visible ---- */
+function pmMonths(){ const s=new Set([thisMonth()]); collapsePromises(RECORDS).forEach(p=>{ const mk=monthKey(p.due||p.date); if(mk)s.add(mk); }); return [...s].sort().reverse(); }
+let PM_INIT=false;
+function fillPmAddSelects(){
+  const po=document.getElementById('pmAddOwner'); if(po){ const cur=po.value, people=[...new Set([...(USERS_CACHE||[]).map(u=>String(u.name||'').trim()), ...leaderNames(), (SESSION&&SESSION.name)||''])].filter(Boolean).sort((a,b)=>a.localeCompare(b)); po.innerHTML=people.map(n=>`<option>${esc(n)}</option>`).join(''); po.value=(cur&&people.includes(cur))?cur:((SESSION&&SESSION.name)||people[0]||''); }
+  const pc=document.getElementById('pmAddClient'); if(pc){ const cur=pc.value, cs=clientNames(); pc.innerHTML='<option value="">- none -</option>'+cs.map(c=>`<option>${esc(c)}</option>`).join(''); if(cur&&cs.includes(cur))pc.value=cur; }
+  const pd=document.getElementById('pmAddDue'); if(pd&&!pd.value) pd.value=todayLocal();
+}
+function renderPromisesTab(){
+  const t=document.getElementById('pmTable'); if(!t) return;
+  const ms=document.getElementById('pmMonth');
+  if(ms){ const cur=ms.value, months=pmMonths(); ms.innerHTML='<option value="">All time</option>'+months.map(m=>`<option value="${m}">${usMonth(m)}</option>`).join(''); ms.value = cur ? cur : (PM_INIT?'':thisMonth()); PM_INIT=true; }
+  const wf=document.getElementById('pmWho'); if(wf){ const cur=wf.value, people=[...new Set(collapsePromises(RECORDS).map(p=>String(p.owner||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b)); wf.innerHTML='<option value="">Everyone</option>'+people.map(n=>`<option>${esc(n)}</option>`).join(''); if(cur&&people.includes(cur))wf.value=cur; }
+  fillPmAddSelects();
+  const m=(document.getElementById('pmMonth')||{}).value||'', st=(document.getElementById('pmStatus')||{}).value||'', who=(document.getElementById('pmWho')||{}).value||'', today=todayLocal();
+  const statusOf=p=>{ if(String(p.done||'')==='yes')return 'done'; if(p.due&&p.due<today)return 'overdue'; return 'open'; };
+  let rows=collapsePromises(RECORDS);
+  if(m) rows=rows.filter(p=>monthKey(p.due||p.date)===m);
+  if(who) rows=rows.filter(p=>String(p.owner||'').trim()===who);
+  if(st) rows=rows.filter(p=>statusOf(p)===st);
+  rows.sort((a,b)=> ((String(a.done||'')==='yes')-(String(b.done||'')==='yes')) || String(a.owner||'').localeCompare(String(b.owner||'')) || (a.due||'').localeCompare(b.due||''));
+  const all = m||who||st ? collapsePromises(RECORDS).filter(p=>(!m||monthKey(p.due||p.date)===m)&&(!who||String(p.owner||'').trim()===who)) : rows;
+  const open=all.filter(p=>statusOf(p)==='open').length, overdue=all.filter(p=>statusOf(p)==='overdue').length, done=all.filter(p=>statusOf(p)==='done').length;
+  const sum=document.getElementById('pmSummary'); if(sum){ sum.textContent=`${open} open · ${overdue} overdue · ${done} done`; sum.style.color=overdue?'var(--bad)':'var(--muted)'; sum.style.borderColor=overdue?'var(--bad)':'var(--border)'; }
+  const pill=s=> s==='done'?'<span class="pill good">done</span>' : s==='overdue'?'<span class="pill" style="color:var(--bad);border-color:var(--bad)">overdue</span>':'<span class="pill" style="color:var(--warn);border-color:var(--warn)">open</span>';
+  t.innerHTML='<thead><tr><th>Done</th><th>Who</th><th>Commitment</th><th>Client</th><th>By when</th><th>Status</th></tr></thead><tbody>'+
+    (rows.length?rows.map(p=>{ const s=statusOf(p), d=s==='done'; const pid=esc(String(p.pid||p.id)).replace(/'/g,"\\'");
+      return `<tr${d?' style="opacity:.6"':''}><td><input type="checkbox" ${d?'checked':''} onchange="togglePromise('${pid}',this.checked)"></td><td><b>${esc(p.owner||'')}</b></td><td${d?' style="text-decoration:line-through"':''}>${esc(p.what||'')}</td><td>${esc(p.client||'')||'<span class="muted">-</span>'}</td><td>${p.due?esc(usDate(p.due)):'<span class="muted">-</span>'}</td><td>${pill(s)}</td></tr>`; }).join('')
+     :'<tr><td colspan="6" class="muted" style="padding:14px">No commitments for this filter.</td></tr>')+'</tbody>';
+}
+function addPromiseTab(){
+  const owner=document.getElementById('pmAddOwner').value, what=(document.getElementById('pmAddWhat').value||'').trim(), due=document.getElementById('pmAddDue').value||'', client=document.getElementById('pmAddClient').value||'';
+  if(!what){ toast('What is the commitment?',true); return; }
+  addRecord({type:'promise', pid:uid(), date:todayLocal(), owner, what, due, client, done:'', by:(SESSION&&SESSION.name)||''}).then(()=>{ document.getElementById('pmAddWhat').value=''; toast('Commitment logged'); renderPromisesTab(); });
 }
 function buildAgendaText(date){
   const entries=collapseAgenda(RECORDS).filter(x=>(x.date||'').slice(0,10)===date && (x.text||'').trim());
@@ -1635,7 +1747,7 @@ function renderDash(){
     <div class="kpi"><div class="lbl">Show rate</div><div class="val">${pct(s.showRate)}</div></div>
     <div class="kpi"><div class="lbl" title="Connected sales calls divided by how many calls closers had room to take. Low = we can push for more bookings or spend more on ads.">Call utilization</div><div class="val">${pct(s.utilization)}</div></div>
     <div class="kpi"><div class="lbl">Deposits collected</div><div class="val small">${money(s.depositCollected)}</div></div>`;
-  const ss=aggSetters(recs);
+  const ss=aggSetters(recs); const bn=badNumberPct();
   document.getElementById('kpisSetters').innerHTML=`
     <div class="kpi"><div class="lbl">Total dials</div><div class="val">${ss.dials}</div></div>
     <div class="kpi"><div class="lbl">Connected calls</div><div class="val">${ss.connCalls}</div></div>
@@ -1643,11 +1755,19 @@ function renderDash(){
     <div class="kpi"><div class="lbl">Calls set</div><div class="val">${ss.set}</div></div>
     <div class="kpi"><div class="lbl">Book %</div><div class="val">${pct(ss.bookRate)}</div></div>
     <div class="kpi"><div class="lbl">Convos 4m+</div><div class="val">${ss.convos4}</div></div>
+    <div class="kpi"><div class="lbl" title="Share of logged calls marked as a wrong / bad number. High = a list or targeting problem to raise with the client's marketing.">Bad number %</div><div class="val">${pct(bn.rate)}</div><div class="lbl" style="margin-top:4px">${bn.bad}/${bn.total} calls</div></div>
     <div class="kpi"><div class="lbl">Hours dialing</div><div class="val small">${Math.round(ss.hours*10)/10}</div></div>
     <div class="kpi"><div class="lbl">Cash set</div><div class="val small">${money(ss.cashSet)}</div></div>`;
   renderLeaderboard(recs);
   renderBreakdownTables(recs, {setterEl:'dashSetterTable', closerEl:'dashCloserTable', rm:(SESSION&&(SESSION.role==='founder'||repMode())), clickable:false});
   renderClients(recs); renderDeals(recs);
+}
+// share of logged calls that were wrong/bad numbers, scoped to the dashboard's month + client + role scope
+function badNumberPct(){
+  const m=(document.getElementById('fMonth')||{}).value||'', c=(document.getElementById('fClient')||{}).value||'', sc=dashScopeClients();
+  const pc=collapsePostcall(RECORDS).filter(x=>(!m||monthKey(x.date)===m)&&(!c||x.client===c)&&(!sc||sc.includes(x.client)));
+  const total=pc.length, bad=pc.filter(x=>/wrong number|bad number/i.test(x.outcome||'')).length;
+  return { bad, total, rate: total?bad/total:0 };
 }
 // combined setter activity totals for the dashboard KPI row
 function aggSetters(recs){
