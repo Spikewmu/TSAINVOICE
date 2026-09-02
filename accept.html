@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Accept your offer</title>
+<style>
+  :root{ --bg:#0e0e0f; --surface:#161617; --surface2:#1e1e20; --border:#2a2a2c; --ink:#f2efe9; --muted:#a7a29a; --gold:#c9a24a; --good:#3ddc84; }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+  .card{width:min(460px,100%);background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:30px 26px;box-shadow:0 18px 50px rgba(0,0,0,.45)}
+  .brand{display:flex;align-items:center;gap:9px;font-weight:700;letter-spacing:.02em;margin-bottom:20px}
+  .brand .dot{width:12px;height:12px;border-radius:3px;background:var(--gold)}
+  h1{font-size:22px;line-height:1.25;margin:0 0 8px}
+  h1 .role{color:var(--gold)}
+  p{color:var(--muted);line-height:1.5;margin:0 0 18px}
+  .btn{width:100%;border:none;border-radius:10px;background:var(--gold);color:#1a1400;font-weight:700;font-size:15px;padding:13px;cursor:pointer}
+  .btn:disabled{opacity:.6;cursor:default}
+  .btn.secondary{background:transparent;border:1px solid var(--border);color:var(--ink)}
+  .muted{color:var(--muted);font-size:13px}
+  .ok-ic{width:54px;height:54px;border-radius:50%;background:rgba(61,220,132,.14);border:1px solid var(--good);display:flex;align-items:center;justify-content:center;margin:0 auto 14px;color:var(--good)}
+  .center{text-align:center}
+  .hidden{display:none}
+  .foot{margin-top:20px;color:var(--muted);font-size:12px;text-align:center}
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="brand"><span class="dot"></span> The Sales Agency</div>
+
+    <div id="loading"><p>Loading your offer...</p></div>
+
+    <div id="offer" class="hidden">
+      <h1 id="offerTitle"></h1>
+      <p id="offerSub"></p>
+      <button class="btn" id="acceptBtn" onclick="doAccept()">Accept offer</button>
+      <p class="muted" style="margin:14px 0 0;text-align:center">By accepting, you agree to start onboarding with The Sales Agency.</p>
+    </div>
+
+    <div id="done" class="hidden center">
+      <div class="ok-ic"><svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></div>
+      <h1 id="doneTitle">You're in!</h1>
+      <p id="doneSub">Welcome to the team. We'll send your onboarding steps shortly.</p>
+    </div>
+
+    <div id="error" class="hidden">
+      <h1>Hmm.</h1>
+      <p id="errMsg">This link is invalid or has expired. Reach out to your recruiter for a fresh one.</p>
+    </div>
+
+    <div class="foot">The Sales Agency</div>
+  </div>
+
+<script>
+  var params = new URLSearchParams(location.search);
+  var t = params.get('t') || '';
+  var show = function(id){ ['loading','offer','done','error'].forEach(function(x){ document.getElementById(x).classList.toggle('hidden', x!==id); }); };
+  function esc(s){ return String(s||'').replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+  async function load(){
+    if(!t){ show('error'); return; }
+    try{
+      var r = await fetch('/api/accept?action=info&t='+encodeURIComponent(t));
+      var j = await r.json();
+      if(!j.ok){ document.getElementById('errMsg').textContent=j.error||'This link is invalid or has expired.'; show('error'); return; }
+      var first=(j.name||'').split(' ')[0];
+      document.getElementById('offerTitle').innerHTML = (first?('Hi '+esc(first)+', '):'')+'you’ve been offered the <span class="role">'+esc(j.position||'role')+'</span> role.';
+      document.getElementById('offerSub').textContent = 'From '+(j.company||'The Sales Agency')+'. Ready to get started? Accept below and we’ll kick off your onboarding.';
+      show('offer');
+    }catch(e){ show('error'); }
+  }
+  async function doAccept(){
+    var b=document.getElementById('acceptBtn'); b.disabled=true; b.textContent='Accepting...';
+    try{
+      var r = await fetch('/api/accept?action=accept',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({t:t})});
+      var j = await r.json();
+      if(!j.ok){ document.getElementById('errMsg').textContent=j.error||'Something went wrong. Reach out to your recruiter.'; show('error'); return; }
+      var first=(j.name||'').split(' ')[0];
+      document.getElementById('doneTitle').textContent = 'You’re in'+(first?(', '+first):'')+'!';
+      show('done');
+    }catch(e){ b.disabled=false; b.textContent='Accept offer'; document.getElementById('errMsg').textContent='Network error, please try again.'; show('error'); }
+  }
+  load();
+</script>
+</body>
+</html>

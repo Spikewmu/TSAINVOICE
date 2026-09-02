@@ -946,7 +946,7 @@
       <b>Offer letter</b>
       <div class="field" style="margin:8px 0"><label>Subject</label><input id="tplOfSubject"></div>
       <div class="field"><label>Body</label><textarea id="tplOfBody" rows="11" style="width:100%;font-size:12.5px"></textarea></div>
-      <p class="fieldhelp" style="margin:6px 0 0">Fields: {{name}} {{company}} {{position}} {{start}} {{comp}} {{notes}}</p>
+      <p class="fieldhelp" style="margin:6px 0 0">Fields: {{name}} {{company}} {{position}} {{start}} {{comp}} {{notes}} {{accept_link}}</p>
       <button class="btn ghost sm" style="margin-top:8px" onclick="tplResetOf()">Reset to default</button>
     </div>
     <div id="tplErr" class="fieldhelp" style="color:var(--warn);margin-bottom:8px" hidden></div>
@@ -2429,13 +2429,14 @@ async function recSetStage(id,status){
   const j=await recFetch('/api/recruiting?action=stage',{method:'POST',body:JSON.stringify({records:[{id,status}]})});
   if(!j.ok){ c.recStatus=prev; recRenderBoard(); toast('Stage update failed: '+(j.error||''),true); return; }
   if(status==='Not Looking'){ const cl=claimMap()[id]; if(cl&&cl.owner&&cl.status!=='released') releaseClaim(id); } // dead stage frees the candidate for anyone
+  if(status==='Hired' && !RECORDS.some(x=>x.type==='hire'&&x.candId===id)){ addRecord({type:'hire',candId:id,name:c.name||'',position:recArr(c.role).join(', '),acceptedAt:new Date().toISOString(),via:'manual'}); } // manual accept path -> starts onboarding
   recCacheSave(); recBuildFacets(); toast((c.name||'Candidate')+' → '+(status||'Unsorted'));
 }
 /* ---- email templates: admin-editable canned copy with {{merge}} fields, stored as latest-wins records so they apply for everyone ---- */
 const GI_TPL_DEFAULT={ subject:'{{company}} - {{position}} group interview ({{date}})',
   body:"Hi,\n\nYou're invited to a group interview with {{company}} for the {{position}} role.\n\nWhen: {{when}}\nWhere: {{link}}\n\nWhat to bring: {{bring}}\n\nPlease join a few minutes early and reply to confirm your spot.\n\n- {{company}} Recruiting" };
 const OFFER_TPL_DEFAULT={ subject:'{{company}} - Offer for the {{position}} role',
-  body:"Hi {{name}},\n\nCongratulations! Following your interview, {{company}} would like to offer you the {{position}} position.\n\nStart date: {{start}}\nCompensation: {{comp}}\n\n{{notes}}\n\nTo accept, just reply to this email confirming and we'll send your onboarding steps and paperwork.\n\nWe're excited to have you on the team.\n\n- {{company}} Recruiting" };
+  body:"Hi {{name}},\n\nCongratulations! Following your interview, {{company}} would like to offer you the {{position}} position.\n\nStart date: {{start}}\nCompensation: {{comp}}\n\n{{notes}}\n\nTo accept your offer, tap here: {{accept_link}}\n\nAs soon as you accept we'll send your onboarding steps and paperwork.\n\nWe're excited to have you on the team.\n\n- {{company}} Recruiting" };
 function fillTpl(str,map){ return String(str||'').replace(/\{\{(\w+)\}\}/g,(m,k)=>(k in map?String(map[k]==null?'':map[k]):m)); }
 function fillBody(str,map){ return fillTpl(str,map).replace(/\n{3,}/g,'\n\n').trim(); }
 function emailTpl(key){ let best=null; RECORDS.forEach(x=>{ if(x.type==='emailtpl'&&x.key===key){ if(!best||(x.submittedAt||'')>(best.submittedAt||'')) best=x; } }); return best; }
@@ -2507,9 +2508,14 @@ function offerOpen(){
   offerShow();
 }
 function offerOpenFor(id){ if(!id) return; OFFER_TARGETS=[id]; offerShow(); }
+let OFFER_ACCEPT_LINK='';
 function offerShow(){
   const d=document.getElementById('ofStart'); if(d&&!d.value){ const t=new Date(); t.setDate(t.getDate()+7); d.value=`${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`; }
   document.getElementById('ofErr').hidden=true;
+  OFFER_ACCEPT_LINK=''; const sel=ofSel();
+  if(sel.length===1){ // mint a signed accept link for the single candidate so the offer carries a real "Accept" link
+    recFetch('/api/accept?action=mint',{method:'POST',body:JSON.stringify({candId:sel[0].id,name:sel[0].name,position:(document.getElementById('ofPosition')||{}).value||'',company:(document.getElementById('ofCompany')||{}).value||''})}).then(j=>{ if(j&&j.ok&&j.link){ OFFER_ACCEPT_LINK=j.link; offerRender(); } });
+  }
   offerRender(); document.getElementById('ofModal').hidden=false;
 }
 function offerClose(){ document.getElementById('ofModal').hidden=true; }
@@ -2517,7 +2523,7 @@ function offerTemplate(){
   const g=id=>((document.getElementById(id)||{}).value||'').trim();
   const company=g('ofCompany')||'The Sales Agency', position=g('ofPosition')||'Sales', start=g('ofStart'), comp=g('ofComp'), notes=g('ofNotes');
   const sel=ofSel(), name=sel.length===1?firstName(sel[0].name):'there';
-  const map={ company, position, name:name||'there', start:start?usDate(start):'[to be confirmed]', comp:comp||'[to be confirmed]', notes:notes||'' };
+  const map={ company, position, name:name||'there', start:start?usDate(start):'[to be confirmed]', comp:comp||'[to be confirmed]', notes:notes||'', accept_link:OFFER_ACCEPT_LINK|| (ofSel().length===1?'(generating accept link...)':'[accept link is added per candidate when you send one at a time]') };
   const t=tplFor('offer',OFFER_TPL_DEFAULT);
   return { subject:fillTpl(t.subject,map), body:fillBody(t.body,map) };
 }
