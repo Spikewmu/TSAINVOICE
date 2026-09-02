@@ -47,7 +47,9 @@ async function supa(path, opts) {
   return r;
 }
 async function getUser(username) {
-  const r = await supa(`users?username=eq.${encodeURIComponent(username)}&select=username,name,role,pass_hash&limit=1`);
+  // case-insensitive exact match (ilike, no wildcards) so a login works regardless of typed case
+  // and regardless of how the username was stored (some are lowercase like "ra-eez", some capitalized like "Keith")
+  const r = await supa(`users?username=ilike.${encodeURIComponent(username)}&select=username,name,role,pass_hash&limit=1`);
   if (!r.ok) return null;
   const rows = await r.json();
   return rows[0] || null;
