@@ -7,7 +7,7 @@
 // conversations; managers/admins see all). Candidate email/phone is never returned to the client.
 //
 // Provisioning required before this works:
-//   1) Create the `messages` table in Supabase (see messages.sql) with RLS on and NO anon policy.
+//   1) Create the `messages` table in Supabase (see /db/messages.sql) with RLS on and NO anon policy.
 //   2) Twilio env: TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM (a TSA number).
 //   3) Email send is pending the native platform (T-371) - email sends return 'email-not-connected'.
 // Env also used: SUPABASE_URL, SUPABASE_SERVICE_KEY, SESSION_SECRET, ADMIN_PASS/BOT_ADMIN_TOKEN,
