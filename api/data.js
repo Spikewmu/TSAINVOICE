@@ -23,9 +23,9 @@ function verifySession(token) {
     return p;
   } catch (e) { return null; }
 }
-async function supa(path) {
+async function supa(path, opts) {
   const key = process.env.SUPABASE_SERVICE_KEY;
-  return fetch(process.env.SUPABASE_URL + '/rest/v1/' + path, { headers: { apikey: key, Authorization: 'Bearer ' + key } });
+  return fetch(process.env.SUPABASE_URL + '/rest/v1/' + path, { ...(opts || {}), headers: { apikey: key, Authorization: 'Bearer ' + key, 'Content-Type': 'application/json', ...((opts && opts.headers) || {}) } });
 }
 async function wsForUser(username) {
   const r = await supa(`records?select=data&type=eq.wsmember&data->>username=ilike.${encodeURIComponent(username)}&order=submitted_at.desc&limit=1`);
@@ -58,6 +58,15 @@ export default async function handler(req, res) {
       if (!r.ok) { const t = await r.text(); return res.status(200).json({ ok: false, error: 'db ' + r.status + ' ' + t.slice(0, 160) }); }
       const rows = await r.json();
       return res.status(200).json({ ok: true, ws, records: rows.map(x => x.data).filter(Boolean) });
+    }
+    if (action === 'write') {
+      const rec = b.record || {};
+      if (!rec || typeof rec !== 'object' || !rec.type) return res.status(200).json({ ok: false, error: 'record required' });
+      rec.ws = callerWs; // server-authoritative workspace stamp - a client can never write into another workspace
+      const row = { rid: rec.id || crypto.randomUUID(), type: rec.type, submitted_at: rec.submittedAt || new Date().toISOString(), data: rec };
+      const r = await supa('records', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify(row) });
+      if (!r.ok) { const t = await r.text(); return res.status(200).json({ ok: false, error: 'db ' + r.status + ' ' + t.slice(0, 160) }); }
+      return res.status(200).json({ ok: true });
     }
     return res.status(200).json({ ok: false, error: 'unknown action' });
   } catch (e) { return res.status(200).json({ ok: false, error: String(e) }); }

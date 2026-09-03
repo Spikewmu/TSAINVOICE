@@ -1230,6 +1230,16 @@ async function addRecord(rec){
   rec.id=uid(); rec.submittedAt=new Date().toISOString(); rec.submittedET=nowET();
   if(rec.ws==null) rec.ws=currentWs(); // stamp the tenant so data is walled off by workspace
   RECORDS.push(rec); save(LS.data,RECORDS);
+  // primary: write through the server so it stamps the workspace authoritatively (write-side isolation)
+  if(SESSION && (SESSION.token || SESSION.pw)){
+    try{
+      const hdr={'Content-Type':'application/json'};
+      if(SESSION.token) hdr['x-session-token']=SESSION.token; else if(SESSION.pw) hdr['x-admin-pass']=SESSION.pw;
+      const r=await fetch('/api/data?action=write',{method:'POST',headers:hdr,body:JSON.stringify({record:rec})});
+      if(r.ok){ const j=await r.json(); if(j && j.ok) return; }
+    }catch(e){ console.warn('server write unavailable, falling back to direct write', e); }
+  }
+  // fallback: direct write (kept until the anon-insert lock is applied)
   if(supaOn()){
     const r=await fetch(CFG.supaUrl+'/rest/v1/records',{method:'POST',headers:supaHeaders({'Content-Type':'application/json','Prefer':'return=minimal'}),body:JSON.stringify({rid:rec.id,type:rec.type,submitted_at:rec.submittedAt,data:rec})});
     if(!r.ok) throw new Error('supa write '+r.status);
