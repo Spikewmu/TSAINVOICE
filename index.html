@@ -994,7 +994,7 @@
       <b>Group interview invite</b>
       <div class="field" style="margin:8px 0"><label>Subject</label><input id="tplGiSubject"></div>
       <div class="field"><label>Body</label><textarea id="tplGiBody" rows="9" style="width:100%;font-size:12.5px"></textarea></div>
-      <p class="fieldhelp" style="margin:6px 0 0">Fields: {{company}} {{position}} {{date}} {{time}} {{tz}} {{when}} {{link}} {{bring}}</p>
+      <p class="fieldhelp" style="margin:6px 0 0">Fields: {{company}} {{position}} {{date}} {{time}} {{tz}} {{when}} {{link}} {{bring}} {{confirm_link}}</p>
       <button class="btn ghost sm" style="margin-top:8px" onclick="tplResetGi()">Reset to default</button>
     </div>
     <div class="panel" style="padding:12px;margin-bottom:14px">
@@ -2638,7 +2638,7 @@ async function recSetStage(id,status){
 }
 /* ---- email templates: admin-editable canned copy with {{merge}} fields, stored as latest-wins records so they apply for everyone ---- */
 const GI_TPL_DEFAULT={ subject:'{{company}} - {{position}} group interview ({{date}})',
-  body:"Hi,\n\nYou're invited to a group interview with {{company}} for the {{position}} role.\n\nWhen: {{when}}\nWhere: {{link}}\n\nWhat to bring: {{bring}}\n\nPlease join a few minutes early and reply to confirm your spot.\n\n- {{company}} Recruiting" };
+  body:"Hi,\n\nYou're invited to a group interview with {{company}} for the {{position}} role.\n\nWhen: {{when}}\nWhere: {{link}}\n\nWhat to bring: {{bring}}\n\nPlease confirm you'll be there: {{confirm_link}}\n\nJoin a few minutes early.\n\n- {{company}} Recruiting" };
 const OFFER_TPL_DEFAULT={ subject:'{{company}} - Offer for the {{position}} role',
   body:"Hi {{name}},\n\nCongratulations! Following your interview, {{company}} would like to offer you the {{position}} position.\n\nStart date: {{start}}\nCompensation: {{comp}}\n\n{{notes}}\n\nTo accept your offer, tap here: {{accept_link}}\n\nAs soon as you accept we'll send your onboarding steps and paperwork.\n\nWe're excited to have you on the team.\n\n- {{company}} Recruiting" };
 function fillTpl(str,map){ return String(str||'').replace(/\{\{(\w+)\}\}/g,(m,k)=>(k in map?String(map[k]==null?'':map[k]):m)); }
@@ -2666,10 +2666,16 @@ async function tplSave(){
 }
 /* ---- group interview composer (canned template + auto-populated fields; interim send via mail client until platform email lands) ---- */
 function giSel(){ return [...REC_SEL].map(id=>REC_ALL.find(x=>x.id===id)).filter(Boolean); }
+let GI_CONFIRM_LINK='';
 function giOpen(){
   if(!REC_SEL.size){ toast('Select candidates first (checkboxes in the Search view)',true); return; }
   const d=document.getElementById('giDate'); if(d&&!d.value){ const t=new Date(); t.setDate(t.getDate()+1); d.value=`${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`; }
   document.getElementById('giErr').hidden=true;
+  GI_CONFIRM_LINK=''; const sel=giSel();
+  if(sel.length===1){ // mint a per-candidate confirm/decline link for the invite
+    const dv=(document.getElementById('giDate')||{}).value||'', tv=(document.getElementById('giTime')||{}).value||'';
+    recFetch('/api/accept?action=mint',{method:'POST',body:JSON.stringify({candId:sel[0].id,name:sel[0].name,position:(document.getElementById('giPosition')||{}).value||'',company:(document.getElementById('giCompany')||{}).value||'',kind:'interview',date:dv?usDate(dv):'',time:tv?fmt12(tv):''})}).then(j=>{ if(j&&j.ok&&j.link){ GI_CONFIRM_LINK=j.link; giRender(); } });
+  }
   giRender(); document.getElementById('giModal').hidden=false;
 }
 function giClose(){ document.getElementById('giModal').hidden=true; }
@@ -2677,7 +2683,7 @@ function giTemplate(){
   const g=id=>((document.getElementById(id)||{}).value||'').trim();
   const company=g('giCompany')||'The Sales Agency', position=g('giPosition')||'Sales', date=g('giDate'), time=g('giTime'), tz=g('giTz'), link=g('giLink'), bring=g('giBring');
   const when=(date?usDate(date):'[date]')+(time?' at '+fmt12(time):'')+(tz?' '+tz:'');
-  const map={ company, position, date:date?usDate(date):'date TBD', time:time?fmt12(time):'', tz, when, link:link||'[meeting link]', bring:bring||'-', name:'' };
+  const map={ company, position, date:date?usDate(date):'date TBD', time:time?fmt12(time):'', tz, when, link:link||'[meeting link]', bring:bring||'-', name:'', confirm_link:GI_CONFIRM_LINK|| (giSel().length===1?'(generating confirm link...)':'[confirm link is added per candidate when you invite one at a time]') };
   const t=tplFor('groupInterview',GI_TPL_DEFAULT);
   return { subject:fillTpl(t.subject,map), body:fillBody(t.body,map) };
 }

@@ -34,8 +34,8 @@
     <div id="offer" class="hidden">
       <h1 id="offerTitle"></h1>
       <p id="offerSub"></p>
-      <button class="btn" id="acceptBtn" onclick="doAccept()">Accept offer</button>
-      <p class="muted" style="margin:14px 0 0;text-align:center">By accepting, you agree to start onboarding with The Sales Agency.</p>
+      <div id="offerActions"></div>
+      <p class="muted" id="offerFine" style="margin:14px 0 0;text-align:center">By accepting, you agree to start onboarding with The Sales Agency.</p>
     </div>
 
     <div id="done" class="hidden center">
@@ -57,28 +57,54 @@
   var t = params.get('t') || '';
   var show = function(id){ ['loading','offer','done','error'].forEach(function(x){ document.getElementById(x).classList.toggle('hidden', x!==id); }); };
   function esc(s){ return String(s||'').replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+  var KIND='offer';
   async function load(){
     if(!t){ show('error'); return; }
     try{
       var r = await fetch('/api/accept?action=info&t='+encodeURIComponent(t));
       var j = await r.json();
       if(!j.ok){ document.getElementById('errMsg').textContent=j.error||'This link is invalid or has expired.'; show('error'); return; }
+      KIND = j.kind || 'offer';
       var first=(j.name||'').split(' ')[0];
-      document.getElementById('offerTitle').innerHTML = (first?('Hi '+esc(first)+', '):'')+'you’ve been offered the <span class="role">'+esc(j.position||'role')+'</span> role.';
-      document.getElementById('offerSub').textContent = 'From '+(j.company||'The Sales Agency')+'. Ready to get started? Accept below and we’ll kick off your onboarding.';
+      var actions=document.getElementById('offerActions'), fine=document.getElementById('offerFine');
+      if(KIND==='interview'){
+        var when=(j.date?esc(j.date):'')+(j.time?(' at '+esc(j.time)):'');
+        document.getElementById('offerTitle').innerHTML = (first?('Hi '+esc(first)+', '):'')+'you’re invited to a <span class="role">group interview</span>'+(j.position?(' for the '+esc(j.position)+' role'):'')+'.';
+        document.getElementById('offerSub').innerHTML = 'With '+esc(j.company||'The Sales Agency')+'.'+(when?(' <b>When:</b> '+when+'.'):'')+' Can you make it?';
+        actions.innerHTML = '<button class="btn" onclick="doConfirm()">Yes, I’ll be there</button><button class="btn secondary" style="margin-top:10px" onclick="doDecline()">Can’t make it</button>';
+        fine.textContent = 'Confirming helps us hold your spot.';
+      } else {
+        document.getElementById('offerTitle').innerHTML = (first?('Hi '+esc(first)+', '):'')+'you’ve been offered the <span class="role">'+esc(j.position||'role')+'</span> role.';
+        document.getElementById('offerSub').textContent = 'From '+(j.company||'The Sales Agency')+'. Ready to get started? Accept below and we’ll kick off your onboarding.';
+        actions.innerHTML = '<button class="btn" id="acceptBtn" onclick="doAccept()">Accept offer</button>';
+        fine.textContent = 'By accepting, you agree to start onboarding with The Sales Agency.';
+      }
       show('offer');
     }catch(e){ show('error'); }
   }
+  async function post(act){ var r=await fetch('/api/accept?action='+act,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({t:t})}); return r.json(); }
   async function doAccept(){
-    var b=document.getElementById('acceptBtn'); b.disabled=true; b.textContent='Accepting...';
-    try{
-      var r = await fetch('/api/accept?action=accept',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({t:t})});
-      var j = await r.json();
-      if(!j.ok){ document.getElementById('errMsg').textContent=j.error||'Something went wrong. Reach out to your recruiter.'; show('error'); return; }
+    var b=document.getElementById('acceptBtn'); if(b){ b.disabled=true; b.textContent='Accepting...'; }
+    try{ var j=await post('accept'); if(!j.ok){ document.getElementById('errMsg').textContent=j.error||'Something went wrong. Reach out to your recruiter.'; show('error'); return; }
       var first=(j.name||'').split(' ')[0];
       document.getElementById('doneTitle').textContent = 'You’re in'+(first?(', '+first):'')+'!';
+      document.getElementById('doneSub').textContent = 'Welcome to the team. We’ll send your onboarding steps shortly.';
       show('done');
-    }catch(e){ b.disabled=false; b.textContent='Accept offer'; document.getElementById('errMsg').textContent='Network error, please try again.'; show('error'); }
+    }catch(e){ document.getElementById('errMsg').textContent='Network error, please try again.'; show('error'); }
+  }
+  async function doConfirm(){
+    try{ var j=await post('confirm'); if(!j.ok){ document.getElementById('errMsg').textContent=j.error||'Something went wrong.'; show('error'); return; }
+      document.getElementById('doneTitle').textContent = 'You’re confirmed!';
+      document.getElementById('doneSub').textContent = 'Great - we’ll see you at the interview. Check your email for the details.';
+      show('done');
+    }catch(e){ document.getElementById('errMsg').textContent='Network error, please try again.'; show('error'); }
+  }
+  async function doDecline(){
+    try{ var j=await post('decline'); if(!j.ok){ document.getElementById('errMsg').textContent=j.error||'Something went wrong.'; show('error'); return; }
+      document.getElementById('doneTitle').textContent = 'No problem.';
+      document.getElementById('doneSub').textContent = 'Thanks for letting us know. We’ll reach out about a future opportunity.';
+      show('done');
+    }catch(e){ document.getElementById('errMsg').textContent='Network error, please try again.'; show('error'); }
   }
   load();
 </script>
