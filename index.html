@@ -1124,7 +1124,7 @@ async function remoteGet(){
 
 /* ---------------- records ---------------- */
 let RECORDS = load(LS.data, []);
-async function syncRecords(){ const r=await remoteGet(); if(r){ RECORDS=dedupeRecords(r); save(LS.data,RECORDS); } updateWsBrand(); }
+async function syncRecords(){ const r=await remoteGet(); if(r){ RECORDS=dedupeRecords(r); save(LS.data,RECORDS); } applyWsConfig(); updateWsBrand(); }
 // Collapse accidental double-submits: same rep/client/date/role and identical values,
 // submitted within 2 minutes of each other, count once. (Physical rows stay in the sheet.)
 function recSig(r){
@@ -1152,6 +1152,11 @@ function wsForUser(username){ let ws=DEFAULT_WS, best=''; RECORDS.forEach(x=>{ i
 function currentWs(){ return (SESSION&&SESSION.username)?wsForUser(SESSION.username):DEFAULT_WS; }
 function wsRecord(){ const ws=currentWs(); let best=null; RECORDS.forEach(x=>{ if(x.type==='workspace' && x.ws===ws){ if(!best||(x.submittedAt||'')>(best.submittedAt||'')) best=x; } }); return best; }
 function currentWsName(){ const r=wsRecord(); return (r&&r.name) || (currentWs()===DEFAULT_WS?'The Sales Agency':'Your workspace'); }
+// per-workspace business settings (goal, payout rates, offers) live in a 'wsconfig' record so a team's
+// config is shared across its members and isolated from other teams (not per-browser localStorage).
+function wsConfigRec(){ const ws=currentWs(); let best=null; RECORDS.forEach(x=>{ if(x.type==='wsconfig' && x.ws===ws){ if(!best||(x.submittedAt||'')>(best.submittedAt||'')) best=x; } }); return best; }
+function applyWsConfig(){ const c=wsConfigRec(); if(!c) return; if(c.goal!=null) CFG.goal=c.goal; if(c.closerRate!=null) CFG.closerRate=c.closerRate; if(c.setterRate!=null) CFG.setterRate=c.setterRate; if(Array.isArray(c.products)) CFG.products=c.products; }
+function saveWsConfig(){ return addRecord({type:'wsconfig', goal:CFG.goal, closerRate:CFG.closerRate, setterRate:CFG.setterRate, products:Array.isArray(CFG.products)?CFG.products:[]}); }
 /* ---- plan + trial gating (billing drops into this later) ---- */
 const PLAN_SEATS={trial:5,starter:5,growth:15,scale:40,internal:99999};
 const PLAN_NAMES={trial:'Free trial',starter:'Starter',growth:'Growth',scale:'Scale',internal:'Internal'};
@@ -3671,7 +3676,8 @@ function saveSettings(){
   CFG.endpoint=document.getElementById('setEndpoint').value.trim();
   CFG.adminCode=document.getElementById('setAdmin').value.trim()||DEFAULT_CFG.adminCode;
   save(LS.cfg,CFG); fillLists();
-  document.getElementById('storeTag').textContent=CFG.endpoint?'Shared data':'Local data (this browser)';
+  saveWsConfig(); // persist goal + rates + offers to this workspace (shared across the team, isolated from others)
+  updateWsBrand();
   toast('Settings saved'); syncRecords().then(renderDash);
 }
 
