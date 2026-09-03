@@ -1084,6 +1084,17 @@
   </div>
 </div>
 
+<div class="modal" id="mergeModal" hidden onclick="if(event.target===this)closeMerge()">
+  <div class="modalcard" style="width:min(460px,95vw)">
+    <h3 style="margin:0 0 2px">Merge <span id="mergeSrcName" style="color:var(--gold)"></span> into another account</h3>
+    <p class="hint" style="margin:0 0 12px">Its reps and manager assignments move to the account you pick, then this one is retired.</p>
+    <div class="field"><label>Merge into</label><select id="mergeTarget" style="width:100%"></select></div>
+    <div id="mergeScan" style="margin:12px 0;font-size:12.5px"></div>
+    <div id="mergeErr" class="fieldhelp" style="color:var(--warn);margin-bottom:8px" hidden></div>
+    <div class="row-actions"><button class="btn gold sm" onclick="mergeClientDo()">Merge accounts</button><button class="btn ghost sm" onclick="closeMerge()">Cancel</button></div>
+  </div>
+</div>
+
 <div class="modal" id="rolesModal" hidden onclick="if(event.target===this)rolesEditClose()">
   <div class="modalcard" style="width:min(430px,95vw)">
     <h3 style="margin:0 0 2px">Roles for <span id="rolesModalWho" style="color:var(--gold)"></span></h3>
@@ -3899,6 +3910,46 @@ function renderClientProductChips(){
 function addClientProduct(){ const inp=document.getElementById('clientProductAdd'); const v=(inp.value||'').trim(); if(!v)return; if(!CLIENT_PRODUCTS.some(p=>p.toLowerCase()===v.toLowerCase())) CLIENT_PRODUCTS.push(v); inp.value=''; renderClientProductChips(); }
 function rmClientProduct(i){ CLIENT_PRODUCTS.splice(i,1); renderClientProductChips(); }
 function setClientProducts(arr){ CLIENT_PRODUCTS=(arr||[]).slice(); renderClientProductChips(); }
+// ---- merge a duplicate client into another (moves reps + folds config, retires the source). Transactions can't be safely re-tagged (append-only, no per-record edit), so we scan + warn. ----
+let MERGE_SRC=null;
+function clientRecordScan(name){
+  const nl=String(name).toLowerCase(), isC=x=>String(x.client||'').toLowerCase()===nl;
+  const s={deal:0,eod:0,mgreod:0,webinar:0,calllog:0,agenda:0,promise:0,other:0};
+  RECORDS.forEach(x=>{ if(x.type==='client')return; if(!isC(x))return; if(s[x.type]!==undefined) s[x.type]++; else s.other++; });
+  const reps=(USERS_CACHE||[]).filter(u=>teamsFor(u.username).some(t=>String(t).toLowerCase()===nl)).map(u=>u.username);
+  const txn=s.deal+s.eod+s.mgreod+s.webinar+s.calllog;
+  return {counts:s, reps, txn};
+}
+function mergeClientStart(name){
+  if(!(SESSION && SESSION.role==='admin')){ toast('Only a Super/Account Admin can merge accounts',true); return; }
+  MERGE_SRC=name; document.getElementById('mergeSrcName').textContent=name;
+  const others=latestClients().map(c=>c.name).filter(n=>n!==name).sort((a,b)=>a.localeCompare(b));
+  document.getElementById('mergeTarget').innerHTML=others.map(n=>`<option>${esc(n)}</option>`).join('')||'<option value="">(no other clients)</option>';
+  const sc=clientRecordScan(name);
+  const txnLine = sc.txn ? `<div class="tag" style="color:var(--warn);border-color:var(--warn);display:block;white-space:normal;padding:8px 10px;line-height:1.5;margin-top:8px">&#9888; <b>${sc.txn}</b> logged record(s) are under "${esc(name)}" (${sc.counts.deal} deals, ${sc.counts.eod} EOD, ${sc.counts.calllog} calls, ${sc.counts.webinar} webinars, ${sc.counts.mgreod} mgr EOD). These stay tagged to the old name and will drop out of rolled-up views once it is retired. Reassign those manually if the revenue matters.</div>` : '<div class="tag" style="color:var(--good);border-color:var(--good);display:block;padding:8px 10px;margin-top:8px">&#10003; No logged deals/activity under this account - a clean merge.</div>';
+  document.getElementById('mergeScan').innerHTML = `<b>${sc.reps.length}</b> rep${sc.reps.length===1?'':'s'} will move to the target${sc.reps.length?': '+sc.reps.map(esc).join(', '):''}.`+txnLine;
+  const e=document.getElementById('mergeErr'); if(e) e.hidden=true;
+  document.getElementById('mergeModal').hidden=false;
+}
+function closeMerge(){ const m=document.getElementById('mergeModal'); if(m) m.hidden=true; MERGE_SRC=null; }
+async function mergeClientDo(){
+  const source=MERGE_SRC, target=((document.getElementById('mergeTarget')||{}).value||'').trim(), err=document.getElementById('mergeErr');
+  if(!source||!target||source===target){ if(err){ err.textContent='Pick a different account to merge into.'; err.hidden=false; } return; }
+  const sc=clientRecordScan(source), jobs=[];
+  // 1) move reps: swap the source name for the target in each rep's team list (dedup)
+  sc.reps.forEach(un=>{ const next=[...new Set(teamsFor(un).map(t=>String(t).toLowerCase()===source.toLowerCase()?target:t))]; jobs.push(addRecord({type:'team',username:String(un).toLowerCase(),teams:JSON.stringify(next)})); });
+  // 2) fold the source's config into the target where the target is empty
+  const tgt=latestClients().find(c=>c.name===target)||{name:target}, src=latestClients().find(c=>c.name===source)||{};
+  const {_t:_a,...tclean}=tgt; const merged=Object.assign({},tclean,{type:'client',name:target});
+  ['webinarMgr','setterMgr','closerMgr','serviceLine','manager','nextStep'].forEach(f=>{ if(!merged[f] && src[f]) merged[f]=src[f]; });
+  if(!merged.monthlyGoal && src.monthlyGoal) merged.monthlyGoal=src.monthlyGoal;
+  if(!merged.monthly && src.monthly) merged.monthly=src.monthly;
+  jobs.push(addRecord(merged));
+  // 3) retire the source
+  const {_t:_b,...sclean}=src.name?src:{name:source}; jobs.push(addRecord(Object.assign({},sclean,{type:'client',name:source,status:'__DELETED__'})));
+  await Promise.all(jobs);
+  closeMerge(); toast('Merged "'+source+'" into "'+target+'"'+(sc.txn?(' - '+sc.txn+' logged records stayed under the old name'):'')); fillLists(); renderClientOverview();
+}
 // remove a client from the overview + all pickers (soft-delete; deals already logged under the name stay in the data)
 async function deleteClient(name){
   if(!(SESSION && SESSION.role==='admin')){ toast('Only a Super/Account Admin can remove a client',true); return; }
@@ -3956,7 +4007,7 @@ function renderClientOverview(){
     (rows.length?rows.map(c=>{
       const offers=productsForClient(c.name);
       const offerCell=(c.products&&offers.length)?offers.map(p=>`<span class="teamtag">${esc(p)}</span>`).join(''):'<span class="muted">global default</span>';
-      return `<tr><td><b>${esc(c.name)}</b> ${canEditClients?`<button class="btn sm ghost" onclick="editClient('${esc(c.name).replace(/'/g,"\\'")}')">Edit</button> <button class="btn sm ghost" style="color:var(--warn);border-color:var(--warn)" onclick="deleteClient('${esc(c.name).replace(/'/g,"\\'")}')">Remove</button>`:''}</td><td><span class="pill ${pc(c.status)}">${esc(c.status)}</span></td><td style="font-size:12px;line-height:1.5">${mgrCellHTML(c)}</td><td>${esc(c.serviceLine)}</td><td>${offerCell}</td><td class="num">${c.monthlyGoal?money(c.monthlyGoal):'<span class="muted">-</span>'}</td><td class="num">${money(c.monthly)}</td><td class="num">${money(cashThisMonth(c.name))}</td><td>${esc(c.nextStep)}</td></tr>`;
+      return `<tr><td><b>${esc(c.name)}</b> ${canEditClients?`<button class="btn sm ghost" onclick="editClient('${esc(c.name).replace(/'/g,"\\'")}')">Edit</button> <button class="btn sm ghost" onclick="mergeClientStart('${esc(c.name).replace(/'/g,"\\'")}')">Merge</button> <button class="btn sm ghost" style="color:var(--warn);border-color:var(--warn)" onclick="deleteClient('${esc(c.name).replace(/'/g,"\\'")}')">Remove</button>`:''}</td><td><span class="pill ${pc(c.status)}">${esc(c.status)}</span></td><td style="font-size:12px;line-height:1.5">${mgrCellHTML(c)}</td><td>${esc(c.serviceLine)}</td><td>${offerCell}</td><td class="num">${c.monthlyGoal?money(c.monthlyGoal):'<span class="muted">-</span>'}</td><td class="num">${money(c.monthly)}</td><td class="num">${money(cashThisMonth(c.name))}</td><td>${esc(c.nextStep)}</td></tr>`;
     }).join('')
      :`<tr><td colspan="8" class="muted" style="padding:16px">No clients yet. Add one below.</td></tr>`)+`</tbody>`;
   // fresh "add client" form defaults to all global offers (ready to trim)
