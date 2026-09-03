@@ -839,7 +839,8 @@
       <div id="usersStats" class="cards" style="grid-template-columns:repeat(auto-fit,minmax(104px,1fr));margin:0 0 14px"></div>
       <div class="filters" style="align-items:flex-end;margin:0 0 14px">
         <div class="field"><label>Search</label><input id="usersSearch" placeholder="name or username" oninput="renderUsersGrouped()"></div>
-        <div class="field" style="max-width:200px"><label>Filter by role</label><select id="usersRoleFilter" onchange="renderUsersGrouped()"></select></div>
+        <div class="field" style="max-width:190px"><label>Show</label><select id="usersRoleFilter" onchange="renderUsersGrouped()"></select></div>
+        <div class="field" style="max-width:210px"><label>On team</label><select id="usersTeamFilter" onchange="renderUsersGrouped()"></select></div>
       </div>
       <div id="usersGrouped"></div>
     </div>
@@ -1074,6 +1075,24 @@
       <button class="btn ghost sm" onclick="trResetDefault()">Reset to default</button>
       <button class="btn ghost sm" onclick="trEditClose()">Close</button>
     </div>
+  </div>
+</div>
+
+<div class="modal" id="rolesModal" hidden onclick="if(event.target===this)rolesEditClose()">
+  <div class="modalcard" style="width:min(430px,95vw)">
+    <h3 style="margin:0 0 2px">Roles for <span id="rolesModalWho" style="color:var(--gold)"></span></h3>
+    <p class="hint" style="margin:0 0 12px">Assign one or more roles. Access is the combination of everything checked.</p>
+    <div id="rolesBoxes" style="display:flex;flex-direction:column;gap:9px">
+      <label style="display:flex;gap:9px;align-items:center"><input type="checkbox" value="admin"> Admin <span class="muted" style="font-size:11px">full access</span></label>
+      <label style="display:flex;gap:9px;align-items:center"><input type="checkbox" value="manager"> Sales Manager</label>
+      <label style="display:flex;gap:9px;align-items:center"><input type="checkbox" value="recruiter"> Recruiter</label>
+      <label style="display:flex;gap:9px;align-items:center"><input type="checkbox" value="webinarteam"> Webinar Team</label>
+      <label style="display:flex;gap:9px;align-items:center"><input type="checkbox" value="closer"> Closer</label>
+      <label style="display:flex;gap:9px;align-items:center"><input type="checkbox" value="setter"> Setter</label>
+      <label style="display:flex;gap:9px;align-items:center"><input type="checkbox" value="founder"> Founder / Client</label>
+    </div>
+    <div id="rolesErr" class="fieldhelp" style="color:var(--warn);margin-top:8px" hidden></div>
+    <div class="row-actions" style="margin-top:14px"><button class="btn gold sm" onclick="rolesEditSave()">Save roles</button><button class="btn ghost sm" onclick="rolesEditClose()">Cancel</button></div>
   </div>
 </div>
 
@@ -1407,12 +1426,19 @@ function baseAllow(role){
     setter:['dash','postcall','eod','training','timeoff','calllog','reps']
   })[role] || ['eod'];
 }
-// access follows responsibilities: whatever this person is assigned to run (webinar / setter / closer manager on any account)
-// unlocks the matching tabs, so someone can be e.g. Webinar Team AND manage accounts. Additive only, never removes tier access.
+// ---- multi-role: a user can hold several roles (stored as a 'userroles' record); access = the union ----
+const ROLE_RANK={admin:6,manager:5,webinarteam:4,recruiter:4,closer:3,setter:3,founder:2};
+const OPERATOR_ROLES=['admin','manager','recruiter','webinarteam']; // internal TSA operator roles
+function rolesFor(username){ let best=null,bt=''; RECORDS.forEach(x=>{ if(x.type==='userroles' && nrm(x.username)===nrm(username)){ if((x.submittedAt||'')>=bt){ bt=x.submittedAt||''; best=x; } } }); if(best&&Array.isArray(best.roles)&&best.roles.length) return best.roles.slice(); const u=(USERS_CACHE||[]).find(z=>nrm(z.username)===nrm(username)); return u?[u.role]:[]; }
+function hasRole(username,r){ return rolesFor(username).includes(r); }
+function primaryRole(roles){ return (roles||[]).slice().sort((a,b)=>(ROLE_RANK[b]||0)-(ROLE_RANK[a]||0))[0]||'closer'; }
+function isTsaStaff(username){ return rolesFor(username).some(r=>OPERATOR_ROLES.includes(r)); }
+// access follows responsibilities + the UNION of all assigned roles.
 function applyNavAccess(){
   const role=SESSION&&SESSION.role; if(!role) return;
-  const allow=baseAllow(role).slice();
-  if(role!=='founder'){
+  let myRoles=rolesFor(SESSION.username); if(!myRoles.length) myRoles=[role]; if(!myRoles.includes(role)) myRoles.push(role);
+  const allow=[]; myRoles.forEach(r=>baseAllow(r).forEach(t=>{ if(!allow.includes(t)) allow.push(t); }));
+  if(!myRoles.includes('founder')){
     const f=managedFunctionsForUser(SESSION);
     if(f.web.length) ['dash','meeting','webinar'].forEach(t=>{ if(!allow.includes(t)) allow.push(t); });
     if(f.set.length||f.clo.length) ['dash','reps','clients','onboarding','meeting','mgreod','calllog'].forEach(t=>{ if(!allow.includes(t)) allow.push(t); });
@@ -3423,7 +3449,12 @@ function teamBoxesHtml(checked){
   return clients.length ? clients.map(c=>`<label><input type="checkbox" value="${esc(c)}" ${checked.includes(c)?'checked':''}>${esc(c)}</label>`).join('')
     : '<span class="muted">Add clients on the Client Overview / Settings tab first.</span>';
 }
-function roleLabel(r){ return ({admin:'Admin',manager:'Sales Manager',founder:'Founder',webinarteam:'Webinar Team',recruiter:'Recruiter',closer:'Closer',setter:'Setter'})[r]||r; }
+// Super Admin = TSA (platform owner). Account Admin = a client's owner - "admin" inside a client workspace,
+// or a Founder still managed by TSA (dashboard-only until their account is graduated).
+function roleLabel(r){
+  if(r==='admin') return (typeof currentWs==='function' && currentWs()!==DEFAULT_WS) ? 'Account Admin' : 'Super Admin';
+  return ({manager:'Sales Manager',founder:'Account Admin',webinarteam:'Webinar Team',recruiter:'Recruiter',closer:'Closer',setter:'Setter'})[r]||r;
+}
 // a manager/admin's responsibilities, grouped by function so it reads at a glance (e.g. Keithan = Webinar on several accounts + Setters on Prime)
 function roleSummaryHTML(u){
   const f=managedFunctionsForUser(u);
@@ -3445,11 +3476,11 @@ function userRowHTML(u, isAdmin){
             : ((roleSummaryHTML(u)||'<span class="tag" style="color:var(--warn);border-color:var(--warn)">no accounts assigned yet</span>')+rolesBtn+datesBtn+repMetaSummary(u.username))));
   const actions = u.master ? '<span class="tag">master, set in Settings</span>'
     : (isAdmin ? `<button class="btn sm ghost" onclick="resetPassword('${esc(u.username)}')">Reset password</button> <button class="btn sm ghost" style="color:var(--warn);border-color:var(--warn)" onclick="delUser('${esc(u.username)}')">Remove</button>` : '');
-  const roleOpts = isAdmin ? ['closer','setter','recruiter','manager','webinarteam','founder','admin'] : ['closer','setter'];
-  const canEditRole = !u.master && (isAdmin || (SESSION.role==='manager' && ['closer','setter'].includes(u.role)));
-  const accessCell = canEditRole
-    ? `<select class="rolesel" onchange="changeUserRole('${esc(u.username)}', this.value)">${roleOpts.map(r=>`<option value="${r}" ${u.role===r?'selected':''}>${esc(roleLabel(r))}</option>`).join('')}</select>`
-    : `<span class="pill">${esc(roleLabel(u.role))}</span>`;
+  const myRoles = u.master?['admin']:rolesFor(u.username);
+  const chips = (myRoles.length?myRoles:['closer']).map(r=>`<span class="pill">${esc(roleLabel(r))}</span>`).join(' ');
+  const founderNote = (!u.master && myRoles.includes('founder') && !isTsaStaff(u.username)) ? '<div class="muted" style="font-size:11px;margin-top:3px">Dashboard only while managed by TSA</div>' : '';
+  const editRolesBtn = (isAdmin && !u.master) ? `<button class="btn sm ghost" style="margin-top:5px" onclick="rolesEditOpen('${esc(u.username)}')">Edit roles</button>` : '';
+  const accessCell = `${chips}${founderNote}${editRolesBtn?('<div>'+editRolesBtn+'</div>'):''}`;
   return `<tr><td>${esc(u.name)}</td><td>${esc(u.username)}</td><td>${accessCell}</td><td>${teamCell}</td><td>${actions}</td></tr>`;
 }
 function renderUsersTable(list){
@@ -3467,32 +3498,56 @@ function renderUsersStats(){
   const seats=(typeof wsSeatCount==='function'?wsSeatCount():real.length), lim=(typeof planSeatLimit==='function'?planSeatLimit():0);
   const cards=[
     {l:'Seats', v: internal? String(real.length) : (seats+' / '+lim)},
-    {l:'Admins', v: by('admin')},
+    {l:'Super Admins', v: by('admin')},
     {l:'Managers', v: by('manager')+by('webinarteam')},
     {l:'Closers', v: by('closer')},
     {l:'Setters', v: by('setter')},
     {l:'Recruiters', v: by('recruiter')},
-    {l:'Clients', v: by('founder')}
+    {l:'Account Admins', v: by('founder')}
   ];
   el.innerHTML=cards.map(c=>`<div class="kpi" style="padding:9px 12px"><div class="lbl" style="font-size:11px">${c.l}</div><div class="val" style="font-size:20px">${c.v}</div></div>`).join('');
+}
+// which of the three buckets a person belongs in: TSA Staff (any operator role) / Reps (closer/setter) / Client accounts (founder)
+function userGroup(u){
+  const roles=u.master?['admin']:rolesFor(u.username);
+  if(roles.some(r=>OPERATOR_ROLES.includes(r))) return 'staff';
+  if(roles.includes('founder')) return 'clients';
+  return 'reps';
+}
+// is this person on a given team? (assigned as a rep, or managing it as staff)
+function userOnTeam(u,team){
+  if(!team) return true; if(u.master) return false;
+  if(teamsFor(u.username).includes(team)) return true;
+  try{ if(managedClientsForUser(u).includes(team)) return true; }catch(e){}
+  return false;
 }
 function renderUsersGrouped(){
   const cont=document.getElementById('usersGrouped'); if(!cont) return;
   const isAdmin=SESSION.role==='admin';
-  const rfSel=document.getElementById('usersRoleFilter');
-  if(rfSel && !rfSel.dataset.built){ rfSel.innerHTML='<option value="">All roles</option>'+USER_GROUPS.map(([r,l])=>`<option value="${r}">${l}</option>`).join(''); rfSel.dataset.built='1'; }
-  const rf=(rfSel||{}).value||'';
+  const gf=document.getElementById('usersRoleFilter');
+  if(gf && !gf.dataset.built){ gf.innerHTML='<option value="">Everyone</option><option value="staff">TSA Staff</option><option value="reps">Reps</option><option value="clients">Client accounts</option>'; gf.dataset.built='1'; }
+  const tf=document.getElementById('usersTeamFilter');
+  if(tf){ const cur=tf.value, cs=clientNames(); tf.innerHTML='<option value="">Any team</option>'+cs.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join(''); if(cur&&cs.includes(cur)) tf.value=cur; }
+  const showG=(gf||{}).value||'', team=(tf||{}).value||'';
   const qn=((document.getElementById('usersSearch')||{}).value||'').trim().toLowerCase();
-  const head='<div class="tablewrap"><table><thead><tr><th>Name</th><th>Username</th><th>Access</th><th>Roles / accounts</th><th></th></tr></thead><tbody>';
-  const html=USER_GROUPS.map(([role,label])=>{
-    if(rf && rf!==role) return '';
-    let members=(USERS_LIST||[]).filter(u=>u.role===role);
+  const GROUPS=[
+    ['staff','TSA Staff','Robb, Steve and the internal team - full operator access across accounts.'],
+    ['reps','Reps','Closers and setters working on client accounts.'],
+    ['clients','Client accounts','Account Admins (founders). Dashboard-only while managed by TSA; full access once graduated to their own account.']
+  ];
+  const head='<div class="tablewrap"><table><thead><tr><th>Name</th><th>Username</th><th>Roles</th><th>Teams / responsibilities</th><th></th></tr></thead><tbody>';
+  let any=false;
+  const html=GROUPS.map(([gid,label,desc])=>{
+    if(showG && showG!==gid) return '';
+    let members=(USERS_LIST||[]).filter(u=>userGroup(u)===gid);
+    if(team) members=members.filter(u=>userOnTeam(u,team));
     if(qn) members=members.filter(u=>((u.name||'')+' '+(u.username||'')).toLowerCase().includes(qn));
     if(!members.length) return '';
-    return `<div style="margin-bottom:18px"><h4 style="margin:0 0 8px;display:flex;align-items:center;gap:8px">${label} <span class="tag">${members.length}</span></h4>`
+    any=true;
+    return `<div style="margin-bottom:20px"><h4 style="margin:0 0 3px;display:flex;align-items:center;gap:8px">${label} <span class="tag">${members.length}</span></h4><p class="muted" style="margin:0 0 8px;font-size:12px">${esc(desc)}</p>`
       +head+members.map(u=>userRowHTML(u,isAdmin)).join('')+'</tbody></table></div></div>';
   }).join('');
-  cont.innerHTML=html||'<p class="muted" style="padding:14px">No members match.</p>';
+  cont.innerHTML=any?html:'<p class="muted" style="padding:14px">No people match those filters.</p>';
 }
 // at-a-glance callout: who has no account/role assigned yet
 function renderUnassigned(list){
@@ -3569,7 +3624,7 @@ async function renderUsers(){
   renderClientAccounts();
   // managers can only create closer/setter; admins can also create manager/admin
   const roleSel=document.querySelector('#userForm [name=role]');
-  if(roleSel) roleSel.innerHTML = '<option value="closer">Closer</option><option value="setter">Setter</option>'+(isAdmin?'<option value="recruiter">Recruiter</option><option value="manager">Sales Manager</option><option value="webinarteam">Webinar Team</option><option value="founder">Founder Access (client)</option><option value="admin">Admin</option>':'');
+  if(roleSel) roleSel.innerHTML = '<option value="closer">Closer</option><option value="setter">Setter</option>'+(isAdmin?'<option value="recruiter">Recruiter</option><option value="manager">Sales Manager</option><option value="webinarteam">Webinar Team</option><option value="founder">Account Admin (client, dashboard only)</option><option value="admin">Super Admin (TSA)</option>':'')+(isAdmin?'<option value="" disabled>--</option>':'')+(isAdmin?'<option value="" disabled>Tip: create with one role, then Edit roles to stack more</option>':'');
   const nt=document.getElementById('newUserTeams'); if(nt) nt.innerHTML=teamBoxesHtml([]);
   const tbl=document.getElementById('usersGrouped');
   // cache-first: draw whatever we already have instantly, spinner only on a cold load
@@ -3666,6 +3721,36 @@ async function changeUserRole(username, role){
   if(!okSave){ renderUsers(); return; }
   const cu=(USERS_CACHE||[]).find(x=>x.username===username); if(cu) cu.role=role; // keep cache in sync so the row reflects it immediately
   toast(`${u.name||username} is now ${roleLabel(role)}`); fillLists(); renderUsers(); setTimeout(renderUsers, 1500);
+}
+/* ---- multi-role editor: a person can hold several roles; access is the union, security tier is the highest ---- */
+let ROLES_EDIT=null;
+function rolesEditOpen(username){
+  if(username==='tsaboss'){ toast('Master admin role is fixed in Settings',true); return; }
+  if(SESSION.role!=='admin'){ toast('Only a Super Admin can change roles',true); return; }
+  ROLES_EDIT=username; const u=userByName(username), cur=rolesFor(username);
+  document.getElementById('rolesModalWho').textContent=u.name||username;
+  document.querySelectorAll('#rolesBoxes input[type=checkbox]').forEach(cb=>{ cb.checked=cur.includes(cb.value); });
+  const err=document.getElementById('rolesErr'); if(err) err.hidden=true;
+  document.getElementById('rolesModal').hidden=false;
+}
+function rolesEditClose(){ const m=document.getElementById('rolesModal'); if(m) m.hidden=true; ROLES_EDIT=null; }
+async function rolesEditSave(){
+  if(!ROLES_EDIT) return;
+  const roles=[...document.querySelectorAll('#rolesBoxes input:checked')].map(cb=>cb.value);
+  const err=document.getElementById('rolesErr');
+  if(!roles.length){ if(err){ err.textContent='Pick at least one role.'; err.hidden=false; } return; }
+  const prim=primaryRole(roles), u=userByName(ROLES_EDIT);
+  // 1) store the multi-role set; 2) set the account's primary role (drives the security tier + the login token)
+  await addRecord({type:'userroles', username:String(ROLES_EDIT).toLowerCase(), roles, by:(SESSION&&SESSION.name)||''});
+  const user={username:ROLES_EDIT, name:u.name||ROLES_EDIT, role:prim}; let ok=false;
+  if(SESSION && SESSION.token){ const res=await authApi({action:'saveUser', token:SESSION.token, user}); ok=!!(res&&res.ok); if(!ok){ if(err){ err.textContent=(res&&res.error)||'Could not save.'; err.hidden=false; } return; } }
+  else if(CFG.endpoint){ const res=await api({action:'saveUser', ...authFields(), user}); ok=!!(res&&res.ok); }
+  else { const i=LOCAL_USERS.findIndex(x=>x.username===ROLES_EDIT); if(i>=0){ LOCAL_USERS[i].role=prim; save(LS.users,LOCAL_USERS); ok=true; } }
+  if(!ok){ if(err){ err.textContent='Could not save.'; err.hidden=false; } return; }
+  const cu=(USERS_CACHE||[]).find(x=>x.username===ROLES_EDIT); if(cu) cu.role=prim;
+  rolesEditClose(); toast((u.name||ROLES_EDIT)+' roles updated');
+  if(SESSION && nrm(SESSION.username)===nrm(ROLES_EDIT)) applyNavAccess(); // if I edited my own roles, refresh my nav now
+  fillLists(); renderUsers(); setTimeout(renderUsers, 1200);
 }
 async function saveUser(e){
   e.preventDefault();
