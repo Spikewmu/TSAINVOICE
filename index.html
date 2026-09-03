@@ -1233,6 +1233,10 @@ const DEFAULT_WS='tsa';
 function wsForUser(username){ let ws=DEFAULT_WS, best=''; RECORDS.forEach(x=>{ if(x.type==='wsmember' && String(x.username||'').trim().toLowerCase()===String(username||'').trim().toLowerCase()){ if((x.submittedAt||'')>best){ best=x.submittedAt||''; ws=x.ws||DEFAULT_WS; } } }); return ws; }
 function currentWs(){ return (SESSION&&SESSION.username)?wsForUser(SESSION.username):DEFAULT_WS; }
 function wsRecord(){ const ws=currentWs(); let best=null; RECORDS.forEach(x=>{ if(x.type==='workspace' && x.ws===ws){ if(!best||(x.submittedAt||'')>(best.submittedAt||'')) best=x; } }); return best; }
+// add-on entitlements (e.g. the Recruiter pack). TSA always has recruiting; a client workspace needs the add-on.
+function wsAddons(){ const r=wsRecord(); return (r&&r.addons)||{}; }
+function hasRecruiterAddon(){ if(currentWs()===DEFAULT_WS) return true; return !!(wsAddons().recruiter); }
+function recruiterHireCap(){ if(currentWs()===DEFAULT_WS) return Infinity; const a=wsAddons().recruiter; return a?(a.hireCap||0):0; }
 function currentWsName(){ const r=wsRecord(); return (r&&r.name) || (currentWs()===DEFAULT_WS?'The Sales Agency':'Your workspace'); }
 // per-workspace business settings (goal, payout rates, offers) live in a 'wsconfig' record so a team's
 // config is shared across its members and isolated from other teams (not per-browser localStorage).
@@ -1443,8 +1447,8 @@ function applyNavAccess(){
     if(f.web.length) ['dash','meeting','webinar'].forEach(t=>{ if(!allow.includes(t)) allow.push(t); });
     if(f.set.length||f.clo.length) ['dash','reps','clients','onboarding','meeting','mgreod','calllog'].forEach(t=>{ if(!allow.includes(t)) allow.push(t); });
   }
-  // TSA-only integrations (Airtable recruiting, candidate messaging) are hidden for other workspaces
-  if(currentWs()!==DEFAULT_WS){ ['recruiting','messages'].forEach(t=>{ const i=allow.indexOf(t); if(i>=0) allow.splice(i,1); }); }
+  // Recruiting + candidate messaging: TSA always has it; a client workspace sees it only with the Recruiter add-on
+  if(!hasRecruiterAddon()){ ['recruiting','messages'].forEach(t=>{ const i=allow.indexOf(t); if(i>=0) allow.splice(i,1); }); }
   document.querySelectorAll('#tabs button[data-tab]').forEach(b=>{ b.hidden = !allow.includes(b.dataset.tab); });
   pruneNavGroups();
   updateNavBadges();
@@ -3583,13 +3587,24 @@ async function renderClientAccounts(){
     if(!j.ok){ ind.innerHTML='<p class="muted" style="padding:6px 0">'+esc(j.error||'Could not load')+'</p>'; return; }
     const accts=(j.accounts||[]).filter(a=>a.ws!==DEFAULT_WS);
     ind.innerHTML = accts.length
-      ? '<div class="tablewrap"><table><thead><tr><th>Company</th><th>Plan</th><th>Seats</th><th>Founder</th><th>Created</th><th></th></tr></thead><tbody>'
-        +accts.map(a=>{ const lim=PLAN_SEATS[a.plan]||5; return `<tr><td><b>${esc(a.name||a.ws)}</b></td><td><span class="pill">${esc(PLAN_NAMES[a.plan]||a.plan)}</span></td><td class="num">${a.seats}/${lim}</td><td>${esc(a.owner||'')}</td><td>${a.createdAt?esc(usDate(String(a.createdAt).slice(0,10))):''}</td><td><button class="btn sm ghost" style="color:var(--warn);border-color:var(--warn)" data-ws="${esc(a.ws)}" data-n="${esc(a.name||a.ws)}" onclick="removeClientAccount(this.dataset.ws,this.dataset.n)">Remove</button></td></tr>`; }).join('')
+      ? '<div class="tablewrap"><table><thead><tr><th>Company</th><th>Plan</th><th>Seats</th><th>Recruiter add-on</th><th>Founder</th><th>Created</th><th></th></tr></thead><tbody>'
+        +accts.map(a=>{ const lim=PLAN_SEATS[a.plan]||5; const on=!!(a.addons&&a.addons.recruiter); const cap=(on&&a.addons.recruiter.hireCap)||0;
+          const addonCell=`<label style="display:inline-flex;gap:6px;align-items:center"><input type="checkbox" id="rec_${esc(a.ws)}" ${on?'checked':''} onchange="saveAddon('${esc(a.ws)}')"> On</label><span id="reccap_${esc(a.ws)}" style="margin-left:8px;${on?'':'display:none'}">cap <input type="number" min="0" id="reccapval_${esc(a.ws)}" value="${cap}" style="width:54px" onchange="saveAddon('${esc(a.ws)}')"> hires</span>`;
+          return `<tr><td><b>${esc(a.name||a.ws)}</b></td><td><span class="pill">${esc(PLAN_NAMES[a.plan]||a.plan)}</span></td><td class="num">${a.seats}/${lim}</td><td>${addonCell}</td><td>${esc(a.owner||'')}</td><td>${a.createdAt?esc(usDate(String(a.createdAt).slice(0,10))):''}</td><td><button class="btn sm ghost" style="color:var(--warn);border-color:var(--warn)" data-ws="${esc(a.ws)}" data-n="${esc(a.name||a.ws)}" onclick="removeClientAccount(this.dataset.ws,this.dataset.n)">Remove</button></td></tr>`; }).join('')
         +'</tbody></table></div>'
       : '<p class="muted" style="padding:6px 0">No independent accounts yet.</p>';
   }catch(e){ ind.innerHTML='<p class="muted" style="padding:6px 0">Could not load accounts.</p>'; }
 }
 function gradFromRow(client){ const n=document.getElementById('gradClientName'), f=document.getElementById('gradClientField'), w=document.getElementById('graduateFormWrap'); if(n) n.textContent=client; if(f) f.value=client; if(w){ w.hidden=false; w.scrollIntoView({behavior:'smooth',block:'center'}); } }
+// platform owner grants/removes the Recruiter add-on (and its hire cap) on a client account
+async function saveAddon(ws){
+  const cb=document.getElementById('rec_'+ws), capEl=document.getElementById('reccapval_'+ws), capWrap=document.getElementById('reccap_'+ws);
+  const enabled=!!(cb&&cb.checked); const hireCap=Math.max(0,parseInt((capEl&&capEl.value)||'0',10)||0);
+  if(capWrap) capWrap.style.display=enabled?'':'none';
+  const res=await authApi({action:'setAddon', token:SESSION&&SESSION.token, ws, addon:'recruiter', enabled, hireCap});
+  if(res&&res.ok) toast(enabled?('Recruiter add-on on - '+hireCap+' hire'+(hireCap===1?'':'s')):'Recruiter add-on removed');
+  else { toast((res&&res.error)||'Could not update the add-on',true); if(cb) cb.checked=!enabled; if(capWrap) capWrap.style.display=(!enabled)?'':'none'; }
+}
 let DEL_ACCT=null;
 function removeClientAccount(ws,name){ DEL_ACCT={ws,name}; document.getElementById('delAcctName').textContent=name; const inp=document.getElementById('delAcctConfirm'); inp.value=''; delAcctCheck(); document.getElementById('delAcctModal').hidden=false; setTimeout(()=>inp.focus(),40); }
 function closeDelAcct(){ document.getElementById('delAcctModal').hidden=true; DEL_ACCT=null; }

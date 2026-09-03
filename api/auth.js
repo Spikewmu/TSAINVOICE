@@ -202,6 +202,31 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, ws, name: teamName, founder: email, plan });
     }
 
+    // ---------- SET AN ADD-ON on a client workspace (platform owner only: e.g. the Recruiter pack + its hire cap) ----------
+    if (action === 'setAddon') {
+      const map0 = await wsMemberMap();
+      if (wsOf(map0, session.username) !== DEFAULT_WS) return res.status(200).json({ ok: false, error: 'Only the platform owner can change add-ons' });
+      const ws = String(body.ws || '').trim();
+      const addon = String(body.addon || '').trim();
+      const enabled = !!body.enabled;
+      const hireCap = Math.max(0, parseInt(body.hireCap, 10) || 0);
+      if (!ws || ws === DEFAULT_WS) return res.status(200).json({ ok: false, error: 'bad workspace' });
+      if (addon !== 'recruiter') return res.status(200).json({ ok: false, error: 'unknown add-on' });
+      // read the client's latest workspace record, merge the add-on, append a new version (latest-wins)
+      const r = await supa(`records?select=data&type=eq.workspace&data->>ws=eq.${encodeURIComponent(ws)}&order=submitted_at.desc&limit=1`);
+      if (!r.ok) return res.status(200).json({ ok: false, error: 'db read failed' });
+      const rows = await r.json();
+      const cur = (rows[0] && rows[0].data) || null;
+      if (!cur) return res.status(200).json({ ok: false, error: 'workspace not found' });
+      const now = new Date().toISOString();
+      const addons = Object.assign({}, cur.addons || {});
+      if (enabled) addons.recruiter = { hireCap, grantedAt: (addons.recruiter && addons.recruiter.grantedAt) || now, grantedBy: session.name || 'TSA' };
+      else delete addons.recruiter;
+      const wrec = Object.assign({}, cur, { addons, submittedAt: now, id: crypto.randomUUID() });
+      await supa('records', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ rid: wrec.id, type: 'workspace', submitted_at: now, data: wrec }) });
+      return res.status(200).json({ ok: true, ws, addons });
+    }
+
     // ---------- SAVE / CREATE USER ----------
     if (action === 'saveUser') {
       const u = body.user || {};

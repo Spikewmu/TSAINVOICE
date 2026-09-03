@@ -76,7 +76,7 @@ export default async function handler(req, res) {
       const wsMap = {}; if (wr.ok) { (await wr.json()).forEach(x => { const d = x.data; if (d && d.ws) wsMap[d.ws] = d; }); }
       const memberWs = {}; if (mr.ok) { (await mr.json()).forEach(x => { const d = x.data; if (d && d.username) memberWs[String(d.username).toLowerCase()] = d.ws; }); }
       const seats = {}; Object.values(memberWs).forEach(w => { if (w) seats[w] = (seats[w] || 0) + 1; });
-      const accounts = Object.values(wsMap).map(w => ({ ws: w.ws, name: w.name, plan: w.plan, kind: w.kind || 'client', owner: w.owner, createdAt: w.createdAt, seats: seats[w.ws] || 0 }));
+      const accounts = Object.values(wsMap).map(w => ({ ws: w.ws, name: w.name, plan: w.plan, kind: w.kind || 'client', owner: w.owner, createdAt: w.createdAt, seats: seats[w.ws] || 0, addons: w.addons || {} }));
       return res.status(200).json({ ok: true, accounts });
     }
     if (action === 'deleteAccount') {

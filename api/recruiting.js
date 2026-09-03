@@ -16,14 +16,37 @@ function verifySession(token) {
     return p;
   } catch (e) { return null; }
 }
-// returns { ok, role } for the caller: a valid session with an allowed role, or the master admin pass (treated as admin)
+// returns { ok, role, username } for the caller: a valid session with an allowed role, or the master admin pass (treated as TSA admin)
 function sessionInfo(req) {
   const b = req.body || {}, q = req.query || {}, h = req.headers || {};
   const s = verifySession(b.token || q.token || h['x-session-token'] || '');
-  if (s && REC_ROLES.includes(s.role)) return { ok: true, role: s.role };
+  if (s && REC_ROLES.includes(s.role)) return { ok: true, role: s.role, username: s.username || '' };
   const ap = b.adminPass || q.adminPass || h['x-admin-pass'] || '';
-  if (ap && (ap === process.env.ADMIN_PASS || ap === process.env.BOT_ADMIN_TOKEN)) return { ok: true, role: 'admin' };
-  return { ok: false, role: null };
+  if (ap && (ap === process.env.ADMIN_PASS || ap === process.env.BOT_ADMIN_TOKEN)) return { ok: true, role: 'admin', username: '' };
+  return { ok: false, role: null, username: '' };
+}
+const DEFAULT_WS = 'tsa';
+async function supa(path) {
+  const key = process.env.SUPABASE_SERVICE_KEY;
+  if (!process.env.SUPABASE_URL || !key) return null;
+  return fetch(process.env.SUPABASE_URL + '/rest/v1/' + path, { headers: { apikey: key, Authorization: 'Bearer ' + key } });
+}
+// which workspace the caller belongs to (master pass / no username -> TSA)
+async function wsForUser(username) {
+  if (!username) return DEFAULT_WS;
+  const r = await supa(`records?select=data&type=eq.wsmember&data->>username=ilike.${encodeURIComponent(username)}&order=submitted_at.desc&limit=1`);
+  if (!r || !r.ok) return DEFAULT_WS;
+  const rows = await r.json();
+  return (rows[0] && rows[0].data && rows[0].data.ws) || DEFAULT_WS;
+}
+// does a client workspace hold the Recruiter add-on? returns { on, hireCap }
+async function recruiterAddon(ws) {
+  if (ws === DEFAULT_WS) return { on: true, hireCap: Infinity };
+  const r = await supa(`records?select=data&type=eq.workspace&data->>ws=eq.${encodeURIComponent(ws)}&order=submitted_at.desc&limit=1`);
+  if (!r || !r.ok) return { on: false, hireCap: 0 };
+  const rows = await r.json();
+  const a = rows[0] && rows[0].data && rows[0].data.addons && rows[0].data.addons.recruiter;
+  return a ? { on: true, hireCap: a.hireCap || 0 } : { on: false, hireCap: 0 };
 }
 const BASE = process.env.AIRTABLE_REC_BASE || 'appYKLdo9w2lyfmdQ';   // "TSA - Sales & Recruitment"
 const TABLE = process.env.AIRTABLE_REC_TABLE || 'tblH5pEMqh9FhMW7h'; // "New Sales Rep Apps"
@@ -57,7 +80,12 @@ async function atGet(path, tries = 3) {
 export default async function handler(req, res) {
   const sess = sessionInfo(req);
   if (!sess.ok) return res.status(401).json({ ok: false, error: 'unauthorized' });
-  const redactContact = sess.role === 'recruiter'; // recruiters must never receive candidate emails or phone numbers
+  const callerWs = await wsForUser(sess.username);
+  // a client workspace can use recruiting only if it holds the Recruiter add-on (TSA always can)
+  const addon = await recruiterAddon(callerWs);
+  if (callerWs !== DEFAULT_WS && !addon.on) return res.status(200).json({ ok: false, error: 'The Recruiter add-on is not active on this account.' });
+  // Contact PII in the shared pool: visible only to TSA staff above recruiter tier. Every client-side user, and TSA recruiters, are redacted.
+  const redactContact = (callerWs !== DEFAULT_WS) || (sess.role === 'recruiter');
   if (!process.env.AIRTABLE_TOKEN) return res.status(200).json({ ok: false, error: 'AIRTABLE_TOKEN not set on the server' });
   const action = (req.query && req.query.action) || (req.body && req.body.action) || 'list';
   try {
