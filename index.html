@@ -352,6 +352,13 @@
     <div class="cards" id="kpis"></div>
     <div class="kpisec">Setters - activity</div>
     <div class="cards" id="kpisSetters"></div>
+    <div class="panel" id="dashChartPanel" style="margin:0 0 16px">
+      <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px">
+        <h3 style="margin:0">Daily dials <span style="font-weight:400;color:var(--muted);font-size:12px">- recent activity in this view</span></h3>
+        <span id="dashChartTotal" class="tag"></span>
+      </div>
+      <div id="dashChart" style="display:flex;align-items:flex-end;gap:8px;height:150px"></div>
+    </div>
     <div class="cards" style="grid-template-columns:repeat(auto-fit,minmax(340px,1fr))">
       <div class="panel" style="margin:0"><h3>Closer leaderboard <span style="font-weight:400;color:var(--muted);font-size:12px">- by cash collected</span></h3><div class="tablewrap"><table id="lbClosers"></table></div></div>
       <div class="panel" style="margin:0"><h3>Setter leaderboard <span style="font-weight:400;color:var(--muted);font-size:12px">- by cash set</span></h3><div class="tablewrap"><table id="lbSetters"></table></div></div>
@@ -1979,9 +1986,23 @@ function renderDash(){
     <div class="kpi"><div class="lbl" title="Share of logged calls marked as a wrong / bad number. High = a list or targeting problem to raise with the client's marketing.">Bad number %</div><div class="val">${pct(bn.rate)}</div><div class="lbl" style="margin-top:4px">${bn.bad}/${bn.total} calls</div></div>
     <div class="kpi"><div class="lbl">Hours dialing</div><div class="val small">${Math.round(ss.hours*10)/10}</div></div>
     <div class="kpi"><div class="lbl">Cash set</div><div class="val small">${money(ss.cashSet)}</div></div>`;
+  renderActivityChart(recs);
   renderLeaderboard(recs);
   renderBreakdownTables(recs, {setterEl:'dashSetterTable', closerEl:'dashCloserTable', rm:(SESSION&&(SESSION.role==='founder'||repMode())), clickable:false});
   renderClients(recs); renderDeals(recs);
+}
+// daily dials trend for the current dashboard scope (last ~14 days with activity)
+function renderActivityChart(recs){
+  const el=document.getElementById('dashChart'); if(!el) return;
+  const byDay={};
+  recs.forEach(x=>{ if((x.type==='eod'||!x.type) && x.role==='Setter'){ const d=(x.date||'').slice(0,10); if(!d) return; byDay[d]=(byDay[d]||0)+(x.newOutreach||0); } });
+  let days=Object.keys(byDay).sort().slice(-14);
+  const total=days.reduce((s,d)=>s+byDay[d],0), max=Math.max(1,...days.map(d=>byDay[d]));
+  const tot=document.getElementById('dashChartTotal'); if(tot) tot.textContent=total.toLocaleString()+' dials';
+  if(!days.length){ el.innerHTML='<div class="muted" style="align-self:center;margin:auto;padding:20px">No dial activity in this view yet.</div>'; return; }
+  el.innerHTML=days.map(d=>{ const v=byDay[d], h=Math.round(v/max*120), dt=new Date(d+'T00:00:00'), lbl=(dt.getMonth()+1)+'/'+dt.getDate();
+    return `<div style="flex:1;min-width:12px;display:flex;flex-direction:column;align-items:center;gap:6px"><div title="${v} dials on ${usDate(d)}" style="width:100%;border-radius:5px 5px 0 0;background:rgba(201,162,74,.82);height:${h}px"></div><span style="font-size:10px;color:var(--muted)">${lbl}</span></div>`;
+  }).join('');
 }
 // share of logged calls that were wrong/bad numbers, scoped to the dashboard's month + client + role scope
 function badNumberPct(){
