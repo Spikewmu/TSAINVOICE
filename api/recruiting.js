@@ -48,6 +48,29 @@ async function recruiterAddon(ws) {
   const a = rows[0] && rows[0].data && rows[0].data.addons && rows[0].data.addons.recruiter;
   return a ? { on: true, hireCap: a.hireCap || 0 } : { on: false, hireCap: 0 };
 }
+async function supaPost(row) {
+  const key = process.env.SUPABASE_SERVICE_KEY;
+  if (!process.env.SUPABASE_URL || !key) return null;
+  return fetch(process.env.SUPABASE_URL + '/rest/v1/records', { method: 'POST', headers: { apikey: key, Authorization: 'Bearer ' + key, 'Content-Type': 'application/json', Prefer: 'return=minimal' }, body: JSON.stringify(row) });
+}
+// ---- cross-client pool lock: a candidate a client moves into their process is claimed for that workspace and
+//      hidden from every OTHER client's search. Stored as global 'poolclaim' records, read server-side with the
+//      service key (never ws-scoped) so all workspaces are checked against one another. Auto-releases after silence. ----
+const CLAIM_TTL_DAYS = 14;
+function lockActive(l) {
+  if (!l || l.status === 'released') return false;
+  if (l.status === 'hired') return true; // a hire holds the slot permanently
+  const anchor = Date.parse(l.lastActivityAt || l.claimedAt || l.submittedAt || '') || 0;
+  return (Date.now() - anchor) < CLAIM_TTL_DAYS * 86400000;
+}
+function lockOwner(l) { return lockActive(l) ? { ws: l.ws, wsName: l.wsName || l.ws, hired: l.status === 'hired' } : null; }
+async function poolLocks() {
+  const map = {};
+  const r = await supa(`records?select=data&type=eq.poolclaim&order=submitted_at.asc&limit=100000`);
+  if (r && r.ok) { (await r.json()).forEach(x => { const d = x.data; if (d && d.candId) map[d.candId] = d; }); } // asc -> last write wins
+  return map;
+}
+function slotsUsed(ws, locks) { let n = 0; Object.values(locks).forEach(l => { const o = lockOwner(l); if (o && o.ws === ws) n++; }); return n; }
 const BASE = process.env.AIRTABLE_REC_BASE || 'appYKLdo9w2lyfmdQ';   // "TSA - Sales & Recruitment"
 const TABLE = process.env.AIRTABLE_REC_TABLE || 'tblH5pEMqh9FhMW7h'; // "New Sales Rep Apps"
 const FIELDS = [
@@ -133,7 +156,49 @@ export default async function handler(req, res) {
         resume: sval(f['Resume Link']),
         tags: sval(f['Campaign Tags'])
       }; });
-      return res.status(200).json({ ok: true, count: out.length, candidates: out });
+      // pool exclusivity: annotate each candidate with its lock, and hide from a client anything owned by another workspace
+      const locks = await poolLocks();
+      let visible = out.map(c => { const o = lockOwner(locks[c.id]); return Object.assign(c, { lockedByWs: o ? o.ws : '', lockedByName: o ? o.wsName : '', lockedMine: !!(o && o.ws === callerWs), lockedHired: !!(o && o.hired) }); });
+      if (callerWs !== DEFAULT_WS) visible = visible.filter(c => !c.lockedByWs || c.lockedMine); // clients never see another workspace's claimed candidates
+      const capInfo = (addon.hireCap === Infinity) ? null : { cap: addon.hireCap, used: slotsUsed(callerWs, locks) };
+      return res.status(200).json({ ok: true, count: visible.length, candidates: visible, capInfo });
+    }
+    if (action === 'claim') {
+      // claim candidates for the caller's workspace (moving them into your process). Cap-enforced; skips any owned by another workspace.
+      const ids = (req.body && req.body.candIds) || [];
+      if (!ids.length) return res.status(200).json({ ok: false, error: 'no candidates' });
+      const locks = await poolLocks();
+      const cap = addon.hireCap;
+      let slots = (cap === Infinity) ? Infinity : Math.max(0, cap - slotsUsed(callerWs, locks));
+      const claimed = [], blocked = [];
+      for (const id of ids) {
+        const o = lockOwner(locks[id]);
+        if (o && o.ws !== callerWs) { blocked.push({ id, reason: 'claimed' }); continue; }
+        if (o && o.ws === callerWs) { claimed.push(id); continue; } // already mine
+        if (slots <= 0) { blocked.push({ id, reason: 'cap' }); continue; }
+        const now = new Date().toISOString();
+        const rec = { id: crypto.randomUUID(), type: 'poolclaim', candId: String(id), ws: callerWs, wsName: String((req.body && req.body.wsName) || callerWs), claimedAt: now, lastActivityAt: now, status: 'active', by: sess.username || '' };
+        await supaPost({ rid: rec.id, type: 'poolclaim', submitted_at: now, data: rec });
+        claimed.push(id); slots--;
+      }
+      const capRemaining = (cap === Infinity) ? null : Math.max(0, cap - slotsUsed(callerWs, locks) - claimed.length);
+      return res.status(200).json({ ok: true, claimed, blocked, capRemaining });
+    }
+    if (action === 'release') {
+      const ids = (req.body && req.body.candIds) || [];
+      const locks = await poolLocks();
+      let released = 0;
+      for (const id of ids) {
+        const o = lockOwner(locks[id]);
+        const isTsa = callerWs === DEFAULT_WS;
+        if (o && (o.ws === callerWs || isTsa)) { // you can release your own; TSA can release any
+          const now = new Date().toISOString();
+          const rec = { id: crypto.randomUUID(), type: 'poolclaim', candId: String(id), ws: o.ws, status: 'released', releasedAt: now, by: sess.username || '' };
+          await supaPost({ rid: rec.id, type: 'poolclaim', submitted_at: now, data: rec });
+          released++;
+        }
+      }
+      return res.status(200).json({ ok: true, released });
     }
     if (action === 'tag') {
       const recs = (req.body && req.body.records) || [];
