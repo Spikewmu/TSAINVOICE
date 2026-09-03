@@ -63,7 +63,7 @@
     nav.tabs .navsub{flex-direction:row;padding:0}
     main{padding:22px 16px 60px}
   }
-  #usersTable td:nth-child(4){white-space:normal;vertical-align:top}
+  #usersGrouped td:nth-child(4){white-space:normal;vertical-align:top}
   h2.section{font-family:var(--serif);font-weight:700;font-size:24px;margin:4px 0 2px;letter-spacing:-.01em}
   .hint{color:var(--muted);font-size:13px;margin:0 0 16px}
   .filters{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 18px;align-items:end}
@@ -793,7 +793,15 @@
         <div class="full row-actions"><button class="btn gold" type="submit">Save user</button><span class="tag">Creating a new login. Existing users: change them on their row below (no need to re-enter a password).</span></div>
       </form>
     </div>
-    <div class="panel"><h3>Current users <button class="btn ghost sm" style="float:right" onclick="importUsers()" title="Copy all accounts from the old backend into the new one">Import from old backend</button></h3><div id="usersUnassigned" style="padding:0 2px 4px"></div><div class="tablewrap"><table id="usersTable"></table></div></div>
+    <div class="panel"><h3>Team members <button class="btn ghost sm" style="float:right" onclick="importUsers()" title="Copy all accounts from the old backend into the new one">Import from old backend</button></h3>
+      <div id="usersUnassigned" style="padding:0 2px 8px"></div>
+      <div id="usersStats" class="cards" style="grid-template-columns:repeat(auto-fit,minmax(104px,1fr));margin:0 0 14px"></div>
+      <div class="filters" style="align-items:flex-end;margin:0 0 14px">
+        <div class="field"><label>Search</label><input id="usersSearch" placeholder="name or username" oninput="renderUsersGrouped()"></div>
+        <div class="field" style="max-width:200px"><label>Filter by role</label><select id="usersRoleFilter" onchange="renderUsersGrouped()"></select></div>
+      </div>
+      <div id="usersGrouped"></div>
+    </div>
     <div class="panel" id="teamEditPanel" hidden><h3 id="teamEditTitle">Assign teams</h3>
       <div style="padding:14px">
         <p class="hint">Tick every account this person works. Saving updates only their team assignment (no password needed).</p>
@@ -3239,35 +3247,69 @@ function roleSummaryHTML(u){
   const line=(lab,arr)=> arr.length?`<div style="margin:2px 0"><span class="rolelab">${lab}</span>${arr.map(a=>`<span class="teamtag">${esc(a)}</span>`).join('')}</div>`:'';
   return line('Webinar',f.web)+line('Setters',f.set)+line('Closers',f.clo);
 }
+let USERS_LIST=[];
+const USER_GROUPS=[['admin','Admins'],['manager','Sales Managers'],['webinarteam','Webinar Team'],['recruiter','Recruiters'],['closer','Closers'],['setter','Setters'],['founder','Founder / Client access']];
+function userRowHTML(u, isAdmin){
+  const teams=u.master?[]:teamsFor(u.username);
+  const rolesBtn=` <button class="btn sm ghost" onclick="editRoles('${esc(u.username)}')">Responsibilities</button>`;
+  const isStaff = !u.master && u.role!=='founder';
+  const datesBtn = (isAdmin&&isStaff) ? ` <button class="btn sm ghost" onclick="editRepMeta('${esc(u.username)}')">Hire / dates</button>` : '';
+  const teamCell = u.master ? '<span class="muted">-</span>'
+    : (['closer','setter','founder','recruiter'].includes(u.role)
+        ? ((teams.length?teams.map(t=>`<span class="teamtag">${esc(t)}</span>`).join(''):'<span class="tag" style="color:var(--warn);border-color:var(--warn)">none - not scoped</span>')+` <button class="btn sm ghost" onclick="editTeams('${esc(u.username)}')">Edit</button>`+datesBtn+(isStaff?repMetaSummary(u.username):''))
+        : (u.role==='admin'
+            ? '<span class="muted">all (admin)</span>'+roleSummaryHTML(u)+rolesBtn+datesBtn+repMetaSummary(u.username)
+            : ((roleSummaryHTML(u)||'<span class="tag" style="color:var(--warn);border-color:var(--warn)">no accounts assigned yet</span>')+rolesBtn+datesBtn+repMetaSummary(u.username))));
+  const actions = u.master ? '<span class="tag">master, set in Settings</span>'
+    : (isAdmin ? `<button class="btn sm ghost" onclick="resetPassword('${esc(u.username)}')">Reset password</button> <button class="btn sm ghost" style="color:var(--warn);border-color:var(--warn)" onclick="delUser('${esc(u.username)}')">Remove</button>` : '');
+  const roleOpts = isAdmin ? ['closer','setter','recruiter','manager','webinarteam','founder','admin'] : ['closer','setter'];
+  const canEditRole = !u.master && (isAdmin || (SESSION.role==='manager' && ['closer','setter'].includes(u.role)));
+  const accessCell = canEditRole
+    ? `<select class="rolesel" onchange="changeUserRole('${esc(u.username)}', this.value)">${roleOpts.map(r=>`<option value="${r}" ${u.role===r?'selected':''}>${esc(roleLabel(r))}</option>`).join('')}</select>`
+    : `<span class="pill">${esc(roleLabel(u.role))}</span>`;
+  return `<tr><td>${esc(u.name)}</td><td>${esc(u.username)}</td><td>${accessCell}</td><td>${teamCell}</td><td>${actions}</td></tr>`;
+}
 function renderUsersTable(list){
-  const isAdmin = SESSION.role==='admin';
-  const users=list.slice();
-  users.push({username:'tsaboss',name:'Admin (master)',role:'admin',master:true});
-  document.getElementById('usersTable').innerHTML=
-    `<thead><tr><th>Name</th><th>Username</th><th>Access</th><th>Roles / accounts</th><th></th></tr></thead><tbody>`+
-    users.map(u=>{
-      const teams=u.master?[]:teamsFor(u.username);
-      const rolesBtn=` <button class="btn sm ghost" onclick="editRoles('${esc(u.username)}')">Responsibilities</button>`;
-      const isStaff = !u.master && u.role!=='founder'; // real team members (setters/closers/managers/admins) have hire/termination dates
-      const datesBtn = (isAdmin&&isStaff) ? ` <button class="btn sm ghost" onclick="editRepMeta('${esc(u.username)}')">Hire / dates</button>` : '';
-      const teamCell = u.master ? '<span class="muted">-</span>'
-        : (['closer','setter','founder','recruiter'].includes(u.role)
-            ? ((teams.length?teams.map(t=>`<span class="teamtag">${esc(t)}</span>`).join(''):'<span class="tag" style="color:var(--warn);border-color:var(--warn)">none - not scoped</span>')+` <button class="btn sm ghost" onclick="editTeams('${esc(u.username)}')">Edit</button>`+datesBtn+(isStaff?repMetaSummary(u.username):''))
-            : (u.role==='admin'
-                ? '<span class="muted">all (admin)</span>'+roleSummaryHTML(u)+rolesBtn+datesBtn+repMetaSummary(u.username)
-                : ((roleSummaryHTML(u)||'<span class="tag" style="color:var(--warn);border-color:var(--warn)">no accounts assigned yet</span>')+rolesBtn+datesBtn+repMetaSummary(u.username))));
-      const actions = u.master ? '<span class="tag">master, set in Settings</span>'
-        : (isAdmin ? `<button class="btn sm ghost" onclick="resetPassword('${esc(u.username)}')">Reset password</button> <button class="btn sm ghost" style="color:var(--warn);border-color:var(--warn)" onclick="delUser('${esc(u.username)}')">Remove</button>` : '');
-      // inline role change - no password needed (backend keeps the existing password on a role-only update)
-      const roleOpts = isAdmin ? ['closer','setter','recruiter','manager','webinarteam','founder','admin'] : ['closer','setter'];
-      const canEditRole = !u.master && (isAdmin || (SESSION.role==='manager' && ['closer','setter'].includes(u.role)));
-      const accessCell = canEditRole
-        ? `<select class="rolesel" onchange="changeUserRole('${esc(u.username)}', this.value)">${roleOpts.map(r=>`<option value="${r}" ${u.role===r?'selected':''}>${esc(roleLabel(r))}</option>`).join('')}</select>`
-        : `<span class="pill">${esc(roleLabel(u.role))}</span>`;
-      return `<tr><td>${esc(u.name)}</td><td>${esc(u.username)}</td><td>${accessCell}</td><td>${teamCell}</td><td>${actions}</td></tr>`;
-    }).join('')
-    +`</tbody>`;
+  USERS_LIST=list.slice();
+  USERS_LIST.push({username:'tsaboss',name:'Admin (master)',role:'admin',master:true});
+  renderUsersStats();
+  renderUsersGrouped();
   renderUnassigned(list);
+}
+function renderUsersStats(){
+  const el=document.getElementById('usersStats'); if(!el) return;
+  const real=(USERS_LIST||[]).filter(u=>!u.master);
+  const by=r=>real.filter(u=>u.role===r).length;
+  const internal=(typeof currentPlan==='function'&&currentPlan()==='internal');
+  const seats=(typeof wsSeatCount==='function'?wsSeatCount():real.length), lim=(typeof planSeatLimit==='function'?planSeatLimit():0);
+  const cards=[
+    {l:'Seats', v: internal? String(real.length) : (seats+' / '+lim)},
+    {l:'Admins', v: by('admin')},
+    {l:'Managers', v: by('manager')+by('webinarteam')},
+    {l:'Closers', v: by('closer')},
+    {l:'Setters', v: by('setter')},
+    {l:'Recruiters', v: by('recruiter')},
+    {l:'Clients', v: by('founder')}
+  ];
+  el.innerHTML=cards.map(c=>`<div class="kpi" style="padding:9px 12px"><div class="lbl" style="font-size:11px">${c.l}</div><div class="val" style="font-size:20px">${c.v}</div></div>`).join('');
+}
+function renderUsersGrouped(){
+  const cont=document.getElementById('usersGrouped'); if(!cont) return;
+  const isAdmin=SESSION.role==='admin';
+  const rfSel=document.getElementById('usersRoleFilter');
+  if(rfSel && !rfSel.dataset.built){ rfSel.innerHTML='<option value="">All roles</option>'+USER_GROUPS.map(([r,l])=>`<option value="${r}">${l}</option>`).join(''); rfSel.dataset.built='1'; }
+  const rf=(rfSel||{}).value||'';
+  const qn=((document.getElementById('usersSearch')||{}).value||'').trim().toLowerCase();
+  const head='<div class="tablewrap"><table><thead><tr><th>Name</th><th>Username</th><th>Access</th><th>Roles / accounts</th><th></th></tr></thead><tbody>';
+  const html=USER_GROUPS.map(([role,label])=>{
+    if(rf && rf!==role) return '';
+    let members=(USERS_LIST||[]).filter(u=>u.role===role);
+    if(qn) members=members.filter(u=>((u.name||'')+' '+(u.username||'')).toLowerCase().includes(qn));
+    if(!members.length) return '';
+    return `<div style="margin-bottom:18px"><h4 style="margin:0 0 8px;display:flex;align-items:center;gap:8px">${label} <span class="tag">${members.length}</span></h4>`
+      +head+members.map(u=>userRowHTML(u,isAdmin)).join('')+'</tbody></table></div></div>';
+  }).join('');
+  cont.innerHTML=html||'<p class="muted" style="padding:14px">No members match.</p>';
 }
 // at-a-glance callout: who has no account/role assigned yet
 function renderUnassigned(list){
@@ -3287,16 +3329,16 @@ async function renderUsers(){
   const roleSel=document.querySelector('#userForm [name=role]');
   if(roleSel) roleSel.innerHTML = '<option value="closer">Closer</option><option value="setter">Setter</option>'+(isAdmin?'<option value="recruiter">Recruiter</option><option value="manager">Sales Manager</option><option value="webinarteam">Webinar Team</option><option value="founder">Founder Access (client)</option><option value="admin">Admin</option>':'');
   const nt=document.getElementById('newUserTeams'); if(nt) nt.innerHTML=teamBoxesHtml([]);
-  const tbl=document.getElementById('usersTable');
+  const tbl=document.getElementById('usersGrouped');
   // cache-first: draw whatever we already have instantly, spinner only on a cold load
   if(USERS_CACHE && USERS_CACHE.length){ renderUsersTable(USERS_CACHE); }
-  else if(tbl){ tbl.innerHTML='<tbody><tr><td style="padding:22px;color:var(--muted)"><span class="spinner"></span> Loading users...</td></tr></tbody>'; }
+  else if(tbl){ tbl.innerHTML='<p style="padding:22px;color:var(--muted)"><span class="spinner"></span> Loading users...</p>'; }
   // refresh from the backend in the background, then re-render
   let users=[], gotUsers=false;
   if(SESSION && SESSION.token){ const res=await authApi({action:'listUsers', token:SESSION.token}); if(res && res.ok && res.users){ users=res.users; gotUsers=true; } }
   if(!gotUsers && CFG.endpoint){
     try{ const res=await api({action:'listUsers', ...authFields()}); users=(res&&res.users)||[]; gotUsers=true; }
-    catch(e){ if(!(USERS_CACHE&&USERS_CACHE.length)&&tbl){ tbl.innerHTML='<tbody><tr><td style="padding:22px;color:var(--warn)">Could not load users - check connection and reopen this tab.</td></tr></tbody>'; } return; }
+    catch(e){ if(!(USERS_CACHE&&USERS_CACHE.length)&&tbl){ tbl.innerHTML='<p style="padding:22px;color:var(--warn)">Could not load users - check connection and reopen this tab.</p>'; } return; }
   }
   if(!gotUsers && !CFG.endpoint){ users=LOCAL_USERS.map(u=>({username:u.username,name:u.name,role:u.role})); }
   USERS_CACHE=users.slice(); fillLists(); // keep the form dropdowns in sync with accounts
