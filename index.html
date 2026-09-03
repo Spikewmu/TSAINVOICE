@@ -355,6 +355,7 @@
 <main>
   <!-- ===== DASHBOARD ===== -->
   <section id="tab-dash">
+    <div id="getStarted" hidden></div>
     <h2 class="section" id="dashTitle">Dashboard</h2>
     <p class="hint" id="dashHint">Live view of everything submitted. Filter by month, client, and role.</p>
     <div class="filters" id="dashFilters">
@@ -1175,6 +1176,35 @@ const PLAN_TIERS=[
   {k:'scale',name:'Scale',price:'$349/mo',seats:40,feat:'+ manager tools, priority support'}
 ];
 function choosePlan(k){ toast('Billing goes live once Stripe is connected - then you can upgrade here.'); }
+// new-team activation checklist (customer workspaces only; hides once set up)
+function renderGettingStarted(){
+  const el=document.getElementById('getStarted'); if(!el) return;
+  if(currentPlan()==='internal'){ el.hidden=true; return; }
+  const reps=(USERS_CACHE||[]).length>=2;
+  const goal=(typeof monthlyGoalScope==='function'?(monthlyGoalScope()||0):0)>0;
+  const offers=RECORDS.some(x=>x.type==='client');
+  const logged=RECORDS.some(x=>x.type==='eod'||x.type==='deal');
+  const steps=[
+    {t:'Add your team', d:'Create logins for your setters and closers.', done:reps, tab:'users'},
+    {t:'Set your monthly goal', d:'Your cash-collected target for the dashboard.', done:goal, tab:'settings'},
+    {t:'Add your offers', d:'What your team sells, per client.', done:offers, tab:'clients'},
+    {t:'Log your first day', d:'Submit an End of Day to see the numbers flow.', done:logged, tab:'eod'}
+  ];
+  const doneCount=steps.filter(s=>s.done).length;
+  if(doneCount===steps.length){ el.hidden=true; return; }
+  el.hidden=false;
+  el.innerHTML=`<div class="panel" style="margin:0 0 18px;border-color:var(--gold)"><div style="padding:16px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;flex-wrap:wrap"><h3 style="margin:0">Get ${esc(currentWsName())} set up</h3><span class="tag">${doneCount}/${steps.length} done</span></div>
+    <p class="hint" style="margin:0 0 12px">A few quick steps to get your team tracking.</p>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      ${steps.map(s=>`<div style="display:flex;align-items:center;gap:11px;padding:9px 11px;border:1px solid var(--border);border-radius:9px;${s.done?'opacity:.55':''}">
+        <span style="flex:0 0 22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;${s.done?'background:var(--good,#3ddc84);color:#08210f':'background:var(--surface-2);color:var(--muted);border:1px solid var(--border)'}">${s.done?'✓':''}</span>
+        <div style="flex:1"><div style="font-weight:600;font-size:13.5px">${s.t}</div><div class="hint" style="margin:0;font-size:12px">${s.d}</div></div>
+        ${s.done?'<span class="muted" style="font-size:12px">Done</span>':`<button class="btn sm" onclick="showTab('${s.tab}')">Start</button>`}
+      </div>`).join('')}
+    </div>
+  </div></div>`;
+}
 function renderBilling(){
   const el=document.getElementById('billingPanel'); if(!el) return;
   const plan=currentPlan(), internal=plan==='internal', seats=wsSeatCount(), lim=planSeatLimit(), days=trialDaysLeft();
@@ -2076,6 +2106,7 @@ function renderDash(){
     <div class="kpi"><div class="lbl" title="Share of logged calls marked as a wrong / bad number. High = a list or targeting problem to raise with the client's marketing.">Bad number %</div><div class="val">${pct(bn.rate)}</div><div class="lbl" style="margin-top:4px">${bn.bad}/${bn.total} calls</div></div>
     <div class="kpi"><div class="lbl">Hours dialing</div><div class="val small">${Math.round(ss.hours*10)/10}</div></div>
     <div class="kpi"><div class="lbl">Cash set</div><div class="val small">${money(ss.cashSet)}</div></div>`;
+  renderGettingStarted();
   renderActivityChart(recs);
   renderLeaderboard(recs);
   renderBreakdownTables(recs, {setterEl:'dashSetterTable', closerEl:'dashCloserTable', rm:(SESSION&&(SESSION.role==='founder'||repMode())), clickable:false});
