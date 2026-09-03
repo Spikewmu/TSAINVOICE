@@ -1119,7 +1119,7 @@ async function remoteGet(){
 
 /* ---------------- records ---------------- */
 let RECORDS = load(LS.data, []);
-async function syncRecords(){ const r=await remoteGet(); if(r){ RECORDS=dedupeRecords(r); save(LS.data,RECORDS); } }
+async function syncRecords(){ const r=await remoteGet(); if(r){ RECORDS=dedupeRecords(r); save(LS.data,RECORDS); } updateWsBrand(); }
 // Collapse accidental double-submits: same rep/client/date/role and identical values,
 // submitted within 2 minutes of each other, count once. (Physical rows stay in the sheet.)
 function recSig(r){
@@ -1145,6 +1145,9 @@ function dedupeRecords(list){
 const DEFAULT_WS='tsa';
 function wsForUser(username){ let ws=DEFAULT_WS, best=''; RECORDS.forEach(x=>{ if(x.type==='wsmember' && String(x.username||'').trim().toLowerCase()===String(username||'').trim().toLowerCase()){ if((x.submittedAt||'')>best){ best=x.submittedAt||''; ws=x.ws||DEFAULT_WS; } } }); return ws; }
 function currentWs(){ return (SESSION&&SESSION.username)?wsForUser(SESSION.username):DEFAULT_WS; }
+function wsRecord(){ const ws=currentWs(); let best=null; RECORDS.forEach(x=>{ if(x.type==='workspace' && x.ws===ws){ if(!best||(x.submittedAt||'')>(best.submittedAt||'')) best=x; } }); return best; }
+function currentWsName(){ const r=wsRecord(); return (r&&r.name) || (currentWs()===DEFAULT_WS?'The Sales Agency':'Your workspace'); }
+function updateWsBrand(){ const el=document.getElementById('storeTag'); if(el) el.textContent=currentWsName(); }
 async function addRecord(rec){
   rec.id=uid(); rec.submittedAt=new Date().toISOString(); rec.submittedET=nowET();
   if(rec.ws==null) rec.ws=currentWs(); // stamp the tenant so data is walled off by workspace
