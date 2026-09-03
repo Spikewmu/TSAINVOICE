@@ -68,6 +68,17 @@ export default async function handler(req, res) {
       if (!r.ok) { const t = await r.text(); return res.status(200).json({ ok: false, error: 'db ' + r.status + ' ' + t.slice(0, 160) }); }
       return res.status(200).json({ ok: true });
     }
+    if (action === 'accounts') {
+      // platform owner only (a TSA admin) - list all client accounts + their seat usage
+      if (callerWs !== DEFAULT_WS || (s && s.role !== 'admin')) return res.status(200).json({ ok: false, error: 'not-authorized' });
+      const wr = await supa('records?select=data&type=eq.workspace&order=submitted_at.asc');
+      const mr = await supa('records?select=data&type=eq.wsmember&order=submitted_at.asc');
+      const wsMap = {}; if (wr.ok) { (await wr.json()).forEach(x => { const d = x.data; if (d && d.ws) wsMap[d.ws] = d; }); }
+      const memberWs = {}; if (mr.ok) { (await mr.json()).forEach(x => { const d = x.data; if (d && d.username) memberWs[String(d.username).toLowerCase()] = d.ws; }); }
+      const seats = {}; Object.values(memberWs).forEach(w => { if (w) seats[w] = (seats[w] || 0) + 1; });
+      const accounts = Object.values(wsMap).map(w => ({ ws: w.ws, name: w.name, plan: w.plan, kind: w.kind || 'client', owner: w.owner, createdAt: w.createdAt, seats: seats[w.ws] || 0 }));
+      return res.status(200).json({ ok: true, accounts });
+    }
     return res.status(200).json({ ok: false, error: 'unknown action' });
   } catch (e) { return res.status(200).json({ ok: false, error: String(e) }); }
 }

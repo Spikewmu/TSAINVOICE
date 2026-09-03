@@ -781,6 +781,21 @@
   <section id="tab-users" hidden>
     <h2 class="section">Users</h2>
     <p class="hint">Create a login for each rep, pick their role, and assign the team(s) / account(s) they work. Setters see only the setter end-of-day form; closers see the closed-deal + closer forms; both see a Rep Breakdown scoped to their assigned teams. Admins see everything.</p>
+    <div class="panel" id="clientAccountsPanel" style="display:none">
+      <h3>Client accounts <span style="font-weight:400;color:var(--muted);font-size:12px">- independent client tenants on a monthly plan</span></h3>
+      <p class="hint" style="margin:-4px 0 12px">Provision a client on their own isolated account. Their <b>Founder</b> becomes the admin and creates their own team up to their seat limit. TakeOver clients stay under The Sales Agency until you graduate them.</p>
+      <div id="clientAccountsList"></div>
+      <details style="margin-top:12px"><summary style="cursor:pointer;font-weight:600;color:var(--gold)">+ New client account</summary>
+        <form class="grid" id="clientAcctForm" onsubmit="provisionClientAccount(event)" style="box-shadow:none;border:none;margin-top:10px">
+          <div class="field"><label>Company name *</label><input name="teamName" required placeholder="Peak Fitness Co."></div>
+          <div class="field"><label>Plan / seats *</label><select name="plan"><option value="starter">Starter - 5 seats</option><option value="growth">Growth - 15 seats</option><option value="scale">Scale - 40 seats</option><option value="trial">Trial - 5 seats (14-day)</option></select></div>
+          <div class="field"><label>Founder name *</label><input name="founderName" required placeholder="Jane Doe"></div>
+          <div class="field"><label>Founder email *</label><input name="founderEmail" type="email" required placeholder="jane@company.com"></div>
+          <div class="field"><label>Temp password *</label><input name="password" type="text" required placeholder="they change it on first login"></div>
+          <div class="full row-actions"><button class="btn gold" type="submit">Create client account</button><span class="tag">Creates their isolated workspace + Founder-admin. Send them the login.</span></div>
+        </form>
+      </details>
+    </div>
     <div class="panel">
       <h3>Add a user</h3>
       <p class="hint" style="margin:-4px 0 10px">Create a new login here. To change someone who already exists, use the controls on their row below - <b>Access</b> dropdown for role, <b>Edit</b> for teams, <b>Hire / dates</b> for dates, <b>Reset password</b> to set a new password.</p>
@@ -3323,8 +3338,33 @@ function renderUnassigned(list){
     ? `<div class="tag" style="color:var(--warn);border-color:var(--warn);display:block;white-space:normal;padding:9px 12px;line-height:1.5">&#9888; <b>${un.length}</b> ${un.length===1?'person has':'people have'} no assignment yet: ${un.map(u=>`<b>${esc(u.name||u.username)}</b> <span class="muted">(${esc(roleLabel(u.role))})</span>`).join(', ')}. <span class="muted">Managers: use <b>Responsibilities</b>. Setters/closers: use <b>Edit</b>. (both on their row below.)</span></div>`
     : `<div class="tag" style="color:var(--good);border-color:var(--good);display:block;padding:9px 12px">&#10003; Everyone has an account or role assigned.</div>`;
 }
+// platform-owner (TSA admin) view of independent client accounts, with a create form
+async function renderClientAccounts(){
+  const panel=document.getElementById('clientAccountsPanel'); if(!panel) return;
+  const isOwner = SESSION && SESSION.role==='admin' && currentWs()===DEFAULT_WS;
+  panel.style.display = isOwner?'':'none';
+  if(!isOwner) return;
+  const list=document.getElementById('clientAccountsList'); if(!list) return;
+  const hdr={'Content-Type':'application/json'}; if(SESSION.token) hdr['x-session-token']=SESSION.token; else if(SESSION.pw) hdr['x-admin-pass']=SESSION.pw;
+  try{
+    const r=await fetch('/api/data?action=accounts',{method:'POST',headers:hdr,body:'{}'}); const j=await r.json();
+    if(!j.ok){ list.innerHTML='<p class="muted" style="padding:8px 0">'+esc(j.error||'Could not load client accounts')+'</p>'; return; }
+    const accts=(j.accounts||[]).filter(a=>a.ws!==DEFAULT_WS);
+    if(!accts.length){ list.innerHTML='<p class="muted" style="padding:8px 0">No client accounts yet. Create one below.</p>'; return; }
+    list.innerHTML='<div class="tablewrap"><table><thead><tr><th>Company</th><th>Plan</th><th>Seats</th><th>Founder (admin)</th><th>Created</th></tr></thead><tbody>'
+      +accts.map(a=>{ const lim=PLAN_SEATS[a.plan]||5; return `<tr><td><b>${esc(a.name||a.ws)}</b></td><td><span class="pill">${esc(PLAN_NAMES[a.plan]||a.plan)}</span></td><td class="num">${a.seats}/${lim}</td><td>${esc(a.owner||'')}</td><td>${a.createdAt?esc(usDate(String(a.createdAt).slice(0,10))):''}</td></tr>`; }).join('')
+      +'</tbody></table></div>';
+  }catch(e){ list.innerHTML='<p class="muted" style="padding:8px 0">Could not load client accounts.</p>'; }
+}
+async function provisionClientAccount(ev){
+  ev.preventDefault(); const f=ev.target;
+  const res=await authApi({ action:'provisionAccount', token:SESSION&&SESSION.token, teamName:f.teamName.value.trim(), plan:f.plan.value, founderName:f.founderName.value.trim(), founderEmail:f.founderEmail.value.trim(), password:f.password.value });
+  if(res && res.ok){ toast('Client account created for '+res.name+' - send '+res.founder+' the login to sign in.'); f.reset(); renderClientAccounts(); }
+  else toast((res&&res.error)||'Could not create the client account',true);
+}
 async function renderUsers(){
   const isAdmin = SESSION.role==='admin';
+  renderClientAccounts();
   // managers can only create closer/setter; admins can also create manager/admin
   const roleSel=document.querySelector('#userForm [name=role]');
   if(roleSel) roleSel.innerHTML = '<option value="closer">Closer</option><option value="setter">Setter</option>'+(isAdmin?'<option value="recruiter">Recruiter</option><option value="manager">Sales Manager</option><option value="webinarteam">Webinar Team</option><option value="founder">Founder Access (client)</option><option value="admin">Admin</option>':'');

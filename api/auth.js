@@ -178,6 +178,30 @@ export default async function handler(req, res) {
     // admin-only past here
     if (session.role !== 'admin') return res.status(200).json({ ok: false, error: 'admin only' });
 
+    // ---------- PROVISION A CLIENT ACCOUNT (platform owner only: creates an independent workspace + its Founder-admin) ----------
+    if (action === 'provisionAccount') {
+      const map0 = await wsMemberMap();
+      if (wsOf(map0, session.username) !== DEFAULT_WS) return res.status(200).json({ ok: false, error: 'Only the platform owner can create client accounts' });
+      const teamName = String(body.teamName || '').trim();
+      const email = String(body.founderEmail || '').trim().toLowerCase();
+      const name = String(body.founderName || '').trim() || email;
+      const password = String(body.password || '');
+      const plan = ['trial', 'starter', 'growth', 'scale'].includes(body.plan) ? body.plan : 'starter';
+      if (!teamName || !email) return res.status(200).json({ ok: false, error: 'Company name and founder email are required' });
+      if (password.length < 6) return res.status(200).json({ ok: false, error: 'Founder password must be at least 6 characters' });
+      const existing = await getUser(email);
+      if (existing) return res.status(200).json({ ok: false, error: 'That founder email already has an account' });
+      const slug = (teamName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 24)) || 'client';
+      const ws = slug + '-' + Math.random().toString(36).slice(2, 7);
+      await upsertUser({ username: email, name, role: 'admin', pass_hash: hashPass(password) });
+      const now = new Date().toISOString();
+      const wrec = { id: crypto.randomUUID(), type: 'workspace', ws, name: teamName, plan, kind: 'client', owner: email, createdAt: now, provisionedBy: session.name || 'TSA', submittedAt: now };
+      const mrec = { id: crypto.randomUUID(), type: 'wsmember', ws, username: email, name, role: 'owner', submittedAt: now };
+      await supa('records', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ rid: wrec.id, type: 'workspace', submitted_at: now, data: wrec }) });
+      await supa('records', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ rid: mrec.id, type: 'wsmember', submitted_at: now, data: mrec }) });
+      return res.status(200).json({ ok: true, ws, name: teamName, founder: email, plan });
+    }
+
     // ---------- SAVE / CREATE USER ----------
     if (action === 'saveUser') {
       const u = body.user || {};
