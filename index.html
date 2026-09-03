@@ -298,6 +298,7 @@
   <button class="logout" onclick="logout()">Sign out</button>
 </header>
 
+<div id="planBanner" hidden></div>
 <div class="shell">
 <nav class="tabs" id="tabs">
   <button data-tab="dash" class="active">Dashboard</button>
@@ -1147,7 +1148,25 @@ function wsForUser(username){ let ws=DEFAULT_WS, best=''; RECORDS.forEach(x=>{ i
 function currentWs(){ return (SESSION&&SESSION.username)?wsForUser(SESSION.username):DEFAULT_WS; }
 function wsRecord(){ const ws=currentWs(); let best=null; RECORDS.forEach(x=>{ if(x.type==='workspace' && x.ws===ws){ if(!best||(x.submittedAt||'')>(best.submittedAt||'')) best=x; } }); return best; }
 function currentWsName(){ const r=wsRecord(); return (r&&r.name) || (currentWs()===DEFAULT_WS?'The Sales Agency':'Your workspace'); }
-function updateWsBrand(){ const el=document.getElementById('storeTag'); if(el) el.textContent=currentWsName(); }
+/* ---- plan + trial gating (billing drops into this later) ---- */
+const PLAN_SEATS={trial:5,starter:5,growth:15,scale:40,internal:99999};
+const PLAN_NAMES={trial:'Free trial',starter:'Starter',growth:'Growth',scale:'Scale',internal:'Internal'};
+const TRIAL_DAYS=14;
+function currentPlan(){ const r=wsRecord(); return (r&&r.plan) || (currentWs()===DEFAULT_WS?'internal':'trial'); }
+function planSeatLimit(){ return PLAN_SEATS[currentPlan()]||9999; }
+function wsSeatCount(){ return (USERS_CACHE||[]).length; } // roster is already workspace-scoped
+function trialDaysLeft(){ const r=wsRecord(); if(!r||r.plan!=='trial') return null; const start=Date.parse(r.createdAt||r.submittedAt||'')||Date.now(); return Math.max(0,Math.ceil((start+TRIAL_DAYS*86400000-Date.now())/86400000)); }
+function atSeatLimit(){ return wsSeatCount()>=planSeatLimit(); }
+function renderPlanBanner(){
+  const el=document.getElementById('planBanner'); if(!el) return;
+  const p=currentPlan();
+  if(p==='internal'){ el.hidden=true; return; }
+  const seats=wsSeatCount(), lim=planSeatLimit(), days=trialDaysLeft();
+  el.hidden=false;
+  el.style.cssText='display:flex;align-items:center;gap:14px;flex-wrap:wrap;background:var(--surface-2);border-bottom:1px solid var(--border);padding:9px 20px;font-size:13px';
+  el.innerHTML=`<span><b>${esc(PLAN_NAMES[p]||p)}</b>${days!=null?` · <span style="color:var(--gold)">${days} day${days===1?'':'s'} left</span>`:''} · ${seats}/${lim} seats used</span><span style="flex:1"></span><button class="btn gold sm" onclick="toast('Billing is coming soon - you will be able to upgrade here.')">Upgrade plan</button>`;
+}
+function updateWsBrand(){ const el=document.getElementById('storeTag'); if(el) el.textContent=currentWsName(); renderPlanBanner(); }
 async function addRecord(rec){
   rec.id=uid(); rec.submittedAt=new Date().toISOString(); rec.submittedET=nowET();
   if(rec.ws==null) rec.ws=currentWs(); // stamp the tenant so data is walled off by workspace

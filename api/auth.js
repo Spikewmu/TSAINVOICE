@@ -63,6 +63,13 @@ async function wsMemberMap() {
   return map;
 }
 const wsOf = (map, username) => map[String(username || '').toLowerCase()] || DEFAULT_WS;
+const SEATS = { trial: 5, starter: 5, growth: 15, scale: 40 };
+async function wsPlan(ws) {
+  const r = await supa(`records?select=data&type=eq.workspace&data->>ws=eq.${encodeURIComponent(ws)}&order=submitted_at.desc&limit=1`);
+  if (!r.ok) return 'trial';
+  const rows = await r.json();
+  return (rows[0] && rows[0].data && rows[0].data.plan) || 'trial';
+}
 async function upsertUser(u) {
   await supa('users?on_conflict=username', {
     method: 'POST',
@@ -176,13 +183,20 @@ export default async function handler(req, res) {
       const u = body.user || {};
       const username = String(u.username || '').trim();
       if (!username) return res.status(200).json({ ok: false, error: 'username required' });
+      const map = await wsMemberMap();
+      const myWs = wsOf(map, session.username);
+      const isNewMember = wsOf(map, username) !== myWs; // adding someone not already in my workspace
+      // seat gate: paid/trial workspaces have a seat limit; TSA (internal) is unlimited
+      if (isNewMember && myWs !== DEFAULT_WS) {
+        const members = Object.values(map).filter(w => w === myWs).length;
+        const plan = await wsPlan(myWs);
+        const limit = SEATS[plan] || 5;
+        if (members >= limit) return res.status(200).json({ ok: false, error: `Your ${plan} plan allows ${limit} seats. Upgrade to add more.` });
+      }
       const row = { username, name: String(u.name || username), role: String(u.role || 'closer') };
       if (u.password) row.pass_hash = hashPass(u.password); // only overwrite the password when one is provided
       await upsertUser(row);
-      // add the new user to the creating admin's workspace (so tenants' rosters stay isolated)
-      const map = await wsMemberMap();
-      const myWs = wsOf(map, session.username);
-      if (wsOf(map, username) !== myWs) {
+      if (isNewMember) { // stamp the new user into the creating admin's workspace so rosters stay isolated
         const now = new Date().toISOString();
         const mrec = { id: crypto.randomUUID(), type: 'wsmember', ws: myWs, username, name: row.name, role: 'member', submittedAt: now };
         await supa('records', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ rid: mrec.id, type: 'wsmember', submitted_at: now, data: mrec }) });
