@@ -894,6 +894,7 @@
   <section id="tab-settings" hidden>
     <h2 class="section">Settings</h2>
     <p class="hint">Manage clients, reps, products, goals, commission rates, the shared-data endpoint, and the master admin password.</p>
+    <div class="panel" id="billingPanel" style="margin-bottom:16px"></div>
     <div class="cards" style="grid-template-columns:repeat(auto-fill,minmax(300px,1fr))">
       <div class="panel" style="margin:0"><h3>Clients</h3><div style="padding:14px"><p class="hint" style="margin:0">Clients are managed on the <b>Client Overview</b> tab now (status, manager, offers, cash). Add or edit them there - this list is retired to avoid two places to keep in sync.</p></div></div>
       <div class="panel" style="margin:0"><h3>Closers &amp; setters</h3><div style="padding:14px"><p class="hint" style="margin:0">Reps come from the <b>Users</b> tab. Create a login there with their role and team, and they'll appear automatically in the Log Closed Deal and End of Day dropdowns - no separate list to maintain here.</p></div></div>
@@ -1164,7 +1165,33 @@ function renderPlanBanner(){
   const seats=wsSeatCount(), lim=planSeatLimit(), days=trialDaysLeft();
   el.hidden=false;
   el.style.cssText='display:flex;align-items:center;gap:14px;flex-wrap:wrap;background:var(--surface-2);border-bottom:1px solid var(--border);padding:9px 20px;font-size:13px';
-  el.innerHTML=`<span><b>${esc(PLAN_NAMES[p]||p)}</b>${days!=null?` · <span style="color:var(--gold)">${days} day${days===1?'':'s'} left</span>`:''} · ${seats}/${lim} seats used</span><span style="flex:1"></span><button class="btn gold sm" onclick="toast('Billing is coming soon - you will be able to upgrade here.')">Upgrade plan</button>`;
+  el.innerHTML=`<span><b>${esc(PLAN_NAMES[p]||p)}</b>${days!=null?` · <span style="color:var(--gold)">${days} day${days===1?'':'s'} left</span>`:''} · ${seats}/${lim} seats used</span><span style="flex:1"></span><button class="btn gold sm" onclick="showTab('settings')">Upgrade plan</button>`;
+}
+const PLAN_TIERS=[
+  {k:'starter',name:'Starter',price:'$49/mo',seats:5,feat:'Activity tracking + team dashboards'},
+  {k:'growth',name:'Growth',price:'$149/mo',seats:15,feat:'+ KPI targets, custom columns, scheduled reports'},
+  {k:'scale',name:'Scale',price:'$349/mo',seats:40,feat:'+ manager tools, priority support'}
+];
+function choosePlan(k){ toast('Billing goes live once Stripe is connected - then you can upgrade here.'); }
+function renderBilling(){
+  const el=document.getElementById('billingPanel'); if(!el) return;
+  const plan=currentPlan(), internal=plan==='internal', seats=wsSeatCount(), lim=planSeatLimit(), days=trialDaysLeft();
+  el.innerHTML=`<h3>Plan &amp; billing</h3><div style="padding:16px">
+    <div style="display:flex;gap:26px;flex-wrap:wrap;align-items:center;margin-bottom:16px">
+      <div><div style="color:var(--muted);font-size:12px">Workspace</div><div style="font-weight:700;font-size:15px">${esc(currentWsName())}</div></div>
+      <div><div style="color:var(--muted);font-size:12px">Current plan</div><div style="font-weight:700;font-size:15px">${esc(PLAN_NAMES[plan]||plan)}${days!=null?` <span style="color:var(--gold);font-weight:400">· ${days} day${days===1?'':'s'} left in trial</span>`:''}</div></div>
+      <div><div style="color:var(--muted);font-size:12px">Seats</div><div style="font-weight:700;font-size:15px">${seats} / ${internal?'unlimited':lim}</div></div>
+    </div>`
+    +(internal
+      ? '<p class="hint" style="margin:0">This is your internal workspace - unlimited seats, no billing. Customer workspaces see plan options here.</p>'
+      : `<div class="cards" style="grid-template-columns:repeat(auto-fit,minmax(190px,1fr))">`
+        +PLAN_TIERS.map(t=>`<div class="panel" style="margin:0;border-color:${plan===t.k?'var(--gold)':'var(--border)'}"><div style="padding:14px">
+          <div style="font-weight:700">${t.name}</div><div style="font-size:22px;font-weight:700;margin:4px 0">${t.price}</div>
+          <div class="hint" style="margin:0 0 4px">up to ${t.seats} reps</div><div class="hint" style="margin:0 0 12px;min-height:34px">${t.feat}</div>
+          <button class="btn ${plan===t.k?'ghost':'gold'} sm" style="width:100%" ${plan===t.k?'disabled':''} onclick="choosePlan('${t.k}')">${plan===t.k?'Current plan':'Choose '+t.name}</button>
+        </div></div>`).join('')
+        +`</div><p class="fieldhelp" style="margin-top:10px">Billing goes live once Stripe is connected - these are the plan tiers (placeholder pricing).</p>`)
+    +`</div>`;
 }
 function updateWsBrand(){ const el=document.getElementById('storeTag'); if(el) el.textContent=currentWsName(); renderPlanBanner(); }
 async function addRecord(rec){
@@ -3562,7 +3589,7 @@ function loadSettingsForm(){
   document.getElementById('setSetter').value=CFG.setterRate;
   document.getElementById('setEndpoint').value=CFG.endpoint;
   document.getElementById('setAdmin').value=CFG.adminCode;
-  renderSlackLinks();
+  renderSlackLinks(); renderBilling();
 }
 /* ---- Slack bot workspace linking (admin) ---- */
 function botToken(){ try{ return sessionStorage.getItem('tsaBotToken')||''; }catch(e){ return ''; } }
