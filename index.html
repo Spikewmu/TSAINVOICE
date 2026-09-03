@@ -805,6 +805,17 @@
           <div class="full row-actions"><button class="btn gold" type="submit">Create client account</button><span class="tag">Creates their isolated workspace + Founder-admin. Send them the login.</span></div>
         </form>
       </details>
+      <details style="margin-top:8px"><summary style="cursor:pointer;font-weight:600;color:var(--gold)">Graduate a TakeOver client to their own account</summary>
+        <p class="hint" style="margin:8px 0">Move a client you currently run under The Sales Agency onto their own monthly account. Their Founder becomes admin and staffs their own team; then remove your reps from this client (Client Overview / Edit teams). Historical data stays with The Sales Agency.</p>
+        <form class="grid" id="graduateForm" onsubmit="graduateClient(event)" style="box-shadow:none;border:none;margin-top:6px">
+          <div class="field"><label>TakeOver client *</label><select name="gradClient" id="gradClientSel" required></select></div>
+          <div class="field"><label>Plan / seats *</label><select name="gradPlan"><option value="starter">Starter - 5 seats</option><option value="growth">Growth - 15 seats</option><option value="scale">Scale - 40 seats</option></select></div>
+          <div class="field"><label>Founder name *</label><input name="gradFounderName" required placeholder="Client owner"></div>
+          <div class="field"><label>Founder email *</label><input name="gradFounderEmail" type="email" required placeholder="owner@client.com"></div>
+          <div class="field"><label>Temp password *</label><input name="gradPassword" type="text" required placeholder="they change it on first login"></div>
+          <div class="full row-actions"><button class="btn gold" type="submit">Graduate client</button><span class="tag">Provisions their account + marks this client graduated.</span></div>
+        </form>
+      </details>
     </div>
     <div class="panel">
       <h3>Add a user</h3>
@@ -3366,6 +3377,9 @@ async function renderClientAccounts(){
   const isOwner = SESSION && SESSION.role==='admin' && currentWs()===DEFAULT_WS;
   panel.style.display = isOwner?'':'none';
   if(!isOwner) return;
+  // graduate dropdown = TSA clients not already graduated
+  const gs=document.getElementById('gradClientSel');
+  if(gs){ const grad=new Set(latestClients().filter(c=>c.graduated).map(c=>c.name)); const opts=clientNames().filter(n=>n&&!grad.has(n)); const cur=gs.value; gs.innerHTML='<option value="">Select a client</option>'+opts.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join(''); gs.value=cur; }
   const list=document.getElementById('clientAccountsList'); if(!list) return;
   const hdr={'Content-Type':'application/json'}; if(SESSION.token) hdr['x-session-token']=SESSION.token; else if(SESSION.pw) hdr['x-admin-pass']=SESSION.pw;
   try{
@@ -3383,6 +3397,17 @@ async function provisionClientAccount(ev){
   const res=await authApi({ action:'provisionAccount', token:SESSION&&SESSION.token, teamName:f.teamName.value.trim(), plan:f.plan.value, founderName:f.founderName.value.trim(), founderEmail:f.founderEmail.value.trim(), password:f.password.value });
   if(res && res.ok){ toast('Client account created for '+res.name+' - send '+res.founder+' the login to sign in.'); f.reset(); renderClientAccounts(); }
   else toast((res&&res.error)||'Could not create the client account',true);
+}
+async function graduateClient(ev){
+  ev.preventDefault(); const f=ev.target; const client=(f.gradClient.value||'').trim();
+  if(!client){ toast('Pick a client to graduate',true); return; }
+  const res=await authApi({ action:'provisionAccount', token:SESSION&&SESSION.token, teamName:client, plan:f.gradPlan.value, founderName:f.gradFounderName.value.trim(), founderEmail:f.gradFounderEmail.value.trim(), password:f.gradPassword.value });
+  if(!res || !res.ok){ toast((res&&res.error)||'Could not graduate this client',true); return; }
+  // mark the TSA client record graduated (merge onto the latest so its other fields survive)
+  const existing=(latestClients().find(c=>c.name===client))||{name:client};
+  await addRecord(Object.assign({}, existing, {type:'client', name:client, graduated:true, graduatedWs:res.ws, graduatedAt:new Date().toISOString()}));
+  toast('Graduated '+client+' to their own account. Send '+res.founder+' the login, then remove your reps from this client via Client Overview / Edit teams.');
+  f.reset(); renderClientAccounts(); if(typeof renderClientOverview==='function') renderClientOverview();
 }
 async function renderUsers(){
   const isAdmin = SESSION.role==='admin';
