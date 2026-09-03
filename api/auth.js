@@ -110,6 +110,28 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: false });
     }
 
+    // ---------- SIGNUP (public: creates a new team/workspace + its owner) ----------
+    if (action === 'signup') {
+      const email = String(body.email || body.username || '').trim().toLowerCase();
+      const password = String(body.password || '');
+      const teamName = String(body.teamName || '').trim();
+      const name = String(body.name || '').trim() || email;
+      if (!email || !teamName) return res.status(200).json({ ok: false, error: 'Team name and email are required' });
+      if (password.length < 6) return res.status(200).json({ ok: false, error: 'Password must be at least 6 characters' });
+      const existing = await getUser(email);
+      if (existing) return res.status(200).json({ ok: false, error: 'An account with that email already exists. Sign in instead.' });
+      const slug = (teamName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 24)) || 'team';
+      const ws = slug + '-' + Math.random().toString(36).slice(2, 7);
+      const u = { username: email, name, role: 'admin', pass_hash: hashPass(password) };
+      await upsertUser(u);
+      const now = new Date().toISOString();
+      const wrec = { id: crypto.randomUUID(), type: 'workspace', ws, name: teamName, plan: 'trial', createdAt: now, owner: email, submittedAt: now };
+      const mrec = { id: crypto.randomUUID(), type: 'wsmember', ws, username: email, name, role: 'owner', submittedAt: now };
+      await supa('records', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ rid: wrec.id, type: 'workspace', submitted_at: now, data: wrec }) });
+      await supa('records', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ rid: mrec.id, type: 'wsmember', submitted_at: now, data: mrec }) });
+      return res.status(200).json({ ok: true, username: email, name, role: 'admin', token: tokenFor(u), supaKey: anonKey() });
+    }
+
     // everything below needs a valid session token
     const session = verify(body.token);
     if (!session) return res.status(200).json({ ok: false, error: 'unauthorized' });

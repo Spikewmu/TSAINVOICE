@@ -259,12 +259,26 @@
   <div class="top">
     <div class="dot">TSA</div>
     <h2 style="margin:.2em 0;font-family:var(--serif);font-weight:700;font-size:26px">Sales HQ V2.0</h2>
-    <p class="hint" style="margin:.3em 0 0">Sign in with the username and password your manager set up.</p>
+    <p class="hint" id="gateSub" style="margin:.3em 0 0">Sign in to your team's workspace.</p>
   </div>
-  <div class="field"><label for="gUser">Username</label><input id="gUser" autocomplete="username" placeholder="username"></div>
-  <div class="field"><label for="gPass">Password</label><input id="gPass" type="password" autocomplete="current-password" placeholder="password"></div>
-  <button class="btn" style="width:100%" onclick="tryGate()">Sign in</button>
-  <p id="gateErr" class="pill warn" hidden style="margin-top:12px">Wrong username or password</p>
+  <!-- sign in -->
+  <div id="signinForm">
+    <div class="field"><label for="gUser">Username or email</label><input id="gUser" autocomplete="username" placeholder="username"></div>
+    <div class="field"><label for="gPass">Password</label><input id="gPass" type="password" autocomplete="current-password" placeholder="password"></div>
+    <button class="btn" style="width:100%" onclick="tryGate()">Sign in</button>
+    <p id="gateErr" class="pill warn" hidden style="margin-top:12px">Wrong username or password</p>
+    <p class="tag" style="text-align:center;margin-top:14px">New here? <a class="linklike" style="cursor:pointer" onclick="gateMode('signup')">Create a team</a></p>
+  </div>
+  <!-- create a team (self-serve signup) -->
+  <div id="signupForm" hidden>
+    <div class="field"><label for="suTeam">Team name</label><input id="suTeam" placeholder="e.g. Peak Sales Co."></div>
+    <div class="field"><label for="suName">Your name</label><input id="suName" autocomplete="name" placeholder="Jane Doe"></div>
+    <div class="field"><label for="suEmail">Work email</label><input id="suEmail" type="email" autocomplete="email" placeholder="you@company.com"></div>
+    <div class="field"><label for="suPass">Password</label><input id="suPass" type="password" autocomplete="new-password" placeholder="at least 6 characters"></div>
+    <button class="btn" style="width:100%" onclick="signUp()">Create team + start free trial</button>
+    <p id="suErr" class="pill warn" hidden style="margin-top:12px"></p>
+    <p class="tag" style="text-align:center;margin-top:14px">14-day free trial, no card. Already have an account? <a class="linklike" style="cursor:pointer" onclick="gateMode('signin')">Sign in</a></p>
+  </div>
 </div>
 
 <!-- ============ APP ============ -->
@@ -1165,6 +1179,18 @@ async function tryGate(){
     if(lu){ const h=await sha(p); if(h===lu.passHash){ setSession({username:lu.username, name:lu.name, role:lu.role, pw:p}); return; } }
   }
   document.getElementById('gateErr').hidden=false;
+}
+// toggle the gate between sign-in and self-serve team signup
+function gateMode(m){ const signup=m==='signup'; const si=document.getElementById('signinForm'), su=document.getElementById('signupForm'), sub=document.getElementById('gateSub'); if(si)si.hidden=signup; if(su)su.hidden=!signup; if(sub)sub.textContent=signup?'Create your team and start a free trial.':"Sign in to your team's workspace."; }
+async function signUp(){
+  const teamName=document.getElementById('suTeam').value.trim(), name=document.getElementById('suName').value.trim(), email=document.getElementById('suEmail').value.trim(), pass=document.getElementById('suPass').value;
+  const err=document.getElementById('suErr'), show=m=>{ err.textContent=m; err.hidden=false; };
+  if(!teamName||!name||!email){ show('Fill in every field.'); return; }
+  if(pass.length<6){ show('Password must be at least 6 characters.'); return; }
+  err.hidden=true;
+  const res=await authApi({action:'signup', teamName, name, email, password:pass});
+  if(res && res.ok){ setSession({username:res.username||email, name:res.name||name, role:res.role||'admin', token:res.token, supaKey:res.supaKey, pw:pass}); return; }
+  show((res&&res.error)||'Could not create your team. Try a different email.');
 }
 function setSession(s){ SESSION=s; save(LS.auth,s); try{ localStorage.removeItem('tsarec_cache'); }catch(e){} /* drop any prior user's cached candidates so a new login (e.g. a recruiter) never reads them - the server re-fetches with the right redaction */ startApp(); }
 function logout(){ SESSION=null; localStorage.removeItem(LS.auth); location.reload(); }
