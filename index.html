@@ -98,6 +98,10 @@
   .modalcard{background:#1b1610;border:1px solid var(--border);border-radius:14px;padding:22px 22px 20px;width:min(400px,94vw);box-shadow:0 24px 70px rgba(0,0,0,.55)}
   .modalcard label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px}
   .modalcard input{width:100%}
+  /* role checkboxes: clean left-aligned rows (override the modal's full-width input rule) */
+  #rolesBoxes label{display:flex;align-items:center;gap:10px;margin:0;font-size:14px;color:var(--ink);cursor:pointer}
+  #rolesBoxes input[type=checkbox]{width:16px;height:16px;flex:0 0 auto;margin:0;accent-color:var(--gold)}
+  #rolesBoxes label .muted{margin-left:auto;font-size:11px}
   .agsec-head{font-weight:700;color:var(--gold);text-transform:uppercase;font-size:11.5px;letter-spacing:.05em;margin-bottom:8px}
   .agclient{font-weight:700;font-size:15.5px;margin:18px 0 10px;padding-top:12px;border-top:1px solid var(--border)}
   .agindent{margin-left:14px;border-left:2px solid var(--border);padding-left:16px}
@@ -708,6 +712,7 @@
         <button class="btn sm" style="align-self:flex-end" onclick="giOpen()">Group interview</button>
         <button class="btn sm" style="align-self:flex-end" onclick="offerOpen()">Send offer</button>
         <button class="btn sm" style="align-self:flex-end" onclick="recShortlist()">Add to shortlist</button>
+        <button class="btn ghost sm" style="align-self:flex-end" onclick="recUnshortlist()">Remove from shortlist</button>
       </div>
       <div class="tablewrap"><table id="rcTbl"></table></div>
       <div class="filters" style="align-items:flex-end;margin-top:12px">
@@ -719,6 +724,7 @@
         <button class="btn sm" style="align-self:flex-end" onclick="giOpen()">Group interview</button>
         <button class="btn sm" style="align-self:flex-end" onclick="offerOpen()">Send offer</button>
         <button class="btn sm" style="align-self:flex-end" onclick="recShortlist()">Add to shortlist</button>
+        <button class="btn ghost sm" style="align-self:flex-end" onclick="recUnshortlist()">Remove from shortlist</button>
       </div>
     </div>
     <div class="panel" id="rcBoardPanel" hidden>
@@ -3010,6 +3016,19 @@ async function recShortlist(){
   await recFetch('/api/recruiting?action=tag',{method:'POST',body:JSON.stringify({records:tagRecs})});
   recCacheSave(); recBuildFacets(); recRender();
   toast('Shortlisted '+sel.length+' candidate'+(sel.length===1?'':'s')+' - the "you’ve been shortlisted" email will send once messaging is connected.');
+}
+// take selected candidates OFF the shortlist -> back to Interviewing, and drop the "Shortlisted <date>" tag
+async function recUnshortlist(){
+  if(!REC_SEL.size){ toast('Select shortlisted candidates first (checkboxes)',true); return; }
+  const sel=[...REC_SEL].map(id=>REC_ALL.find(x=>x.id===id)).filter(Boolean).filter(c=>c.recStatus==='Shortlisted');
+  if(!sel.length){ toast('None of the selected are on the shortlist',true); return; }
+  const j=await recFetch('/api/recruiting?action=stage',{method:'POST',body:JSON.stringify({records:sel.map(c=>({id:c.id,status:'Interviewing'}))})});
+  if(!j.ok){ toast('Could not update: '+(j.error||''),true); return; }
+  sel.forEach(c=>c.recStatus='Interviewing');
+  const tagRecs=sel.map(c=>{ const next=recArr(c.tags).filter(t=>!/^Shortlisted /.test(t)); c.tags=next; return {id:c.id,tags:next}; });
+  await recFetch('/api/recruiting?action=tag',{method:'POST',body:JSON.stringify({records:tagRecs})});
+  recCacheSave(); recBuildFacets(); recRender();
+  toast('Removed '+sel.length+' from the shortlist - back to Interviewing');
 }
 // start a conversation from the search view: claim the selected candidate(s), then jump into the Messages thread
 async function recMessage(){
