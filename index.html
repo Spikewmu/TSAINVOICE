@@ -1066,7 +1066,7 @@
 <div class="modal" id="trModal" hidden onclick="if(event.target===this)trEditClose()">
   <div class="modalcard" style="width:min(700px,95vw);max-height:90vh;overflow:auto">
     <h3 style="margin:0 0 2px">Edit onboarding curriculum</h3>
-    <p class="hint" style="margin:0 0 12px">The modules and certification quiz as JSON. Each module has a title, body, and optional link; each quiz question has options and the index of the correct answer (0 = first). passPct is the score needed to graduate. Admins only; applies for everyone.</p>
+    <p class="hint" style="margin:0 0 12px">The full onboarding as JSON: <b>intake</b> (fields the new hire fills - id, label, type: text/phone/email/date/checkbox), <b>tasks</b> (checklist - id, title, desc, owner: rep/manager), <b>modules</b> (id, title, body, optional link), and <b>quiz</b> (each question has options + the index of the correct answer, 0 = first). passPct is the score needed to graduate. Admins only; applies for everyone.</p>
     <textarea id="trJson" rows="20" style="width:100%;font-size:12px;font-family:ui-monospace,Menlo,Consolas,monospace"></textarea>
     <div id="trErr" class="fieldhelp" style="color:var(--warn);margin:8px 0" hidden></div>
     <div class="row-actions" style="margin-top:12px;flex-wrap:wrap">
@@ -2997,6 +2997,19 @@ const REP_ONB_DEFAULT={
     {q:'A prospect says "I need to think about it." Best move?',options:['End the call','Acknowledge, isolate the real concern, then handle it','Immediately discount','Ignore it'],answer:1},
     {q:'Where do your end-of-day numbers go?',options:['A text to your manager','The dashboard End of Day form','Email','Nowhere'],answer:1},
     {q:'You may contact a lead using a personal cell you found online.',options:['True','False'],answer:1}
+  ],
+  intake:[
+    {id:'legalname',label:'Full legal name',type:'text'},
+    {id:'phone',label:'Best phone number',type:'phone'},
+    {id:'timezone',label:'Your time zone (e.g. EST)',type:'text'},
+    {id:'payout',label:'How should we pay you? (PayPal / Wise / bank)',type:'text'},
+    {id:'agree',label:'I have read and agree to the contractor agreement',type:'checkbox'}
+  ],
+  tasks:[
+    {id:'t1',title:'Sign your contractor agreement',desc:'Check your email for the agreement and sign it.',owner:'rep'},
+    {id:'t2',title:'Join Slack + introduce yourself',desc:'Accept the Slack invite and post an intro in your team channel.',owner:'rep'},
+    {id:'t3',title:'Get your dashboard + GHL logins',desc:'Your manager sets these up - mark done once you can log in.',owner:'manager'},
+    {id:'t4',title:'Shadow 3 live calls',desc:'Sit in on 3 calls before taking your own.',owner:'rep'}
   ]
 };
 function repOnbConfig(){ let best=null; RECORDS.forEach(x=>{ if(x.type==='reponbconfig'){ if(!best||(x.submittedAt||'')>(best.submittedAt||'')) best=x; } }); if(best&&best.config){ try{ const c=(typeof best.config==='string')?JSON.parse(best.config):best.config; if(c&&Array.isArray(c.modules)&&Array.isArray(c.quiz)) return c; }catch(e){} } return REP_ONB_DEFAULT; }
@@ -3004,8 +3017,24 @@ function repProgress(user){ const m={}, u=nrm(user); RECORDS.forEach(x=>{ if(x.t
 function repModulesDone(user,cfg){ const p=repProgress(user); return (cfg||repOnbConfig()).modules.filter(mo=>p[mo.id]&&p[mo.id].done).length; }
 function repQuizRec(user){ return repProgress(user)['quiz']; }
 function repGraduated(user){ const q=repQuizRec(user); return !!(q&&q.passed); }
-function repOnbPct(user){ const cfg=repOnbConfig(), total=cfg.modules.length+1, done=repModulesDone(user,cfg)+(repGraduated(user)?1:0); return Math.round(done/total*100); }
+function repTasks(cfg){ return (cfg||repOnbConfig()).tasks||[]; }
+function repIntakeFields(cfg){ return (cfg||repOnbConfig()).intake||[]; }
+function repTaskDone(user,tid){ const r=repProgress(user)['task:'+tid]; return !!(r&&r.done); }
+function repTasksDone(user,cfg){ return repTasks(cfg).filter(t=>repTaskDone(user,t.id)).length; }
+function repIntakeDone(user){ const r=repProgress(user)['intake']; return !!(r&&r.done); }
+function repOnbPct(user){ const cfg=repOnbConfig(), hasIntake=repIntakeFields(cfg).length>0?1:0, total=hasIntake+repTasks(cfg).length+cfg.modules.length+1;
+  const done=(hasIntake&&repIntakeDone(user)?1:0)+repTasksDone(user,cfg)+repModulesDone(user,cfg)+(repGraduated(user)?1:0);
+  return total?Math.round(done/total*100):0; }
 async function repMarkModule(id){ await addRecord({type:'reponb',user:(SESSION&&SESSION.username)||'',name:(SESSION&&SESSION.name)||'',key:id,done:true,at:new Date().toISOString()}); renderTraining(); }
+async function repMarkTask(tid){ await addRecord({type:'reponb',user:(SESSION&&SESSION.username)||'',name:(SESSION&&SESSION.name)||'',key:'task:'+tid,done:true,at:new Date().toISOString()}); renderTraining(); }
+async function repSubmitIntake(){
+  const fields=repIntakeFields(), data={};
+  for(const f of fields){ const el=document.getElementById('intk_'+f.id); if(!el) continue;
+    if(f.type==='checkbox'){ if(!el.checked){ toast('Please acknowledge: '+f.label,true); return; } data[f.id]=true; }
+    else { const v=(el.value||'').trim(); if(!v){ toast('Please fill in: '+f.label,true); return; } data[f.id]=v; } }
+  await addRecord({type:'reponb',user:(SESSION&&SESSION.username)||'',name:(SESSION&&SESSION.name)||'',key:'intake',done:true,data,at:new Date().toISOString()});
+  toast('Details submitted'); renderTraining();
+}
 function renderTraining(){
   const sec=document.getElementById('tab-training'); if(!sec) return;
   const admin=isOversight();
@@ -3017,7 +3046,27 @@ function renderTraining(){
 }
 function trainingSelf(user){
   const cfg=repOnbConfig(), p=repProgress(user), total=cfg.modules.length, doneCount=repModulesDone(user,cfg), pct=repOnbPct(user), grad=repGraduated(user), allModsDone=doneCount>=total;
+  const intakeFields=repIntakeFields(cfg), tasks=repTasks(cfg);
   let h=`<div class="progwrap"><b>${pct}%</b><div class="progbar"><i style="width:${pct}%"></i></div>${grad?'<span class="gradbadge"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Graduated</span>':''}</div>`;
+  // 1) Intake form
+  if(intakeFields.length){
+    h+=`<h3 class="section">Your details</h3>`;
+    if(repIntakeDone(user)) h+=`<div class="modcard done"><div class="modhead"><span class="modstep">✓</span><div style="flex:1"><h4>Details submitted</h4><div class="modbody">Thanks - we have what we need to get you set up and paid.</div></div></div></div>`;
+    else h+=`<div class="modcard"><div class="modhead"><span class="modstep">1</span><div style="flex:1"><h4>A few things to get you set up</h4>`
+      +intakeFields.map(f=> f.type==='checkbox'
+        ? `<label style="display:flex;gap:8px;align-items:flex-start;margin-top:12px;font-size:13.5px"><input type="checkbox" id="intk_${esc(f.id)}"> ${esc(f.label)}</label>`
+        : `<div class="field" style="margin-top:10px"><label>${esc(f.label)}</label><input id="intk_${esc(f.id)}" type="${f.type==='date'?'date':(f.type==='email'?'email':'text')}"></div>`).join('')
+      +`<div style="margin-top:12px"><button class="btn sm gold" onclick="repSubmitIntake()">Submit details</button></div></div></div></div>`;
+  }
+  // 2) Onboarding checklist
+  if(tasks.length){
+    h+=`<h3 class="section" style="margin-top:22px">Your checklist</h3>`;
+    tasks.forEach(t=>{ const done=repTaskDone(user,t.id);
+      h+=`<div class="modcard${done?' done':''}"><div class="modhead"><span class="modstep">${done?'✓':''}</span><div style="flex:1"><h4>${esc(t.title)}${t.owner==='manager'?' <span class="tag" style="font-size:10px">manager sets up</span>':''}</h4><div class="modbody">${esc(t.desc||'')}</div><div style="margin-top:10px">${done?'<span class="muted" style="font-size:12px">Done</span>':`<button class="btn sm" onclick="repMarkTask('${t.id}')">Mark done</button>`}</div></div></div></div>`;
+    });
+  }
+  // 3) Training modules
+  h+=`<h3 class="section" style="margin-top:22px">Training</h3>`;
   cfg.modules.forEach((mo,i)=>{ const done=p[mo.id]&&p[mo.id].done;
     h+=`<div class="modcard${done?' done':''}"><div class="modhead"><span class="modstep">${done?'✓':(i+1)}</span><div style="flex:1"><h4>${esc(mo.title)}</h4><div class="modbody">${esc(mo.body)}</div>${mo.link?`<div style="margin-top:8px"><a href="${esc(mo.link)}" target="_blank" rel="noopener" class="linklike" style="font-size:13px">Open material</a></div>`:''}<div style="margin-top:10px">${done?'<span class="muted" style="font-size:12px">Completed</span>':`<button class="btn sm" onclick="repMarkModule('${mo.id}')">Mark complete</button>`}</div></div></div></div>`;
   });
