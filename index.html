@@ -1099,9 +1099,11 @@ async function ensureKey(){
 async function remoteGet(){
   // Workspace-scoped read via the server: returns only the caller's tenant data (multi-tenant isolation).
   // Falls back to the direct read if the endpoint is unavailable, so the app never goes dark mid-migration.
-  if(SESSION && SESSION.token){
+  if(SESSION && (SESSION.token || SESSION.pw)){
     try{
-      const r=await fetch('/api/data?action=records',{method:'POST',headers:{'Content-Type':'application/json','x-session-token':SESSION.token},body:'{}'});
+      const hdr={'Content-Type':'application/json'};
+      if(SESSION.token) hdr['x-session-token']=SESSION.token; else if(SESSION.pw) hdr['x-admin-pass']=SESSION.pw; // master/break-glass reads via the admin pass
+      const r=await fetch('/api/data?action=records',{method:'POST',headers:hdr,body:'{}'});
       if(r.ok){ const j=await r.json(); if(j && j.ok && Array.isArray(j.records)) return j.records; }
     }catch(e){ console.warn('scoped read unavailable, falling back to direct read', e); }
   }

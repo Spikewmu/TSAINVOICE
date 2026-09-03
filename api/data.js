@@ -37,12 +37,19 @@ async function wsForUser(username) {
 export default async function handler(req, res) {
   const h = req.headers || {}, b = req.body || {}, q = req.query || {};
   const s = verifySession(b.token || q.token || h['x-session-token'] || '');
-  if (!s) return res.status(401).json({ ok: false, error: 'unauthorized' });
+  // Auth: a valid session token -> that user's workspace. Master admin pass (break-glass) -> TSA workspace.
+  let callerWs = null;
+  if (s) callerWs = await wsForUser(s.username);
+  else {
+    const ap = b.adminPass || q.adminPass || h['x-admin-pass'] || '';
+    if (ap && (ap === process.env.ADMIN_PASS || ap === process.env.BOT_ADMIN_TOKEN)) callerWs = DEFAULT_WS;
+  }
+  if (!callerWs) return res.status(401).json({ ok: false, error: 'unauthorized' });
   if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) return res.status(200).json({ ok: false, error: 'not-provisioned' });
   const action = q.action || b.action || 'records';
   try {
     if (action === 'records') {
-      const ws = await wsForUser(s.username);
+      const ws = callerWs;
       // TSA also gets legacy rows with no ws; other workspaces get strictly their own.
       const filter = ws === DEFAULT_WS
         ? `or=(data->>ws.eq.${DEFAULT_WS},data->>ws.is.null)`
