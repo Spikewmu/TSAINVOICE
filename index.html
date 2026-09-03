@@ -697,6 +697,7 @@
         <button class="btn sm" style="align-self:flex-end" onclick="recMessage()">Message</button>
         <button class="btn sm" style="align-self:flex-end" onclick="giOpen()">Group interview</button>
         <button class="btn sm" style="align-self:flex-end" onclick="offerOpen()">Send offer</button>
+        <button class="btn sm" style="align-self:flex-end" onclick="recShortlist()">Add to shortlist</button>
       </div>
       <div class="tablewrap"><table id="rcTbl"></table></div>
       <div class="filters" style="align-items:flex-end;margin-top:12px">
@@ -707,6 +708,7 @@
         <button class="btn sm" style="align-self:flex-end" onclick="recMessage()">Message</button>
         <button class="btn sm" style="align-self:flex-end" onclick="giOpen()">Group interview</button>
         <button class="btn sm" style="align-self:flex-end" onclick="offerOpen()">Send offer</button>
+        <button class="btn sm" style="align-self:flex-end" onclick="recShortlist()">Add to shortlist</button>
       </div>
     </div>
     <div class="panel" id="rcBoardPanel" hidden>
@@ -2591,7 +2593,7 @@ function recList(){
   return list;
 }
 let REC_VIEW='search';
-const REC_STAGES=['Standby','Booked Recruitment Call','Needs Updated Resume and Intro Video','Finished Resume and Intro Video','Company Applications sent','Interviewing','Offer Sent','Hired','Not Looking'];
+const REC_STAGES=['Standby','Booked Recruitment Call','Needs Updated Resume and Intro Video','Finished Resume and Intro Video','Company Applications sent','Interviewing','Shortlisted','Offer Sent','Hired','Not Looking'];
 function recSetView(v){
   REC_VIEW=v;
   document.querySelectorAll('#rcViewSeg button').forEach((b,i)=>b.classList.toggle('on',(i===0)===(v==='search')));
@@ -2893,6 +2895,19 @@ function toggleNotif(e){ if(e) e.stopPropagation(); const p=document.getElementB
 function notifGo(tab){ const p=document.getElementById('notifPanel'); if(p) p.hidden=true; showTab(tab); }
 document.addEventListener('click',e=>{ const p=document.getElementById('notifPanel'); if(p && !p.hidden && !(e.target.closest && e.target.closest('.notifwrap'))) p.hidden=true; });
 function setTabBadge(tab,n,title){ document.querySelectorAll('#tabs button[data-tab="'+tab+'"]').forEach(b=>{ let bd=b.querySelector('.navbadge'); if(n>0){ if(!bd){ bd=document.createElement('span'); bd.className='navbadge'; b.appendChild(bd);} bd.textContent=n; bd.title=title||''; } else if(bd){ bd.remove(); } }); }
+// move the selected candidates into the Shortlist stage + tag them (auto "you've been shortlisted" email lands once messaging is connected, T-371)
+async function recShortlist(){
+  if(!REC_SEL.size){ toast('Select candidates first (checkboxes in the Search view)',true); return; }
+  const sel=[...REC_SEL].map(id=>REC_ALL.find(x=>x.id===id)).filter(Boolean); if(!sel.length) return;
+  const j=await recFetch('/api/recruiting?action=stage',{method:'POST',body:JSON.stringify({records:sel.map(c=>({id:c.id,status:'Shortlisted'}))})});
+  if(!j.ok){ toast('Could not shortlist: '+(j.error||''),true); return; }
+  sel.forEach(c=>c.recStatus='Shortlisted');
+  const today=new Date(), ds=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`, tag='Shortlisted '+usDate(ds);
+  const tagRecs=sel.map(c=>{ const cur=recArr(c.tags), next=cur.includes(tag)?cur:[...cur,tag]; c.tags=next; return {id:c.id,tags:next}; });
+  await recFetch('/api/recruiting?action=tag',{method:'POST',body:JSON.stringify({records:tagRecs})});
+  recCacheSave(); recBuildFacets(); recRender();
+  toast('Shortlisted '+sel.length+' candidate'+(sel.length===1?'':'s')+' - the "you’ve been shortlisted" email will send once messaging is connected.');
+}
 // start a conversation from the search view: claim the selected candidate(s), then jump into the Messages thread
 async function recMessage(){
   if(!REC_SEL.size){ toast('Select a candidate first (checkbox), then Message',true); return; }
