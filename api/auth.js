@@ -54,6 +54,15 @@ async function getUser(username) {
   const rows = await r.json();
   return rows[0] || null;
 }
+const DEFAULT_WS = 'tsa';
+// username -> workspace, from 'wsmember' records (latest wins). Unmapped users belong to TSA (the first workspace).
+async function wsMemberMap() {
+  const r = await supa("records?select=data&type=eq.wsmember&order=submitted_at.asc");
+  const map = {};
+  if (r.ok) { const rows = await r.json(); for (const row of rows) { const d = row.data; if (d && d.username) map[String(d.username).toLowerCase()] = d.ws || DEFAULT_WS; } }
+  return map;
+}
+const wsOf = (map, username) => map[String(username || '').toLowerCase()] || DEFAULT_WS;
 async function upsertUser(u) {
   await supa('users?on_conflict=username', {
     method: 'POST',
@@ -140,7 +149,10 @@ export default async function handler(req, res) {
     if (action === 'listUsers') {
       const r = await supa('users?select=username,name,role&order=name.asc');
       if (!r.ok) return res.status(200).json({ ok: false, error: 'read ' + r.status });
-      return res.status(200).json({ ok: true, users: await r.json() });
+      const all = await r.json();
+      const map = await wsMemberMap();
+      const myWs = wsOf(map, session.username); // return only members of the caller's workspace
+      return res.status(200).json({ ok: true, users: all.filter(u => wsOf(map, u.username) === myWs) });
     }
 
     // ---------- CHANGE OWN PASSWORD (any logged-in user) ----------
@@ -167,6 +179,14 @@ export default async function handler(req, res) {
       const row = { username, name: String(u.name || username), role: String(u.role || 'closer') };
       if (u.password) row.pass_hash = hashPass(u.password); // only overwrite the password when one is provided
       await upsertUser(row);
+      // add the new user to the creating admin's workspace (so tenants' rosters stay isolated)
+      const map = await wsMemberMap();
+      const myWs = wsOf(map, session.username);
+      if (wsOf(map, username) !== myWs) {
+        const now = new Date().toISOString();
+        const mrec = { id: crypto.randomUUID(), type: 'wsmember', ws: myWs, username, name: row.name, role: 'member', submittedAt: now };
+        await supa('records', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ rid: mrec.id, type: 'wsmember', submitted_at: now, data: mrec }) });
+      }
       return res.status(200).json({ ok: true });
     }
 
