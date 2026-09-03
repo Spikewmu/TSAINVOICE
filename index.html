@@ -3179,10 +3179,11 @@ function trainingSelf(user){
   cfg.modules.forEach((mo,i)=>{ const done=p[mo.id]&&p[mo.id].done;
     h+=`<div class="modcard${done?' done':''}"><div class="modhead"><span class="modstep">${done?'✓':(i+1)}</span><div style="flex:1"><h4>${esc(mo.title)}</h4><div class="modbody">${esc(mo.body)}</div>${mo.link?`<div style="margin-top:8px"><a href="${esc(mo.link)}" target="_blank" rel="noopener" class="linklike" style="font-size:13px">Open material</a></div>`:''}<div style="margin-top:10px">${done?'<span class="muted" style="font-size:12px">Completed</span>':`<button class="btn sm" onclick="repMarkModule('${mo.id}')">Mark complete</button>`}</div></div></div></div>`;
   });
+  const previewing=(typeof VIEW_AS_REAL!=='undefined' && VIEW_AS_REAL); // in preview, unlock the quiz so it can be reviewed
   h+=`<h3 class="section" style="margin-top:22px">Certification</h3>`;
-  if(!allModsDone) h+=`<p class="hint">Finish all ${total} modules to unlock the certification quiz.</p>`;
-  else if(grad){ const q=repQuizRec(user); h+=`<p class="hint">You passed with ${q.score}%. You are certified and ready to sell. Nice work.</p>`; }
-  else h+=`<div id="quizArea">${quizHTML(cfg)}</div>`;
+  if(grad){ const q=repQuizRec(user); h+=`<p class="hint">You passed with ${q.score}%. You are certified and ready to sell. Nice work.</p>`; }
+  else if(!allModsDone && !previewing) h+=`<p class="hint">Finish all ${total} modules to unlock the certification quiz.</p>`;
+  else { if(previewing && !allModsDone) h+=`<p class="hint">Preview: the quiz normally unlocks only after all ${total} modules are complete.</p>`; h+=`<div id="quizArea">${quizHTML(cfg)}</div>`; }
   return h;
 }
 let QUIZ_ANS={};
