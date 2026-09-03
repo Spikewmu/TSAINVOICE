@@ -175,11 +175,14 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true });
     }
 
-    // admin-only past here
-    if (session.role !== 'admin') return res.status(200).json({ ok: false, error: 'admin only' });
+    // admin or Sales Director past here; director actions are scoped to Sales Managers & below
+    if (session.role !== 'admin' && session.role !== 'director') return res.status(200).json({ ok: false, error: 'not authorized' });
+    const isPlatformAdmin = session.role === 'admin';
+    const DIRECTOR_MANAGES = ['manager', 'recruiter', 'webinarteam', 'closer', 'setter'];
 
     // ---------- PROVISION A CLIENT ACCOUNT (platform owner only: creates an independent workspace + its Founder-admin) ----------
     if (action === 'provisionAccount') {
+      if (!isPlatformAdmin) return res.status(200).json({ ok: false, error: 'Super Admin only' });
       const map0 = await wsMemberMap();
       if (wsOf(map0, session.username) !== DEFAULT_WS) return res.status(200).json({ ok: false, error: 'Only the platform owner can create client accounts' });
       const teamName = String(body.teamName || '').trim();
@@ -204,6 +207,7 @@ export default async function handler(req, res) {
 
     // ---------- SET AN ADD-ON on a client workspace (platform owner only: e.g. the Recruiter pack + its hire cap) ----------
     if (action === 'setAddon') {
+      if (!isPlatformAdmin) return res.status(200).json({ ok: false, error: 'Super Admin only' });
       const map0 = await wsMemberMap();
       if (wsOf(map0, session.username) !== DEFAULT_WS) return res.status(200).json({ ok: false, error: 'Only the platform owner can change add-ons' });
       const ws = String(body.ws || '').trim();
@@ -232,6 +236,13 @@ export default async function handler(req, res) {
       const u = body.user || {};
       const username = String(u.username || '').trim();
       if (!username) return res.status(200).json({ ok: false, error: 'username required' });
+      // a Sales Director may only create/edit Sales Managers & below (never admins, directors, or client founders)
+      if (!isPlatformAdmin) {
+        const reqRole = String(u.role || 'closer');
+        if (!DIRECTOR_MANAGES.includes(reqRole)) return res.status(200).json({ ok: false, error: 'A Sales Director can only assign Sales Manager and below' });
+        const existing = await getUser(username);
+        if (existing && !DIRECTOR_MANAGES.includes(existing.role)) return res.status(200).json({ ok: false, error: 'You cannot edit this account' });
+      }
       const map = await wsMemberMap();
       const myWs = wsOf(map, session.username);
       const isNewMember = wsOf(map, username) !== myWs; // adding someone not already in my workspace
@@ -257,12 +268,17 @@ export default async function handler(req, res) {
     if (action === 'deleteUser') {
       const username = String(body.username || '').trim();
       if (!username) return res.status(200).json({ ok: false });
+      if (!isPlatformAdmin) { // a Sales Director may only remove Sales Managers & below
+        const existing = await getUser(username);
+        if (existing && !DIRECTOR_MANAGES.includes(existing.role)) return res.status(200).json({ ok: false, error: 'You cannot remove this account' });
+      }
       await supa('users?username=eq.' + encodeURIComponent(username), { method: 'DELETE' });
       return res.status(200).json({ ok: true });
     }
 
     // ---------- IMPORT ROSTER FROM APPS SCRIPT (one-time, so dropdowns are complete before everyone logs in) ----------
     if (action === 'importUsers') {
+      if (!isPlatformAdmin) return res.status(200).json({ ok: false, error: 'Super Admin only' });
       const url = process.env.APPS_SCRIPT_URL;
       if (!url) return res.status(200).json({ ok: false, error: 'no APPS_SCRIPT_URL' });
       const master = process.env.MASTER_PASS || '';

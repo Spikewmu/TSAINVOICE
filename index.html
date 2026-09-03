@@ -1089,13 +1089,14 @@
     <h3 style="margin:0 0 2px">Roles for <span id="rolesModalWho" style="color:var(--gold)"></span></h3>
     <p class="hint" style="margin:0 0 12px">Assign one or more roles. Access is the combination of everything checked.</p>
     <div id="rolesBoxes" style="display:flex;flex-direction:column;gap:9px">
-      <label style="display:flex;gap:9px;align-items:center"><input type="checkbox" value="admin"> Admin <span class="muted" style="font-size:11px">full access</span></label>
+      <label style="display:flex;gap:9px;align-items:center"><input type="checkbox" value="admin"> Super Admin <span class="muted" style="font-size:11px">full access</span></label>
+      <label style="display:flex;gap:9px;align-items:center"><input type="checkbox" value="director"> Sales Director <span class="muted" style="font-size:11px">edits managers &amp; below</span></label>
       <label style="display:flex;gap:9px;align-items:center"><input type="checkbox" value="manager"> Sales Manager</label>
       <label style="display:flex;gap:9px;align-items:center"><input type="checkbox" value="recruiter"> Recruiter</label>
       <label style="display:flex;gap:9px;align-items:center"><input type="checkbox" value="webinarteam"> Webinar Team</label>
       <label style="display:flex;gap:9px;align-items:center"><input type="checkbox" value="closer"> Closer</label>
       <label style="display:flex;gap:9px;align-items:center"><input type="checkbox" value="setter"> Setter</label>
-      <label style="display:flex;gap:9px;align-items:center"><input type="checkbox" value="founder"> Founder / Client</label>
+      <label style="display:flex;gap:9px;align-items:center"><input type="checkbox" value="founder"> Client Admin <span class="muted" style="font-size:11px">founder, own account</span></label>
     </div>
     <div id="rolesErr" class="fieldhelp" style="color:var(--warn);margin-top:8px" hidden></div>
     <div class="row-actions" style="margin-top:14px"><button class="btn gold sm" onclick="rolesEditSave()">Save roles</button><button class="btn ghost sm" onclick="rolesEditClose()">Cancel</button></div>
@@ -1428,6 +1429,7 @@ function startApp(){
 function baseAllow(role){
   return ({
     admin:['dash','reps','clients','onboarding','meeting','promises','timeoff','postcall','eod','training','mgreod','webinar','calllog','adminreport','recruiting','messages','data','users','settings'],
+    director:['dash','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','eod','training','mgreod','webinar','calllog','recruiting','messages','adminreport'],
     manager:['dash','reps','clients','onboarding','meeting','promises','timeoff','postcall','eod','training','mgreod','webinar','calllog','recruiting','messages'],
     founder:['dash'],
     recruiter:['dash','recruiting','messages','timeoff'],
@@ -1437,8 +1439,12 @@ function baseAllow(role){
   })[role] || ['eod'];
 }
 // ---- multi-role: a user can hold several roles (stored as a 'userroles' record); access = the union ----
-const ROLE_RANK={admin:6,manager:5,webinarteam:4,recruiter:4,closer:3,setter:3,founder:2};
-const OPERATOR_ROLES=['admin','manager','recruiter','webinarteam']; // internal TSA operator roles
+const ROLE_RANK={admin:7,director:5,manager:4,recruiter:3,webinarteam:3,closer:2,setter:2,founder:1};
+const OPERATOR_ROLES=['admin','director','manager','recruiter','webinarteam']; // internal TSA operator roles (TSA Staff)
+const DIRECTOR_MANAGES=['manager','recruiter','webinarteam','closer','setter']; // a Sales Director can edit these (Sales Managers and below), never admins/directors/clients
+// which roles the signed-in person is allowed to assign, and who they may edit
+function assignableRoles(){ const r=SESSION&&SESSION.role; if(r==='admin') return ['admin','director','manager','recruiter','webinarteam','closer','setter','founder']; if(r==='director') return DIRECTOR_MANAGES.slice(); return []; }
+function canManageUser(username){ const r=SESSION&&SESSION.role; if(username==='tsaboss') return false; if(r==='admin') return true; if(r==='director'){ const tr=rolesFor(username); return tr.length>0 && tr.every(x=>DIRECTOR_MANAGES.includes(x)); } return false; }
 function rolesFor(username){ let best=null,bt=''; RECORDS.forEach(x=>{ if(x.type==='userroles' && nrm(x.username)===nrm(username)){ if((x.submittedAt||'')>=bt){ bt=x.submittedAt||''; best=x; } } }); if(best&&Array.isArray(best.roles)&&best.roles.length) return best.roles.slice(); const u=(USERS_CACHE||[]).find(z=>nrm(z.username)===nrm(username)); return u?[u.role]:[]; }
 function hasRole(username,r){ return rolesFor(username).includes(r); }
 function primaryRole(roles){ return (roles||[]).slice().sort((a,b)=>(ROLE_RANK[b]||0)-(ROLE_RANK[a]||0))[0]||'closer'; }
@@ -2885,7 +2891,7 @@ function claimActive(cl){ // does this claim currently hold the candidate?
   return true;
 }
 function ownerOf(candId){ const cl=claimMap()[candId]; return claimActive(cl)?{owner:cl.owner,ownerName:cl.ownerName||cl.owner,claim:cl}:null; }
-function isOversight(){ return SESSION&&(SESSION.role==='admin'||SESSION.role==='manager'); }
+function isOversight(){ return SESSION&&(SESSION.role==='admin'||SESSION.role==='director'||SESSION.role==='manager'); }
 function canActOn(candId){ if(!SESSION) return false; if(isOversight()) return true; const o=ownerOf(candId); return !o||nrm(o.owner)===nrm(SESSION.username); }
 function ownerBadge(candId){ const o=ownerOf(candId); if(!o) return ''; const mine=SESSION&&nrm(o.owner)===nrm(SESSION.username); return `<span class="ownedby${mine?' mine':''}" title="Conversation owner">${mine?'You':esc(o.ownerName||o.owner)}</span>`; }
 async function claimCandidate(candId,candName){ // claim if free; false if blocked (owned by someone else and I'm not oversight)
@@ -3479,7 +3485,7 @@ function teamBoxesHtml(checked){
 // or a Founder still managed by TSA (dashboard-only until their account is graduated).
 function roleLabel(r){
   if(r==='admin') return (typeof currentWs==='function' && currentWs()!==DEFAULT_WS) ? 'Account Admin' : 'Super Admin';
-  return ({manager:'Sales Manager',founder:'Account Admin',webinarteam:'Webinar Team',recruiter:'Recruiter',closer:'Closer',setter:'Setter'})[r]||r;
+  return ({director:'Sales Director',manager:'Sales Manager',founder:'Account Admin',webinarteam:'Webinar Team',recruiter:'Recruiter',closer:'Closer',setter:'Setter'})[r]||r;
 }
 // a manager/admin's responsibilities, grouped by function so it reads at a glance (e.g. Keithan = Webinar on several accounts + Setters on Prime)
 function roleSummaryHTML(u){
@@ -3490,22 +3496,24 @@ function roleSummaryHTML(u){
 let USERS_LIST=[];
 const USER_GROUPS=[['admin','Admins'],['manager','Sales Managers'],['webinarteam','Webinar Team'],['recruiter','Recruiters'],['closer','Closers'],['setter','Setters'],['founder','Founder / Client access']];
 function userRowHTML(u, isAdmin){
+  const canManage = !u.master && canManageUser(u.username); // Super Admin edits anyone; Sales Director edits managers & below
   const teams=u.master?[]:teamsFor(u.username);
-  const rolesBtn=` <button class="btn sm ghost" onclick="editRoles('${esc(u.username)}')">Responsibilities</button>`;
+  const rolesBtn = canManage ? ` <button class="btn sm ghost" onclick="editRoles('${esc(u.username)}')">Responsibilities</button>` : '';
   const isStaff = !u.master && u.role!=='founder';
-  const datesBtn = (isAdmin&&isStaff) ? ` <button class="btn sm ghost" onclick="editRepMeta('${esc(u.username)}')">Hire / dates</button>` : '';
+  const datesBtn = (canManage&&isStaff) ? ` <button class="btn sm ghost" onclick="editRepMeta('${esc(u.username)}')">Hire / dates</button>` : '';
+  const teamEditBtn = canManage ? ` <button class="btn sm ghost" onclick="editTeams('${esc(u.username)}')">Edit</button>` : '';
   const teamCell = u.master ? '<span class="muted">-</span>'
     : (['closer','setter','founder','recruiter'].includes(u.role)
-        ? ((teams.length?teams.map(t=>`<span class="teamtag">${esc(t)}</span>`).join(''):'<span class="tag" style="color:var(--warn);border-color:var(--warn)">none - not scoped</span>')+` <button class="btn sm ghost" onclick="editTeams('${esc(u.username)}')">Edit</button>`+datesBtn+(isStaff?repMetaSummary(u.username):''))
+        ? ((teams.length?teams.map(t=>`<span class="teamtag">${esc(t)}</span>`).join(''):'<span class="tag" style="color:var(--warn);border-color:var(--warn)">none - not scoped</span>')+teamEditBtn+datesBtn+(isStaff?repMetaSummary(u.username):''))
         : (u.role==='admin'
             ? '<span class="muted">all (admin)</span>'+roleSummaryHTML(u)+rolesBtn+datesBtn+repMetaSummary(u.username)
             : ((roleSummaryHTML(u)||'<span class="tag" style="color:var(--warn);border-color:var(--warn)">no accounts assigned yet</span>')+rolesBtn+datesBtn+repMetaSummary(u.username))));
   const actions = u.master ? '<span class="tag">master, set in Settings</span>'
-    : (isAdmin ? `<button class="btn sm ghost" onclick="resetPassword('${esc(u.username)}')">Reset password</button> <button class="btn sm ghost" style="color:var(--warn);border-color:var(--warn)" onclick="delUser('${esc(u.username)}')">Remove</button>` : '');
+    : (canManage ? `<button class="btn sm ghost" onclick="resetPassword('${esc(u.username)}')">Reset password</button> <button class="btn sm ghost" style="color:var(--warn);border-color:var(--warn)" onclick="delUser('${esc(u.username)}')">Remove</button>` : '');
   const myRoles = u.master?['admin']:rolesFor(u.username);
   const chips = (myRoles.length?myRoles:['closer']).map(r=>`<span class="pill">${esc(roleLabel(r))}</span>`).join(' ');
   const founderNote = (!u.master && myRoles.includes('founder') && !isTsaStaff(u.username)) ? '<div class="muted" style="font-size:11px;margin-top:3px">Dashboard only while managed by TSA</div>' : '';
-  const editRolesBtn = (isAdmin && !u.master) ? `<button class="btn sm ghost" style="margin-top:5px" onclick="rolesEditOpen('${esc(u.username)}')">Edit roles</button>` : '';
+  const editRolesBtn = canManage ? `<button class="btn sm ghost" style="margin-top:5px" onclick="rolesEditOpen('${esc(u.username)}')">Edit roles</button>` : '';
   const accessCell = `${chips}${founderNote}${editRolesBtn?('<div>'+editRolesBtn+'</div>'):''}`;
   return `<tr><td>${esc(u.name)}</td><td>${esc(u.username)}</td><td>${accessCell}</td><td>${teamCell}</td><td>${actions}</td></tr>`;
 }
@@ -3659,9 +3667,11 @@ async function graduateClient(ev){
 async function renderUsers(){
   const isAdmin = SESSION.role==='admin';
   renderClientAccounts();
-  // managers can only create closer/setter; admins can also create manager/admin
+  // the create dropdown offers only roles the signed-in person is allowed to assign (Super Admin: all; Sales Director: manager & below)
   const roleSel=document.querySelector('#userForm [name=role]');
-  if(roleSel) roleSel.innerHTML = '<option value="closer">Closer</option><option value="setter">Setter</option>'+(isAdmin?'<option value="recruiter">Recruiter</option><option value="manager">Sales Manager</option><option value="webinarteam">Webinar Team</option><option value="founder">Account Admin (client, dashboard only)</option><option value="admin">Super Admin (TSA)</option>':'')+(isAdmin?'<option value="" disabled>--</option>':'')+(isAdmin?'<option value="" disabled>Tip: create with one role, then Edit roles to stack more</option>':'');
+  if(roleSel){ const order=['closer','setter','recruiter','webinarteam','manager','director','founder','admin'], ar=assignableRoles();
+    const opts=order.filter(r=>ar.includes(r)).map(r=>`<option value="${r}">${esc(roleLabel(r))}</option>`).join('');
+    roleSel.innerHTML = opts + (ar.length>1?'<option value="" disabled>--</option><option value="" disabled>Tip: create with one role, then Edit roles to stack more</option>':''); }
   const nt=document.getElementById('newUserTeams'); if(nt) nt.innerHTML=teamBoxesHtml([]);
   const tbl=document.getElementById('usersGrouped');
   // cache-first: draw whatever we already have instantly, spinner only on a cold load
@@ -3763,18 +3773,20 @@ async function changeUserRole(username, role){
 let ROLES_EDIT=null;
 function rolesEditOpen(username){
   if(username==='tsaboss'){ toast('Master admin role is fixed in Settings',true); return; }
-  if(SESSION.role!=='admin'){ toast('Only a Super Admin can change roles',true); return; }
-  ROLES_EDIT=username; const u=userByName(username), cur=rolesFor(username);
+  if(!canManageUser(username)){ toast('You can only edit Sales Managers and below',true); return; }
+  ROLES_EDIT=username; const u=userByName(username), cur=rolesFor(username), allowed=assignableRoles();
   document.getElementById('rolesModalWho').textContent=u.name||username;
-  document.querySelectorAll('#rolesBoxes input[type=checkbox]').forEach(cb=>{ cb.checked=cur.includes(cb.value); });
+  document.querySelectorAll('#rolesBoxes input[type=checkbox]').forEach(cb=>{ const lab=cb.closest('label'), can=allowed.includes(cb.value); if(lab) lab.style.display=can?'':'none'; cb.checked=can&&cur.includes(cb.value); });
   const err=document.getElementById('rolesErr'); if(err) err.hidden=true;
   document.getElementById('rolesModal').hidden=false;
 }
 function rolesEditClose(){ const m=document.getElementById('rolesModal'); if(m) m.hidden=true; ROLES_EDIT=null; }
 async function rolesEditSave(){
   if(!ROLES_EDIT) return;
-  const roles=[...document.querySelectorAll('#rolesBoxes input:checked')].map(cb=>cb.value);
+  const allowed=assignableRoles();
+  const roles=[...document.querySelectorAll('#rolesBoxes input:checked')].map(cb=>cb.value).filter(r=>allowed.includes(r));
   const err=document.getElementById('rolesErr');
+  if(!canManageUser(ROLES_EDIT)){ if(err){ err.textContent='You can only edit Sales Managers and below.'; err.hidden=false; } return; }
   if(!roles.length){ if(err){ err.textContent='Pick at least one role.'; err.hidden=false; } return; }
   const prim=primaryRole(roles), u=userByName(ROLES_EDIT);
   // 1) store the multi-role set; 2) set the account's primary role (drives the security tier + the login token)
@@ -3793,7 +3805,7 @@ async function saveUser(e){
   e.preventDefault();
   const o=formObj(e.target); o.username=o.username.trim().toLowerCase();
   if(o.username==='tsaboss'){ toast('tsaboss is the master admin, change it in Settings',true); return; }
-  if(SESSION.role==='manager' && !['closer','setter'].includes(o.role)){ toast('Managers can only create closers and setters',true); return; }
+  if(!assignableRoles().includes(o.role)){ toast('You are not allowed to assign that role',true); return; }
   const teams=[...document.querySelectorAll('#newUserTeams input:checked')].map(i=>i.value);
   if(SESSION && SESSION.token){
     const res=await authApi({action:'saveUser', token:SESSION.token, user:o});
@@ -3819,6 +3831,7 @@ async function importUsers(){
   else toast('Import failed'+(res&&res.error?': '+res.error:''),true);
 }
 async function delUser(username){
+  if(!canManageUser(username)){ toast('You can only remove Sales Managers and below',true); return; }
   if(!confirm('Remove user '+username+'?')) return;
   if(SESSION && SESSION.token){ const res=await authApi({action:'deleteUser', token:SESSION.token, username}); if(!res||!res.ok){ toast('Delete failed',true); return; } }
   else if(CFG.endpoint){ const res=await api({action:'deleteUser', ...authFields(), username}); if(!res||!res.ok){ toast('Delete failed',true); return; } }
