@@ -300,12 +300,13 @@
   </div>
   <select id="viewAsSel" onchange="viewAs(this.value)" style="display:none" title="Preview the app as another role">
     <option value="">View as...</option>
+    <option value="director">Sales Director</option>
     <option value="manager">Sales Manager</option>
     <option value="webinarteam">Webinar Team</option>
     <option value="recruiter">Recruiter</option>
     <option value="closer">Closer</option>
     <option value="setter">Setter</option>
-    <option value="founder">Founder / Client</option>
+    <option value="founder">Client Admin (Founder)</option>
   </select>
   <div class="who" id="whoTag" onclick="openChangePw()" style="cursor:pointer" title="Change your password"></div>
   <button class="logout" onclick="logout()">Sign out</button>
@@ -3122,6 +3123,17 @@ function repIntakeDone(user){ const r=repProgress(user)['intake']; return !!(r&&
 function repOnbPct(user){ const cfg=repOnbConfig(), hasIntake=repIntakeFields(cfg).length>0?1:0, total=hasIntake+repTasks(cfg).length+cfg.modules.length+1;
   const done=(hasIntake&&repIntakeDone(user)?1:0)+repTasksDone(user,cfg)+repModulesDone(user,cfg)+(repGraduated(user)?1:0);
   return total?Math.round(done/total*100):0; }
+// admin: wipe a person's onboarding progress (supersede every done key with done:false, latest-wins)
+async function repResetProgress(username){
+  if(!(SESSION&&SESSION.role==='admin')){ toast('Only a Super/Account Admin can reset onboarding',true); return; }
+  username=String(username||'').trim(); if(!username) return;
+  const prog=repProgress(username), keys=Object.keys(prog).filter(k=>prog[k]&&(prog[k].done||prog[k].data));
+  if(!keys.length){ toast('Nothing to reset for that person'); return; }
+  const uObj=userByName(username), nm=(uObj&&uObj.name)||username;
+  if(!confirm('Reset onboarding for '+nm+'?\n\nClears their intake, checklist, training, and certification progress.')) return;
+  await Promise.all(keys.map(k=>addRecord({type:'reponb',user:username,name:nm,key:k,done:false,at:new Date().toISOString(),reset:true})));
+  toast('Onboarding reset for '+nm); renderTraining();
+}
 async function repMarkModule(id){ await addRecord({type:'reponb',user:(SESSION&&SESSION.username)||'',name:(SESSION&&SESSION.name)||'',key:id,done:true,at:new Date().toISOString()}); renderTraining(); }
 async function repMarkTask(tid){ await addRecord({type:'reponb',user:(SESSION&&SESSION.username)||'',name:(SESSION&&SESSION.name)||'',key:'task:'+tid,done:true,at:new Date().toISOString()}); renderTraining(); }
 async function repSubmitIntake(){
@@ -3207,6 +3219,13 @@ function trainingRoster(){
   let h='';
   const pending=hires.filter(hn=>!reps.some(u=>nrm(u.name)===nrm(hn.name)));
   if(pending.length) h+=`<div class="tag" style="color:var(--gold);border-color:var(--gold);display:block;white-space:normal;padding:9px 12px;line-height:1.5;margin-bottom:12px">${pending.length} newly hired candidate${pending.length>1?'s have':' has'} accepted and need a login (Users tab) to start onboarding: ${pending.map(hn=>esc(hn.name||'candidate')).join(', ')}.</div>`;
+  if(SESSION&&SESSION.role==='admin'){
+    const opts=(USERS_CACHE||[]).slice().sort((a,b)=>String(a.name||a.username).localeCompare(String(b.name||b.username))).map(u=>`<option value="${esc(u.username)}">${esc(u.name||u.username)} - ${esc(roleLabel(u.role))}</option>`).join('');
+    h+=`<div class="panel" style="padding:10px 12px;margin-bottom:12px;display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+      <div class="field" style="min-width:230px;margin:0"><label>Reset a person's onboarding</label><select id="trResetUser">${opts}</select></div>
+      <button class="btn ghost sm" style="color:var(--warn);border-color:var(--warn)" onclick="repResetProgress((document.getElementById('trResetUser')||{}).value)">Reset onboarding</button>
+      <span class="muted" style="font-size:11px;align-self:center">Clears intake, checklist, training and certification progress.</span></div>`;
+  }
   if(!reps.length) return h+'<p class="hint">No setters or closers on the roster yet.</p>';
   const intakeF=repIntakeFields(cfg), tasks=repTasks(cfg), mods=cfg.modules;
   h+=reps.map((u,i)=>{
@@ -3227,6 +3246,7 @@ function trainingRoster(){
       <b style="font-size:12px;display:block;margin-top:8px">Checklist</b>${tasks.length?tasks.map(t=>`<div style="font-size:12.5px;margin:3px 0">${p['task:'+t.id]&&p['task:'+t.id].done?'✓':'○'} ${esc(t.title)}</div>`).join(''):'<div class="muted" style="font-size:12px">none</div>'}
       <b style="font-size:12px;display:block;margin-top:8px">Training</b>${mods.map(m=>`<div style="font-size:12.5px;margin:3px 0">${p[m.id]&&p[m.id].done?'✓':'○'} ${esc(m.title)}</div>`).join('')}
       <b style="font-size:12px;display:block;margin-top:8px">Certification</b><div style="font-size:12.5px;margin:3px 0">${grad?('✓ Passed'+(q&&q.score!=null?' ('+q.score+'%)':'')):(q?('✗ Attempted'+(q.score!=null?' - '+q.score+'%':'')):'○ Not taken')}</div>
+      ${(SESSION&&SESSION.role==='admin')?`<div style="margin-top:10px"><button class="btn ghost sm" style="color:var(--warn);border-color:var(--warn)" onclick="event.stopPropagation();repResetProgress('${esc(u.username).replace(/'/g,"\\'")}')">Reset this person's onboarding</button></div>`:''}
     </div>`;
     return row+detail;
   }).join('');
