@@ -4,7 +4,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>TSA Sales HQ V2.0</title>
+<title>Sales HQ</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;0,800;1,600&display=swap" rel="stylesheet">
@@ -257,8 +257,8 @@
 <!-- ============ GATE ============ -->
 <div id="gate" class="gate">
   <div class="top">
-    <div class="dot">TSA</div>
-    <h2 style="margin:.2em 0;font-family:var(--serif);font-weight:700;font-size:26px">Sales HQ V2.0</h2>
+    <div class="dot">SH</div>
+    <h2 style="margin:.2em 0;font-family:var(--serif);font-weight:700;font-size:26px">Sales HQ</h2>
     <p class="hint" id="gateSub" style="margin:.3em 0 0">Sign in to your team's workspace.</p>
   </div>
   <!-- sign in -->
@@ -284,7 +284,7 @@
 <!-- ============ APP ============ -->
 <div id="app" hidden>
 <header class="app">
-  <div class="brand"><span class="dot"></span> TSA Sales HQ V2.0</div>
+  <div class="brand"><span class="dot"></span> Sales HQ</div>
   <div class="sub" id="storeTag"></div>
   <div class="spacer"></div>
   <div class="notifwrap">
@@ -1338,6 +1338,8 @@ function applyNavAccess(){
     if(f.web.length) ['dash','meeting','webinar'].forEach(t=>{ if(!allow.includes(t)) allow.push(t); });
     if(f.set.length||f.clo.length) ['dash','reps','clients','onboarding','meeting','mgreod','calllog'].forEach(t=>{ if(!allow.includes(t)) allow.push(t); });
   }
+  // TSA-only integrations (Airtable recruiting, candidate messaging) are hidden for other workspaces
+  if(currentWs()!==DEFAULT_WS){ ['recruiting','messages'].forEach(t=>{ const i=allow.indexOf(t); if(i>=0) allow.splice(i,1); }); }
   document.querySelectorAll('#tabs button[data-tab]').forEach(b=>{ b.hidden = !allow.includes(b.dataset.tab); });
   pruneNavGroups();
   updateNavBadges();
