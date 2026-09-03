@@ -3107,14 +3107,43 @@ async function submitQuiz(){
   await addRecord({type:'reponb',user:(SESSION&&SESSION.username)||'',name:(SESSION&&SESSION.name)||'',key:'quiz',done:passed,passed,score,at:new Date().toISOString()});
   if(passed) setTimeout(renderTraining,1400); else setTimeout(()=>{ QUIZ_ANS={}; renderTraining(); },2600);
 }
+function repStageLabel(user,cfg,p){
+  cfg=cfg||repOnbConfig(); p=p||repProgress(user);
+  const intake=repIntakeFields(cfg), tasks=repTasks(cfg);
+  if(intake.length && !(p['intake']&&p['intake'].done)) return 'Your details';
+  const td=tasks.filter(t=>p['task:'+t.id]&&p['task:'+t.id].done).length; if(td<tasks.length) return 'Checklist';
+  const md=cfg.modules.filter(m=>p[m.id]&&p[m.id].done).length; if(md<cfg.modules.length) return 'Training';
+  if(!repGraduated(user)) return 'Certification';
+  return 'Graduated';
+}
+function trToggleRep(i){ const d=document.getElementById('trdet_'+i); if(d) d.hidden=!d.hidden; }
 function trainingRoster(){
   const cfg=repOnbConfig(), reps=(USERS_CACHE||[]).filter(u=>['closer','setter'].includes(u.role)), hires=RECORDS.filter(x=>x.type==='hire');
   let h='';
   const pending=hires.filter(hn=>!reps.some(u=>nrm(u.name)===nrm(hn.name)));
   if(pending.length) h+=`<div class="tag" style="color:var(--gold);border-color:var(--gold);display:block;white-space:normal;padding:9px 12px;line-height:1.5;margin-bottom:12px">${pending.length} newly hired candidate${pending.length>1?'s have':' has'} accepted and need a login (Users tab) to start onboarding: ${pending.map(hn=>esc(hn.name||'candidate')).join(', ')}.</div>`;
   if(!reps.length) return h+'<p class="hint">No setters or closers on the roster yet.</p>';
-  h+=reps.map(u=>{ const pct=repOnbPct(u.username), grad=repGraduated(u.username), md=repModulesDone(u.username,cfg);
-    return `<div class="trrow"><div><b>${esc(u.name||u.username)}</b> <span class="muted" style="font-size:12px">${esc(roleLabel(u.role))}</span></div><div><div class="progbar" style="height:8px"><i style="width:${pct}%"></i></div><span class="muted" style="font-size:11px">${md}/${cfg.modules.length} modules${grad?', certified':''}</span></div><div>${grad?'<span class="gradbadge" style="font-size:12px;padding:3px 10px">Graduated</span>':`<span class="pill">${pct}%</span>`}</div></div>`;
+  const intakeF=repIntakeFields(cfg), tasks=repTasks(cfg), mods=cfg.modules;
+  h+=reps.map((u,i)=>{
+    const p=repProgress(u.username), pct=repOnbPct(u.username), grad=repGraduated(u.username);
+    const intakeDone=!!(p['intake']&&p['intake'].done), intakeData=(p['intake']&&p['intake'].data)||{};
+    const td=tasks.filter(t=>p['task:'+t.id]&&p['task:'+t.id].done).length, md=mods.filter(m=>p[m.id]&&p[m.id].done).length;
+    const q=p['quiz'], stage=repStageLabel(u.username,cfg,p);
+    const chip=(lab,ok,cnt)=>`<span style="font-size:11px;color:${ok?'var(--good,#3ddc84)':'var(--muted)'}">${ok?'✓':'○'} ${lab}${cnt!=null?' '+cnt:''}</span>`;
+    const row=`<div class="trrow" style="grid-template-columns:1.2fr 1.5fr auto auto;align-items:center;cursor:pointer" onclick="trToggleRep(${i})">
+      <div><b>${esc(u.name||u.username)}</b> <span class="muted" style="font-size:12px">${esc(roleLabel(u.role))}</span></div>
+      <div><div class="progbar" style="height:8px"><i style="width:${pct}%"></i></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:5px">${intakeF.length?chip('Details',intakeDone):''}${chip('Checklist',td>=tasks.length,td+'/'+tasks.length)}${chip('Training',md>=mods.length,md+'/'+mods.length)}${chip('Certified',grad)}</div></div>
+      <div>${grad?'<span class="gradbadge" style="font-size:12px;padding:3px 10px">Graduated</span>':`<span class="pill">${esc(stage)}</span>`}</div>
+      <div><span class="pill">${pct}%</span></div>
+    </div>`;
+    const detail=`<div id="trdet_${i}" hidden class="panel" style="margin:-4px 0 10px;padding:12px 14px">
+      ${intakeF.length?`<b style="font-size:12px">Details</b>${intakeF.map(f=>`<div style="font-size:12.5px;margin:3px 0"><span class="muted">${esc(f.label)}:</span> ${intakeDone?esc(f.type==='checkbox'?(intakeData[f.id]?'agreed':'not agreed'):(intakeData[f.id]||'—')):'<span class="muted">not submitted</span>'}</div>`).join('')}`:''}
+      <b style="font-size:12px;display:block;margin-top:8px">Checklist</b>${tasks.length?tasks.map(t=>`<div style="font-size:12.5px;margin:3px 0">${p['task:'+t.id]&&p['task:'+t.id].done?'✓':'○'} ${esc(t.title)}</div>`).join(''):'<div class="muted" style="font-size:12px">none</div>'}
+      <b style="font-size:12px;display:block;margin-top:8px">Training</b>${mods.map(m=>`<div style="font-size:12.5px;margin:3px 0">${p[m.id]&&p[m.id].done?'✓':'○'} ${esc(m.title)}</div>`).join('')}
+      <b style="font-size:12px;display:block;margin-top:8px">Certification</b><div style="font-size:12.5px;margin:3px 0">${grad?('✓ Passed'+(q&&q.score!=null?' ('+q.score+'%)':'')):(q?('✗ Attempted'+(q.score!=null?' - '+q.score+'%':'')):'○ Not taken')}</div>
+    </div>`;
+    return row+detail;
   }).join('');
   return h;
 }
