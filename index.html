@@ -294,10 +294,20 @@
     </button>
     <div class="notifpanel" id="notifPanel" hidden></div>
   </div>
+  <select id="viewAsSel" onchange="viewAs(this.value)" style="display:none" title="Preview the app as another role">
+    <option value="">View as...</option>
+    <option value="manager">Sales Manager</option>
+    <option value="webinarteam">Webinar Team</option>
+    <option value="recruiter">Recruiter</option>
+    <option value="closer">Closer</option>
+    <option value="setter">Setter</option>
+    <option value="founder">Founder / Client</option>
+  </select>
   <div class="who" id="whoTag" onclick="openChangePw()" style="cursor:pointer" title="Change your password"></div>
   <button class="logout" onclick="logout()">Sign out</button>
 </header>
 
+<div id="viewAsBanner" hidden style="background:var(--gold);color:#241c08;padding:7px 20px;font-size:13px;font-weight:600;text-align:center"></div>
 <div id="planBanner" hidden></div>
 <div class="shell">
 <nav class="tabs" id="tabs">
@@ -1341,6 +1351,7 @@ function startApp(){
   document.getElementById('app').hidden=false;
   const role=SESSION.role;
   document.getElementById('whoTag').textContent = SESSION.name+' ('+roleLabel(role)+')';
+  const va=document.getElementById('viewAsSel'); if(va) va.style.display=(role==='admin')?'':'none'; // super-admin role preview
   document.getElementById('storeTag').textContent = '';
   const allow = baseAllow(role);
   document.querySelectorAll('#tabs button[data-tab]').forEach(b=>{ b.hidden = !allow.includes(b.dataset.tab); });
@@ -1384,6 +1395,17 @@ function applyNavAccess(){
   pruneNavGroups();
   updateNavBadges();
 }
+// super-admin "view as" - preview the app as another role (layout only; the real access/token is unchanged, resets on reload)
+let VIEW_AS_REAL=null;
+function viewAs(role){
+  if(!SESSION) return;
+  if(VIEW_AS_REAL===null) VIEW_AS_REAL=SESSION.role; // remember the real role
+  if(!role || role===VIEW_AS_REAL){ SESSION.role=VIEW_AS_REAL; VIEW_AS_REAL=null; const sel=document.getElementById('viewAsSel'); if(sel) sel.value=''; const b=document.getElementById('viewAsBanner'); if(b) b.hidden=true; applyNavAccess(); showTab('dash'); return; }
+  SESSION.role=role;
+  const b=document.getElementById('viewAsBanner'); if(b){ b.hidden=false; b.innerHTML='Previewing as <b>'+esc(roleLabel(role))+'</b> (layout only - your access is unchanged). <span style="text-decoration:underline;cursor:pointer" onclick="exitViewAs()">Exit preview</span>'; }
+  applyNavAccess(); showTab('dash');
+}
+function exitViewAs(){ viewAs(''); }
 // hide a nav group whose tabs are all hidden for this role
 function pruneNavGroups(){ document.querySelectorAll('#tabs .navgroup').forEach(g=>{ g.hidden = ![...g.querySelectorAll('button[data-tab]')].some(b=>!b.hidden); }); }
 // lock a rep's identity into the forms
