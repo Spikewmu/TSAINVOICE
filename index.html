@@ -1336,6 +1336,8 @@ function renderBilling(){
 }
 function updateWsBrand(){ const el=document.getElementById('storeTag'); if(el) el.textContent=currentWsName(); renderPlanBanner(); }
 async function addRecord(rec){
+  // "View as" is a read-only preview: never let a previewed action write real data (it would save under YOUR account)
+  if(typeof VIEW_AS_REAL!=='undefined' && VIEW_AS_REAL){ toast('Preview mode - changes are not saved. Exit preview to make real changes.',true); return; }
   rec.id=uid(); rec.submittedAt=new Date().toISOString(); rec.submittedET=nowET();
   if(rec.ws==null) rec.ws=currentWs(); // stamp the tenant so data is walled off by workspace
   RECORDS.push(rec); save(LS.data,RECORDS);
