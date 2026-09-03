@@ -1081,6 +1081,14 @@ async function ensureKey(){
   try{ const res=await api({action:'getKey', ...authFields()}); if(res&&res.ok&&res.supaKey){ SESSION.supaKey=res.supaKey; save(LS.auth,SESSION); } }catch(e){}
 }
 async function remoteGet(){
+  // Workspace-scoped read via the server: returns only the caller's tenant data (multi-tenant isolation).
+  // Falls back to the direct read if the endpoint is unavailable, so the app never goes dark mid-migration.
+  if(SESSION && SESSION.token){
+    try{
+      const r=await fetch('/api/data?action=records',{method:'POST',headers:{'Content-Type':'application/json','x-session-token':SESSION.token},body:'{}'});
+      if(r.ok){ const j=await r.json(); if(j && j.ok && Array.isArray(j.records)) return j.records; }
+    }catch(e){ console.warn('scoped read unavailable, falling back to direct read', e); }
+  }
   // Primary: Supabase (records live here now). Falls back to the Apps Script sheet.
   if(supaOn()){
     try{
@@ -1119,8 +1127,13 @@ function dedupeRecords(list){
   }
   return out;
 }
+/* ---- multi-tenant workspaces: every record belongs to a workspace (tenant). TSA is the default/first workspace. ---- */
+const DEFAULT_WS='tsa';
+function wsForUser(username){ let ws=DEFAULT_WS, best=''; RECORDS.forEach(x=>{ if(x.type==='wsmember' && String(x.username||'').trim().toLowerCase()===String(username||'').trim().toLowerCase()){ if((x.submittedAt||'')>best){ best=x.submittedAt||''; ws=x.ws||DEFAULT_WS; } } }); return ws; }
+function currentWs(){ return (SESSION&&SESSION.username)?wsForUser(SESSION.username):DEFAULT_WS; }
 async function addRecord(rec){
   rec.id=uid(); rec.submittedAt=new Date().toISOString(); rec.submittedET=nowET();
+  if(rec.ws==null) rec.ws=currentWs(); // stamp the tenant so data is walled off by workspace
   RECORDS.push(rec); save(LS.data,RECORDS);
   if(supaOn()){
     const r=await fetch(CFG.supaUrl+'/rest/v1/records',{method:'POST',headers:supaHeaders({'Content-Type':'application/json','Prefer':'return=minimal'}),body:JSON.stringify({rid:rec.id,type:rec.type,submitted_at:rec.submittedAt,data:rec})});
