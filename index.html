@@ -1066,8 +1066,8 @@
 <div class="modal" id="trModal" hidden onclick="if(event.target===this)trEditClose()">
   <div class="modalcard" style="width:min(700px,95vw);max-height:90vh;overflow:auto">
     <h3 style="margin:0 0 2px">Edit onboarding curriculum</h3>
-    <p class="hint" style="margin:0 0 12px">The full onboarding as JSON: <b>intake</b> (fields the new hire fills - id, label, type: text/phone/email/date/checkbox), <b>tasks</b> (checklist - id, title, desc, owner: rep/manager), <b>modules</b> (id, title, body, optional link), and <b>quiz</b> (each question has options + the index of the correct answer, 0 = first). passPct is the score needed to graduate. Admins only; applies for everyone.</p>
-    <textarea id="trJson" rows="20" style="width:100%;font-size:12px;font-family:ui-monospace,Menlo,Consolas,monospace"></textarea>
+    <p class="hint" style="margin:0 0 12px">Build what a new hire goes through: the details you collect, their checklist, training modules, and the certification quiz. Admins only; applies for everyone.</p>
+    <div id="trEditor"></div>
     <div id="trErr" class="fieldhelp" style="color:var(--warn);margin:8px 0" hidden></div>
     <div class="row-actions" style="margin-top:12px;flex-wrap:wrap">
       <button class="btn gold sm" onclick="trEditSave()">Save curriculum</button>
@@ -3118,13 +3118,53 @@ function trainingRoster(){
   }).join('');
   return h;
 }
-function trEditOpen(){ if(!(SESSION&&SESSION.role==='admin')){ toast('Admins only',true); return; } document.getElementById('trJson').value=JSON.stringify(repOnbConfig(),null,2); document.getElementById('trErr').hidden=true; document.getElementById('trModal').hidden=false; }
+/* ---- onboarding curriculum GUI editor (no JSON) ---- */
+let TR_CFG=null;
+function trCfgShape(c){ c.passPct=c.passPct||80; c.intake=Array.isArray(c.intake)?c.intake:[]; c.tasks=Array.isArray(c.tasks)?c.tasks:[]; c.modules=Array.isArray(c.modules)?c.modules:[]; c.quiz=Array.isArray(c.quiz)?c.quiz:[]; return c; }
+function trEditOpen(){ if(!(SESSION&&SESSION.role==='admin')){ toast('Admins only',true); return; } TR_CFG=trCfgShape(JSON.parse(JSON.stringify(repOnbConfig()))); document.getElementById('trErr').hidden=true; trRenderEditor(); document.getElementById('trModal').hidden=false; }
 function trEditClose(){ document.getElementById('trModal').hidden=true; }
-function trResetDefault(){ document.getElementById('trJson').value=JSON.stringify(REP_ONB_DEFAULT,null,2); }
+function trResetDefault(){ TR_CFG=trCfgShape(JSON.parse(JSON.stringify(REP_ONB_DEFAULT))); trRenderEditor(); }
+function trUpdMeta(field,val){ if(TR_CFG) TR_CFG[field]= field==='passPct' ? Math.max(0,Math.min(100,parseInt(val,10)||0)) : val; }
+function trUpd(section,i,field,val){ if(TR_CFG&&TR_CFG[section]&&TR_CFG[section][i]) TR_CFG[section][i][field]=val; }
+function trAdd(section){ if(!TR_CFG) return; const id=section.slice(0,1)+Date.now().toString(36).slice(-4);
+  if(section==='intake') TR_CFG.intake.push({id,label:'',type:'text'});
+  else if(section==='tasks') TR_CFG.tasks.push({id,title:'',desc:'',owner:'rep'});
+  else if(section==='modules') TR_CFG.modules.push({id,title:'',body:'',link:''});
+  else if(section==='quiz') TR_CFG.quiz.push({q:'',options:['',''],answer:0});
+  trRenderEditor(); }
+function trDel(section,i){ if(TR_CFG&&TR_CFG[section]){ TR_CFG[section].splice(i,1); trRenderEditor(); } }
+function trUpdOpt(qi,oi,val){ if(TR_CFG&&TR_CFG.quiz[qi]) TR_CFG.quiz[qi].options[oi]=val; }
+function trAddOpt(qi){ if(TR_CFG&&TR_CFG.quiz[qi]){ TR_CFG.quiz[qi].options.push(''); trRenderEditor(); } }
+function trDelOpt(qi,oi){ const q=TR_CFG&&TR_CFG.quiz[qi]; if(q&&q.options.length>2){ q.options.splice(oi,1); if(q.answer>=q.options.length) q.answer=q.options.length-1; else if(q.answer>oi) q.answer--; trRenderEditor(); } }
+function trSetAns(qi,oi){ if(TR_CFG&&TR_CFG.quiz[qi]) TR_CFG.quiz[qi].answer=oi; }
+function trRenderEditor(){
+  const el=document.getElementById('trEditor'); if(!el||!TR_CFG) return;
+  const head=t=>`<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--gold);margin:18px 0 8px">${t}</div>`;
+  const card=inner=>`<div class="panel" style="margin:0 0 8px;padding:12px">${inner}</div>`;
+  const del=(s,i)=>`<button class="btn ghost sm" style="align-self:flex-end;color:var(--warn);border-color:var(--warn)" onclick="trDel('${s}',${i})">Remove</button>`;
+  let h=head('Intake - details the new hire fills in');
+  h+=TR_CFG.intake.map((f,i)=>card(`<div class="filters" style="align-items:flex-end;margin:0"><div class="field" style="flex:2"><label>Question / label</label><input value="${esc(f.label||'')}" oninput="trUpd('intake',${i},'label',this.value)"></div><div class="field" style="max-width:150px"><label>Answer type</label><select onchange="trUpd('intake',${i},'type',this.value)">${['text','phone','email','date','checkbox'].map(t=>`<option value="${t}" ${f.type===t?'selected':''}>${t}</option>`).join('')}</select></div>${del('intake',i)}</div>`)).join('');
+  h+=`<button class="btn ghost sm" onclick="trAdd('intake')">+ Add intake field</button>`;
+  h+=head('Checklist tasks');
+  h+=TR_CFG.tasks.map((t,i)=>card(`<div class="filters" style="align-items:flex-end;margin:0 0 8px"><div class="field" style="flex:2"><label>Task</label><input value="${esc(t.title||'')}" oninput="trUpd('tasks',${i},'title',this.value)"></div><div class="field" style="max-width:150px"><label>Who does it</label><select onchange="trUpd('tasks',${i},'owner',this.value)"><option value="rep" ${t.owner!=='manager'?'selected':''}>The rep</option><option value="manager" ${t.owner==='manager'?'selected':''}>Manager</option></select></div>${del('tasks',i)}</div><div class="field" style="margin:0"><label>Description</label><input value="${esc(t.desc||'')}" oninput="trUpd('tasks',${i},'desc',this.value)"></div>`)).join('');
+  h+=`<button class="btn ghost sm" onclick="trAdd('tasks')">+ Add task</button>`;
+  h+=head('Training modules');
+  h+=TR_CFG.modules.map((m,i)=>card(`<div class="filters" style="align-items:flex-end;margin:0 0 8px"><div class="field" style="flex:2"><label>Module title</label><input value="${esc(m.title||'')}" oninput="trUpd('modules',${i},'title',this.value)"></div>${del('modules',i)}</div><div class="field" style="margin:0 0 8px"><label>Content</label><textarea rows="3" oninput="trUpd('modules',${i},'body',this.value)" style="width:100%">${esc(m.body||'')}</textarea></div><div class="field" style="margin:0"><label>Video / doc link (optional)</label><input value="${esc(m.link||'')}" oninput="trUpd('modules',${i},'link',this.value)" placeholder="https://..."></div>`)).join('');
+  h+=`<button class="btn ghost sm" onclick="trAdd('modules')">+ Add module</button>`;
+  h+=head('Certification quiz');
+  h+=`<div class="field" style="max-width:200px;margin:0 0 10px"><label>Passing score (%)</label><input type="number" min="0" max="100" value="${TR_CFG.passPct}" oninput="trUpdMeta('passPct',this.value)"></div>`;
+  h+=TR_CFG.quiz.map((qq,qi)=>card(`<div class="filters" style="align-items:flex-end;margin:0 0 8px"><div class="field" style="flex:1"><label>Question ${qi+1}</label><input value="${esc(qq.q||'')}" oninput="trUpd('quiz',${qi},'q',this.value)"></div>${del('quiz',qi)}</div><div style="font-size:11px;color:var(--muted);margin-bottom:6px">Select the correct answer with the dot on the left.</div>`+(qq.options||[]).map((op,oi)=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px"><input type="radio" name="ans${qi}" ${qq.answer===oi?'checked':''} onchange="trSetAns(${qi},${oi})" title="Correct answer" style="flex:0 0 auto"><input style="flex:1" value="${esc(op)}" oninput="trUpdOpt(${qi},${oi},this.value)" placeholder="Option ${oi+1}">${qq.options.length>2?`<button class="btn ghost sm" onclick="trDelOpt(${qi},${oi})">&times;</button>`:''}</div>`).join('')+`<button class="btn ghost sm" style="margin-top:4px" onclick="trAddOpt(${qi})">+ Add option</button>`)).join('');
+  h+=`<button class="btn ghost sm" onclick="trAdd('quiz')">+ Add question</button>`;
+  el.innerHTML=h;
+}
 async function trEditSave(){
-  let cfg; try{ cfg=JSON.parse(document.getElementById('trJson').value); }catch(e){ const el=document.getElementById('trErr'); el.hidden=false; el.textContent='Invalid JSON: '+e.message; return; }
-  if(!cfg||!Array.isArray(cfg.modules)||!Array.isArray(cfg.quiz)){ const el=document.getElementById('trErr'); el.hidden=false; el.textContent='Needs a modules array and a quiz array.'; return; }
-  await addRecord({type:'reponbconfig',config:JSON.stringify(cfg),by:(SESSION&&SESSION.name)||''});
+  if(!TR_CFG){ trEditClose(); return; }
+  TR_CFG.intake=TR_CFG.intake.filter(f=>(f.label||'').trim());
+  TR_CFG.tasks=TR_CFG.tasks.filter(t=>(t.title||'').trim());
+  TR_CFG.modules=TR_CFG.modules.filter(m=>(m.title||'').trim());
+  TR_CFG.quiz=TR_CFG.quiz.filter(q=>(q.q||'').trim() && (q.options||[]).filter(o=>(o||'').trim()).length>=2);
+  if(!TR_CFG.modules.length){ const el=document.getElementById('trErr'); el.hidden=false; el.textContent='Add at least one training module.'; return; }
+  await addRecord({type:'reponbconfig',config:JSON.stringify(TR_CFG),by:(SESSION&&SESSION.name)||''});
   trEditClose(); toast('Curriculum saved'); renderTraining();
 }
 function recRender(){
