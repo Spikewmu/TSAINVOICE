@@ -3899,6 +3899,16 @@ function renderClientProductChips(){
 function addClientProduct(){ const inp=document.getElementById('clientProductAdd'); const v=(inp.value||'').trim(); if(!v)return; if(!CLIENT_PRODUCTS.some(p=>p.toLowerCase()===v.toLowerCase())) CLIENT_PRODUCTS.push(v); inp.value=''; renderClientProductChips(); }
 function rmClientProduct(i){ CLIENT_PRODUCTS.splice(i,1); renderClientProductChips(); }
 function setClientProducts(arr){ CLIENT_PRODUCTS=(arr||[]).slice(); renderClientProductChips(); }
+// remove a client from the overview + all pickers (soft-delete; deals already logged under the name stay in the data)
+async function deleteClient(name){
+  if(!(SESSION && SESSION.role==='admin')){ toast('Only a Super/Account Admin can remove a client',true); return; }
+  if(!confirm('Remove client "'+name+'"?\n\nIt disappears from the overview and every picker. Any deals already logged under it stay in the data (not deleted).')) return;
+  const cur=latestClients().find(x=>String(x.name).toLowerCase()===String(name).toLowerCase());
+  const base = cur ? (()=>{ const {_t,...clean}=cur; return clean; })() : {name};
+  await addRecord(Object.assign({}, base, {type:'client', name:(cur&&cur.name)||name, status:'__DELETED__'}));
+  if(Array.isArray(CFG.clients) && CFG.clients.some(c=>String(c).toLowerCase()===String(name).toLowerCase())){ CFG.clients=CFG.clients.filter(c=>String(c).toLowerCase()!==String(name).toLowerCase()); save(LS.cfg,CFG); }
+  toast('Removed '+((cur&&cur.name)||name)); fillLists(); renderClientOverview();
+}
 function editClient(name){
   const c=latestClients().find(x=>String(x.name).toLowerCase()===String(name).toLowerCase())||{name:name};
   const f=document.getElementById('clientForm'), g=n=>f.querySelector('[name="'+n+'"]');
@@ -3946,7 +3956,7 @@ function renderClientOverview(){
     (rows.length?rows.map(c=>{
       const offers=productsForClient(c.name);
       const offerCell=(c.products&&offers.length)?offers.map(p=>`<span class="teamtag">${esc(p)}</span>`).join(''):'<span class="muted">global default</span>';
-      return `<tr><td><b>${esc(c.name)}</b> ${canEditClients?`<button class="btn sm ghost" onclick="editClient('${esc(c.name).replace(/'/g,"\\'")}')">Edit</button>`:''}</td><td><span class="pill ${pc(c.status)}">${esc(c.status)}</span></td><td style="font-size:12px;line-height:1.5">${mgrCellHTML(c)}</td><td>${esc(c.serviceLine)}</td><td>${offerCell}</td><td class="num">${c.monthlyGoal?money(c.monthlyGoal):'<span class="muted">-</span>'}</td><td class="num">${money(c.monthly)}</td><td class="num">${money(cashThisMonth(c.name))}</td><td>${esc(c.nextStep)}</td></tr>`;
+      return `<tr><td><b>${esc(c.name)}</b> ${canEditClients?`<button class="btn sm ghost" onclick="editClient('${esc(c.name).replace(/'/g,"\\'")}')">Edit</button> <button class="btn sm ghost" style="color:var(--warn);border-color:var(--warn)" onclick="deleteClient('${esc(c.name).replace(/'/g,"\\'")}')">Remove</button>`:''}</td><td><span class="pill ${pc(c.status)}">${esc(c.status)}</span></td><td style="font-size:12px;line-height:1.5">${mgrCellHTML(c)}</td><td>${esc(c.serviceLine)}</td><td>${offerCell}</td><td class="num">${c.monthlyGoal?money(c.monthlyGoal):'<span class="muted">-</span>'}</td><td class="num">${money(c.monthly)}</td><td class="num">${money(cashThisMonth(c.name))}</td><td>${esc(c.nextStep)}</td></tr>`;
     }).join('')
      :`<tr><td colspan="8" class="muted" style="padding:16px">No clients yet. Add one below.</td></tr>`)+`</tbody>`;
   // fresh "add client" form defaults to all global offers (ready to trim)
