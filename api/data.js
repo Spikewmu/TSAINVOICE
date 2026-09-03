@@ -79,6 +79,16 @@ export default async function handler(req, res) {
       const accounts = Object.values(wsMap).map(w => ({ ws: w.ws, name: w.name, plan: w.plan, kind: w.kind || 'client', owner: w.owner, createdAt: w.createdAt, seats: seats[w.ws] || 0 }));
       return res.status(200).json({ ok: true, accounts });
     }
+    if (action === 'deleteAccount') {
+      // platform owner only - permanently remove a client account (its records + its users)
+      if (callerWs !== DEFAULT_WS || (s && s.role !== 'admin')) return res.status(200).json({ ok: false, error: 'not-authorized' });
+      const ws = String(b.ws || ''); if (!ws || ws === DEFAULT_WS) return res.status(200).json({ ok: false, error: 'bad workspace' });
+      const mr = await supa(`records?select=data&type=eq.wsmember&data->>ws=eq.${encodeURIComponent(ws)}`);
+      const usernames = mr.ok ? (await mr.json()).map(x => x.data && x.data.username).filter(Boolean) : [];
+      await supa(`records?data->>ws=eq.${encodeURIComponent(ws)}`, { method: 'DELETE' });
+      for (const u of usernames) { await supa('users?username=eq.' + encodeURIComponent(u), { method: 'DELETE' }); }
+      return res.status(200).json({ ok: true, removed: usernames.length });
+    }
     return res.status(200).json({ ok: false, error: 'unknown action' });
   } catch (e) { return res.status(200).json({ ok: false, error: String(e) }); }
 }

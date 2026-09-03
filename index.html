@@ -792,30 +792,35 @@
     <h2 class="section">Users</h2>
     <p class="hint">Create a login for each rep, pick their role, and assign the team(s) / account(s) they work. Setters see only the setter end-of-day form; closers see the closed-deal + closer forms; both see a Rep Breakdown scoped to their assigned teams. Admins see everything.</p>
     <div class="panel" id="clientAccountsPanel" style="display:none">
-      <h3>Client accounts <span style="font-weight:400;color:var(--muted);font-size:12px">- independent client tenants on a monthly plan</span></h3>
-      <p class="hint" style="margin:-4px 0 12px">Provision a client on their own isolated account. Their <b>Founder</b> becomes the admin and creates their own team up to their seat limit. TakeOver clients stay under The Sales Agency until you graduate them.</p>
-      <div id="clientAccountsList"></div>
-      <details style="margin-top:12px"><summary style="cursor:pointer;font-weight:600;color:var(--gold)">+ New client account</summary>
-        <form class="grid" id="clientAcctForm" onsubmit="provisionClientAccount(event)" style="box-shadow:none;border:none;margin-top:10px">
+      <h3>Client accounts</h3>
+      <p class="hint" style="margin:-4px 0 8px">Every company on the platform: the ones you run (TakeOver, under The Sales Agency) and the ones on their own monthly account. Graduate a TakeOver client to move them onto their own account with a Founder-admin.</p>
+      <h4 style="margin:16px 0 6px">TakeOver clients <span class="muted" style="font-weight:400;font-size:12px">- run under The Sales Agency</span></h4>
+      <div id="takeoverList"></div>
+      <h4 style="margin:18px 0 6px">Independent accounts <span class="muted" style="font-weight:400;font-size:12px">- their own monthly plan + Founder-admin</span></h4>
+      <div id="independentList"></div>
+      <details style="margin-top:14px"><summary style="cursor:pointer;font-weight:600;color:var(--gold)">+ New client account (direct)</summary>
+        <p class="hint" style="margin:8px 0">Set up a brand-new client straight onto their own account (skip TakeOver).</p>
+        <form class="grid" id="clientAcctForm" onsubmit="provisionClientAccount(event)" style="box-shadow:none;border:none;margin-top:6px">
           <div class="field"><label>Company name *</label><input name="teamName" required placeholder="Peak Fitness Co."></div>
           <div class="field"><label>Plan / seats *</label><select name="plan"><option value="starter">Starter - 5 seats</option><option value="growth">Growth - 15 seats</option><option value="scale">Scale - 40 seats</option><option value="trial">Trial - 5 seats (14-day)</option></select></div>
           <div class="field"><label>Founder name *</label><input name="founderName" required placeholder="Jane Doe"></div>
           <div class="field"><label>Founder email *</label><input name="founderEmail" type="email" required placeholder="jane@company.com"></div>
           <div class="field"><label>Temp password *</label><input name="password" type="text" required placeholder="they change it on first login"></div>
-          <div class="full row-actions"><button class="btn gold" type="submit">Create client account</button><span class="tag">Creates their isolated workspace + Founder-admin. Send them the login.</span></div>
+          <div class="full row-actions"><button class="btn gold" type="submit">Create client account</button></div>
         </form>
       </details>
-      <details style="margin-top:8px"><summary style="cursor:pointer;font-weight:600;color:var(--gold)">Graduate a TakeOver client to their own account</summary>
-        <p class="hint" style="margin:8px 0">Move a client you currently run under The Sales Agency onto their own monthly account. Their Founder becomes admin and staffs their own team; then remove your reps from this client (Client Overview / Edit teams). Historical data stays with The Sales Agency.</p>
-        <form class="grid" id="graduateForm" onsubmit="graduateClient(event)" style="box-shadow:none;border:none;margin-top:6px">
-          <div class="field"><label>TakeOver client *</label><select name="gradClient" id="gradClientSel" required></select></div>
+      <div id="graduateFormWrap" hidden style="margin-top:14px;border:1px solid var(--gold);border-radius:10px;padding:14px">
+        <b>Graduate <span id="gradClientName" style="color:var(--gold)"></span> to their own account</b>
+        <p class="hint" style="margin:6px 0 10px">Their Founder becomes admin + staffs their own team. Then remove your reps from this client on Client Overview. Historical data stays with The Sales Agency.</p>
+        <form class="grid" id="graduateForm" onsubmit="graduateClient(event)" style="box-shadow:none;border:none">
+          <input type="hidden" name="gradClient" id="gradClientField">
           <div class="field"><label>Plan / seats *</label><select name="gradPlan"><option value="starter">Starter - 5 seats</option><option value="growth">Growth - 15 seats</option><option value="scale">Scale - 40 seats</option></select></div>
           <div class="field"><label>Founder name *</label><input name="gradFounderName" required placeholder="Client owner"></div>
           <div class="field"><label>Founder email *</label><input name="gradFounderEmail" type="email" required placeholder="owner@client.com"></div>
           <div class="field"><label>Temp password *</label><input name="gradPassword" type="text" required placeholder="they change it on first login"></div>
-          <div class="full row-actions"><button class="btn gold" type="submit">Graduate client</button><span class="tag">Provisions their account + marks this client graduated.</span></div>
+          <div class="full row-actions"><button class="btn gold" type="submit">Graduate client</button><button class="btn ghost" type="button" onclick="document.getElementById('graduateFormWrap').hidden=true">Cancel</button></div>
         </form>
-      </details>
+      </div>
     </div>
     <div class="panel">
       <h3>Add a user</h3>
@@ -3377,20 +3382,35 @@ async function renderClientAccounts(){
   const isOwner = SESSION && SESSION.role==='admin' && currentWs()===DEFAULT_WS;
   panel.style.display = isOwner?'':'none';
   if(!isOwner) return;
-  // graduate dropdown = TSA clients not already graduated
-  const gs=document.getElementById('gradClientSel');
-  if(gs){ const grad=new Set(latestClients().filter(c=>c.graduated).map(c=>c.name)); const opts=clientNames().filter(n=>n&&!grad.has(n)); const cur=gs.value; gs.innerHTML='<option value="">Select a client</option>'+opts.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join(''); gs.value=cur; }
-  const list=document.getElementById('clientAccountsList'); if(!list) return;
+  // TakeOver clients (TSA client records, not yet graduated)
+  const to=document.getElementById('takeoverList');
+  if(to){ const takeover=latestClients().filter(c=>c.name && !c.graduated);
+    to.innerHTML = takeover.length
+      ? '<div class="tablewrap"><table><thead><tr><th>Client</th><th>Status</th><th></th></tr></thead><tbody>'
+        +takeover.map(c=>`<tr><td><b>${esc(c.name)}</b></td><td><span class="pill">Managed by TSA</span></td><td><button class="btn sm ghost" data-c="${esc(c.name)}" onclick="gradFromRow(this.dataset.c)">Graduate to own account</button></td></tr>`).join('')
+        +'</tbody></table></div>'
+      : '<p class="muted" style="padding:6px 0">No TakeOver clients yet - add them on Client Overview.</p>'; }
+  // Independent accounts (own workspaces)
+  const ind=document.getElementById('independentList'); if(!ind) return;
   const hdr={'Content-Type':'application/json'}; if(SESSION.token) hdr['x-session-token']=SESSION.token; else if(SESSION.pw) hdr['x-admin-pass']=SESSION.pw;
   try{
     const r=await fetch('/api/data?action=accounts',{method:'POST',headers:hdr,body:'{}'}); const j=await r.json();
-    if(!j.ok){ list.innerHTML='<p class="muted" style="padding:8px 0">'+esc(j.error||'Could not load client accounts')+'</p>'; return; }
+    if(!j.ok){ ind.innerHTML='<p class="muted" style="padding:6px 0">'+esc(j.error||'Could not load')+'</p>'; return; }
     const accts=(j.accounts||[]).filter(a=>a.ws!==DEFAULT_WS);
-    if(!accts.length){ list.innerHTML='<p class="muted" style="padding:8px 0">No client accounts yet. Create one below.</p>'; return; }
-    list.innerHTML='<div class="tablewrap"><table><thead><tr><th>Company</th><th>Plan</th><th>Seats</th><th>Founder (admin)</th><th>Created</th></tr></thead><tbody>'
-      +accts.map(a=>{ const lim=PLAN_SEATS[a.plan]||5; return `<tr><td><b>${esc(a.name||a.ws)}</b></td><td><span class="pill">${esc(PLAN_NAMES[a.plan]||a.plan)}</span></td><td class="num">${a.seats}/${lim}</td><td>${esc(a.owner||'')}</td><td>${a.createdAt?esc(usDate(String(a.createdAt).slice(0,10))):''}</td></tr>`; }).join('')
-      +'</tbody></table></div>';
-  }catch(e){ list.innerHTML='<p class="muted" style="padding:8px 0">Could not load client accounts.</p>'; }
+    ind.innerHTML = accts.length
+      ? '<div class="tablewrap"><table><thead><tr><th>Company</th><th>Plan</th><th>Seats</th><th>Founder</th><th>Created</th><th></th></tr></thead><tbody>'
+        +accts.map(a=>{ const lim=PLAN_SEATS[a.plan]||5; return `<tr><td><b>${esc(a.name||a.ws)}</b></td><td><span class="pill">${esc(PLAN_NAMES[a.plan]||a.plan)}</span></td><td class="num">${a.seats}/${lim}</td><td>${esc(a.owner||'')}</td><td>${a.createdAt?esc(usDate(String(a.createdAt).slice(0,10))):''}</td><td><button class="btn sm ghost" style="color:var(--warn);border-color:var(--warn)" data-ws="${esc(a.ws)}" data-n="${esc(a.name||a.ws)}" onclick="removeClientAccount(this.dataset.ws,this.dataset.n)">Remove</button></td></tr>`; }).join('')
+        +'</tbody></table></div>'
+      : '<p class="muted" style="padding:6px 0">No independent accounts yet.</p>';
+  }catch(e){ ind.innerHTML='<p class="muted" style="padding:6px 0">Could not load accounts.</p>'; }
+}
+function gradFromRow(client){ const n=document.getElementById('gradClientName'), f=document.getElementById('gradClientField'), w=document.getElementById('graduateFormWrap'); if(n) n.textContent=client; if(f) f.value=client; if(w){ w.hidden=false; w.scrollIntoView({behavior:'smooth',block:'center'}); } }
+async function removeClientAccount(ws,name){
+  if(!confirm('Remove "'+name+'"? This permanently deletes their workspace, users, and data. This cannot be undone.')) return;
+  const hdr={'Content-Type':'application/json'}; if(SESSION.token) hdr['x-session-token']=SESSION.token; else if(SESSION.pw) hdr['x-admin-pass']=SESSION.pw;
+  try{ const r=await fetch('/api/data?action=deleteAccount',{method:'POST',headers:hdr,body:JSON.stringify({ws})}); const j=await r.json();
+    if(j&&j.ok){ toast('Removed '+name); renderClientAccounts(); } else toast('Could not remove: '+((j&&j.error)||''),true);
+  }catch(e){ toast('Could not remove the account',true); }
 }
 async function provisionClientAccount(ev){
   ev.preventDefault(); const f=ev.target;
@@ -3407,7 +3427,7 @@ async function graduateClient(ev){
   const existing=(latestClients().find(c=>c.name===client))||{name:client};
   await addRecord(Object.assign({}, existing, {type:'client', name:client, graduated:true, graduatedWs:res.ws, graduatedAt:new Date().toISOString()}));
   toast('Graduated '+client+' to their own account. Send '+res.founder+' the login, then remove your reps from this client via Client Overview / Edit teams.');
-  f.reset(); renderClientAccounts(); if(typeof renderClientOverview==='function') renderClientOverview();
+  f.reset(); const w=document.getElementById('graduateFormWrap'); if(w) w.hidden=true; renderClientAccounts(); if(typeof renderClientOverview==='function') renderClientOverview();
 }
 async function renderUsers(){
   const isAdmin = SESSION.role==='admin';
