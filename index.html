@@ -1077,6 +1077,18 @@
   </div>
 </div>
 
+<div class="modal" id="delAcctModal" hidden onclick="if(event.target===this)closeDelAcct()">
+  <div class="modalcard" style="width:min(440px,95vw)">
+    <h3 style="margin:0 0 6px;color:var(--warn)">Delete this account?</h3>
+    <p class="hint" style="margin:0 0 12px">You are about to permanently delete <b id="delAcctName"></b> - its workspace, every one of its users, and all its data. <b>This cannot be undone.</b></p>
+    <div class="field"><label>Type <b>DELETE</b> to confirm</label><input id="delAcctConfirm" oninput="delAcctCheck()" autocomplete="off" placeholder="DELETE"></div>
+    <div class="row-actions" style="margin-top:14px">
+      <button class="btn sm" id="delAcctBtn" disabled style="background:var(--warn);border-color:var(--warn);color:#fff;opacity:.5" onclick="confirmDeleteAccount()">Delete account</button>
+      <button class="btn ghost sm" onclick="closeDelAcct()">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal" id="pwModal" hidden onclick="if(event.target===this)closeChangePw()">
   <div class="modalcard">
     <h3 style="margin:0 0 4px">Change password</h3>
@@ -3454,11 +3466,16 @@ async function renderClientAccounts(){
   }catch(e){ ind.innerHTML='<p class="muted" style="padding:6px 0">Could not load accounts.</p>'; }
 }
 function gradFromRow(client){ const n=document.getElementById('gradClientName'), f=document.getElementById('gradClientField'), w=document.getElementById('graduateFormWrap'); if(n) n.textContent=client; if(f) f.value=client; if(w){ w.hidden=false; w.scrollIntoView({behavior:'smooth',block:'center'}); } }
-async function removeClientAccount(ws,name){
-  if(!confirm('Remove "'+name+'"? This permanently deletes their workspace, users, and data. This cannot be undone.')) return;
+let DEL_ACCT=null;
+function removeClientAccount(ws,name){ DEL_ACCT={ws,name}; document.getElementById('delAcctName').textContent=name; const inp=document.getElementById('delAcctConfirm'); inp.value=''; delAcctCheck(); document.getElementById('delAcctModal').hidden=false; setTimeout(()=>inp.focus(),40); }
+function closeDelAcct(){ document.getElementById('delAcctModal').hidden=true; DEL_ACCT=null; }
+function delAcctCheck(){ const ok=((document.getElementById('delAcctConfirm')||{}).value||'')==='DELETE'; const b=document.getElementById('delAcctBtn'); if(b){ b.disabled=!ok; b.style.opacity=ok?'1':'.5'; } }
+async function confirmDeleteAccount(){
+  if(!DEL_ACCT || ((document.getElementById('delAcctConfirm')||{}).value||'')!=='DELETE') return;
+  const ws=DEL_ACCT.ws, name=DEL_ACCT.name;
   const hdr={'Content-Type':'application/json'}; if(SESSION.token) hdr['x-session-token']=SESSION.token; else if(SESSION.pw) hdr['x-admin-pass']=SESSION.pw;
   try{ const r=await fetch('/api/data?action=deleteAccount',{method:'POST',headers:hdr,body:JSON.stringify({ws})}); const j=await r.json();
-    if(j&&j.ok){ toast('Removed '+name); renderClientAccounts(); } else toast('Could not remove: '+((j&&j.error)||''),true);
+    if(j&&j.ok){ closeDelAcct(); toast('Removed '+name); renderClientAccounts(); } else toast('Could not remove: '+((j&&j.error)||''),true);
   }catch(e){ toast('Could not remove the account',true); }
 }
 async function provisionClientAccount(ev){
