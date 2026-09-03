@@ -841,6 +841,14 @@
         <div class="full row-actions"><button class="btn gold" type="submit">Save user</button><span class="tag">Creating a new login. Existing users: change them on their row below (no need to re-enter a password).</span></div>
       </form>
     </div>
+    <div class="panel" id="reassignPanel" style="display:none"><h3>Reassign a departed staffer</h3>
+      <p class="hint" style="margin:0 0 10px">Moves every client assignment (webinar / setter / closer / primary manager) and rep "manager" pointer from one person to another in one pass. Use it when someone leaves.</p>
+      <div class="filters" style="align-items:flex-end">
+        <div class="field" style="min-width:200px"><label>From (leaving)</label><select id="reassignFrom"></select></div>
+        <div class="field" style="min-width:200px"><label>To</label><select id="reassignTo"></select></div>
+        <button class="btn sm" style="align-self:flex-end" onclick="reassignStaff((document.getElementById('reassignFrom')||{}).value,(document.getElementById('reassignTo')||{}).value)">Reassign all</button>
+      </div>
+    </div>
     <div class="panel"><h3>Team members <button class="btn ghost sm" style="float:right" onclick="importUsers()" title="Copy all accounts from the old backend into the new one">Import from old backend</button></h3>
       <div id="usersUnassigned" style="padding:0 2px 8px"></div>
       <div id="usersStats" class="cards" style="grid-template-columns:repeat(auto-fit,minmax(104px,1fr));margin:0 0 14px"></div>
@@ -2679,9 +2687,25 @@ async function actOffday(rep,date,status){
   if(document.getElementById('arBody')&&!document.getElementById('tab-adminreport').hidden) renderAdminReport();
 }
 /* ---------------- recruiting tab (Airtable candidate query + AI best-fit + tag for GHL blast) ---------------- */
-let REC_ALL=[], REC_AIRANK=null, REC_SEL=new Set(), REC_LOADING=false, REC_LOADED=false;
+let REC_ALL=[], REC_AIRANK=null, REC_SEL=new Set(), REC_LOADING=false, REC_LOADED=false, REC_CAP=null;
 function recHeaders(){ const h={'Content-Type':'application/json'}; if(SESSION&&SESSION.token)h['x-session-token']=SESSION.token; const ap=(typeof mgmtPass==='function')?mgmtPass():''; if(ap)h['x-admin-pass']=ap; return h; }
 async function recFetch(path,opts){ const o=opts||{}; o.headers=Object.assign(recHeaders(),o.headers||{}); const r=await fetch(path,o); if(r.status===401){ return {ok:false,error:'unauthorized (your login lacks recruiting access)'}; } return r.json(); }
+// pool lock: claim candidates for this workspace (hides them from other clients' search); release frees them back
+async function poolClaim(candIds){
+  candIds=(candIds||[]).filter(Boolean); if(!candIds.length) return {ok:true,claimed:[],blocked:[]};
+  try{ return await recFetch('/api/recruiting?action=claim',{method:'POST',body:JSON.stringify({candIds, wsName:(typeof currentWsName==='function'?currentWsName():'')})})||{ok:false}; }catch(e){ return {ok:false,error:String(e)}; }
+}
+async function poolRelease(candIds){
+  candIds=(candIds||[]).filter(Boolean); if(!candIds.length) return;
+  try{ await recFetch('/api/recruiting?action=release',{method:'POST',body:JSON.stringify({candIds})}); }catch(e){}
+}
+// surface any cap block (a client's Recruiter pack is full) after a claim attempt
+function poolClaimNote(res){
+  if(!res) return; const blocked=(res.blocked||[]);
+  const capped=blocked.filter(b=>b.reason==='cap').length, taken=blocked.filter(b=>b.reason==='claimed').length;
+  if(capped) toast(capped+' candidate'+(capped===1?'':'s')+' not claimed - your Recruiter pack hire limit is reached. Release one or upgrade.',true);
+  else if(taken) toast(taken+' candidate'+(taken===1?'':'s')+' are already claimed by another account.',true);
+}
 function recArr(v){ return Array.isArray(v)?v:(v?[v]:[]); }
 function recCacheSave(){ try{ localStorage.setItem('tsarec_cache', JSON.stringify({t:Date.now(), c:REC_ALL})); }catch(e){} }
 function recCacheLoad(){ try{ const o=JSON.parse(localStorage.getItem('tsarec_cache')||'null'); return (o&&Array.isArray(o.c))?o:null; }catch(e){ return null; } }
@@ -2704,8 +2728,8 @@ async function recLoad(force, silent){
       return;
     }
     document.getElementById('rcNotice').innerHTML='';
-    REC_ALL=j.candidates||[]; REC_AIRANK=null; if(!silent)REC_SEL.clear(); REC_LOADED=true; recCacheSave();
-    if(cnt)cnt.textContent=REC_ALL.length+' candidates';
+    REC_ALL=j.candidates||[]; REC_AIRANK=null; REC_CAP=j.capInfo||null; if(!silent)REC_SEL.clear(); REC_LOADED=true; recCacheSave();
+    if(cnt)cnt.textContent=REC_ALL.length+' candidates'+(REC_CAP?` · Recruiter pack: ${REC_CAP.used}/${REC_CAP.cap} hires used`:'');
     recBuildFacets(); recRender();
   }catch(e){ if(cnt&&!silent)cnt.textContent='Load failed'; }
   finally{ REC_LOADING=false; }
@@ -2780,7 +2804,8 @@ async function recSetStage(id,status){
   const prev=c.recStatus; c.recStatus=status; recRenderBoard(); // optimistic
   const j=await recFetch('/api/recruiting?action=stage',{method:'POST',body:JSON.stringify({records:[{id,status}]})});
   if(!j.ok){ c.recStatus=prev; recRenderBoard(); toast('Stage update failed: '+(j.error||''),true); return; }
-  if(status==='Not Looking'){ const cl=claimMap()[id]; if(cl&&cl.owner&&cl.status!=='released') releaseClaim(id); } // dead stage frees the candidate for anyone
+  if(status==='Not Looking'||status==='Standby'){ const cl=claimMap()[id]; if(cl&&cl.owner&&cl.status!=='released') releaseClaim(id); poolRelease([id]); } // dead/parked stage frees the candidate back to the pool for anyone
+  else if(status){ poolClaimNote(await poolClaim([id])); } // any working stage locks the candidate to this workspace
   if(status==='Hired' && !RECORDS.some(x=>x.type==='hire'&&x.candId===id)){ addRecord({type:'hire',candId:id,name:c.name||'',position:recArr(c.role).join(', '),acceptedAt:new Date().toISOString(),via:'manual'}); } // manual accept path -> starts onboarding
   recCacheSave(); recBuildFacets(); toast((c.name||'Candidate')+' → '+(status||'Unsorted'));
 }
@@ -2827,20 +2852,27 @@ function giOpen(){
   giRender(); document.getElementById('giModal').hidden=false;
 }
 function giClose(){ document.getElementById('giModal').hidden=true; }
-function giTemplate(){
+// rcpt (optional) fills {{name}} with THAT candidate's first name, so a group invite is personalized per recipient
+function giTemplate(rcpt){
   const g=id=>((document.getElementById(id)||{}).value||'').trim();
   const company=g('giCompany')||'The Sales Agency', position=g('giPosition')||'Sales', date=g('giDate'), time=g('giTime'), tz=g('giTz'), link=g('giLink'), bring=g('giBring');
   const when=(date?usDate(date):'[date]')+(time?' at '+fmt12(time):'')+(tz?' '+tz:'');
-  const map={ company, position, date:date?usDate(date):'date TBD', time:time?fmt12(time):'', tz, when, link:link||'[meeting link]', bring:bring||'-', name:'', confirm_link:GI_CONFIRM_LINK|| (giSel().length===1?'(generating confirm link...)':'[confirm link is added per candidate when you invite one at a time]') };
+  const map={ company, position, date:date?usDate(date):'date TBD', time:time?fmt12(time):'', tz, when, link:link||'[meeting link]', bring:bring||'-', name:rcpt?firstName(rcpt.name):'', confirm_link:GI_CONFIRM_LINK|| (giSel().length===1?'(generating confirm link...)':'[confirm link is added per candidate when you invite one at a time]') };
   const t=tplFor('groupInterview',GI_TPL_DEFAULT);
   return { subject:fillTpl(t.subject,map), body:fillBody(t.body,map) };
 }
 function giRender(){
-  const sel=giSel(), t=giTemplate(), withEmail=sel.filter(c=>c.email).length, canSee=SESSION&&SESSION.role!=='recruiter';
+  const sel=giSel(), sample=sel[0], t=giTemplate(sample), withEmail=sel.filter(c=>c.email).length, canSee=SESSION&&SESSION.role!=='recruiter';
   const cc=document.getElementById('giCount'); if(cc) cc.textContent=`${sel.length} candidate${sel.length===1?'':'s'} selected`+(canSee?` (${withEmail} reachable by email)`:'');
-  const pv=document.getElementById('giPreview'); if(pv) pv.value='Subject: '+t.subject+'\n\n'+t.body;
+  const pv=document.getElementById('giPreview'); if(pv) pv.value=(sel.length>1?`Preview for ${firstName(sample&&sample.name)||'the first candidate'} - each candidate gets their own name:\n\n`:'')+'Subject: '+t.subject+'\n\n'+t.body;
 }
-function giCopy(){ const t=giTemplate(); navigator.clipboard.writeText('Subject: '+t.subject+'\n\n'+t.body).then(()=>toast('Invite copied'),()=>toast('Copy failed',true)); }
+function giCopy(){
+  const sel=giSel(); if(!sel.length){ const t=giTemplate(); navigator.clipboard.writeText('Subject: '+t.subject+'\n\n'+t.body); return; }
+  const text = sel.length===1
+    ? (()=>{ const t=giTemplate(sel[0]); return 'Subject: '+t.subject+'\n\n'+t.body; })()
+    : sel.map(c=>{ const t=giTemplate(c); return '=== '+(c.name||'Candidate')+' ===\nSubject: '+t.subject+'\n\n'+t.body; }).join('\n\n\n');
+  navigator.clipboard.writeText(text).then(()=>toast(sel.length>1?('Copied '+sel.length+' personalized invites'):'Invite copied'),()=>toast('Copy failed',true));
+}
 async function giMarkInvited(){
   let sel=giSel(); if(!sel.length) return;
   const okList=await claimMany(sel.map(c=>({id:c.id,name:c.name}))); // claim the free ones for me; skip any owned by other recruiters
@@ -2853,6 +2885,7 @@ async function giMarkInvited(){
   const tag='Group interview '+(date?usDate(date):'');
   const tagRecs=sel.map(c=>{ const cur=recArr(c.tags), next=cur.includes(tag)?cur:[...cur,tag]; c.tags=next; return {id:c.id,tags:next}; });
   await recFetch('/api/recruiting?action=tag',{method:'POST',body:JSON.stringify({records:tagRecs})});
+  poolClaimNote(await poolClaim(sel.map(c=>c.id))); // in the interview process -> lock to this workspace
   recCacheSave(); recBuildFacets(); recRender();
   giClose(); toast('Moved '+sel.length+' to Booked Recruitment Call and tagged "'+tag+'"');
 }
@@ -2903,6 +2936,7 @@ async function offerMarkSent(){
   const tag='Offer sent '+usDate(ds);
   const tagRecs=sel.map(c=>{ const cur=recArr(c.tags), next=cur.includes(tag)?cur:[...cur,tag]; c.tags=next; return {id:c.id,tags:next}; });
   await recFetch('/api/recruiting?action=tag',{method:'POST',body:JSON.stringify({records:tagRecs})});
+  poolClaimNote(await poolClaim(sel.map(c=>c.id))); // offer out -> lock to this workspace
   recCacheSave(); recBuildFacets(); recRender();
   offerClose(); toast('Moved '+sel.length+' to Offer Sent and tagged "'+tag+'"');
 }
@@ -3051,6 +3085,7 @@ async function recShortlist(){
   const today=new Date(), ds=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`, tag='Shortlisted '+usDate(ds);
   const tagRecs=sel.map(c=>{ const cur=recArr(c.tags), next=cur.includes(tag)?cur:[...cur,tag]; c.tags=next; return {id:c.id,tags:next}; });
   await recFetch('/api/recruiting?action=tag',{method:'POST',body:JSON.stringify({records:tagRecs})});
+  poolClaimNote(await poolClaim(sel.map(c=>c.id))); // lock them to this workspace (out of other clients' search)
   recCacheSave(); recBuildFacets(); recRender();
   toast('Shortlisted '+sel.length+' candidate'+(sel.length===1?'':'s')+' - the "you’ve been shortlisted" email will send once messaging is connected.');
 }
@@ -3717,7 +3752,7 @@ async function graduateClient(ev){
 }
 async function renderUsers(){
   const isAdmin = SESSION.role==='admin';
-  renderClientAccounts();
+  renderClientAccounts(); renderReassignPanel();
   // the create dropdown offers only roles the signed-in person is allowed to assign (Super Admin: all; Sales Director: manager & below)
   const roleSel=document.querySelector('#userForm [name=role]');
   if(roleSel){ const order=['closer','setter','recruiter','webinarteam','manager','director','founder','admin'], ar=assignableRoles();
@@ -3972,6 +4007,32 @@ async function mergeClientDo(){
   const {_t:_b,...sclean}=src.name?src:{name:source}; jobs.push(addRecord(Object.assign({},sclean,{type:'client',name:source,status:'__DELETED__'})));
   await Promise.all(jobs);
   closeMerge(); toast('Merged "'+source+'" into "'+target+'"'+(sc.txn?(' - '+sc.txn+' logged records stayed under the old name'):'')); fillLists(); renderClientOverview();
+}
+// ---- bulk reassign a departed staffer's accounts + rep pointers to someone else ----
+function repMetaMap(){ const m={}; RECORDS.forEach(x=>{ if(x.type==='repmeta'&&x.username){ const k=nrm(x.username); if(!m[k]||(x.submittedAt||'')>(m[k].submittedAt||'')) m[k]=x; } }); return m; }
+function staffNamesInUse(){ const s=new Set();
+  latestClients().forEach(c=>['webinarMgr','setterMgr','closerMgr','manager'].forEach(f=>{ if(c[f]&&String(c[f]).trim()) s.add(String(c[f]).trim()); }));
+  Object.values(repMetaMap()).forEach(m=>{ if(m.mgr&&String(m.mgr).trim()) s.add(String(m.mgr).trim()); });
+  return [...s].sort((a,b)=>a.localeCompare(b));
+}
+function renderReassignPanel(){
+  const p=document.getElementById('reassignPanel'); if(!p) return;
+  const isAdmin=SESSION&&SESSION.role==='admin'; p.style.display=isAdmin?'':'none'; if(!isAdmin) return;
+  const from=document.getElementById('reassignFrom'), to=document.getElementById('reassignTo');
+  if(from){ const cur=from.value, names=staffNamesInUse(); from.innerHTML=names.map(n=>`<option>${esc(n)}</option>`).join('')||'<option value="">(no assignments yet)</option>'; if(cur&&names.includes(cur)) from.value=cur; }
+  if(to){ const cur=to.value, people=mgrPeople(); to.innerHTML=people.map(n=>`<option>${esc(n)}</option>`).join(''); if(cur&&people.includes(cur)) to.value=cur; }
+}
+async function reassignStaff(oldName,newName){
+  if(!(SESSION&&SESSION.role==='admin')){ toast('Only a Super/Account Admin can reassign',true); return; }
+  oldName=String(oldName||'').trim(); newName=String(newName||'').trim();
+  if(!oldName||!newName||nrmName(oldName)===nrmName(newName)){ toast('Pick two different people',true); return; }
+  const on=nrmName(oldName), jobs=[]; let cCount=0, mCount=0;
+  latestClients().forEach(c=>{ let changed=false; const {_t,...clean}=c; ['webinarMgr','setterMgr','closerMgr','manager'].forEach(f=>{ if(c[f]&&nrmName(c[f])===on){ clean[f]=newName; changed=true; } }); if(changed){ clean.type='client'; jobs.push(addRecord(clean)); cCount++; } });
+  Object.values(repMetaMap()).forEach(m=>{ if(m.mgr&&nrmName(m.mgr)===on){ const {_t,...clean}=m; clean.type='repmeta'; clean.mgr=newName; jobs.push(addRecord(clean)); mCount++; } });
+  if(!jobs.length){ toast('Nothing is assigned to '+oldName); return; }
+  if(!confirm('Reassign everything from '+oldName+' to '+newName+'?\n\n'+cCount+' client assignment(s) + '+mCount+' rep manager pointer(s).')) return;
+  await Promise.all(jobs);
+  toast('Reassigned '+oldName+' to '+newName+' ('+cCount+' clients, '+mCount+' reps)'); fillLists(); renderUsers(); if(typeof renderClientOverview==='function') renderClientOverview();
 }
 // remove a client from the overview + all pickers (soft-delete; deals already logged under the name stay in the data)
 async function deleteClient(name){
