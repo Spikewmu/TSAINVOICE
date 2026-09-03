@@ -1430,7 +1430,7 @@ function baseAllow(role){
   return ({
     admin:['dash','reps','clients','onboarding','meeting','promises','timeoff','postcall','eod','training','mgreod','webinar','calllog','adminreport','recruiting','messages','data','users','settings'],
     director:['dash','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','eod','training','mgreod','webinar','calllog','recruiting','messages','adminreport'],
-    manager:['dash','reps','clients','onboarding','meeting','promises','timeoff','postcall','eod','training','mgreod','webinar','calllog','recruiting','messages'],
+    manager:['dash','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','eod','training','mgreod','webinar','calllog','recruiting','messages'],
     founder:['dash'],
     recruiter:['dash','recruiting','messages','timeoff'],
     webinarteam:['dash','meeting','promises','timeoff','webinar'],
@@ -1443,8 +1443,22 @@ const ROLE_RANK={admin:7,director:5,manager:4,recruiter:3,webinarteam:3,closer:2
 const OPERATOR_ROLES=['admin','director','manager','recruiter','webinarteam']; // internal TSA operator roles (TSA Staff)
 const DIRECTOR_MANAGES=['manager','recruiter','webinarteam','closer','setter']; // a Sales Director can edit these (Sales Managers and below), never admins/directors/clients
 // which roles the signed-in person is allowed to assign, and who they may edit
-function assignableRoles(){ const r=SESSION&&SESSION.role; if(r==='admin') return ['admin','director','manager','recruiter','webinarteam','closer','setter','founder']; if(r==='director') return DIRECTOR_MANAGES.slice(); return []; }
-function canManageUser(username){ const r=SESSION&&SESSION.role; if(username==='tsaboss') return false; if(r==='admin') return true; if(r==='director'){ const tr=rolesFor(username); return tr.length>0 && tr.every(x=>DIRECTOR_MANAGES.includes(x)); } return false; }
+const REP_ROLES=['closer','setter']; // a Sales Manager only ever creates/assigns reps
+function assignableRoles(){ const r=SESSION&&SESSION.role; if(r==='admin') return ['admin','director','manager','recruiter','webinarteam','closer','setter','founder']; if(r==='director') return DIRECTOR_MANAGES.slice(); if(r==='manager') return REP_ROLES.slice(); return []; }
+function canManageUser(username){
+  const r=SESSION&&SESSION.role; if(username==='tsaboss') return false;
+  if(r==='admin') return true;
+  if(r==='director'){ const tr=rolesFor(username); return tr.length>0 && tr.every(x=>DIRECTOR_MANAGES.includes(x)); }
+  if(r==='manager'){
+    const tr=rolesFor(username); if(!(tr.length>0 && tr.every(x=>REP_ROLES.includes(x)))) return false; // reps only
+    if(currentWs()!==DEFAULT_WS) return true; // standalone client account: workspace isolation already walls the manager to this client
+    const mine=managedClientsForUser(SESSION), theirs=teamsFor(username); // TSA: scope to the clients this manager runs (or an unassigned rep they can pick up)
+    return theirs.length===0 || theirs.some(t=>mine.includes(t));
+  }
+  return false;
+}
+// who the signed-in person can SEE on the Users page (viewing can be broader than editing)
+function canViewUser(u){ if(!u) return false; if(u.master) return SESSION&&SESSION.role==='admin'; const r=SESSION&&SESSION.role; if(r==='admin'||r==='director') return true; if(r==='manager'){ return nrm(u.username)===nrm(SESSION.username) || canManageUser(u.username); } return false; }
 function rolesFor(username){ let best=null,bt=''; RECORDS.forEach(x=>{ if(x.type==='userroles' && nrm(x.username)===nrm(username)){ if((x.submittedAt||'')>=bt){ bt=x.submittedAt||''; best=x; } } }); if(best&&Array.isArray(best.roles)&&best.roles.length) return best.roles.slice(); const u=(USERS_CACHE||[]).find(z=>nrm(z.username)===nrm(username)); return u?[u.role]:[]; }
 function hasRole(username,r){ return rolesFor(username).includes(r); }
 function primaryRole(roles){ return (roles||[]).slice().sort((a,b)=>(ROLE_RANK[b]||0)-(ROLE_RANK[a]||0))[0]||'closer'; }
@@ -3477,9 +3491,11 @@ function teamsFor(username){
   return [];
 }
 function teamBoxesHtml(checked){
-  const clients=clientNames(); checked=checked||[];
+  let clients=clientNames(); checked=checked||[];
+  // a TSA Sales Manager can only assign reps to the clients they run (standalone accounts are already ws-isolated)
+  if(SESSION && SESSION.role==='manager' && currentWs()===DEFAULT_WS){ const mine=managedClientsForUser(SESSION); clients=clients.filter(c=>mine.includes(c)||checked.includes(c)); }
   return clients.length ? clients.map(c=>`<label><input type="checkbox" value="${esc(c)}" ${checked.includes(c)?'checked':''}>${esc(c)}</label>`).join('')
-    : '<span class="muted">Add clients on the Client Overview / Settings tab first.</span>';
+    : '<span class="muted">'+((SESSION&&SESSION.role==='manager')?'You are not assigned to any clients yet - ask an admin to add you as a manager on an account.':'Add clients on the Client Overview / Settings tab first.')+'</span>';
 }
 // Super Admin = TSA (platform owner). Account Admin = a client's owner - "admin" inside a client workspace,
 // or a Founder still managed by TSA (dashboard-only until their account is graduated).
@@ -3526,6 +3542,7 @@ function renderUsersTable(list){
 }
 function renderUsersStats(){
   const el=document.getElementById('usersStats'); if(!el) return;
+  if(!(SESSION&&(SESSION.role==='admin'||SESSION.role==='director'))){ el.innerHTML=''; return; } // managers see only their reps, not org-wide counts
   const real=(USERS_LIST||[]).filter(u=>!u.master);
   const by=r=>real.filter(u=>u.role===r).length;
   const internal=(typeof currentPlan==='function'&&currentPlan()==='internal');
@@ -3573,7 +3590,7 @@ function renderUsersGrouped(){
   let any=false;
   const html=GROUPS.map(([gid,label,desc])=>{
     if(showG && showG!==gid) return '';
-    let members=(USERS_LIST||[]).filter(u=>userGroup(u)===gid);
+    let members=(USERS_LIST||[]).filter(u=>userGroup(u)===gid).filter(canViewUser);
     if(team) members=members.filter(u=>userOnTeam(u,team));
     if(qn) members=members.filter(u=>((u.name||'')+' '+(u.username||'')).toLowerCase().includes(qn));
     if(!members.length) return '';
@@ -3586,7 +3603,7 @@ function renderUsersGrouped(){
 // at-a-glance callout: who has no account/role assigned yet
 function renderUnassigned(list){
   const box=document.getElementById('usersUnassigned'); if(!box) return;
-  const un=(list||[]).filter(u=>{
+  const un=(list||[]).filter(canViewUser).filter(u=>{
     if(u.master||u.role==='admin') return false;
     if(['manager','webinarteam'].includes(u.role)) return managedClientsForUser(u).length===0; // managers need at least one Responsibility
     return teamsFor(u.username).length===0; // closers/setters/founders need at least one account

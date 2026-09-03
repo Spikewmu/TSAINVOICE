@@ -175,10 +175,12 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true });
     }
 
-    // admin or Sales Director past here; director actions are scoped to Sales Managers & below
-    if (session.role !== 'admin' && session.role !== 'director') return res.status(200).json({ ok: false, error: 'not authorized' });
+    // admin, Sales Director, or Sales Manager past here (director/manager are scope-limited below)
+    if (!['admin', 'director', 'manager'].includes(session.role)) return res.status(200).json({ ok: false, error: 'not authorized' });
     const isPlatformAdmin = session.role === 'admin';
-    const DIRECTOR_MANAGES = ['manager', 'recruiter', 'webinarteam', 'closer', 'setter'];
+    // the roles a non-admin actor may assign/edit/remove: Director = managers & below; Manager = reps only
+    const MANAGE_CEILING = session.role === 'director' ? ['manager', 'recruiter', 'webinarteam', 'closer', 'setter']
+      : (session.role === 'manager' ? ['closer', 'setter'] : []);
 
     // ---------- PROVISION A CLIENT ACCOUNT (platform owner only: creates an independent workspace + its Founder-admin) ----------
     if (action === 'provisionAccount') {
@@ -236,12 +238,16 @@ export default async function handler(req, res) {
       const u = body.user || {};
       const username = String(u.username || '').trim();
       if (!username) return res.status(200).json({ ok: false, error: 'username required' });
-      // a Sales Director may only create/edit Sales Managers & below (never admins, directors, or client founders)
+      // scope-limited actors (Director / Manager): only assign within their ceiling, only touch users in their own workspace
       if (!isPlatformAdmin) {
         const reqRole = String(u.role || 'closer');
-        if (!DIRECTOR_MANAGES.includes(reqRole)) return res.status(200).json({ ok: false, error: 'A Sales Director can only assign Sales Manager and below' });
+        if (!MANAGE_CEILING.includes(reqRole)) return res.status(200).json({ ok: false, error: 'You are not allowed to assign that role' });
         const existing = await getUser(username);
-        if (existing && !DIRECTOR_MANAGES.includes(existing.role)) return res.status(200).json({ ok: false, error: 'You cannot edit this account' });
+        if (existing) {
+          if (!MANAGE_CEILING.includes(existing.role)) return res.status(200).json({ ok: false, error: 'You cannot edit this account' });
+          const m2 = await wsMemberMap();
+          if (wsOf(m2, username) !== wsOf(m2, session.username)) return res.status(200).json({ ok: false, error: 'You cannot edit this account' }); // never pull a user across workspaces
+        }
       }
       const map = await wsMemberMap();
       const myWs = wsOf(map, session.username);
@@ -268,9 +274,13 @@ export default async function handler(req, res) {
     if (action === 'deleteUser') {
       const username = String(body.username || '').trim();
       if (!username) return res.status(200).json({ ok: false });
-      if (!isPlatformAdmin) { // a Sales Director may only remove Sales Managers & below
+      if (!isPlatformAdmin) { // scope-limited actors may only remove within their ceiling, and only in their own workspace
         const existing = await getUser(username);
-        if (existing && !DIRECTOR_MANAGES.includes(existing.role)) return res.status(200).json({ ok: false, error: 'You cannot remove this account' });
+        if (existing) {
+          if (!MANAGE_CEILING.includes(existing.role)) return res.status(200).json({ ok: false, error: 'You cannot remove this account' });
+          const m2 = await wsMemberMap();
+          if (wsOf(m2, username) !== wsOf(m2, session.username)) return res.status(200).json({ ok: false, error: 'You cannot remove this account' });
+        }
       }
       await supa('users?username=eq.' + encodeURIComponent(username), { method: 'DELETE' });
       return res.status(200).json({ ok: true });
