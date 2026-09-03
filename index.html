@@ -884,7 +884,7 @@
     <p class="hint">Every client at a glance: status, manager, existing monthly, cash collected this month, and the next step. Add or update a client below.</p>
     <div class="cards" id="clientKpis"></div>
     <div class="panel"><h3>Clients</h3><div class="tablewrap"><table id="overviewTable"></table></div></div>
-    <div class="panel"><h3>Add or update a client</h3>
+    <div class="panel" id="clientEditPanel"><h3>Add or update a client</h3>
       <form class="grid" id="clientForm" onsubmit="saveClient(event)" style="box-shadow:none;border:none">
         <div class="field"><label>Client name *</label><input name="name" required placeholder="Prime (Billy)"></div>
         <div class="field"><label>Status *</label><select name="status" required><option>Active</option><option>Onboarding</option><option>Prospect</option><option>Inactive</option><option>Dropped</option></select></div>
@@ -1428,7 +1428,7 @@ function startApp(){
 function baseAllow(role){
   return ({
     admin:['dash','reps','clients','onboarding','meeting','promises','timeoff','postcall','eod','training','mgreod','webinar','calllog','adminreport','recruiting','messages','data','users','settings'],
-    manager:['dash','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','eod','training','mgreod','webinar','calllog','recruiting','messages'],
+    manager:['dash','reps','clients','onboarding','meeting','promises','timeoff','postcall','eod','training','mgreod','webinar','calllog','recruiting','messages'],
     founder:['dash'],
     recruiter:['dash','recruiting','messages','timeoff'],
     webinarteam:['dash','meeting','promises','timeoff','webinar'],
@@ -1446,9 +1446,12 @@ function isTsaStaff(username){ return rolesFor(username).some(r=>OPERATOR_ROLES.
 // access follows responsibilities + the UNION of all assigned roles.
 function applyNavAccess(){
   const role=SESSION&&SESSION.role; if(!role) return;
-  let myRoles=rolesFor(SESSION.username); if(!myRoles.length) myRoles=[role]; if(!myRoles.includes(role)) myRoles.push(role);
+  const previewing=!!VIEW_AS_REAL; // "View as" a single role: preview exactly that role, not the real user's stored roles
+  let myRoles;
+  if(previewing){ myRoles=[role]; }
+  else { myRoles=rolesFor(SESSION.username); if(!myRoles.length) myRoles=[role]; if(!myRoles.includes(role)) myRoles.push(role); }
   const allow=[]; myRoles.forEach(r=>baseAllow(r).forEach(t=>{ if(!allow.includes(t)) allow.push(t); }));
-  if(!myRoles.includes('founder')){
+  if(!previewing && !myRoles.includes('founder')){
     const f=managedFunctionsForUser(SESSION);
     if(f.web.length) ['dash','meeting','webinar'].forEach(t=>{ if(!allow.includes(t)) allow.push(t); });
     if(f.set.length||f.clo.length) ['dash','reps','clients','onboarding','meeting','mgreod','calllog'].forEach(t=>{ if(!allow.includes(t)) allow.push(t); });
@@ -3892,6 +3895,8 @@ function fillMgrSelects(){ const people=mgrPeople(); ['webinarMgr','setterMgr','
 function mgrCellHTML(c){ const rows=[c.webinarMgr&&('Web: '+c.webinarMgr), c.setterMgr&&('Set: '+c.setterMgr), c.closerMgr&&('Clo: '+c.closerMgr)].filter(Boolean); return rows.length?rows.map(esc).join('<br>'):(c.manager?esc(c.manager):'<span class="muted">-</span>'); }
 function renderClientOverview(){
   const scope=dashScopeClients();
+  const canEditClients = !!(SESSION && SESSION.role==='admin'); // only Super/Account Admins add or edit clients; managers view only
+  const ep=document.getElementById('clientEditPanel'); if(ep) ep.style.display=canEditClients?'':'none';
   const cs=latestClients().filter(c=>!scope||scope.includes(c.name));
   if(!(USERS_CACHE&&USERS_CACHE.length)) loadUsers().then(fillMgrSelects); else fillMgrSelects();
   const active=cs.filter(c=>c.status==='Active').length;
@@ -3911,7 +3916,7 @@ function renderClientOverview(){
     (rows.length?rows.map(c=>{
       const offers=productsForClient(c.name);
       const offerCell=(c.products&&offers.length)?offers.map(p=>`<span class="teamtag">${esc(p)}</span>`).join(''):'<span class="muted">global default</span>';
-      return `<tr><td><b>${esc(c.name)}</b> <button class="btn sm ghost" onclick="editClient('${esc(c.name).replace(/'/g,"\\'")}')">Edit</button></td><td><span class="pill ${pc(c.status)}">${esc(c.status)}</span></td><td style="font-size:12px;line-height:1.5">${mgrCellHTML(c)}</td><td>${esc(c.serviceLine)}</td><td>${offerCell}</td><td class="num">${c.monthlyGoal?money(c.monthlyGoal):'<span class="muted">-</span>'}</td><td class="num">${money(c.monthly)}</td><td class="num">${money(cashThisMonth(c.name))}</td><td>${esc(c.nextStep)}</td></tr>`;
+      return `<tr><td><b>${esc(c.name)}</b> ${canEditClients?`<button class="btn sm ghost" onclick="editClient('${esc(c.name).replace(/'/g,"\\'")}')">Edit</button>`:''}</td><td><span class="pill ${pc(c.status)}">${esc(c.status)}</span></td><td style="font-size:12px;line-height:1.5">${mgrCellHTML(c)}</td><td>${esc(c.serviceLine)}</td><td>${offerCell}</td><td class="num">${c.monthlyGoal?money(c.monthlyGoal):'<span class="muted">-</span>'}</td><td class="num">${money(c.monthly)}</td><td class="num">${money(cashThisMonth(c.name))}</td><td>${esc(c.nextStep)}</td></tr>`;
     }).join('')
      :`<tr><td colspan="8" class="muted" style="padding:16px">No clients yet. Add one below.</td></tr>`)+`</tbody>`;
   // fresh "add client" form defaults to all global offers (ready to trim)
