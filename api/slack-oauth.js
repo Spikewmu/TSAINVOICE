@@ -31,10 +31,14 @@ export default async function handler(req, res) {
   if (q.error) return res.status(200).send(page('Not connected', 'Slack authorization was cancelled.'));
   const st = verifyState(q.state);
   if (!st) return res.status(200).send(page('Not connected', 'This link expired or was invalid. Start the connect again from Sales HQ.'));
-  if (!process.env.SLACK_CLIENT_ID || !process.env.SLACK_CLIENT_SECRET) return res.status(200).send(page('Not configured', 'Slack OAuth is not set up on the server yet (SLACK_CLIENT_ID / SLACK_CLIENT_SECRET).'));
+  // pick the Slack app this connect was started with (each feed can have its own app so it posts under its own name)
+  const APPS = { default: ['SLACK_CLIENT_ID', 'SLACK_CLIENT_SECRET'], deal: ['SLACK_CLIENT_ID_DEAL', 'SLACK_CLIENT_SECRET_DEAL'], postcall: ['SLACK_CLIENT_ID_POSTCALL', 'SLACK_CLIENT_SECRET_POSTCALL'], sod: ['SLACK_CLIENT_ID_SOD', 'SLACK_CLIENT_SECRET_SOD'] };
+  const app = APPS[st.app] || APPS.default;
+  const clientId = process.env[app[0]], clientSecret = process.env[app[1]];
+  if (!clientId || !clientSecret) return res.status(200).send(page('Not configured', 'That Slack app is not set up on the server yet.'));
   const redirect_uri = (req.headers['x-forwarded-proto'] || 'https') + '://' + req.headers.host + '/api/slack-oauth';
   try {
-    const body = new URLSearchParams({ client_id: process.env.SLACK_CLIENT_ID, client_secret: process.env.SLACK_CLIENT_SECRET, code: String(q.code || ''), redirect_uri });
+    const body = new URLSearchParams({ client_id: clientId, client_secret: clientSecret, code: String(q.code || ''), redirect_uri });
     const r = await fetch('https://slack.com/api/oauth.v2.access', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body });
     const j = await r.json();
     const url = j && j.incoming_webhook && j.incoming_webhook.url;

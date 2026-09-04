@@ -40,6 +40,16 @@ async function allByType(type) {
 }
 const mask = url => { const s = String(url || ''); return s ? '…' + s.slice(-6) : ''; };
 const baseUrl = req => (req.headers['x-forwarded-proto'] || 'https') + '://' + req.headers.host;
+// each feed can use its own Slack app so it posts under its own name; falls back to the default app
+const SLACK_APPS = {
+  default: { id: 'SLACK_CLIENT_ID', secret: 'SLACK_CLIENT_SECRET' },
+  deal: { id: 'SLACK_CLIENT_ID_DEAL', secret: 'SLACK_CLIENT_SECRET_DEAL' },
+  postcall: { id: 'SLACK_CLIENT_ID_POSTCALL', secret: 'SLACK_CLIENT_SECRET_POSTCALL' },
+  sod: { id: 'SLACK_CLIENT_ID_SOD', secret: 'SLACK_CLIENT_SECRET_SOD' }
+};
+const appKeyForField = f => (f === 'deal' || f === 'postcall' || f === 'sod') ? f : 'default';
+const slackAppId = k => { const a = SLACK_APPS[k]; return a && process.env[a.id]; };
+const slackApps = () => Object.fromEntries(Object.keys(SLACK_APPS).map(k => [k, !!slackAppId(k)]));
 const keepOr = (val, prev) => (val === '') ? '' : ((val && val !== '__keep__') ? String(val) : (prev || ''));
 const pubCfg = d => ({ key: d.key, ws: d.ws, client: d.client || '', eodToSlack: !!d.eodToSlack,
   slack: d.slackWebhook || '', setter: d.eodSetterSlack || '', closer: d.eodCloserSlack || '', mgr: d.eodMgrSlack || '',
@@ -66,7 +76,8 @@ export default async function handler(req, res) {
     if (action === 'get') {
       const cfgs = await allByType('integration'), hooks = await allByType('webhook');
       const tpls = await allByType('template');
-      return res.status(200).json({ ok: true, super: isSuper, slackOauth: !!process.env.SLACK_CLIENT_ID,
+      const apps = slackApps();
+      return res.status(200).json({ ok: true, super: isSuper, slackOauth: Object.values(apps).some(Boolean), slackApps: apps,
         configs: Object.values(cfgs).filter(mayTouch).map(pubCfg),
         webhooks: Object.values(hooks).filter(d => mayTouch(d) && !d.deleted).map(d => pubHook(d, req)),
         templates: Object.values(tpls).filter(t => !t.deleted).map(t => ({ id: t.id, name: t.name, processor: t.processor || '', body: t.body || '' })) });
@@ -89,15 +100,19 @@ export default async function handler(req, res) {
     }
     // ---- Slack OAuth: build the authorize URL with a signed state (admin-gated here; the callback trusts the signature) ----
     if (action === 'connectUrl') {
-      if (!process.env.SLACK_CLIENT_ID) return res.status(200).json({ ok: false, error: 'Slack OAuth not configured on the server' });
       const t = b.t === 'config' ? 'config' : 'webhook';
-      const stateObj = { t, exp: Date.now() + 15 * 60 * 1000 };
+      const field = t === 'config' ? String(b.field || 'slack') : 'slack';
+      // pick the Slack app for this feed (New closed deal / Post-call / SOD have their own; else default)
+      let appKey = appKeyForField(field);
+      if (!slackAppId(appKey)) appKey = 'default';
+      if (!slackAppId(appKey)) return res.status(200).json({ ok: false, error: 'Slack OAuth not configured on the server for this feed' });
+      const stateObj = { t, app: appKey, exp: Date.now() + 15 * 60 * 1000 };
       if (t === 'webhook') { stateObj.id = String(b.id || ''); if (!stateObj.id) return res.status(200).json({ ok: false, error: 'id required' }); }
-      else { stateObj.key = String(b.key || ''); stateObj.field = String(b.field || 'slack'); stateObj.ws = isSuper ? String(b.ws || DEFAULT_WS) : callerWs; if (!stateObj.key) return res.status(200).json({ ok: false, error: 'key required' }); }
+      else { stateObj.key = String(b.key || ''); stateObj.field = field; stateObj.ws = isSuper ? String(b.ws || DEFAULT_WS) : callerWs; if (!stateObj.key) return res.status(200).json({ ok: false, error: 'key required' }); }
       const sb = Buffer.from(JSON.stringify(stateObj)).toString('base64url');
       const mac = crypto.createHmac('sha256', process.env.SESSION_SECRET || 'tsa-session').update(sb).digest('base64url');
       const redirect = baseUrl(req) + '/api/slack-oauth';
-      const url = 'https://slack.com/oauth/v2/authorize?' + new URLSearchParams({ client_id: process.env.SLACK_CLIENT_ID, scope: 'incoming-webhook', redirect_uri: redirect, state: sb + '.' + mac }).toString();
+      const url = 'https://slack.com/oauth/v2/authorize?' + new URLSearchParams({ client_id: slackAppId(appKey), scope: 'incoming-webhook', redirect_uri: redirect, state: sb + '.' + mac }).toString();
       return res.status(200).json({ ok: true, url });
     }
     // ---- client-level config: Slack fallback + EOD toggle ----
