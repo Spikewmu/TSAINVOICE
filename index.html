@@ -368,6 +368,7 @@
     <div class="navsub">
       <button data-tab="data">Data + Export</button>
       <button data-tab="users">Users</button>
+      <button data-tab="integrations">Integrations</button>
       <button data-tab="settings">Settings</button>
     </div>
   </div>
@@ -967,13 +968,12 @@
     <div class="panel" id="repDetailPanel" hidden><h3 id="repDetailTitle">Rep detail</h3><div class="tablewrap"><table id="repDetailTable"></table></div></div>
   </section>
 
-  <!-- ===== SETTINGS ===== -->
-  <section id="tab-settings" hidden>
-    <h2 class="section">Settings</h2>
-    <p class="hint">Manage clients, reps, products, goals, commission rates, the shared-data endpoint, and the master admin password.</p>
-    <div class="panel" id="billingPanel" style="margin-bottom:16px"></div>
-    <div class="panel" id="integrationsPanel" style="margin-bottom:16px;display:none">
-      <h3>Integrations <span class="muted" style="font-weight:400;font-size:12px">- payment alerts + EOD reports to Slack</span></h3>
+  <!-- ===== INTEGRATIONS ===== -->
+  <section id="tab-integrations" hidden>
+    <h2 class="section">Integrations</h2>
+    <p class="hint">Connect a client's payment processor and daily reports to their Slack channel. Pick the client, paste their Slack Incoming Webhook, copy the Sales HQ inbound URL into their processor, and choose what posts.</p>
+    <div class="panel" id="integrationsPanel">
+      <h3>Payments &amp; reports to Slack</h3>
       <div style="padding:14px">
         <p class="hint" style="margin:0 0 12px">Route a client's payments (Whop, Elective, Fanbasis, etc.) and daily reports into a Slack channel. Paste the client's <b>Slack Incoming Webhook</b>, copy the <b>Sales HQ inbound URL</b> into their payment processor, and switch on what should post.</p>
         <div class="filters" style="align-items:flex-end;margin:0 0 12px">
@@ -994,6 +994,13 @@
         </div>
       </div>
     </div>
+  </section>
+
+  <!-- ===== SETTINGS ===== -->
+  <section id="tab-settings" hidden>
+    <h2 class="section">Settings</h2>
+    <p class="hint">Manage clients, reps, products, goals, commission rates, the shared-data endpoint, and the master admin password.</p>
+    <div class="panel" id="billingPanel" style="margin-bottom:16px"></div>
     <div class="cards" style="grid-template-columns:repeat(auto-fill,minmax(300px,1fr))">
       <div class="panel" style="margin:0"><h3>Clients</h3><div style="padding:14px"><p class="hint" style="margin:0">Clients are managed on the <b>Client Overview</b> tab now (status, manager, offers, cash). Add or edit them there - this list is retired to avoid two places to keep in sync.</p></div></div>
       <div class="panel" style="margin:0"><h3>Closers &amp; setters</h3><div style="padding:14px"><p class="hint" style="margin:0">Reps come from the <b>Users</b> tab. Create a login there with their role and team, and they'll appear automatically in the Log Closed Deal and End of Day dropdowns - no separate list to maintain here.</p></div></div>
@@ -1489,7 +1496,7 @@ function startApp(){
 // base tabs a login TIER can see; per-account responsibilities add to this in applyNavAccess()
 function baseAllow(role){
   return ({
-    admin:['dash','reps','clients','onboarding','meeting','promises','timeoff','postcall','eod','training','mgreod','webinar','calllog','adminreport','recruiting','messages','data','users','settings'],
+    admin:['dash','reps','clients','onboarding','meeting','promises','timeoff','postcall','eod','training','mgreod','webinar','calllog','adminreport','recruiting','messages','data','users','integrations','settings'],
     director:['dash','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','eod','training','mgreod','webinar','calllog','recruiting','messages','adminreport'],
     manager:['dash','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','eod','training','mgreod','webinar','calllog','recruiting','messages'],
     founder:['dash'],
@@ -1584,7 +1591,7 @@ function showTab(t){
   document.querySelectorAll('#tabs button[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
   document.querySelectorAll('#tabs .navgroup').forEach(g=>{ if(g.querySelector('button[data-tab="'+t+'"]')) g.classList.remove('collapsed'); }); // reveal the active tab's group
 
-  ['dash','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','eod','training','mgreod','webinar','calllog','adminreport','recruiting','messages','data','users','settings'].forEach(x=>{ document.getElementById('tab-'+x).hidden = (x!==t); });
+  ['dash','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','eod','training','mgreod','webinar','calllog','adminreport','recruiting','messages','data','users','integrations','settings'].forEach(x=>{ const el=document.getElementById('tab-'+x); if(el) el.hidden = (x!==t); });
   // stale-while-revalidate: render instantly from the cached records, then refresh in the background
   const render={dash:renderDash, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, promises:renderPromisesTab, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, webinar:renderWebinars, calllog:renderCallLog, adminreport:renderAdminReport, recruiting:renderRecruiting, messages:renderMessages, training:renderTraining, data:renderAll}[t];
   if(render){ render(); syncRecords().then(()=>{ if(currentTab()===t) render(); updateNavBadges(); }); }
@@ -1592,6 +1599,7 @@ function showTab(t){
   if(t==='data'){ renderDailyEntry(); }
   if(t==='users'){ renderUsers(); }
   if(t==='settings'){ loadSettingsForm(); }
+  if(t==='integrations'){ renderIntegrations(); }
 }
 function currentTab(){ const b=document.querySelector('#tabs button.active'); return b?b.dataset.tab:''; }
 
@@ -4374,7 +4382,7 @@ function loadSettingsForm(){
   document.getElementById('setSetter').value=CFG.setterRate;
   document.getElementById('setEndpoint').value=CFG.endpoint;
   document.getElementById('setAdmin').value=CFG.adminCode;
-  renderSlackLinks(); renderBilling(); renderIntegrations();
+  renderSlackLinks(); renderBilling();
 }
 /* ---- Integrations: payment webhook + EOD -> Slack, per client ---- */
 function integHdr(){ const h={'Content-Type':'application/json'}; if(SESSION&&SESSION.token) h['x-session-token']=SESSION.token; else if(SESSION&&SESSION.pw) h['x-admin-pass']=SESSION.pw; return h; }
