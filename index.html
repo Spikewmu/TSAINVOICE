@@ -165,6 +165,12 @@
   .notifitem .ni-tx{flex:1;font-size:13px;line-height:1.35}
   .notifitem .ni-tx small{display:block;color:var(--muted);font-size:11px;margin-top:1px}
   .notifempty{padding:22px 14px;text-align:center;color:var(--muted);font-size:13px}
+  .reminderpill{display:none;align-items:center;gap:7px;background:linear-gradient(180deg,#e9cf72,#d4af37);color:#1a1508;font-weight:700;font-size:13px;padding:8px 15px;border-radius:999px;cursor:pointer;text-decoration:none;white-space:nowrap;border:none;box-shadow:0 2px 12px rgba(212,175,55,.4);animation:remindpulse 2.2s ease-in-out infinite}
+  .reminderpill.show{display:inline-flex}
+  .reminderpill:hover{filter:brightness(1.06)}
+  .reminderpill .rgo{opacity:.7;font-weight:700}
+  @keyframes remindpulse{0%,100%{box-shadow:0 2px 10px rgba(212,175,55,.30)}50%{box-shadow:0 2px 18px rgba(212,175,55,.65)}}
+  @media (max-width:640px){ .reminderpill{font-size:12px;padding:6px 11px} .reminderpill .rlabel-long{display:none} }
   select.rolesel{font:inherit;font-size:12px;font-weight:600;padding:4px 8px;border-radius:6px;background:var(--surface-2);color:var(--ink);border:1px solid var(--border);cursor:pointer}
   .stars{color:var(--gold);letter-spacing:1px;white-space:nowrap}
   .recreason{color:var(--good);font-size:12px;margin-top:3px}
@@ -297,6 +303,7 @@
   <div class="brand"><span class="dot"></span> Sales HQ</div>
   <div class="sub" id="storeTag"></div>
   <div class="spacer"></div>
+  <a class="reminderpill" id="reminderPill" onclick="reminderGo(event)"></a>
   <div class="notifwrap">
     <button class="notifbell" id="notifBell" onclick="toggleNotif(event)" title="Notifications" aria-label="Notifications">
       <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
@@ -1674,13 +1681,14 @@ function showTab(t){
   ['dash','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','sod','eod','training','mgreod','webinar','calllog','adminreport','recruiting','messages','data','users','integrations','settings'].forEach(x=>{ const el=document.getElementById('tab-'+x); if(el) el.hidden = (x!==t); });
   // stale-while-revalidate: render instantly from the cached records, then refresh in the background
   const render={dash:renderDash, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, promises:renderPromisesTab, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, webinar:renderWebinars, calllog:renderCallLog, adminreport:renderAdminReport, recruiting:renderRecruiting, messages:renderMessages, training:renderTraining, data:renderAll}[t];
-  if(render){ render(); syncRecords().then(()=>{ if(currentTab()===t) render(); updateNavBadges(); }); }
+  if(render){ render(); syncRecords().then(()=>{ if(currentTab()===t) render(); updateNavBadges(); renderReminders(); }); }
   updateNavBadges();
   if(t==='data'){ renderDailyEntry(); }
   if(t==='users'){ renderUsers(); }
   if(t==='settings'){ loadSettingsForm(); }
   if(t==='integrations'){ renderIntegrations(); }
   if(t==='sod'){ renderSodTab(); }
+  renderReminders();
 }
 function currentTab(){ const b=document.querySelector('#tabs button.active'); return b?b.dataset.tab:''; }
 
@@ -1725,6 +1733,25 @@ function fillLists(){
 function todayLocal(){ const d=new Date(); return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10); }
 // current submission time, recorded in Eastern (readable + sortable: "2026-08-26 01:00:59 ET"). Works from any rep's timezone.
 function nowET(){ try{ return new Date().toLocaleString('sv-SE',{timeZone:'America/New_York'})+' ET'; }catch(e){ return new Date().toISOString(); } }
+function etHour(){ try{ return +new Date().toLocaleString('en-US',{timeZone:'America/New_York',hour:'2-digit',hour12:false}); }catch(e){ return new Date().getHours(); } }
+// Login reminders: nudge reps to submit Start-of-Day (from 7am ET) / End-of-Day (from 5pm ET), managers for Manager EOD. Clears once submitted.
+const SOD_START_HOUR=7, EOD_START_HOUR=17;
+function renderReminders(){
+  const pill=document.getElementById('reminderPill'); if(!pill) return;
+  pill.classList.remove('show'); window.__reminderTab=null;
+  if(!SESSION || !SESSION.name) return;
+  const role=SESSION.role, name=SESSION.name, day=todayLocal(), h=etHour();
+  let msg='', tab='';
+  if(role==='closer'||role==='setter'){
+    if(h>=EOD_START_HOUR){ if(!submittedEod(name,day)){ msg='Submit your End of Day report'; tab='eod'; } }
+    else if(h>=SOD_START_HOUR){ if(!submittedSod(name,day)){ msg='Submit your Start of Day report'; tab='sod'; } }
+  } else if(role==='manager'||role==='director'){
+    if(h>=EOD_START_HOUR && !submittedMgrEod(name,day)){ msg='Submit your Manager EOD report'; tab='mgreod'; }
+  }
+  if(msg && tab){ pill.innerHTML='&#9200; <span class="rlabel-long">'+esc(msg)+'</span><span class="rgo">&#8594;</span>'; window.__reminderTab=tab; pill.classList.add('show'); }
+}
+function reminderGo(e){ if(e) e.preventDefault(); const t=window.__reminderTab; if(t) showTab(t); }
+if(typeof window!=='undefined' && !window.__reminderTimer){ window.__reminderTimer=setInterval(()=>{ try{ renderReminders(); }catch(_){} }, 5*60*1000); } // re-check across the 7am/5pm boundaries for anyone left logged in
 function submittedETof(r){ if(r.submittedET) return r.submittedET; if(r.submittedAt){ try{ return new Date(r.submittedAt).toLocaleString('sv-SE',{timeZone:'America/New_York'})+' ET'; }catch(e){} } return '-'; }
 // display dates in US format (M-D-YYYY, e.g. 8-25-2026); stored dates stay ISO (YYYY-MM-DD) for sorting/filtering
 function usDate(d){ d=(d||'').slice(0,10); const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(d); return m?(+m[2])+'-'+(+m[3])+'-'+m[1]:d; }
@@ -1776,7 +1803,7 @@ async function submitEod(e){ e.preventDefault(); const btn=e.target.querySelecto
     const csel=e.target.querySelector('[name=client]'); if(csel && !(o.client||'').trim()) o.client=csel.value; // locked/disabled selects drop out of FormData
     if(!(o.client||'').trim()){ toast('Choose a client / account first.',true); return; }
     const units={}; document.querySelectorAll('#eodProducts input[data-prod]').forEach(i=>{ const v=parseFloat(i.value)||0; if(v) units[i.dataset.prod]=v; }); if(Object.keys(units).length) o.productUnits=JSON.stringify(units);
-    await addRecord(o); e.target.reset(); presetDates(); setEodRole(o.role); if(repMode()) applyIdentity(); toast('End of day submitted.'); if(!repMode()) renderDash(); ok=true; }
+    await addRecord(o); e.target.reset(); presetDates(); setEodRole(o.role); if(repMode()) applyIdentity(); renderReminders(); toast('End of day submitted.'); if(!repMode()) renderDash(); ok=true; }
   catch(err){ toast('Submit failed - try again',true); }
   finally{ if(ok) btnDone(btn,'Submitted!'); else btnBusy(btn,false); } }
 /* ---- Start of Day projections ---- */
@@ -1814,7 +1841,7 @@ async function submitSod(e){ e.preventDefault(); const btn=e.target.querySelecto
     const csel=e.target.querySelector('[name=client]'); if(csel && !(o.client||'').trim()) o.client=csel.value;
     if(!(o.client||'').trim()){ toast('Choose a client / account first.',true); return; }
     if((o.role||'Closer')==='Setter') o.sodSetTotal=(parseFloat(o.sodSameDay)||0)+(parseFloat(o.sod24)||0)+(parseFloat(o.sod48)||0)+(parseFloat(o.sod72)||0);
-    await addRecord(o); e.target.reset(); renderSodTab(); toast('Start of day submitted.'); if(!repMode()) renderDash(); ok=true; }
+    await addRecord(o); e.target.reset(); renderSodTab(); renderReminders(); toast('Start of day submitted.'); if(!repMode()) renderDash(); ok=true; }
   catch(err){ toast('Submit failed - try again',true); }
   finally{ if(ok) btnDone(btn,'Submitted!'); else btnBusy(btn,false); } }
 /* ---- End of Day: one page, one section per account, for reps who work 2+ accounts ---- */
@@ -1871,7 +1898,7 @@ async function submitEodMulti(){
       jobs.push(addRecord(o)); filled++;
     });
     if(!filled){ toast('Enter numbers for at least one account first.',true); btnBusy(btn,false); return; }
-    await Promise.all(jobs); renderEodSections(); toast(`End of day submitted for ${filled} account${filled>1?'s':''}.`); ok=true;
+    await Promise.all(jobs); renderEodSections(); renderReminders(); toast(`End of day submitted for ${filled} account${filled>1?'s':''}.`); ok=true;
   }catch(err){ toast('Submit failed - try again',true); }
   finally{ if(ok) btnDone(btn,'Submitted!'); else btnBusy(btn,false); }
 }
@@ -2055,7 +2082,7 @@ async function submitMgrEod(){
       jobs.push(addRecord(o)); filled++;
     });
     if(!filled){ toast('Enter numbers for at least one offer first.',true); btnBusy(btn,false); return; }
-    await Promise.all(jobs); renderMgrEod(); toast(`Manager EOD submitted for ${filled} offer${filled>1?'s':''}.`); ok=true;
+    await Promise.all(jobs); renderMgrEod(); renderReminders(); toast(`Manager EOD submitted for ${filled} offer${filled>1?'s':''}.`); ok=true;
   }catch(err){ toast('Submit failed - try again',true); }
   finally{ if(ok) btnDone(btn,'Submitted!'); else btnBusy(btn,false); }
 }
