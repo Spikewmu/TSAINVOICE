@@ -685,9 +685,10 @@
     <div class="seg" id="rcViewSeg" style="margin:0 0 12px"><button class="on" onclick="recSetView('search')">Search</button><button onclick="recSetView('pipeline')">Pipeline</button></div>
     <div class="panel">
       <div class="filters" style="align-items:flex-end">
-        <div class="field" style="flex:2;min-width:280px"><label>AI best-fit search</label><input id="rcQuery" placeholder='e.g. "3+ stars who sold high-ticket coaching, US timezone"' onkeydown="if(event.key==='Enter')recRunAi()"></div>
-        <button class="btn gold sm" id="rcAiBtn" style="align-self:flex-end" onclick="recRunAi()">Rank best fit</button>
-        <button class="btn ghost sm" style="align-self:flex-end" onclick="recClearAi()">Clear AI</button>
+        <div class="field" style="flex:2;min-width:280px"><label>Best-fit search <span class="muted" style="font-weight:400">- instant, ranks as you type</span></label><input id="rcQuery" placeholder='e.g. "sold high-ticket coaching, eastern timezone"' oninput="recSearchDebounced()" onkeydown="if(event.key==='Enter')recLocalRank(this.value)"></div>
+        <button class="btn gold sm" id="rcAiBtn" style="align-self:flex-end" onclick="recLocalRank((document.getElementById('rcQuery')||{}).value)">Search</button>
+        <button class="btn ghost sm" style="align-self:flex-end" onclick="recRunAi()" title="Slower - uses AI for a deeper semantic pass">Deep AI rank</button>
+        <button class="btn ghost sm" style="align-self:flex-end" onclick="recClearAi()">Clear</button>
         <span style="flex:1"></span>
         <span id="rcCount" class="tag" style="align-self:flex-end;margin-bottom:2px"></span>
         <button class="btn ghost sm" style="align-self:flex-end" onclick="recLoad(true)">Refresh</button>
@@ -3414,6 +3415,31 @@ function recRender(){
 function recToggle(id,on){ if(on)REC_SEL.add(id); else REC_SEL.delete(id); recSelCount(); }
 function recSelectAll(on){ recList().forEach(c=>{ if(on)REC_SEL.add(c.id); else REC_SEL.delete(c.id); }); recRender(); }
 function recSelCount(){ ['rcSelCount','rcSelCountTop'].forEach(id=>{ const e=document.getElementById(id); if(e)e.textContent=REC_SEL.size+' selected'; }); }
+/* ---- instant local best-fit ranker (no API, runs in the browser in ms) ---- */
+const REC_STOP=new Set(['the','a','an','and','or','who','with','for','in','of','to','that','have','has','star','stars','plus','at','on','is','are','who','someone','somebody','person','people','reps','rep','sold','sell','sells','selling','experience','exp','years','year','can','looking','need','want','good','great','strong','high','level']);
+const REC_SYN={ ht:['high-ticket','ticket'], 'high-ticket':['ticket','premium'], est:['eastern'], eastern:['est'], pst:['pacific'], pacific:['pst','pt'], cst:['central'], central:['cst'], mst:['mountain'], remote:['wfh','anywhere'], coaching:['coach','course','program','info'], closer:['closing','close'], setter:['setting','appointment','appointments'], b2b:['business'], saas:['software'], solar:['energy'] };
+function recTerms(q){ let ts=String(q||'').toLowerCase().replace(/[^a-z0-9+ ]/g,' ').split(/\s+/).filter(t=>t.length>1&&!REC_STOP.has(t)); const ex=[]; ts.forEach(t=>{ ex.push(t); (REC_SYN[t]||[]).forEach(s=>ex.push(s)); }); return [...new Set(ex)]; }
+function recBlob(c){
+  return { strong:[c.sold, recArr(c.role).join(' '), recArr(c.achievements).join(' ')].join(' ').toLowerCase(),
+    mid:[recArr(c.timezones).join(' '), recArr(c.tech).join(' '), recArr(c.languages).join(' '), String(c.workPref||'')].join(' ').toLowerCase(),
+    weak:[String(c.summary||''), recArr(c.tags).join(' '), String(c.name||'')].join(' ').toLowerCase() };
+}
+function recLocalRank(query){
+  query=String(query||'').trim();
+  if(!query){ REC_AIRANK=null; const cb=document.getElementById('rcAiOnly'); if(cb)cb.checked=false; recRender(); return; }
+  const terms=recTerms(query), pool=REC_ALL.filter(recMatch), ql=query.toLowerCase();
+  const scored=pool.map(c=>{ const b=recBlob(c); let s=0; const hit=[];
+    terms.forEach(t=>{ if(b.strong.indexOf(t)>=0){ s+=5; hit.push(t); } else if(b.mid.indexOf(t)>=0){ s+=3; hit.push(t); } else if(b.weak.indexOf(t)>=0){ s+=1.5; hit.push(t); } });
+    if(s>0){ if(ql.length>4 && (b.strong+' '+b.mid+' '+b.weak).indexOf(ql)>=0) s+=4; s+=(c.rating||0)*0.6; } // phrase bonus + rating tiebreak
+    return {c,s,hit:[...new Set(hit)]};
+  }).filter(x=>x.s>0).sort((a,b)=>b.s-a.s || (b.c.rating||0)-(a.c.rating||0));
+  REC_AIRANK=scored.map(x=>({id:x.c.id, reason:x.hit.length?('match: '+x.hit.slice(0,5).join(', ')):''}));
+  const cb=document.getElementById('rcAiOnly'); if(cb)cb.checked=true;
+  const cnt=document.getElementById('rcCount'); if(cnt) cnt.textContent=REC_AIRANK.length+' matches';
+  recRender();
+}
+let REC_SEARCH_T=null;
+function recSearchDebounced(){ clearTimeout(REC_SEARCH_T); REC_SEARCH_T=setTimeout(()=>recLocalRank((document.getElementById('rcQuery')||{}).value),160); }
 async function recRunAi(){
   const query=(document.getElementById('rcQuery').value||'').trim(); if(!query){ toast('Type what you are looking for',true); return; }
   const btn=document.getElementById('rcAiBtn'); btn.disabled=true; btn.textContent='Ranking...';
@@ -3426,7 +3452,7 @@ async function recRunAi(){
   }catch(e){ toast('AI request failed',true); }
   finally{ btn.disabled=false; btn.textContent='Rank best fit'; }
 }
-function recClearAi(){ REC_AIRANK=null; document.getElementById('rcAiOnly').checked=false; document.getElementById('rcQuery').value=''; recRender(); }
+function recClearAi(){ REC_AIRANK=null; const cb=document.getElementById('rcAiOnly'); if(cb)cb.checked=false; const q=document.getElementById('rcQuery'); if(q)q.value=''; const cnt=document.getElementById('rcCount'); if(cnt)cnt.textContent=REC_ALL.length+' candidates'; recRender(); }
 async function recTag(mode){
   const tag=(((document.getElementById('rcCampTop')||{}).value||'').trim())||((document.getElementById('rcCamp').value||'').trim()); if(!tag){ toast('Enter a campaign tag first',true); return; }
   if(!REC_SEL.size){ toast('Select some candidates first',true); return; }
