@@ -4525,10 +4525,15 @@ async function integConnectSlack(t,id,field){
   if(!INTEG_SLACK_OAUTH){ toast('Slack Connect is not set up yet - paste the webhook URL manually',true); return; }
   let body; if(t==='webhook'){ body={t:'webhook', id}; } else { const tt=integTarget(); if(!tt) return; body={t:'config', key:tt.key, field:field||'slack', ws:tt.ws}; }
   const res=await integApi('connectUrl',body);
-  if(res&&res.ok&&res.url){ window.open(res.url,'_blank','noopener'); toast('Pick a channel in the Slack tab, then come back and refresh'); }
+  if(res&&res.ok&&res.url){ window.__integAwaitConnect=Date.now(); window.open(res.url,'_blank','noopener'); toast('Pick a channel in the Slack tab, then switch back here'); }
   else toast((res&&res.error)||'Could not start Slack connect',true);
 }
-if(typeof window!=='undefined' && !window.__integMsgWired){ window.__integMsgWired=1; window.addEventListener('message',e=>{ if(e&&e.data==='slack-connected'){ try{ renderIntegrations(); }catch(_){} } }); }
+if(typeof window!=='undefined' && !window.__integMsgWired){ window.__integMsgWired=1;
+  const integRefreshAfterConnect=()=>{ if(window.__integAwaitConnect){ window.__integAwaitConnect=0; try{ renderIntegrations(); toast('Channels refreshed'); }catch(_){} } };
+  window.addEventListener('message',e=>{ if(e&&e.data==='slack-connected'){ window.__integAwaitConnect=0; try{ renderIntegrations(); }catch(_){} } });
+  document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') integRefreshAfterConnect(); });
+  window.addEventListener('focus',integRefreshAfterConnect);
+}
 function renderWebhookList(){
   const t=integTarget(), wrap=document.getElementById('integWebhooks'); if(!wrap||!t) return;
   const hooks=INTEG_HOOKS.filter(w=>w.key===t.key);
