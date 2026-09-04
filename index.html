@@ -683,7 +683,7 @@
     <h2 class="section">Recruiting</h2>
     <p class="hint">Search the candidate pool, let AI rank best fit, then tag a group for a GHL SMS/email blast. Tags write to the recruiting Airtable ("Campaign Tags"); the GHL send is wired off those tags.</p>
     <div id="rcNotice"></div>
-    <div class="seg" id="rcViewSeg" style="margin:0 0 12px"><button class="on" onclick="recSetView('search')">Search</button><button onclick="recSetView('pipeline')">Pipeline</button></div>
+    <div class="seg" id="rcViewSeg" style="margin:0 0 12px"><button class="on" data-view="search" onclick="recSetView('search')">Search</button><button data-view="pipeline" onclick="recSetView('pipeline')">Pipeline</button><button data-view="interview" onclick="recSetView('interview')">Interview panel</button></div>
     <div class="panel">
       <div class="filters" style="align-items:flex-end">
         <div class="field" style="flex:2;min-width:280px"><label>Best-fit search <span class="muted" style="font-weight:400">- instant, ranks as you type</span></label><input id="rcQuery" placeholder='e.g. "sold high-ticket coaching, eastern timezone"' oninput="recSearchDebounced()" onkeydown="if(event.key==='Enter')recLocalRank(this.value)"></div>
@@ -740,6 +740,16 @@
     <div class="panel" id="rcBoardPanel" hidden>
       <p class="hint" style="margin:0 0 10px">Drag a candidate between stages to update their recruitment status. The board respects the filters above, so narrow it (role, stars, keyword) before dragging.</p>
       <div id="rcBoard" class="kanban"></div>
+    </div>
+    <div class="panel" id="rcInterviewPanel" hidden>
+      <p class="hint" style="margin:0 0 10px">After a group interview, decide each candidate: <b>Send offer</b>, <b>Shortlist</b> (bench, for a future spot), or <b>Not qualified</b>. Anyone you leave undecided can be swept to Not qualified with the button below.</p>
+      <div class="filters" style="align-items:flex-end;margin:0 0 12px">
+        <div class="field" style="min-width:220px"><label>Interview group</label><select id="rcIvGroup" onchange="renderInterviewPanel()"></select></div>
+        <span id="rcIvCount" class="tag" style="align-self:center"></span>
+        <span style="flex:1"></span>
+        <button class="btn ghost sm" style="align-self:flex-end;color:var(--warn);border-color:var(--warn)" onclick="recFinalizeInterview()">Mark remaining Not qualified</button>
+      </div>
+      <div class="tablewrap"><table id="rcIvTbl"></table></div>
     </div>
   </section>
 
@@ -2868,9 +2878,9 @@ let REC_VIEW='search';
 const REC_STAGES=['Standby','Booked Recruitment Call','Needs Updated Resume and Intro Video','Finished Resume and Intro Video','Company Applications sent','Interviewing','Shortlisted','Offer Sent','Hired','Not Looking'];
 function recSetView(v){
   REC_VIEW=v;
-  document.querySelectorAll('#rcViewSeg button').forEach((b,i)=>b.classList.toggle('on',(i===0)===(v==='search')));
-  const sp=document.getElementById('rcSearchPanel'), bp=document.getElementById('rcBoardPanel');
-  if(sp) sp.hidden = v!=='search'; if(bp) bp.hidden = v!=='pipeline';
+  document.querySelectorAll('#rcViewSeg button').forEach(b=>b.classList.toggle('on', b.dataset.view===v));
+  const sp=document.getElementById('rcSearchPanel'), bp=document.getElementById('rcBoardPanel'), ip=document.getElementById('rcInterviewPanel');
+  if(sp) sp.hidden = v!=='search'; if(bp) bp.hidden = v!=='pipeline'; if(ip) ip.hidden = v!=='interview';
   recRender();
 }
 function recRenderBoard(){
@@ -2904,6 +2914,39 @@ function recWireDnd(){
     col.ondragleave=()=>col.classList.remove('drop');
     col.ondrop=e=>{ e.preventDefault(); col.classList.remove('drop'); const id=e.dataTransfer.getData('text/plain'); if(!id) return; if(col.dataset.stage==='Offer Sent'){ offerOpenFor(id); } else { recSetStage(id,col.dataset.stage); } };
   });
+}
+/* ---- interview decision panel: after a group interview, decide each candidate (offer / shortlist / not qualified) ---- */
+const IV_STAGES=['Booked Recruitment Call','Interviewing'];
+function interviewGroups(){ const s=new Set(); REC_ALL.forEach(c=>recArr(c.tags).forEach(t=>{ if(/^Group interview /i.test(t)) s.add(t); })); return [...s].sort().reverse(); }
+function ivRoster(){ const sel=document.getElementById('rcIvGroup'), grp=(sel||{}).value||''; let list=REC_ALL.filter(c=>IV_STAGES.includes(c.recStatus)); if(grp) list=list.filter(c=>recArr(c.tags).includes(grp)); return list.sort((a,b)=>(b.rating||0)-(a.rating||0)); }
+function renderInterviewPanel(){
+  const tbl=document.getElementById('rcIvTbl'); if(!tbl) return;
+  const sel=document.getElementById('rcIvGroup');
+  if(sel){ const groups=interviewGroups(), cur=sel.value; sel.innerHTML='<option value="">All in interview</option>'+groups.map(g=>`<option value="${esc(g)}">${esc(g)}</option>`).join(''); if(cur&&groups.includes(cur)) sel.value=cur; }
+  const list=ivRoster();
+  const cnt=document.getElementById('rcIvCount'); if(cnt) cnt.textContent=list.length+' awaiting decision';
+  tbl.innerHTML='<thead><tr><th>Candidate</th><th>Rating</th><th>Role / sold</th><th>Stage</th><th>Decision</th></tr></thead><tbody>'+
+    (list.length?list.map(c=>`<tr>
+      <td><b>${esc(c.name||'(no name)')}</b>${c.summary?'<div class="muted" style="font-size:11px;max-width:300px">'+esc(String(c.summary).slice(0,120))+'</div>':''}</td>
+      <td>${c.rating?'<span class="stars">'+'★'.repeat(Math.min(5,c.rating))+'</span>':'<span class="muted">-</span>'}</td>
+      <td>${esc(recArr(c.role).join(', ')||'-')}${c.sold?'<div class="muted" style="font-size:11px">'+esc(c.sold)+'</div>':''}</td>
+      <td><span class="pill">${esc(c.recStatus||'-')}</span></td>
+      <td style="white-space:nowrap"><button class="btn sm gold" style="padding:3px 9px" onclick="recDecision('${c.id}','offer')">Send offer</button> <button class="btn sm" style="padding:3px 9px" onclick="recDecision('${c.id}','shortlist')">Shortlist</button> <button class="btn sm ghost" style="padding:3px 9px;color:var(--warn);border-color:var(--warn)" onclick="recDecision('${c.id}','notq')">Not qualified</button></td>
+    </tr>`).join('')
+    :'<tr><td colspan="5" class="muted" style="padding:16px">No candidates awaiting a decision. Invite people to a group interview from the Search view, then decide them here.</td></tr>')+'</tbody>';
+}
+async function recDecision(id,outcome){
+  if(outcome==='offer'){ offerOpenFor(id); return; } // opens the offer composer; sending moves them to Offer Sent
+  const c=REC_ALL.find(x=>x.id===id); if(!c) return;
+  if(outcome==='shortlist'){ await recSetStage(id,'Shortlisted'); }
+  else if(outcome==='notq'){ await recSetStage(id,'Not Looking'); const t=new Date(), ds=`${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`, tag='Not qualified '+usDate(ds); const next=recArr(c.tags).includes(tag)?recArr(c.tags):[...recArr(c.tags),tag]; c.tags=next; recFetch('/api/recruiting?action=tag',{method:'POST',body:JSON.stringify({records:[{id,tags:next}]})}); }
+  renderInterviewPanel();
+}
+async function recFinalizeInterview(){
+  const list=ivRoster(); if(!list.length){ toast('Nobody left to finalize'); return; }
+  if(!confirm('Mark the remaining '+list.length+' undecided candidate'+(list.length===1?'':'s')+' as Not qualified?')) return;
+  for(const c of list){ await recSetStage(c.id,'Not Looking'); }
+  toast('Marked '+list.length+' Not qualified'); renderInterviewPanel();
 }
 async function recSetStage(id,status){
   const c=REC_ALL.find(x=>x.id===id); if(!c) return; if((c.recStatus||'')===(status||'')) return;
@@ -3446,6 +3489,7 @@ async function trEditSave(){
 function recRender(){
   const tb=document.getElementById('rcTplBtn'); if(tb) tb.style.display=(SESSION&&SESSION.role==='admin')?'':'none';
   if(REC_VIEW==='pipeline'){ recRenderBoard(); return; }
+  if(REC_VIEW==='interview'){ renderInterviewPanel(); return; }
   if(!document.getElementById('rcTbl')) return;
   const list=recList();
   document.getElementById('rcResultCount').textContent=list.length+' candidate'+(list.length===1?'':'s');
