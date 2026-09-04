@@ -41,6 +41,31 @@ async function integrationFor(ws, client) {
   const rows = await r.json();
   return (rows[0] && rows[0].data) || null;
 }
+const chanDest = u => (/discord(app)?\.com\/api\/webhooks\//i.test(String(u || '')) && !/\/slack\/?$/i.test(String(u))) ? String(u).replace(/\/+$/, '') + '/slack' : u; // Discord accepts Slack payloads at /slack
+const money = n => '$' + Number(n || 0).toLocaleString('en-US');
+async function postChan(dest, text, blocks) { if (!dest) return; try { await fetch(chanDest(dest), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text, blocks }) }); } catch (e) { } }
+// in-app event feeds to Slack: New closed deal / Post-call checkout / Start-of-day projection (each to its own channel if set)
+async function eventToSlack(rec) {
+  try {
+    if (!rec || !['deal', 'postcall', 'sod'].includes(rec.type)) return;
+    const cfg = await integrationFor(rec.ws, rec.client); if (!cfg) return;
+    const who = rec.rep || rec.by || 'Someone';
+    if (rec.type === 'deal') {
+      if (!cfg.dealSlack) return;
+      const setter = rec.setter ? ('\n*Setter:* ' + rec.setter) : '';
+      await postChan(cfg.dealSlack, `New closed deal${rec.client ? ' · ' + rec.client : ''} · ${money(rec.cashCollected)} (${who})`,
+        [{ type: 'section', text: { type: 'mrkdwn', text: `💰 *New closed deal* · ${money(rec.cashCollected)}\n*Closer:* ${who}${setter}${rec.client ? '\n*Account:* ' + rec.client : ''}${rec.product ? '\n*Product:* ' + rec.product : ''}${rec.contractValue ? '\n*Contract:* ' + money(rec.contractValue) : ''}` } }]);
+    } else if (rec.type === 'postcall') {
+      if (!cfg.postcallSlack) return;
+      await postChan(cfg.postcallSlack, `Post-call · ${who}${rec.client ? ' · ' + rec.client : ''}${rec.outcome ? ' · ' + rec.outcome : ''}`,
+        [{ type: 'section', text: { type: 'mrkdwn', text: `📞 *Post-call checkout* · ${who}${rec.role ? ' (' + rec.role + ')' : ''}${rec.client ? ' · ' + rec.client : ''}${rec.outcome ? '\n*Outcome:* ' + rec.outcome : ''}${rec.lead ? '\n*Lead:* ' + rec.lead : ''}${rec.setter ? '\n*Setter:* ' + rec.setter : ''}` } }]);
+    } else { // sod (start-of-day projection; record shape lands with T-407)
+      if (!cfg.sodSlack) return;
+      await postChan(cfg.sodSlack, `Start-of-day projection · ${who}${rec.client ? ' · ' + rec.client : ''}`,
+        [{ type: 'section', text: { type: 'mrkdwn', text: `📅 *Start-of-day projection* · ${who}${rec.role ? ' (' + rec.role + ')' : ''}${rec.client ? ' · ' + rec.client : ''}${rec.notes ? '\n' + String(rec.notes).slice(0, 200) : ''}` } }]);
+    }
+  } catch (e) { }
+}
 // post a submitted End-of-Day (or Manager EOD) to the client's Slack channel, if that client turned EOD alerts on
 async function eodToSlack(rec) {
   try {
@@ -60,7 +85,6 @@ async function eodToSlack(rec) {
       { type: 'section', text: { type: 'mrkdwn', text: `📝 *EOD · ${who}*${rec.role ? ' (' + rec.role + ')' : rec.type === 'mgreod' ? ' (Manager)' : ''}${rec.client ? ' · ' + rec.client : ''}\n${line}` } }
     ];
     if (rec.notes || rec.bottleneck) blocks.push({ type: 'context', elements: [{ type: 'mrkdwn', text: '“' + String(rec.notes || rec.bottleneck).slice(0, 200) + '”' }] });
-    const chanDest = u => (/discord(app)?\.com\/api\/webhooks\//i.test(String(u || '')) && !/\/slack\/?$/i.test(String(u))) ? String(u).replace(/\/+$/, '') + '/slack' : u; // Discord Slack-compat
     await fetch(chanDest(dest), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: `EOD from ${who}${rec.client ? ' · ' + rec.client : ''}`, blocks }) });
   } catch (e) { /* never block the write on a Slack failure */ }
 }
@@ -98,6 +122,7 @@ export default async function handler(req, res) {
       const r = await supa('records', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify(row) });
       if (!r.ok) { const t = await r.text(); return res.status(200).json({ ok: false, error: 'db ' + r.status + ' ' + t.slice(0, 160) }); }
       if (rec.type === 'eod' || rec.type === 'mgreod') await eodToSlack(rec); // mirror the submitted report to the client's Slack, if enabled
+      else if (rec.type === 'deal' || rec.type === 'postcall' || rec.type === 'sod') await eventToSlack(rec); // New closed deal / Post-call / SOD projection feeds
       return res.status(200).json({ ok: true });
     }
     if (action === 'accounts') {

@@ -999,7 +999,7 @@
           <div id="integWebhooks"></div>
         </div>
       </div>
-      <div class="panel"><h3>Daily report routing (EOD)</h3>
+      <div class="panel"><h3>Event &amp; report alerts to Slack <span class="muted" style="font-weight:400;font-size:12px">- new deal, post-call, start-of-day, EOD</span></h3>
         <div style="padding:12px" id="integEod"></div>
       </div>
     </div>
@@ -4579,14 +4579,20 @@ function renderEodRouting(){
   const t=integTarget(), box=document.getElementById('integEod'); if(!box||!t) return;
   const c=INTEG_CFGS[t.key]||{};
   box.innerHTML=`
-    <label style="display:flex;gap:8px;align-items:center;font-weight:500;margin-bottom:10px"><input type="checkbox" id="eodOn" ${c.eodToSlack?'checked':''}> Post submitted EOD reports to Slack</label>
+    <b style="font-size:12.5px">In-app event feeds</b>
+    <div class="cards" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr));margin-top:8px">
+      <div class="field"><label>New closed deal channel</label>${slackField('evDeal',c.deal,`'config','','deal'`)}</div>
+      <div class="field"><label>Post-call checkout channel</label>${slackField('evPostcall',c.postcall,`'config','','postcall'`)}</div>
+      <div class="field"><label>Start-of-day projections channel</label>${slackField('evSod',c.sod,`'config','','sod'`)}</div>
+    </div>
+    <label style="display:flex;gap:8px;align-items:center;font-weight:500;margin:16px 0 8px"><input type="checkbox" id="eodOn" ${c.eodToSlack?'checked':''}> Post submitted <b style="margin:0 3px">EOD reports</b> to Slack</label>
     <div class="cards" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr))">
       <div class="field"><label>Setter EOD channel</label>${slackField('eodSetter',c.setter,`'config','','setter'`)}</div>
       <div class="field"><label>Closer EOD channel</label>${slackField('eodCloser',c.closer,`'config','','closer'`)}</div>
       <div class="field"><label>Manager EOD channel</label>${slackField('eodMgr',c.mgr,`'config','','mgr'`)}</div>
       <div class="field"><label>Fallback channel</label>${slackField('eodFallback',c.slack,`'config','','slack'`)}</div>
     </div>
-    <p class="fieldhelp" style="margin:8px 0 0">Each role's EOD posts to its own channel; blank falls back to the fallback channel. The fallback also covers any payment webhook with no channel set.</p>
+    <p class="fieldhelp" style="margin:8px 0 0">Each feed posts to its own channel when that event happens (a channel set = on). Blank EOD channels fall back to the fallback channel, which also covers any payment webhook with no channel set.</p>
     <div class="row-actions" style="margin-top:12px"><button class="btn gold sm" onclick="integSaveEod()">Save routing</button></div>`;
 }
 function renderTemplateLib(){
@@ -4623,7 +4629,8 @@ async function tplLibDelete(id,name){ if(!confirm('Delete template "'+name+'"?')
 async function integSaveEod(){
   const t=integTarget(); if(!t) return; const g=id=>((document.getElementById(id)||{}).value||'').trim();
   const body={key:t.key, ws:t.ws, client:t.client, eodToSlack:(document.getElementById('eodOn')||{}).checked,
-    eodSetterSlack:g('eodSetter'), eodCloserSlack:g('eodCloser'), eodMgrSlack:g('eodMgr'), slackWebhook:g('eodFallback')};
+    eodSetterSlack:g('eodSetter'), eodCloserSlack:g('eodCloser'), eodMgrSlack:g('eodMgr'), slackWebhook:g('eodFallback'),
+    dealSlack:g('evDeal'), postcallSlack:g('evPostcall'), sodSlack:g('evSod')};
   const res=await integApi('save',body);
   if(res&&res.ok){ INTEG_CFGS[t.key]=res.config; toast('Routing saved'); renderEodRouting(); }
   else toast((res&&res.error)||'Could not save',true);

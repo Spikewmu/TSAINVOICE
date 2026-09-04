@@ -42,7 +42,8 @@ const mask = url => { const s = String(url || ''); return s ? '…' + s.slice(-6
 const baseUrl = req => (req.headers['x-forwarded-proto'] || 'https') + '://' + req.headers.host;
 const keepOr = (val, prev) => (val === '') ? '' : ((val && val !== '__keep__') ? String(val) : (prev || ''));
 const pubCfg = d => ({ key: d.key, ws: d.ws, client: d.client || '', eodToSlack: !!d.eodToSlack,
-  slack: d.slackWebhook || '', setter: d.eodSetterSlack || '', closer: d.eodCloserSlack || '', mgr: d.eodMgrSlack || '' });
+  slack: d.slackWebhook || '', setter: d.eodSetterSlack || '', closer: d.eodCloserSlack || '', mgr: d.eodMgrSlack || '',
+  deal: d.dealSlack || '', postcall: d.postcallSlack || '', sod: d.sodSlack || '' });
 const pubHook = (d, req) => ({ id: d.id, key: d.key, ws: d.ws, client: d.client || '', name: d.name || 'Webhook', processor: d.processor || 'generic', enabled: d.enabled !== false, template: d.template || DEFAULT_TEMPLATE, hasSlack: !!d.slackWebhook, slack: d.slackWebhook || '', token: d.token, inbound: baseUrl(req) + '/api/hook?t=' + d.token });
 const chanDest = u => (/discord(app)?\.com\/api\/webhooks\//i.test(String(u || '')) && !/\/slack\/?$/i.test(String(u))) ? String(u).replace(/\/+$/, '') + '/slack' : u; // Discord accepts Slack payloads at /slack
 async function postSlack(webhook, payload) {
@@ -111,6 +112,9 @@ export default async function handler(req, res) {
         eodSetterSlack: keepOr(b.eodSetterSlack, cur && cur.eodSetterSlack),
         eodCloserSlack: keepOr(b.eodCloserSlack, cur && cur.eodCloserSlack),
         eodMgrSlack: keepOr(b.eodMgrSlack, cur && cur.eodMgrSlack),
+        dealSlack: keepOr(b.dealSlack, cur && cur.dealSlack),
+        postcallSlack: keepOr(b.postcallSlack, cur && cur.postcallSlack),
+        sodSlack: keepOr(b.sodSlack, cur && cur.sodSlack),
         eodToSlack: b.eodToSlack != null ? !!b.eodToSlack : !!(cur && cur.eodToSlack), updatedAt: now };
       const r = await supa('records', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ rid: rec.id, type: 'integration', submitted_at: now, data: rec }) });
       if (!r || !r.ok) return res.status(200).json({ ok: false, error: 'db write failed' });
