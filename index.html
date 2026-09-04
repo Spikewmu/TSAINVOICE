@@ -702,7 +702,12 @@
         <div class="field"><label>Status</label><select id="rcStatus" onchange="recRender()"></select></div>
         <div class="field"><label>Campaign tag</label><select id="rcTag" onchange="recRender()"></select></div>
         <div class="field"><label>Keyword</label><input id="rcKw" placeholder="name, skill, anything" oninput="recRender()"></div>
-        <div class="field" style="max-width:180px"><label>&nbsp;</label><label style="font-weight:400;color:var(--ink);display:flex;gap:6px;align-items:center"><input type="checkbox" id="rcHideStaffed" onchange="recRender()" checked> Hide currently staffed</label></div>
+        <div class="field"><label>Exclude tag</label><select id="rcExclTag" onchange="recRender()"></select></div>
+        <div class="field" style="max-width:150px"><label>Gender <span class="muted" style="font-weight:400;font-size:10px">(name guess)</span></label><select id="rcGender" onchange="recRender()"><option value="">All</option><option value="F">Female</option><option value="M">Male</option></select></div>
+      </div>
+      <div class="filters" style="align-items:center;margin-top:6px;gap:18px">
+        <label style="font-weight:400;color:var(--ink);display:flex;gap:6px;align-items:center"><input type="checkbox" id="rcHideStaffed" onchange="recRender()" checked> Hide currently staffed</label>
+        <label style="font-weight:400;color:var(--ink);display:flex;gap:6px;align-items:center"><input type="checkbox" id="rcHideShort" onchange="recRender()"> Hide already shortlisted</label>
       </div>
     </div>
     <div class="panel" id="rcSearchPanel">
@@ -719,9 +724,7 @@
         <button class="btn ghost sm" style="align-self:flex-end" onclick="recTag('remove')">Remove tag</button>
         <button class="btn sm" style="align-self:flex-end" onclick="recMessage()">Message</button>
         <button class="btn sm" style="align-self:flex-end" onclick="giOpen()">Group interview</button>
-        <button class="btn sm" style="align-self:flex-end" onclick="offerOpen()">Send offer</button>
-        <button class="btn sm" style="align-self:flex-end" onclick="recShortlist()">Add to shortlist</button>
-        <button class="btn ghost sm" style="align-self:flex-end" onclick="recUnshortlist()">Remove from shortlist</button>
+        <span class="fieldhelp" style="align-self:center;max-width:280px">From the search board you <b>invite to a group interview</b>. <b>Send offer</b> and <b>Shortlist</b> happen on the <b>Pipeline</b> after the interview.</span>
       </div>
       <div class="tablewrap"><table id="rcTbl"></table></div>
       <div class="filters" id="rcActionsBot" style="align-items:flex-end;margin-top:12px">
@@ -731,9 +734,7 @@
         <button class="btn ghost sm" style="align-self:flex-end" onclick="recTag('remove')">Remove tag</button>
         <button class="btn sm" style="align-self:flex-end" onclick="recMessage()">Message</button>
         <button class="btn sm" style="align-self:flex-end" onclick="giOpen()">Group interview</button>
-        <button class="btn sm" style="align-self:flex-end" onclick="offerOpen()">Send offer</button>
-        <button class="btn sm" style="align-self:flex-end" onclick="recShortlist()">Add to shortlist</button>
-        <button class="btn ghost sm" style="align-self:flex-end" onclick="recUnshortlist()">Remove from shortlist</button>
+        <span class="fieldhelp" style="align-self:center;max-width:280px">From the search board you <b>invite to a group interview</b>. <b>Send offer</b> and <b>Shortlist</b> happen on the <b>Pipeline</b> after the interview.</span>
       </div>
     </div>
     <div class="panel" id="rcBoardPanel" hidden>
@@ -2830,18 +2831,26 @@ async function recLoad(force, silent){
 function recUniq(key){ const s=new Set(); REC_ALL.forEach(c=>recArr(c[key]).forEach(v=>{ if(v)s.add(v); })); return [...s].sort((a,b)=>String(a).localeCompare(String(b))); }
 function recBuildFacets(){
   const fill=(id,vals,allLabel)=>{ const sel=document.getElementById(id); if(!sel)return; const cur=sel.value; sel.innerHTML='<option value="">'+allLabel+'</option>'+vals.map(v=>`<option>${esc(v)}</option>`).join(''); if(cur&&vals.includes(cur))sel.value=cur; };
-  fill('rcRole',recUniq('role'),'Any role'); fill('rcSold',recUniq('sold'),'Any'); fill('rcStatus',recUniq('recStatus'),'Any status'); fill('rcTag',recUniq('tags'),'Any tag');
+  fill('rcRole',recUniq('role'),'Any role'); fill('rcSold',recUniq('sold'),'Any'); fill('rcStatus',recUniq('recStatus'),'Any status'); fill('rcTag',recUniq('tags'),'Any tag'); fill('rcExclTag',recUniq('tags'),'Exclude none');
   const tl=document.getElementById('rcTagList'); if(tl) tl.innerHTML=recUniq('tags').map(v=>`<option value="${esc(v)}">`).join('');
 }
+// rough gender guess from first name (labeled a guess in the UI; the pool has international names so it degrades to unknown)
+const GENDER_F=new Set(['khadija','regina','brittany','jen','jennifer','brie','bri','carolina','effie','sarah','emily','ashley','jessica','amanda','maria','ana','anna','sofia','sophia','olivia','emma','mia','isabella','grace','hannah','laura','rachel','megan','nicole','stephanie','victoria','samantha','katie','katherine','elizabeth','lauren','alexis','destiny','tiana','twaila','bonnie','cassie','pearl','tia','kim','regina','angela','crystal','diana','erica','gina','heather','holly','jordan','kayla','kelly','leah','lisa','melissa','monica','natalie','paige','rebecca','sandra','tara','vanessa','wendy']);
+const GENDER_M=new Set(['marcus','hamza','abbas','amin','kyle','keithen','keith','robb','rob','steve','steven','gustavo','nathan','joel','joshua','josh','christian','ryan','billy','snoop','david','michael','james','john','robert','william','richard','joseph','thomas','charles','daniel','matthew','anthony','mark','donald','paul','andrew','joshua','kenneth','kevin','brian','george','ronald','jason','edward','jeff','jeffrey','ryan','jacob','gary','nicholas','eric','jonathan','stephen','larry','justin','scott','brandon','frank','carlos','juan','luis','miguel','pedro','raeez','abdullah','omar','ali','ahmed','ibrahim','yusuf','bilal','tariq']);
+function guessGender(name){ const f=String(name||'').trim().toLowerCase().replace(/[^a-z].*$/,''); if(GENDER_F.has(f)) return 'F'; if(GENDER_M.has(f)) return 'M'; return ''; }
 function recMatch(c){
   const minR=+(document.getElementById('rcRating').value||0);
   const role=document.getElementById('rcRole').value, sold=document.getElementById('rcSold').value, st=document.getElementById('rcStatus').value, tag=document.getElementById('rcTag').value;
   const hide=document.getElementById('rcHideStaffed').checked, kw=(document.getElementById('rcKw').value||'').trim().toLowerCase();
+  const exT=(document.getElementById('rcExclTag')||{}).value||'', gen=(document.getElementById('rcGender')||{}).value||'', hideShort=(document.getElementById('rcHideShort')||{}).checked;
   if((c.rating||0)<minR) return false;
   if(role && !recArr(c.role).includes(role)) return false;
   if(sold && String(c.sold)!==sold) return false;
   if(st && String(c.recStatus)!==st) return false;
   if(tag && !recArr(c.tags).includes(tag)) return false;
+  if(exT && recArr(c.tags).includes(exT)) return false; // exclude anyone carrying this tag
+  if(hideShort && (String(c.recStatus)==='Shortlisted' || recArr(c.tags).some(t=>/^Shortlisted/i.test(t)))) return false;
+  if(gen && guessGender(c.name)!==gen) return false; // name-based best guess
   if(hide && /yes/i.test(String(c.staffed))) return false;
   if(kw){ const blob=[c.name,c.sold,c.summary,c.recStatus,recArr(c.role).join(' '),recArr(c.achievements).join(' '),recArr(c.tech).join(' '),recArr(c.languages).join(' '),recArr(c.timezones).join(' ')].join(' ').toLowerCase(); if(blob.indexOf(kw)<0) return false; }
   return true;
@@ -2874,7 +2883,11 @@ function recRenderBoard(){
     const items=byStage[key]||[];
     const cards=items.map(c=>{
       const links=[c.intro&&`<a href="${esc(c.intro)}" target="_blank" rel="noopener" class="linklike">intro</a>`, c.resume&&`<a href="${esc(c.resume)}" target="_blank" rel="noopener" class="linklike">resume</a>`].filter(Boolean).join(' · ');
-      return `<div class="kcard" draggable="true" data-id="${c.id}"><b>${esc(c.name||'(no name)')}</b> ${c.rating?'<span class="stars">'+'★'.repeat(Math.min(5,c.rating))+'</span>':''}${ownerBadge(c.id)}<div class="kmeta">${esc(recArr(c.role).join(', ')||'-')}${c.sold?' · '+esc(c.sold):''}</div>${links?'<div class="klinks">'+links+'</div>':''}</div>`;
+      // phase 2 lives here: for candidates who've been through / are in an interview, shortlist or send an offer straight from the card
+      const inInterview=['Booked Recruitment Call','Interviewing'].includes(key);
+      const acts = inInterview ? `<div class="klinks" style="margin-top:5px"><button class="btn sm ghost" style="padding:2px 8px" onclick="event.stopPropagation();recSetStage('${c.id}','Shortlisted')">Shortlist</button> <button class="btn sm ghost" style="padding:2px 8px" onclick="event.stopPropagation();offerOpenFor('${c.id}')">Send offer</button></div>`
+        : (key==='Shortlisted' ? `<div class="klinks" style="margin-top:5px"><button class="btn sm ghost" style="padding:2px 8px" onclick="event.stopPropagation();offerOpenFor('${c.id}')">Send offer</button></div>` : '');
+      return `<div class="kcard" draggable="true" data-id="${c.id}"><b>${esc(c.name||'(no name)')}</b> ${c.rating?'<span class="stars">'+'★'.repeat(Math.min(5,c.rating))+'</span>':''}${ownerBadge(c.id)}<div class="kmeta">${esc(recArr(c.role).join(', ')||'-')}${c.sold?' · '+esc(c.sold):''}</div>${links?'<div class="klinks">'+links+'</div>':''}${acts}</div>`;
     }).join('')||'<div class="muted" style="font-size:11px;padding:6px 4px">-</div>';
     return `<div class="kcol" data-stage="${esc(key)}"><h4><span>${esc(label)}</span><span class="kcount">${items.length}</span></h4>${cards}</div>`;
   }).join('');

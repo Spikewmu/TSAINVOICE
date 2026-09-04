@@ -109,6 +109,8 @@ export default async function handler(req, res) {
   if (callerWs !== DEFAULT_WS && !addon.on) return res.status(200).json({ ok: false, error: 'The Recruiter add-on is not active on this account.' });
   // Contact PII in the shared pool: visible only to TSA staff above recruiter tier. Every client-side user, and TSA recruiters, are redacted.
   const redactContact = (callerWs !== DEFAULT_WS) || (sess.role === 'recruiter');
+  // when redacted, also mask the last name and hide the resume (a resume PDF leaks email/phone -> off-platform poaching)
+  const redactName = s => { const p = String(s || '').trim().split(/\s+/).filter(Boolean); return p.length > 1 ? (p[0] + ' ' + p[p.length - 1][0] + '.') : (p[0] || ''); };
   if (!process.env.AIRTABLE_TOKEN) return res.status(200).json({ ok: false, error: 'AIRTABLE_TOKEN not set on the server' });
   const action = (req.query && req.query.action) || (req.body && req.body.action) || 'list';
   try {
@@ -137,7 +139,7 @@ export default async function handler(req, res) {
       } while (offset);
       const out = records.map(rec => { const f = rec.fields || {}; return {
         id: rec.id,
-        name: sval(f['Full Name']),
+        name: redactContact ? redactName(sval(f['Full Name'])) : sval(f['Full Name']),
         rating: (typeof f['Application Rating'] === 'number' ? f['Application Rating'] : 0),
         role: sval(f['Applied For:']),
         sold: sval(f['What Have You Sold In The Past? (SELECT ONE)']),
@@ -153,7 +155,7 @@ export default async function handler(req, res) {
         workPref: sval(f['Work Preference']),
         summary: sval(f['Summary (Sales Call Recording)']),
         intro: sval(f['Intro Video Link']),
-        resume: sval(f['Resume Link']),
+        resume: redactContact ? '' : sval(f['Resume Link']),
         tags: sval(f['Campaign Tags'])
       }; });
       // pool exclusivity: annotate each candidate with its lock, and hide from a client anything owned by another workspace
