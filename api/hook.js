@@ -74,9 +74,8 @@ export default async function handler(req, res) {
     if (hook.enabled !== false) {
       const dest = hook.slackWebhook || await clientSlack(hook.key);
       if (dest) {
-        const ctx = { name: hook.name || 'Payment', amount: p.amount || '', amountFmt: p.amount ? money(p.amount) : '', currency: p.currency, event: p.event, client: hook.client || '', raw: body,
-          customer: p.customer ? ('Customer: ' + p.customer + '\n') : '', product: p.product ? ('Product: ' + p.product + '\n') : '' };
-        const tpl = hook.template || '💰 *{{name}}* {{amountFmt}}\n{{customer}}{{product}}';
+        const ctx = { name: hook.name || 'Payment', amount: p.amount || '', amountFmt: p.amount ? money(p.amount) : '', currency: p.currency, event: p.event, client: hook.client || '', customer: p.customer, product: p.product, raw: body };
+        const tpl = hook.template || '💰 *{{name}}* {{amountFmt}}\nCustomer: {{customer}}\nProduct: {{product}}';
         const text = renderTemplate(tpl, ctx).trim() || (hook.name || 'Payment received');
         await fetch(dest, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text, blocks: [{ type: 'section', text: { type: 'mrkdwn', text } }] }) }).catch(() => { });
       }

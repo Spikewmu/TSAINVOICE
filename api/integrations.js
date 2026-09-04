@@ -7,7 +7,7 @@
 // Slack URLs are secret: stored server-side, never returned (only hasSlack + masked tail). Admin-only.
 import crypto from 'crypto';
 const DEFAULT_WS = 'tsa';
-const DEFAULT_TEMPLATE = '💰 *{{name}}* {{amountFmt}}\n{{customer}}{{product}}';
+const DEFAULT_TEMPLATE = '💰 *{{name}}* {{amountFmt}}\nCustomer: {{customer}}\nProduct: {{product}}';
 function verifySession(token) {
   try {
     const secret = process.env.SESSION_SECRET || 'tsa-session';

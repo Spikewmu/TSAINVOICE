@@ -4392,6 +4392,19 @@ function prettyJson(s){ try{ return JSON.stringify(JSON.parse(s),null,2); }catch
 const PROC_LIST=[['generic','Generic'],['whop','Whop'],['elective','Elective'],['fanbasis','Fanbasis'],['stripe','Stripe'],['ghl','GoHighLevel']];
 let INTEG_CFGS={}, INTEG_HOOKS=[], INTEG_TARGETS=[], INTEG_KEY='', INTEG_TEMPLATES=[];
 function integApplyTpl(id,tplId){ const t=INTEG_TEMPLATES.find(x=>x.id===tplId); const ta=document.getElementById('wt_'+id); if(t&&ta){ ta.value=t.body||''; toast('Template applied - Save to keep it'); } }
+// insert a {{field}} token at the cursor in a webhook's message box
+function integInsert(id,field){ const ta=document.getElementById('wt_'+id); if(!ta) return; const tok='{{'+field+'}}'; const s=(ta.selectionStart!=null)?ta.selectionStart:ta.value.length, e=(ta.selectionEnd!=null)?ta.selectionEnd:ta.value.length; ta.value=ta.value.slice(0,s)+tok+ta.value.slice(e); ta.focus(); ta.selectionStart=ta.selectionEnd=s+tok.length; }
+// flatten a received payload into dot-paths so clients can pick the exact fields their processor sends
+function flattenKeys(obj,prefix,out,depth){ out=out||[]; depth=depth||0; if(depth>5||!obj||typeof obj!=='object') return out; Object.keys(obj).forEach(k=>{ const path=prefix?prefix+'.'+k:k, v=obj[k]; if(v&&typeof v==='object'&&!Array.isArray(v)) flattenKeys(v,path,out,depth+1); else if(Array.isArray(v)&&v[0]&&typeof v[0]==='object') flattenKeys(v[0],path+'.0',out,depth+1); else out.push(path); }); return out; }
+async function integLoadFields(id){
+  const box=document.getElementById('wf_'+id); if(!box) return;
+  box.innerHTML='<span class="muted" style="font-size:12px">Loading fields from received payloads...</span>';
+  const res=await integApi('log',{id}), log=(res&&res.log)||[]; const set=new Set();
+  log.forEach(e=>{ try{ flattenKeys(JSON.parse(e.payload)).forEach(p=>set.add(p)); }catch(_){} });
+  const paths=[...set].slice(0,80);
+  if(!paths.length){ box.innerHTML='<span class="muted" style="font-size:12px">No payloads received yet. Fire a test from the processor, then click this again.</span>'; return; }
+  box.innerHTML='<div style="font-size:11px;color:var(--muted);margin:2px 0 3px">From received data (click to insert):</div>'+paths.map(p=>`<button type="button" class="btn sm ghost" style="margin:2px 2px 0 0;padding:2px 8px" onclick="integInsert('${id}','raw.${esc(p)}')">${esc(p)}</button>`).join('');
+}
 async function renderIntegrations(){
   if(!(SESSION&&SESSION.role==='admin')) return;
   const sel=document.getElementById('integTarget'); if(!sel) return;
@@ -4457,7 +4470,8 @@ function renderWebhookList(){
         <div class="field" style="min-width:200px"><label>Apply a saved template</label><select onchange="integApplyTpl('${w.id}',this.value);this.selectedIndex=0"><option value="">Choose from library...</option>${INTEG_TEMPLATES.map(t=>`<option value="${t.id}">${esc(t.name)}${t.processor?' ('+esc(t.processor)+')':''}</option>`).join('')}</select></div>
       </div>
       <div class="field full"><label>Slack channel webhook</label>${slackField('ws_'+w.id, w.slackTail)}<span class="fieldhelp">Blank uses the client's fallback channel below.</span></div>
-      <div class="field full"><label>Message format</label><textarea id="wt_${w.id}" rows="3" style="width:100%;font-family:ui-monospace,monospace;font-size:12px">${esc(w.template)}</textarea></div>
+      <div class="field full" style="margin-bottom:2px"><label>Message format</label><textarea id="wt_${w.id}" rows="3" style="width:100%;font-family:ui-monospace,monospace;font-size:12px">${esc(w.template)}</textarea></div>
+      <div style="margin:0 0 10px"><span class="fieldhelp">Insert field:</span> ${['amountFmt','amount','customer','product','currency','event','name'].map(f=>`<button type="button" class="btn sm ghost" style="margin:2px 2px 0 0;padding:2px 8px" onclick="integInsert('${w.id}','${f}')">${f}</button>`).join('')} <button type="button" class="btn sm ghost" style="margin:2px 0 0;padding:2px 8px" onclick="integLoadFields('${w.id}')">+ fields from received data</button><div id="wf_${w.id}" style="margin-top:5px"></div></div>
       <div class="field full"><label>Inbound URL (paste into the processor)</label><div class="row-actions"><input readonly value="${esc(w.inbound)}" id="wi_${w.id}" style="font-family:ui-monospace,monospace;font-size:12px"><button class="btn sm ghost" onclick="integCopy('wi_${w.id}')">Copy</button></div></div>
       <div id="wl_${w.id}"></div>
     </div></div>`).join('');
@@ -4515,14 +4529,14 @@ function renderTemplateLib(){
       <div class="field full" style="margin-top:8px"><textarea id="tb_${t.id}" rows="3" style="width:100%;font-family:ui-monospace,monospace;font-size:12px">${esc(t.body)}</textarea></div>
     </div></div>`).join('');
 }
-async function tplLibAdd(){ const res=await integApi('saveTemplate',{name:'New template', body:'💰 *{{name}}* {{amountFmt}}\n{{customer}}{{product}}'}); if(res&&res.ok){ INTEG_TEMPLATES.push(res.template); renderTemplateLib(); } else toast((res&&res.error)||'Could not add',true); }
+async function tplLibAdd(){ const res=await integApi('saveTemplate',{name:'New template', body:'💰 *{{name}}* {{amountFmt}}\nCustomer: {{customer}}\nProduct: {{product}}'}); if(res&&res.ok){ INTEG_TEMPLATES.push(res.template); renderTemplateLib(); } else toast((res&&res.error)||'Could not add',true); }
 async function tplLibSeed(){
   const have=new Set(INTEG_TEMPLATES.map(t=>t.name.toLowerCase()));
   const seeds=[
-    {name:'New sale', processor:'', body:'💰 *New sale* {{amountFmt}}\n{{customer}}{{product}}'},
-    {name:'New Fanbasis sale', processor:'fanbasis', body:'💰 *New Fanbasis Sale* {{amountFmt}}\n{{customer}}{{product}}'},
-    {name:'New Whop member', processor:'whop', body:'🎉 *New Whop member* {{amountFmt}}\n{{customer}}{{product}}'},
-    {name:'Refund', processor:'', body:'↩️ *Refund* {{amountFmt}}\n{{customer}}{{product}}'}
+    {name:'New sale', processor:'', body:'💰 *New sale* {{amountFmt}}\nCustomer: {{customer}}\nProduct: {{product}}'},
+    {name:'New Fanbasis sale', processor:'fanbasis', body:'💰 *New Fanbasis Sale* {{amountFmt}}\nCustomer: {{customer}}\nProduct: {{product}}'},
+    {name:'New Whop member', processor:'whop', body:'🎉 *New Whop member* {{amountFmt}}\nCustomer: {{customer}}\nProduct: {{product}}'},
+    {name:'Refund', processor:'', body:'↩️ *Refund* {{amountFmt}}\nCustomer: {{customer}}\nProduct: {{product}}'}
   ].filter(s=>!have.has(s.name.toLowerCase()));
   if(!seeds.length){ toast('Starters already loaded'); return; }
   for(const s of seeds){ const res=await integApi('saveTemplate',s); if(res&&res.ok) INTEG_TEMPLATES.push(res.template); }
