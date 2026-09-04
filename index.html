@@ -1566,10 +1566,12 @@ function exitViewAs(){ viewAs(''); }
 function pruneNavGroups(){ document.querySelectorAll('#tabs .navgroup').forEach(g=>{ g.hidden = ![...g.querySelectorAll('button[data-tab]')].some(b=>!b.hidden); }); }
 // lock a rep's identity into the forms
 function applyIdentity(){
-  const myRole = SESSION.role==='setter' ? 'Setter' : 'Closer';
+  const hybrid=isHybridRep();
+  if(hybrid && !REP_ACTAS) REP_ACTAS = SESSION.role==='setter'?'Setter':'Closer'; // default a hybrid to their primary
+  const myRole = myRepRole();
   setEodRole(myRole);
-  document.getElementById('roleSegWrap').hidden = true; // reps cannot switch role
-  const pcw=document.getElementById('pcRoleSegWrap'); if(pcw) pcw.hidden = true;
+  document.getElementById('roleSegWrap').hidden = !hybrid; // a hybrid (closer + setter) can switch; single-role reps cannot
+  const pcw=document.getElementById('pcRoleSegWrap'); if(pcw) pcw.hidden = !hybrid;
   setPcRole(myRole);
   const eRep=document.querySelector('#eodForm [name=rep]');
   eRep.innerHTML='<option>'+esc(SESSION.name)+'</option>'; eRep.value=SESSION.name; eRep.disabled=true;
@@ -1669,6 +1671,7 @@ function setEodRole(r){
   if(note) note.innerHTML = r==='Setter'
     ? "You're logging as a <b>Setter</b>. Just log your <b>dials/outreach</b> and the <b>appointments you set</b> - that's it. Whether those calls connect, show, or close is reported by the <b>closer</b> who takes them, and your cash/commission is credited automatically from each deal's “Setter who set it” field. No need to re-enter any of that."
     : "You're logging as a <b>Closer</b>. Fill in your dials, then the <b>meetings/calls</b> you took (including no-shows) and your <b>closing numbers</b>. Also log each individual deal on the <b>Log Closed Deal</b> tab so invoicing and setter credit stay accurate.";
+  if(isHybridRep()){ REP_ACTAS=r; const mw=document.getElementById('eodMulti'); if(mw && !mw.hidden) renderEodSections(); } // hybrid switches which role they log as
   if(repMode()) return; // actual reps keep their locked rep list; admins/managers pick from the list
   const repSel=document.querySelector('#eodForm [name=rep]');
   let items=r==='Closer'?repNames('closer'):repNames('setter');
@@ -1691,7 +1694,7 @@ async function submitDeal(e){ e.preventDefault(); const btn=e.target.querySelect
   catch(err){ toast('Submit failed - try again',true); }
   finally{ if(ok) btnDone(btn,'Deal logged'); else btnBusy(btn,false); } }
 async function submitEod(e){ e.preventDefault(); const btn=e.target.querySelector('[type=submit]'); if(btn&&btn.disabled) return; btnBusy(btn,true); let ok=false;
-  try{ const o=num(formObj(e.target)); o.type='eod'; if(repMode()){ o.rep=SESSION.name; o.role=SESSION.role==='setter'?'Setter':'Closer'; }
+  try{ const o=num(formObj(e.target)); o.type='eod'; if(repMode()){ o.rep=SESSION.name; o.role=myRepRole(); }
     const csel=e.target.querySelector('[name=client]'); if(csel && !(o.client||'').trim()) o.client=csel.value; // locked/disabled selects drop out of FormData
     if(!(o.client||'').trim()){ toast('Choose a client / account first.',true); return; }
     const units={}; document.querySelectorAll('#eodProducts input[data-prod]').forEach(i=>{ const v=parseFloat(i.value)||0; if(v) units[i.dataset.prod]=v; }); if(Object.keys(units).length) o.productUnits=JSON.stringify(units);
@@ -1706,13 +1709,13 @@ function renderEodTab(){
   const f=document.getElementById('eodForm'), mw=document.getElementById('eodMulti'), seg=document.getElementById('roleSegWrap');
   if(f) f.hidden=multi;
   if(mw) mw.hidden=!multi;
-  if(seg && multi) seg.hidden=true;
+  if(seg && multi) seg.hidden=!isHybridRep(); // hybrids keep the Closer/Setter switch even in multi-account mode
   if(multi) renderEodSections();
 }
 function renderEodSections(){
   const box=document.getElementById('eodSections'); if(!box) return;
   const di=document.getElementById('eodMultiDate'); if(di&&!di.value) di.value=todayLocal();
-  const date=((di&&di.value)||todayLocal()).slice(0,10), role=SESSION.role==='setter'?'Setter':'Closer', me=(SESSION&&SESSION.name)||'';
+  const date=((di&&di.value)||todayLocal()).slice(0,10), role=myRepRole(), me=(SESSION&&SESSION.name)||'';
   const accts=teamsFor(SESSION&&SESSION.username);
   const who=document.getElementById('eodMultiWho'); if(who) who.textContent=`${accts.length} accounts · ${role} · ${usDate(date)}`;
   const prior={}; activityRecords().forEach(x=>{ if(x.type==='eod' && nrmName(x.rep)===nrmName(me) && (x.role||'Closer')===role && (x.date||'').slice(0,10)===date) prior[nrmName(x.client)]=x; });
@@ -1736,7 +1739,7 @@ function renderEodSections(){
 async function submitEodMulti(){
   const btn=document.getElementById('eodMultiSubmit'); if(btn&&btn.disabled) return; btnBusy(btn,true); let ok=false;
   try{
-    const date=((document.getElementById('eodMultiDate')||{}).value||todayLocal()).slice(0,10), role=SESSION.role==='setter'?'Setter':'Closer', me=(SESSION&&SESSION.name)||'';
+    const date=((document.getElementById('eodMultiDate')||{}).value||todayLocal()).slice(0,10), role=myRepRole(), me=(SESSION&&SESSION.name)||'';
     const buckets={};
     document.querySelectorAll('#eodSections [data-acct]').forEach(el=>{ const b=(buckets[el.dataset.acct]=buckets[el.dataset.acct]||{f:{},u:{}}); if(el.dataset.prod!==undefined) b.u[el.dataset.prod]=el.value; else b.f[el.dataset.f]=el.value; });
     const defs = role==='Setter'?EOD_SETTER:EOD_CLOSER;
@@ -2405,6 +2408,10 @@ function renderDeals(recs){
 /* ---------------- rep breakdown tab ---------------- */
 let REP_SEL=null, REP_SCOPE=null;
 function repMode(){ return SESSION && (SESSION.role==='closer'||SESSION.role==='setter'); }
+// a rep who holds BOTH closer and setter can log as either; REP_ACTAS is the role they're currently logging as
+let REP_ACTAS=null;
+function isHybridRep(){ return !!(SESSION && hasRole(SESSION.username,'closer') && hasRole(SESSION.username,'setter')); }
+function myRepRole(){ if(isHybridRep()) return REP_ACTAS||'Closer'; return SESSION&&SESSION.role==='setter'?'Setter':'Closer'; }
 // EOD compliance: who submitted an End-of-Day for a given day
 function submittedEod(name, day){
   const n=String(name||'').trim().toLowerCase();
