@@ -42,11 +42,8 @@ const mask = url => { const s = String(url || ''); return s ? '…' + s.slice(-6
 const baseUrl = req => (req.headers['x-forwarded-proto'] || 'https') + '://' + req.headers.host;
 const keepOr = (val, prev) => (val === '') ? '' : ((val && val !== '__keep__') ? String(val) : (prev || ''));
 const pubCfg = d => ({ key: d.key, ws: d.ws, client: d.client || '', eodToSlack: !!d.eodToSlack,
-  hasSlack: !!d.slackWebhook, slackTail: mask(d.slackWebhook),
-  hasSetter: !!d.eodSetterSlack, setterTail: mask(d.eodSetterSlack),
-  hasCloser: !!d.eodCloserSlack, closerTail: mask(d.eodCloserSlack),
-  hasMgr: !!d.eodMgrSlack, mgrTail: mask(d.eodMgrSlack) });
-const pubHook = (d, req) => ({ id: d.id, key: d.key, ws: d.ws, client: d.client || '', name: d.name || 'Webhook', processor: d.processor || 'generic', enabled: d.enabled !== false, template: d.template || DEFAULT_TEMPLATE, hasSlack: !!d.slackWebhook, slackTail: mask(d.slackWebhook), token: d.token, inbound: baseUrl(req) + '/api/hook?t=' + d.token });
+  slack: d.slackWebhook || '', setter: d.eodSetterSlack || '', closer: d.eodCloserSlack || '', mgr: d.eodMgrSlack || '' });
+const pubHook = (d, req) => ({ id: d.id, key: d.key, ws: d.ws, client: d.client || '', name: d.name || 'Webhook', processor: d.processor || 'generic', enabled: d.enabled !== false, template: d.template || DEFAULT_TEMPLATE, hasSlack: !!d.slackWebhook, slack: d.slackWebhook || '', token: d.token, inbound: baseUrl(req) + '/api/hook?t=' + d.token });
 async function postSlack(webhook, payload) {
   if (!webhook) return { ok: false, error: 'no Slack webhook set' };
   try { const r = await fetch(webhook, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) }); return r.ok ? { ok: true } : { ok: false, error: 'slack ' + r.status + ' ' + (await r.text()).slice(0, 120) }; }
