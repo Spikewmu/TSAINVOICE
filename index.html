@@ -992,6 +992,9 @@
         <div style="padding:12px" id="integEod"></div>
       </div>
     </div>
+    <div class="panel" id="integTplLib" style="display:none"><h3>Template library <button class="btn gold sm" style="float:right" onclick="tplLibAdd()">+ New template</button> <span class="muted" style="font-weight:400;font-size:12px">- reusable message formats, available to every client's webhooks</span></h3>
+      <div style="padding:12px" id="integTplList"></div>
+    </div>
   </section>
 
   <!-- ===== SETTINGS ===== -->
@@ -4386,13 +4389,15 @@ function loadSettingsForm(){
 function integHdr(){ const h={'Content-Type':'application/json'}; if(SESSION&&SESSION.token) h['x-session-token']=SESSION.token; else if(SESSION&&SESSION.pw) h['x-admin-pass']=SESSION.pw; return h; }
 async function integApi(action,body){ try{ const r=await fetch('/api/integrations?action='+action,{method:'POST',headers:integHdr(),body:JSON.stringify(body||{})}); return await r.json(); }catch(e){ return {ok:false,error:String(e)}; } }
 function prettyJson(s){ try{ return JSON.stringify(JSON.parse(s),null,2); }catch(e){ return String(s||''); } }
-let INTEG_CFGS={}, INTEG_HOOKS=[], INTEG_TARGETS=[], INTEG_KEY='';
+const PROC_LIST=[['generic','Generic'],['whop','Whop'],['elective','Elective'],['fanbasis','Fanbasis'],['stripe','Stripe'],['ghl','GoHighLevel']];
+let INTEG_CFGS={}, INTEG_HOOKS=[], INTEG_TARGETS=[], INTEG_KEY='', INTEG_TEMPLATES=[];
+function integApplyTpl(id,tplId){ const t=INTEG_TEMPLATES.find(x=>x.id===tplId); const ta=document.getElementById('wt_'+id); if(t&&ta){ ta.value=t.body||''; toast('Template applied - Save to keep it'); } }
 async function renderIntegrations(){
   if(!(SESSION&&SESSION.role==='admin')) return;
   const sel=document.getElementById('integTarget'); if(!sel) return;
   const res=await integApi('get',{}); if(res&&res.error==='not-provisioned'){ const b=document.getElementById('integBody'); if(b)b.hidden=true; sel.innerHTML='<option>Backend not provisioned</option>'; return; }
   INTEG_CFGS={}; ((res&&res.configs)||[]).forEach(c=>INTEG_CFGS[c.key]=c);
-  INTEG_HOOKS=(res&&res.webhooks)||[];
+  INTEG_HOOKS=(res&&res.webhooks)||[]; INTEG_TEMPLATES=(res&&res.templates)||[];
   const isSuper=!!(res&&res.super), targets=[];
   if(isSuper){
     targets.push({key:'tsa',client:'',ws:'tsa',label:'The Sales Agency (internal)',plan:'Internal',grp:'internal'});
@@ -4407,7 +4412,7 @@ async function renderIntegrations(){
   if(unmanaged.length) opts+=`<optgroup label="Unmanaged">`+unmanaged.map(t=>`<option value="${esc(t.key)}">${esc(t.label)}</option>`).join('')+`</optgroup>`;
   sel.innerHTML=opts;
   if(cur&&targets.some(t=>t.key===cur)) sel.value=cur;
-  renderAllWebhooks(); integPick();
+  renderAllWebhooks(); renderTemplateLib(); integPick();
 }
 function integClientLabel(key){ const t=INTEG_TARGETS.find(x=>x.key===key); return t?t.label:key; }
 function renderAllWebhooks(){
@@ -4447,7 +4452,11 @@ function renderWebhookList(){
         <button class="btn sm ghost" onclick="integHookLog('${w.id}')">Log</button>
         <button class="btn sm ghost" style="color:var(--warn);border-color:var(--warn)" onclick="integDeleteWebhook('${w.id}','${esc(w.name).replace(/'/g,"\\'")}')">Delete</button>
       </div>
-      <div class="field full" style="margin-top:10px"><label>Slack channel webhook</label>${slackField('ws_'+w.id, w.slackTail)}<span class="fieldhelp">Blank uses the client's fallback channel below.</span></div>
+      <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;margin-top:10px">
+        <div class="field" style="min-width:150px"><label>Processor</label><select id="wp_${w.id}">${PROC_LIST.map(([v,l])=>`<option value="${v}" ${(w.processor||'generic')===v?'selected':''}>${l}</option>`).join('')}</select></div>
+        <div class="field" style="min-width:200px"><label>Apply a saved template</label><select onchange="integApplyTpl('${w.id}',this.value);this.selectedIndex=0"><option value="">Choose from library...</option>${INTEG_TEMPLATES.map(t=>`<option value="${t.id}">${esc(t.name)}${t.processor?' ('+esc(t.processor)+')':''}</option>`).join('')}</select></div>
+      </div>
+      <div class="field full"><label>Slack channel webhook</label>${slackField('ws_'+w.id, w.slackTail)}<span class="fieldhelp">Blank uses the client's fallback channel below.</span></div>
       <div class="field full"><label>Message format</label><textarea id="wt_${w.id}" rows="3" style="width:100%;font-family:ui-monospace,monospace;font-size:12px">${esc(w.template)}</textarea></div>
       <div class="field full"><label>Inbound URL (paste into the processor)</label><div class="row-actions"><input readonly value="${esc(w.inbound)}" id="wi_${w.id}" style="font-family:ui-monospace,monospace;font-size:12px"><button class="btn sm ghost" onclick="integCopy('wi_${w.id}')">Copy</button></div></div>
       <div id="wl_${w.id}"></div>
@@ -4460,7 +4469,7 @@ async function integAddWebhook(){
 }
 async function integSaveWebhook(id){
   const t=integTarget(); if(!t) return;
-  const body={id, key:t.key, ws:t.ws, client:t.client, name:(document.getElementById('wn_'+id)||{}).value||'', enabled:(document.getElementById('we_'+id)||{}).checked, template:(document.getElementById('wt_'+id)||{}).value||''};
+  const body={id, key:t.key, ws:t.ws, client:t.client, name:(document.getElementById('wn_'+id)||{}).value||'', enabled:(document.getElementById('we_'+id)||{}).checked, template:(document.getElementById('wt_'+id)||{}).value||'', processor:(document.getElementById('wp_'+id)||{}).value||'generic'};
   const slack=((document.getElementById('ws_'+id)||{}).value||'').trim(); if(slack) body.slackWebhook=slack;
   const res=await integApi('saveWebhook',body);
   if(res&&res.ok){ const i=INTEG_HOOKS.findIndex(w=>w.id===id); if(i>=0) INTEG_HOOKS[i]=res.webhook; toast('Webhook saved'); renderWebhookList(); }
@@ -4490,6 +4499,25 @@ function renderEodRouting(){
     <p class="fieldhelp" style="margin:8px 0 0">Each role's EOD posts to its own channel; blank falls back to the fallback channel. The fallback also covers any payment webhook with no channel set.</p>
     <div class="row-actions" style="margin-top:12px"><button class="btn gold sm" onclick="integSaveEod()">Save routing</button></div>`;
 }
+function renderTemplateLib(){
+  const panel=document.getElementById('integTplLib'), box=document.getElementById('integTplList'); if(!panel||!box) return;
+  const isSuper=SESSION&&SESSION.role==='admin'&&currentWs()===DEFAULT_WS; panel.style.display=isSuper?'':'none'; if(!isSuper) return;
+  if(!INTEG_TEMPLATES.length){ box.innerHTML='<p class="muted" style="padding:6px 0">No templates yet. Create reusable formats (e.g. "Fanbasis sale", "Refund") that any client webhook can apply.</p>'; return; }
+  box.innerHTML=INTEG_TEMPLATES.map(t=>`
+    <div class="panel" style="margin:0 0 12px;box-shadow:none;border:1px solid var(--border)"><div style="padding:12px 14px">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <input id="tn_${t.id}" value="${esc(t.name)}" style="font-weight:600;min-width:180px" placeholder="Template name">
+        <div class="field" style="min-width:150px;margin:0"><select id="tp_${t.id}"><option value="">Any processor</option>${PROC_LIST.map(([v,l])=>`<option value="${v}" ${t.processor===v?'selected':''}>${l}</option>`).join('')}</select></div>
+        <span style="flex:1"></span>
+        <button class="btn sm gold" onclick="tplLibSave('${t.id}')">Save</button>
+        <button class="btn sm ghost" style="color:var(--warn);border-color:var(--warn)" onclick="tplLibDelete('${t.id}','${esc(t.name).replace(/'/g,"\\'")}')">Delete</button>
+      </div>
+      <div class="field full" style="margin-top:8px"><textarea id="tb_${t.id}" rows="3" style="width:100%;font-family:ui-monospace,monospace;font-size:12px">${esc(t.body)}</textarea></div>
+    </div></div>`).join('');
+}
+async function tplLibAdd(){ const res=await integApi('saveTemplate',{name:'New template', body:'💰 *{{name}}* {{amountFmt}}\n{{customer}}{{product}}'}); if(res&&res.ok){ INTEG_TEMPLATES.push(res.template); renderTemplateLib(); } else toast((res&&res.error)||'Could not add',true); }
+async function tplLibSave(id){ const body={id, name:(document.getElementById('tn_'+id)||{}).value||'', processor:(document.getElementById('tp_'+id)||{}).value||'', body:(document.getElementById('tb_'+id)||{}).value||''}; const res=await integApi('saveTemplate',body); if(res&&res.ok){ const i=INTEG_TEMPLATES.findIndex(x=>x.id===id); if(i>=0) INTEG_TEMPLATES[i]=res.template; toast('Template saved'); renderTemplateLib(); renderWebhookList(); } else toast((res&&res.error)||'Could not save',true); }
+async function tplLibDelete(id,name){ if(!confirm('Delete template "'+name+'"?')) return; const res=await integApi('deleteTemplate',{id}); if(res&&res.ok){ INTEG_TEMPLATES=INTEG_TEMPLATES.filter(x=>x.id!==id); renderTemplateLib(); renderWebhookList(); toast('Deleted'); } else toast('Could not delete',true); }
 async function integSaveEod(){
   const t=integTarget(); if(!t) return; const g=id=>((document.getElementById(id)||{}).value||'').trim();
   const body={key:t.key, ws:t.ws, client:t.client, eodToSlack:(document.getElementById('eodOn')||{}).checked};

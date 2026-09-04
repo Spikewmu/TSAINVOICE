@@ -18,14 +18,30 @@ async function clientSlack(key) { // fallback channel from the client-level inte
 function pick(obj, paths) { for (const p of paths) { let v = obj, ok = true; for (const k of p.split('.')) { if (v && typeof v === 'object' && k in v) v = v[k]; else { ok = false; break; } } if (ok && v != null && v !== '') return v; } return ''; }
 function getPath(obj, path) { let v = obj; for (const k of String(path).split('.')) { if (v && typeof v === 'object' && k in v) v = v[k]; else return ''; } return v == null ? '' : v; }
 function money(n) { const v = Number(n); if (!isFinite(v)) return String(n || ''); return '$' + v.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 }); }
-function parsePayment(b) {
-  b = b || {};
-  let amount = pick(b, ['amount', 'total', 'price', 'final_amount', 'amount_total', 'data.final_amount', 'data.amount', 'data.amount_total', 'data.total', 'data.object.amount_total', 'data.object.amount', 'payment.amount']);
-  if (typeof amount === 'number' && amount > 1000 && Number.isInteger(amount) && /amount_total|cents|stripe/i.test(JSON.stringify(b))) amount = amount / 100;
+// per-processor field maps (tune from the payload log once we see a real one). Each falls back to the generic paths.
+const PROCESSORS = {
+  whop: { amount: ['data.final_amount', 'final_amount', 'data.amount'], customer: ['data.user.email', 'data.user.username', 'data.email'], product: ['data.product.title', 'data.plan.name', 'data.product_name'], event: ['action', 'type'], cents: false },
+  stripe: { amount: ['data.object.amount_total', 'data.object.amount', 'amount_total'], customer: ['data.object.customer_email', 'data.object.customer_details.email', 'customer_email'], product: ['data.object.description', 'line_items.0.description'], event: ['type'], cents: true },
+  elective: { amount: ['amount', 'total', 'data.amount', 'data.total'], customer: ['customer_email', 'email', 'data.email', 'customer.email'], product: ['product', 'plan', 'data.product'], event: ['status', 'type', 'event'], cents: false },
+  fanbasis: { amount: ['amount', 'total', 'price', 'data.amount'], customer: ['email', 'customer_email', 'data.email', 'customer.email', 'name'], product: ['product', 'plan', 'offer', 'data.product'], event: ['status', 'type', 'event'], cents: false },
+  ghl: { amount: ['amount', 'total', 'data.amount'], customer: ['email', 'contact.email', 'data.email'], product: ['product', 'name', 'data.product'], event: ['type', 'event'], cents: false }
+};
+const GEN = {
+  amount: ['amount', 'total', 'price', 'final_amount', 'amount_total', 'data.final_amount', 'data.amount', 'data.amount_total', 'data.total', 'data.object.amount_total', 'data.object.amount', 'payment.amount'],
+  customer: ['customer', 'customer_email', 'email', 'buyer_email', 'data.user.email', 'data.email', 'data.customer_email', 'data.object.customer_email', 'user.email', 'name', 'data.user.username', 'customer_name', 'data.name'],
+  product: ['product', 'plan', 'offer', 'product_name', 'data.product.title', 'data.product_name', 'data.plan.name', 'data.object.description', 'description'],
+  event: ['action', 'type', 'event', 'event_type', 'data.status']
+};
+function parsePayment(processor, b) {
+  b = b || {}; const m = PROCESSORS[processor] || null;
+  const path = f => (m && m[f] ? m[f] : []).concat(GEN[f]);
+  let amount = pick(b, path('amount'));
+  const cents = m ? !!m.cents : (typeof amount === 'number' && amount > 1000 && Number.isInteger(amount) && /amount_total|cents|stripe/i.test(JSON.stringify(b)));
+  if (typeof amount === 'number' && cents) amount = amount / 100;
   const currency = pick(b, ['currency', 'data.currency', 'data.object.currency', 'payment.currency']) || 'USD';
-  const customer = pick(b, ['customer', 'customer_email', 'email', 'buyer_email', 'data.user.email', 'data.email', 'data.customer_email', 'data.object.customer_email', 'user.email', 'name', 'data.user.username', 'customer_name', 'data.name']);
-  const product = pick(b, ['product', 'plan', 'offer', 'product_name', 'data.product.title', 'data.product_name', 'data.plan.name', 'data.object.description', 'description']);
-  const event = pick(b, ['action', 'type', 'event', 'event_type', 'data.status']);
+  const customer = pick(b, path('customer'));
+  const product = pick(b, path('product'));
+  const event = pick(b, path('event'));
   const amt = (typeof amount === 'number') ? amount : Number(String(amount).replace(/[^0-9.]/g, '')) || 0;
   return { amount: amt, currency, customer: String(customer || ''), product: String(product || ''), event: String(event || '') };
 }
@@ -45,7 +61,7 @@ export default async function handler(req, res) {
     if (!hook) return res.status(200).json({ ok: false, ignored: 'unknown token' });
     const body = req.body || {};
     const now = new Date().toISOString();
-    const p = parsePayment(body);
+    const p = parsePayment(hook.processor || 'generic', body);
     // 1) LOG the raw payload (truncated) so we can see the real format and tune the template
     if (hook.id) {
       const raw = (() => { try { return JSON.stringify(body).slice(0, 6000); } catch (e) { return ''; } })();

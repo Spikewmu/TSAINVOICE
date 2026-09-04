@@ -46,7 +46,7 @@ const pubCfg = d => ({ key: d.key, ws: d.ws, client: d.client || '', eodToSlack:
   hasSetter: !!d.eodSetterSlack, setterTail: mask(d.eodSetterSlack),
   hasCloser: !!d.eodCloserSlack, closerTail: mask(d.eodCloserSlack),
   hasMgr: !!d.eodMgrSlack, mgrTail: mask(d.eodMgrSlack) });
-const pubHook = (d, req) => ({ id: d.id, key: d.key, ws: d.ws, client: d.client || '', name: d.name || 'Webhook', enabled: d.enabled !== false, template: d.template || DEFAULT_TEMPLATE, hasSlack: !!d.slackWebhook, slackTail: mask(d.slackWebhook), token: d.token, inbound: baseUrl(req) + '/api/hook?t=' + d.token });
+const pubHook = (d, req) => ({ id: d.id, key: d.key, ws: d.ws, client: d.client || '', name: d.name || 'Webhook', processor: d.processor || 'generic', enabled: d.enabled !== false, template: d.template || DEFAULT_TEMPLATE, hasSlack: !!d.slackWebhook, slackTail: mask(d.slackWebhook), token: d.token, inbound: baseUrl(req) + '/api/hook?t=' + d.token });
 async function postSlack(webhook, payload) {
   if (!webhook) return { ok: false, error: 'no Slack webhook set' };
   try { const r = await fetch(webhook, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) }); return r.ok ? { ok: true } : { ok: false, error: 'slack ' + r.status + ' ' + (await r.text()).slice(0, 120) }; }
@@ -66,9 +66,27 @@ export default async function handler(req, res) {
   try {
     if (action === 'get') {
       const cfgs = await allByType('integration'), hooks = await allByType('webhook');
+      const tpls = await allByType('template');
       return res.status(200).json({ ok: true, super: isSuper,
         configs: Object.values(cfgs).filter(mayTouch).map(pubCfg),
-        webhooks: Object.values(hooks).filter(d => mayTouch(d) && !d.deleted).map(d => pubHook(d, req)) });
+        webhooks: Object.values(hooks).filter(d => mayTouch(d) && !d.deleted).map(d => pubHook(d, req)),
+        templates: Object.values(tpls).filter(t => !t.deleted).map(t => ({ id: t.id, name: t.name, processor: t.processor || '', body: t.body || '' })) });
+    }
+    // ---- global template library (reusable across all clients; Super Admin manages, everyone can apply) ----
+    if (action === 'saveTemplate') {
+      if (!isSuper) return res.status(200).json({ ok: false, error: 'Only TSA can edit the shared template library' });
+      const tpls = await allByType('template'); const cur = (b.id && tpls[b.id]) || null;
+      const now = new Date().toISOString();
+      const rec = { id: (cur && cur.id) || crypto.randomUUID(), type: 'template', name: String(b.name || (cur && cur.name) || 'Template').slice(0, 60), processor: String(b.processor != null ? b.processor : (cur && cur.processor) || ''), body: String(b.body != null ? b.body : (cur && cur.body) || '').slice(0, 2000), deleted: false, updatedAt: now };
+      await supa('records', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ rid: rec.id, type: 'template', submitted_at: now, data: rec }) });
+      return res.status(200).json({ ok: true, template: { id: rec.id, name: rec.name, processor: rec.processor, body: rec.body } });
+    }
+    if (action === 'deleteTemplate') {
+      if (!isSuper) return res.status(200).json({ ok: false, error: 'Only TSA can edit the shared template library' });
+      const tpls = await allByType('template'); const cur = tpls[String(b.id || '')]; if (!cur) return res.status(200).json({ ok: false, error: 'not found' });
+      const now = new Date().toISOString();
+      await supa('records', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ rid: crypto.randomUUID(), type: 'template', submitted_at: now, data: Object.assign({}, cur, { deleted: true, updatedAt: now }) }) });
+      return res.status(200).json({ ok: true });
     }
     // ---- client-level config: Slack fallback + EOD toggle ----
     if (action === 'save') {
@@ -96,6 +114,7 @@ export default async function handler(req, res) {
       const now = new Date().toISOString();
       const rec = { id: (cur && cur.id) || crypto.randomUUID(), type: 'webhook', key, ws, client: String(b.client != null ? b.client : (cur && cur.client) || ''),
         name: String(b.name || (cur && cur.name) || 'New webhook').slice(0, 60),
+        processor: String(b.processor != null ? b.processor : (cur && cur.processor) || 'generic'),
         template: (b.template != null) ? String(b.template).slice(0, 2000) : (cur && cur.template) || DEFAULT_TEMPLATE,
         slackWebhook: (b.slackWebhook && b.slackWebhook !== '__keep__') ? String(b.slackWebhook) : (b.slackWebhook === '' ? '' : (cur && cur.slackWebhook) || ''),
         enabled: b.enabled != null ? !!b.enabled : (cur ? cur.enabled !== false : true),
