@@ -1101,6 +1101,14 @@
   </div>
 </div>
 
+<div class="modal" id="dayReportModal" hidden onclick="if(event.target===this)closeDayReport()">
+  <div class="modalcard" style="width:min(520px,95vw)">
+    <h3 id="dayReportTitle" style="margin:0 0 12px">Report</h3>
+    <div id="dayReportBody" style="max-height:60vh;overflow:auto"></div>
+    <div class="row-actions" style="margin-top:14px"><button class="btn ghost sm" onclick="closeDayReport()">Close</button></div>
+  </div>
+</div>
+
 <div class="modal" id="mergeModal" hidden onclick="if(event.target===this)closeMerge()">
   <div class="modalcard" style="width:min(460px,95vw)">
     <h3 style="margin:0 0 2px">Merge <span id="mergeSrcName" style="color:var(--gold)"></span> into another account</h3>
@@ -2471,7 +2479,7 @@ function rangePreset(fromId,toId,p,fn){
 // a full day cell (green submitted, red miss, neutral circle for an approved day off, dash if not employed, dot if not due).
 // approved time off shows a circle and never counts as a miss , same logic for setters, closers AND managers.
 function dayCell(name,day,submitted){
-  if(submitted) return '<td class="num dc dc-sub" title="Submitted">✓</td>';
+  if(submitted) return `<td class="num dc dc-sub" title="View submitted report" style="cursor:pointer" onclick="openDayReport('${esc(String(name)).replace(/'/g,"\\'")}','${day}')">✓</td>`;
   if(offdayStatus(name,day)==='approved') return '<td class="num dc dc-off" title="Approved day off - does not count against them">○</td>';
   if(scheduledOff(name,day)) return '<td class="num dc dc-off" title="Scheduled day off - does not count against them">○</td>';
   const m=repMetaForName(name), s=m&&m.startDate?m.startDate.slice(0,10):null, e=m&&m.endDate?m.endDate.slice(0,10):null;
@@ -2479,6 +2487,29 @@ function dayCell(name,day,submitted){
   if(day>=todayLocal()) return '<td class="num dc dc-pend" title="Not due yet">·</td>';
   return '<td class="num dc dc-miss" title="Missed report">✗</td>';
 }
+// one person's submitted report(s) for a single day (opened by clicking a green cell in the day-by-day grid)
+function reportCardsFor(name,day){
+  const n=nrmName(name), num=v=>v||0;
+  const card=(title,sub,body,note)=>`<div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px"><div style="font-weight:600">${title}${sub?` <span class="muted" style="font-weight:400;font-size:12px">${esc(sub)}</span>`:''}</div><div style="font-size:12.5px;color:var(--muted);margin-top:4px">${body}</div>${note?`<div style="margin-top:6px;font-size:13px">${note}</div>`:''}</div>`;
+  const eods=activityRecords().filter(x=>x.type==='eod'&&nrmName(x.rep)===n&&String(x.date||'').slice(0,10)===day);
+  const mgeods=collapseMgrEod(RECORDS).filter(x=>nrmName(x.by)===n&&String(x.date||'').slice(0,10)===day);
+  const eodCards=eods.map(x=>{ const setter=(x.role==='Setter');
+    const stats=setter?`${num(x.hoursDialing)}h · ${num(x.newOutreach)} dials · ${num(x.connectedCalls)} conn · ${num(x.callsSet)} sets`
+                      :`${num(x.hoursDialing)}h · ${num(x.connectedMeetings)} calls · ${num(x.closedDeals)} deals · ${money(x.cashCollected)} cash`;
+    const note=[x.notes&&('"'+esc(x.notes)+'"'), x.dqReason&&('DQ: '+esc(x.dqReason))].filter(Boolean).join(' · ');
+    return card(`${esc(x.rep||name)} <span class="pill">${esc(x.role||'Closer')}</span>`, x.client||'', stats, note);
+  }).join('');
+  const mgrCards=mgeods.map(x=>card(`${esc(x.by||name)} <span class="pill">Manager</span>`, x.client||'',
+    `Setters ${num(x.settersWorking)} (${num(x.setterDials)} dials, ${num(x.setterSets)} sets, ${num(x.setterEods)} EOD) · Closers ${num(x.closersWorking)} (${num(x.closerCalls)} calls, ${num(x.showRate)}% show, ${num(x.closeRate)}% close, ${money(x.cash)}, ${num(x.closerEods)} EOD)`,
+    x.bottleneck?('"'+esc(x.bottleneck)+'"'):'')).join('');
+  return (eodCards+mgrCards)||'<p class="muted" style="padding:10px">No report found for this day.</p>';
+}
+function openDayReport(name,day){
+  const t=document.getElementById('dayReportTitle'); if(t) t.innerHTML=esc(name)+' <span class="muted" style="font-weight:400;font-size:13px">'+esc(usDate(day))+'</span>';
+  const b=document.getElementById('dayReportBody'); if(b) b.innerHTML=reportCardsFor(name,day);
+  const m=document.getElementById('dayReportModal'); if(m) m.hidden=false;
+}
+function closeDayReport(){ const m=document.getElementById('dayReportModal'); if(m) m.hidden=true; }
 // the actual submitted report text/numbers for a day, in a friendly one-page format
 function eodDetailsHTML(day){
   const num=v=>v||0;
