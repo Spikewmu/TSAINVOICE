@@ -888,6 +888,8 @@
           <div class="field"><label>Termination date</label><input type="date" id="rmEnd"><span class="fieldhelp">Leave blank if still active.</span></div>
           <div class="field"><label>Assigned manager</label><select id="rmMgr"></select><span class="fieldhelp">Approves this rep's time off.</span></div>
         </div>
+        <div class="field" style="margin-top:12px"><label>Scheduled day(s) off <span class="muted" style="font-weight:400">- recurring weekly, never counts as a missed report</span></label>
+          <div id="rmDaysOff" class="teamboxes" style="margin-top:6px"></div></div>
         <div class="row-actions" style="margin-top:12px"><button class="btn gold sm" onclick="saveRepMeta()">Save details</button><button class="btn ghost sm" onclick="cancelRepMeta()">Cancel</button></div>
       </div>
     </div>
@@ -2404,9 +2406,8 @@ function periodRange(view,date){
   if(view==='week'){ const dow=new Date(s+'T00:00:00').getDay(); start=isoOffset(s, dow===0?-6:1-dow); end=isoOffset(start,6); }
   else if(view==='month'){ const y=+s.slice(0,4),m=+s.slice(5,7); start=`${y}-${String(m).padStart(2,'0')}-01`; const last=new Date(y,m,0).getDate(); end=`${y}-${String(m).padStart(2,'0')}-${String(last).padStart(2,'0')}`; }
   const days=[]; let cur=start; while(cur<=end){ days.push(cur); cur=isoOffset(cur,1); }
-  const weekdays=days.filter(d=>{ const w=new Date(d+'T00:00:00').getDay(); return w>=1&&w<=5; });
-  const today=todayLocal(), elapsed=weekdays.filter(d=>d<today); // only weekdays that have already passed count toward "missed" (never future days)
-  return {view,start,end,days,weekdays,elapsed};
+  const today=todayLocal(), elapsed=days.filter(d=>d<today); // 7-day operation: all past days count; per-person scheduled offs removed in accountableDays
+  return {view,start,end,days,weekdays:days.slice(),elapsed};
 }
 function repPeriodStats(name, role, range){
   const n=String(name||'').trim().toLowerCase(), inR=new Set(range.days);
@@ -2436,12 +2437,12 @@ function renderAdminReport(){
   renderAdminRange(range,setters,closers,managers);
   renderOffdayApprovals();
 }
-// build a range from an explicit start/end (inclusive). elapsed = weekdays already fully past (today never counts as missed)
+// build a range from an explicit start/end (inclusive). 7-day operation: every day is a candidate accountable day;
+// each person's scheduled weekly day off + approved time off are removed per-person in accountableDays. Today never counts as missed.
 function rangeFromTo(start,end){
   const days=[]; let cur=start, guard=0; while(cur<=end && guard++<800){ days.push(cur); cur=isoOffset(cur,1); }
-  const weekdays=days.filter(d=>{ const w=new Date(d+'T00:00:00').getDay(); return w>=1&&w<=5; });
-  const today=todayLocal(), elapsed=weekdays.filter(d=>d<today);
-  return {start,end,days,weekdays,elapsed,single:start===end};
+  const today=todayLocal(), elapsed=days.filter(d=>d<today);
+  return {start,end,days,weekdays:days.slice(),elapsed,single:start===end};
 }
 function setArPreset(p){
   const t=todayLocal(); let from,to;
@@ -2472,6 +2473,7 @@ function rangePreset(fromId,toId,p,fn){
 function dayCell(name,day,submitted){
   if(submitted) return '<td class="num dc dc-sub" title="Submitted">✓</td>';
   if(offdayStatus(name,day)==='approved') return '<td class="num dc dc-off" title="Approved day off - does not count against them">○</td>';
+  if(scheduledOff(name,day)) return '<td class="num dc dc-off" title="Scheduled day off - does not count against them">○</td>';
   const m=repMetaForName(name), s=m&&m.startDate?m.startDate.slice(0,10):null, e=m&&m.endDate?m.endDate.slice(0,10):null;
   if((s&&day<s)||(e&&day>e)) return '<td class="num dc dc-na" title="Not employed this day">–</td>';
   if(day>=todayLocal()) return '<td class="num dc dc-pend" title="Not due yet">·</td>';
@@ -2500,7 +2502,7 @@ function renderAdminRange(range,setters,closers,managers){
   const label=range.single?usDate(range.start):`${usDate(range.start)} to ${usDate(range.end)}`;
   const setS=setters.map(n=>({n,s:repPeriodStats(n,'Setter',range)})), cloS=closers.map(n=>({n,s:repPeriodStats(n,'Closer',range)})), mgrS=managers.map(n=>({n,s:mgrPeriodStats(n,range)}));
   const totMiss=[...setS,...cloS,...mgrS].reduce((a,x)=>a+x.s.missed,0);
-  arSummaryBar(`${label} - ${range.elapsed.length}/${range.weekdays.length} accountable weekdays · ${totMiss} missed report${totMiss===1?'':'s'}`, totMiss);
+  arSummaryBar(`${label} - ${range.elapsed.length}/${range.weekdays.length} days · ${totMiss} missed report${totMiss===1?'':'s'}`, totMiss);
   const mc=s=>`<td class="num">${s.sub}/${s.exp}</td><td class="num" style="${s.missed?'color:var(--bad);font-weight:700':''}">${s.missed}</td>`;
   const setRows=setS.map(({n,s})=>`<tr><td>${esc(n)}</td>${mc(s)}<td class="num">${s.hours}</td><td class="num">${s.dials}</td><td class="num">${pct(s.connRate)}</td><td class="num">${s.sets}</td></tr>`).join('');
   const cloRows=cloS.map(({n,s})=>`<tr><td>${esc(n)}</td>${mc(s)}<td class="num">${s.hours}</td><td class="num">${s.connMeet}</td><td class="num">${pct(s.closeRate)}</td><td class="num">${s.deals}</td><td class="num">${money(s.cash)}</td></tr>`).join('');
@@ -2512,7 +2514,7 @@ function renderAdminRange(range,setters,closers,managers){
    +churnPanelHTML()
    +dayGridHTML(range,setters,closers,managers)
    +(range.single?eodDetailsHTML(range.start):'')
-   +`<p class="hint" style="margin-top:8px">"Days" = accountable weekdays submitted out of accountable weekdays in the range (approved days off and pre-hire / post-termination days are excluded). "Missed" counts weekday no-shows only; weekend work still counts in the totals but weekends are not held against anyone.</p>`;
+   +`<p class="hint" style="margin-top:8px">We run 7 days a week, so every day counts. "Days" = days submitted out of accountable days in the range. A person's scheduled weekly day(s) off, approved time off, and pre-hire / post-termination days are excluded and never count as missed.</p>`;
 }
 // day-by-day grid across the selected range (only for ranges of 16 days or fewer, so it stays readable)
 function dayGridHTML(range,setters,closers,managers){
@@ -2554,11 +2556,14 @@ function repMetaFor(username){ return repMetaMap()[nrmName(username)]||null; }
 function repMetaForName(name){ const n=nrmName(name), map=repMetaMap(); if(map[n]) return map[n]; const u=(USERS_CACHE||[]).find(x=>nrmName(x.name)===n||nrmName(x.username)===n); return (u&&map[nrmName(u.username)])||null; }
 function collapseOffdays(list){ const m={}; list.forEach(x=>{ if(x.type!=='offday')return; const k=nrmName(x.rep)+'|'+String(x.date||'').slice(0,10); if(!m[k]||(x.submittedAt||'')>(m[k].submittedAt||'')) m[k]=x; }); return Object.values(m); }
 function offdayStatus(name,day){ const n=nrmName(name), d=String(day||'').slice(0,10); const r=collapseOffdays(RECORDS).find(x=>nrmName(x.rep)===n && String(x.date||'').slice(0,10)===d); return r?r.status:null; }
-// the days in a set a rep is actually accountable for: within their employment window and not an approved day off
+// scheduled recurring weekly day(s) off, stored on the rep's meta as daysOff (array of weekday numbers 0=Sun..6=Sat)
+function scheduledOffDays(name){ const m=repMetaForName(name), a=m&&m.daysOff; return Array.isArray(a)?a.map(Number):[]; }
+function scheduledOff(name,day){ const dl=scheduledOffDays(name); if(!dl.length) return false; const w=new Date(String(day).slice(0,10)+'T00:00:00').getDay(); return dl.includes(w); }
+// the days in a set a rep is actually accountable for: within their employment window, not an approved day off, and not a scheduled weekly day off
 function accountableDays(name, days){
   const m=repMetaForName(name), start=m&&m.startDate?m.startDate.slice(0,10):null, end=m&&m.endDate?m.endDate.slice(0,10):null;
   const off=new Set(collapseOffdays(RECORDS).filter(x=>nrmName(x.rep)===nrmName(name)&&x.status==='approved').map(x=>String(x.date||'').slice(0,10)));
-  return days.filter(d=>(!start||d>=start)&&(!end||d<=end)&&!off.has(d));
+  return days.filter(d=>(!start||d>=start)&&(!end||d<=end)&&!off.has(d)&&!scheduledOff(name,d));
 }
 // ---- Users tab: per-rep details editor (hire / termination / assigned manager) ----
 let REPMETA_EDIT=null;
@@ -2571,17 +2576,21 @@ function editRepMeta(username){
   sel.innerHTML='<option value="">- none -</option>'+people.map(p=>`<option>${esc(p)}</option>`).join('');
   if(m.mgr&&!people.includes(m.mgr)) sel.add(new Option(m.mgr,m.mgr));
   sel.value=m.mgr||'';
+  const cur=Array.isArray(m.daysOff)?m.daysOff.map(Number):[];
+  document.getElementById('rmDaysOff').innerHTML=DOW_NAMES.map((nm,i)=>`<label><input type="checkbox" value="${i}" ${cur.includes(i)?'checked':''}>${nm}</label>`).join('');
   if(typeof cancelTeams==='function')cancelTeams(); if(typeof cancelRoles==='function')cancelRoles();
   const p=document.getElementById('repMetaEditPanel'); p.hidden=false; p.scrollIntoView({behavior:'smooth',block:'nearest'});
 }
+const DOW_NAMES=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 function cancelRepMeta(){ REPMETA_EDIT=null; document.getElementById('repMetaEditPanel').hidden=true; }
 async function saveRepMeta(){
   if(!REPMETA_EDIT) return; const u=userByName(REPMETA_EDIT);
   const startDate=(document.getElementById('rmStart').value||'').slice(0,10), endDate=(document.getElementById('rmEnd').value||'').slice(0,10), mgr=document.getElementById('rmMgr').value||'';
-  await addRecord({type:'repmeta',username:u.username,name:u.name||u.username,startDate,endDate,mgr});
+  const daysOff=[...document.querySelectorAll('#rmDaysOff input:checked')].map(cb=>+cb.value);
+  await addRecord({type:'repmeta',username:u.username,name:u.name||u.username,startDate,endDate,mgr,daysOff});
   document.getElementById('repMetaEditPanel').hidden=true; REPMETA_EDIT=null; toast('Rep details saved'); renderUsers();
 }
-function repMetaSummary(username){ const m=repMetaFor(username); if(!m) return ''; const bits=[]; if(m.startDate)bits.push('hired '+usDate(m.startDate)); if(m.endDate)bits.push('left '+usDate(m.endDate)); if(m.mgr)bits.push('mgr: '+m.mgr); return bits.length?`<div class="muted" style="font-size:11px;margin-top:3px">${esc(bits.join(' · '))}</div>`:''; }
+function repMetaSummary(username){ const m=repMetaFor(username); if(!m) return ''; const bits=[]; if(m.startDate)bits.push('hired '+usDate(m.startDate)); if(m.endDate)bits.push('left '+usDate(m.endDate)); if(m.mgr)bits.push('mgr: '+m.mgr); if(Array.isArray(m.daysOff)&&m.daysOff.length)bits.push('off: '+m.daysOff.map(Number).sort().map(d=>DOW_NAMES[d]).join(', ')); return bits.length?`<div class="muted" style="font-size:11px;margin-top:3px">${esc(bits.join(' · '))}</div>`:''; }
 // ---- Time Off tab: reps request; managers/admins approve ----
 function renderTimeOffTab(){
   renderTimeOff(); // request form + this rep's own requests (reps only)
