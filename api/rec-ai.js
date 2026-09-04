@@ -5,6 +5,7 @@
 // Optional REC_AI_MODEL overrides the model for the chosen provider. Faceted search works even with no key.
 // Access gated by the dashboard session (same as /api/recruiting): valid session token w/ allowed role, or master admin pass.
 import crypto from 'crypto';
+export const config = { maxDuration: 30 }; // don't hard-cut a slow model mid-call (which fails then feels even slower)
 const REC_ROLES = ['admin', 'manager', 'recruiter'];
 function verifySession(token) {
   try {
@@ -32,7 +33,7 @@ function parseRanked(txt) {
 async function callGroq(sys, user) {
   const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST', headers: { 'content-type': 'application/json', Authorization: 'Bearer ' + process.env.GROQ_API_KEY },
-    body: JSON.stringify({ model: process.env.REC_AI_MODEL || 'openai/gpt-oss-20b', temperature: 0.2, max_tokens: 1400, messages: [{ role: 'system', content: sys }, { role: 'user', content: user + '\n\nRespond with ONLY the JSON object, nothing else.' }] })
+    body: JSON.stringify({ model: process.env.REC_AI_MODEL || 'openai/gpt-oss-20b', temperature: 0.2, max_tokens: 900, messages: [{ role: 'system', content: sys }, { role: 'user', content: user + '\n\nRespond with ONLY the JSON object, nothing else.' }] })
   });
   const j = await r.json(); if (!r.ok) throw new Error('groq ' + r.status + ' ' + JSON.stringify(j).slice(0, 200));
   return (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || '';
@@ -49,7 +50,7 @@ async function callGemini(sys, user) {
 async function callAnthropic(sys, user) {
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-    body: JSON.stringify({ model: process.env.REC_AI_MODEL || 'claude-3-5-sonnet-latest', max_tokens: 2000, system: sys, messages: [{ role: 'user', content: user }] })
+    body: JSON.stringify({ model: process.env.REC_AI_MODEL || 'claude-3-5-sonnet-latest', max_tokens: 900, system: sys, messages: [{ role: 'user', content: user }] })
   });
   const j = await r.json(); if (!r.ok) throw new Error('anthropic ' + r.status + ' ' + JSON.stringify(j).slice(0, 200));
   return (j.content && j.content[0] && j.content[0].text) || '';
@@ -72,9 +73,9 @@ export default async function handler(req, res) {
   if (!provider) return res.status(200).json({ ok: false, error: 'No AI key set (GROQ_API_KEY / GEMINI_API_KEY / ANTHROPIC_API_KEY). Faceted search still works.' });
   const { query, candidates } = req.body || {};
   if (!query || !Array.isArray(candidates) || !candidates.length) return res.status(200).json({ ok: false, error: 'query and candidates required' });
-  // keep the payload small — free Groq tiers cap tokens-per-minute, so send a lean, bounded set
-  const rows = candidates.slice(0, 40).map(c => ({ id: c.id, name: c.name, rating: c.rating, role: c.role, sold: c.sold, tz: c.timezones, summary: String(c.summary || '').slice(0, 120) }));
-  const sys = 'You are a recruiting assistant for a sales-staffing agency. Given a HIRING QUERY and a JSON list of candidates, choose the BEST-FIT candidates and rank them best-first. Weigh the star rating, what they have sold, achievements, timezone, and the call summary. Return ONLY JSON of the form {"ranked":[{"id":"rec...","reason":"<=12 words why they fit"}]}. Include only genuinely relevant candidates (max 40). No prose outside the JSON.';
+  // keep the work small so the model responds fast: fewer candidates in, fewer + leaner rows out
+  const rows = candidates.slice(0, 25).map(c => ({ id: c.id, name: c.name, rating: c.rating, role: c.role, sold: c.sold, tz: c.timezones, summary: String(c.summary || '').slice(0, 90) }));
+  const sys = 'You are a recruiting assistant for a sales-staffing agency. Given a HIRING QUERY and a JSON list of candidates, choose the BEST-FIT candidates and rank them best-first. Weigh the star rating, what they have sold, achievements, timezone, and the call summary. Return ONLY JSON of the form {"ranked":[{"id":"rec...","reason":"<=8 words why they fit"}]}. Return only the top 15 genuinely relevant candidates, best first. No prose outside the JSON.';
   const user = 'HIRING QUERY:\n' + query + '\n\nCANDIDATES (JSON):\n' + JSON.stringify(rows);
   try {
     const txt = provider === 'groq' ? await callGroq(sys, user) : provider === 'gemini' ? await callGemini(sys, user) : await callAnthropic(sys, user);
