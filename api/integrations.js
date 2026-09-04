@@ -45,9 +45,10 @@ const SLACK_APPS = {
   default: { id: 'SLACK_CLIENT_ID', secret: 'SLACK_CLIENT_SECRET' },
   deal: { id: 'SLACK_CLIENT_ID_DEAL', secret: 'SLACK_CLIENT_SECRET_DEAL' },
   postcall: { id: 'SLACK_CLIENT_ID_POSTCALL', secret: 'SLACK_CLIENT_SECRET_POSTCALL' },
-  sod: { id: 'SLACK_CLIENT_ID_SOD', secret: 'SLACK_CLIENT_SECRET_SOD' }
+  sod: { id: 'SLACK_CLIENT_ID_SOD', secret: 'SLACK_CLIENT_SECRET_SOD' },
+  eod: { id: 'SLACK_CLIENT_ID_EOD', secret: 'SLACK_CLIENT_SECRET_EOD' }
 };
-const appKeyForField = f => (f === 'deal') ? f : (f === 'postcall' || f === 'postcallSetter' || f === 'postcallCloser') ? 'postcall' : (f === 'sod' || f === 'sodSetter' || f === 'sodCloser') ? 'sod' : 'default';
+const appKeyForField = f => (f === 'deal') ? f : (f === 'postcall' || f === 'postcallSetter' || f === 'postcallCloser') ? 'postcall' : (f === 'sod' || f === 'sodSetter' || f === 'sodCloser') ? 'sod' : (f === 'setter' || f === 'closer' || f === 'mgr') ? 'eod' : 'default';
 const slackAppId = k => { const a = SLACK_APPS[k]; return a && process.env[a.id]; };
 const slackApps = () => Object.fromEntries(Object.keys(SLACK_APPS).map(k => [k, !!slackAppId(k)]));
 const keepOr = (val, prev) => (val === '') ? '' : ((val && val !== '__keep__') ? String(val) : (prev || ''));

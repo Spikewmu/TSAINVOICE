@@ -32,7 +32,7 @@ export default async function handler(req, res) {
   const st = verifyState(q.state);
   if (!st) return res.status(200).send(page('Not connected', 'This link expired or was invalid. Start the connect again from Sales HQ.'));
   // pick the Slack app this connect was started with (each feed can have its own app so it posts under its own name)
-  const APPS = { default: ['SLACK_CLIENT_ID', 'SLACK_CLIENT_SECRET'], deal: ['SLACK_CLIENT_ID_DEAL', 'SLACK_CLIENT_SECRET_DEAL'], postcall: ['SLACK_CLIENT_ID_POSTCALL', 'SLACK_CLIENT_SECRET_POSTCALL'], sod: ['SLACK_CLIENT_ID_SOD', 'SLACK_CLIENT_SECRET_SOD'] };
+  const APPS = { default: ['SLACK_CLIENT_ID', 'SLACK_CLIENT_SECRET'], deal: ['SLACK_CLIENT_ID_DEAL', 'SLACK_CLIENT_SECRET_DEAL'], postcall: ['SLACK_CLIENT_ID_POSTCALL', 'SLACK_CLIENT_SECRET_POSTCALL'], sod: ['SLACK_CLIENT_ID_SOD', 'SLACK_CLIENT_SECRET_SOD'], eod: ['SLACK_CLIENT_ID_EOD', 'SLACK_CLIENT_SECRET_EOD'] };
   const app = APPS[st.app] || APPS.default;
   const clientId = process.env[app[0]], clientSecret = process.env[app[1]];
   if (!clientId || !clientSecret) return res.status(200).send(page('Not configured', 'That Slack app is not set up on the server yet.'));
