@@ -211,7 +211,7 @@
   .prodgrid{display:flex;flex-wrap:wrap;gap:12px}
   .produnit{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);font-weight:600}
   .produnit input{width:120px}
-  .deWide{width:96vw;margin-left:calc(50% - 48vw)}  /* break out of the centered column to full width */
+  .deWide{width:100%}  /* fill the content column; the wide daily grid scrolls inside its own tablewrap */
   #dailyWrap{max-height:60vh;overflow:auto;border:1px solid var(--border);border-radius:8px}  /* own scroll box so the header can freeze */
   #dailyGrid{table-layout:fixed;width:100%;border-collapse:collapse;font-size:12px}
   #dailyGrid th,#dailyGrid td{text-align:center;padding:0;border:1px solid var(--border);white-space:nowrap}
