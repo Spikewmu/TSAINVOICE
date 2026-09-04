@@ -334,6 +334,7 @@
     <button class="navhead"><svg class="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14v-2a8 8 0 0116 0v2"/><rect x="2" y="14" width="4" height="6" rx="1"/><rect x="18" y="14" width="4" height="6" rx="1"/></svg><span class="nlabel">Setter / Closer tools</span><svg class="nchev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
     <div class="navsub">
       <button data-tab="postcall">Post-Call Checkout</button>
+      <button data-tab="sod">Start of Day</button>
       <button data-tab="eod">End of Day</button>
       <button data-tab="training">Rep Onboarding</button>
       <button data-tab="timeoff">Time Off</button>
@@ -521,6 +522,49 @@
       <div id="eodSections"></div>
       <div class="row-actions" style="margin:8px 0 2px"><button class="btn gold" id="eodMultiSubmit" onclick="submitEodMulti()">Submit end of day</button></div>
     </div>
+  </section>
+
+  <section id="tab-sod" hidden>
+    <h2 class="section">Start of Day Projections</h2>
+    <p class="hint">Fill this in <b>at the start of each day</b> for the account you're working. Pick your role first - the form only shows the fields that apply to you.</p>
+    <div id="sodRoleSegWrap" style="margin-bottom:14px">
+      <div class="seg" id="sodRoleSeg">
+        <button class="on" data-role="Closer" onclick="setSodRole('Closer')">I'm a Closer</button>
+        <button data-role="Setter" onclick="setSodRole('Setter')">I'm a Setter</button>
+      </div>
+    </div>
+    <form class="grid" id="sodForm" onsubmit="submitSod(event)">
+      <input type="hidden" name="role" value="Closer">
+      <div class="rolenote" id="sodRoleNote"></div>
+
+      <div class="formhead"><b>Who &amp; when</b><span class="sub">the day and account these projections are for</span></div>
+      <div class="field"><label>Date *</label><input type="date" name="date" required><span class="fieldhelp">The work day these projections apply to. Defaults to today.</span></div>
+      <div class="field"><label>Client / account *</label><select name="client" data-list="clients" required></select><span class="fieldhelp">Which account you're working today.</span></div>
+      <div class="field"><label>Rep name *</label><select name="rep" data-list="reps" required></select><span class="fieldhelp">Your name (locked to your login).</span></div>
+
+      <div class="formhead"><b>Today's calls</b><span class="sub">what's on your calendar this morning</span></div>
+      <div class="field"><label>Calls on the calendar today</label><input type="number" name="sodCallsToday" min="0" step="1" placeholder="e.g. 6"><span class="fieldhelp" id="sodCallsHelp">Sales calls booked on your calendar today.</span></div>
+      <div class="field"><label>How many have confirmed</label><input type="number" name="sodConfirmed" min="0" step="1"><span class="fieldhelp">Of those, how many confirmed their appointment time.</span></div>
+
+      <div class="field setterOnly" hidden><label>How many watched the VSL</label><input type="number" name="sodWatchedVsl" min="0" step="1"><span class="fieldhelp">Of today's booked leads, how many watched the VSL.</span></div>
+
+      <div class="formhead closerOnly"><b>Projections</b><span class="sub">list the account names with each number</span></div>
+      <div class="field full closerOnly"><label>Projected to CLOSE today <span class="muted" style="font-weight:400">(and the account names)</span></label><textarea name="sodProjClose" rows="2" placeholder="e.g. 2 - John Smith (Acme), Dana Lee (BrightCo)"></textarea></div>
+      <div class="field full closerOnly"><label>In BLOOD today <span class="muted" style="font-weight:400">(and the account names)</span></label><textarea name="sodBloodToday" rows="2" placeholder="deals live but not confirmed - names"></textarea></div>
+      <div class="field full closerOnly"><label>Projected to COLLECT this week <span class="muted" style="font-weight:400">(and the account names)</span></label><textarea name="sodProjCollectWk" rows="2"></textarea></div>
+      <div class="field full closerOnly"><label>In BLOOD to collect this week <span class="muted" style="font-weight:400">(and the account names)</span></label><textarea name="sodBloodCollectWk" rows="2"></textarea></div>
+
+      <div class="formhead setterOnly" hidden><b>Appointment set commitment today</b><span class="sub">how many sets you're committing to, by booking window</span></div>
+      <div class="field setterOnly" hidden><label>Same-day set commitment</label><input type="number" name="sodSameDay" min="0" step="1" oninput="sodSum()"></div>
+      <div class="field setterOnly" hidden><label>24-hour window</label><input type="number" name="sod24" min="0" step="1" oninput="sodSum()"></div>
+      <div class="field setterOnly" hidden><label>48-hour window</label><input type="number" name="sod48" min="0" step="1" oninput="sodSum()"></div>
+      <div class="field setterOnly" hidden><label>72-hour window</label><input type="number" name="sod72" min="0" step="1" oninput="sodSum()"></div>
+      <div class="field setterOnly" hidden><label>Total set commitment today</label><input type="number" id="sodSetTotal" name="sodSetTotal" readonly style="font-weight:700;background:var(--surface-2)"><span class="fieldhelp">Auto-adds the four windows above.</span></div>
+
+      <div class="formhead"><b>Notes</b><span class="sub">optional</span></div>
+      <div class="field full"><label>Notes</label><input type="text" name="notes" placeholder="anything the team should know about today"><span class="fieldhelp">Context for your manager.</span></div>
+      <div class="full row-actions"><button class="btn gold" type="submit">Submit start of day</button></div>
+    </form>
   </section>
 
   <!-- ===== MEETING AGENDA ===== -->
@@ -1521,14 +1565,14 @@ function startApp(){
 // base tabs a login TIER can see; per-account responsibilities add to this in applyNavAccess()
 function baseAllow(role){
   return ({
-    admin:['dash','reps','clients','onboarding','meeting','promises','timeoff','postcall','eod','training','mgreod','webinar','calllog','adminreport','recruiting','messages','data','users','integrations','settings'],
-    director:['dash','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','eod','training','mgreod','webinar','calllog','recruiting','messages','adminreport'],
-    manager:['dash','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','eod','training','mgreod','webinar','calllog','recruiting','messages'],
+    admin:['dash','reps','clients','onboarding','meeting','promises','timeoff','postcall','sod','eod','training','mgreod','webinar','calllog','adminreport','recruiting','messages','data','users','integrations','settings'],
+    director:['dash','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','recruiting','messages','adminreport'],
+    manager:['dash','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','recruiting','messages'],
     founder:['dash'],
     recruiter:['dash','recruiting','messages','timeoff'],
     webinarteam:['dash','meeting','promises','timeoff','webinar'],
-    closer:['dash','postcall','eod','training','timeoff','calllog','reps'],
-    setter:['dash','postcall','eod','training','timeoff','calllog','reps']
+    closer:['dash','postcall','sod','eod','training','timeoff','calllog','reps'],
+    setter:['dash','postcall','sod','eod','training','timeoff','calllog','reps']
   })[role] || ['eod'];
 }
 // ---- multi-role: a user can hold several roles (stored as a 'userroles' record); access = the union ----
@@ -1618,7 +1662,7 @@ function showTab(t){
   document.querySelectorAll('#tabs button[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
   document.querySelectorAll('#tabs .navgroup').forEach(g=>{ if(g.querySelector('button[data-tab="'+t+'"]')) g.classList.remove('collapsed'); }); // reveal the active tab's group
 
-  ['dash','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','eod','training','mgreod','webinar','calllog','adminreport','recruiting','messages','data','users','integrations','settings'].forEach(x=>{ const el=document.getElementById('tab-'+x); if(el) el.hidden = (x!==t); });
+  ['dash','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','sod','eod','training','mgreod','webinar','calllog','adminreport','recruiting','messages','data','users','integrations','settings'].forEach(x=>{ const el=document.getElementById('tab-'+x); if(el) el.hidden = (x!==t); });
   // stale-while-revalidate: render instantly from the cached records, then refresh in the background
   const render={dash:renderDash, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, promises:renderPromisesTab, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, webinar:renderWebinars, calllog:renderCallLog, adminreport:renderAdminReport, recruiting:renderRecruiting, messages:renderMessages, training:renderTraining, data:renderAll}[t];
   if(render){ render(); syncRecords().then(()=>{ if(currentTab()===t) render(); updateNavBadges(); }); }
@@ -1627,6 +1671,7 @@ function showTab(t){
   if(t==='users'){ renderUsers(); }
   if(t==='settings'){ loadSettingsForm(); }
   if(t==='integrations'){ renderIntegrations(); }
+  if(t==='sod'){ renderSodTab(); }
 }
 function currentTab(){ const b=document.querySelector('#tabs button.active'); return b?b.dataset.tab:''; }
 
@@ -1705,7 +1750,7 @@ function setEodRole(r){
 
 /* ---------------- submit ---------------- */
 function formObj(f){ const o={}; new FormData(f).forEach((v,k)=>o[k]=v); return o; }
-const NUMKEYS=['contractValue','cashCollected','depositCollected','followUpOutreach','newOutreach','callsOffered','callsSet','dqs','connectedCalls','convos4min','callCapacity','speedToLead','hoursDialing','newMeetings','connectedMeetings','followUpMeetings','advancedCalls','noShows','closedDeals','contractsSigned','aosiSold','productBSold','emailsSent','emailsDelivered','textsSent','registrations','attendees','callsBooked','callsShown','dealsClosed'];
+const NUMKEYS=['contractValue','cashCollected','depositCollected','followUpOutreach','newOutreach','callsOffered','callsSet','dqs','connectedCalls','convos4min','callCapacity','speedToLead','hoursDialing','newMeetings','connectedMeetings','followUpMeetings','advancedCalls','noShows','closedDeals','contractsSigned','aosiSold','productBSold','emailsSent','emailsDelivered','textsSent','registrations','attendees','callsBooked','callsShown','dealsClosed','sodCallsToday','sodConfirmed','sodWatchedVsl','sodSameDay','sod24','sod48','sod72','sodSetTotal'];
 function num(o){ NUMKEYS.forEach(k=>{ if(k in o) o[k]=parseFloat(o[k])||0; }); return o; }
 // submit-button states: spinner while sending, a green "Submitted" flash, then restore
 function btnBusy(btn,on){ if(!btn) return; if(on){ if(!btn.dataset.label) btn.dataset.label=btn.innerHTML; btn.disabled=true; btn.innerHTML='<span class="spinner"></span>Submitting...'; } else { btn.disabled=false; if(btn.dataset.label) btn.innerHTML=btn.dataset.label; } }
@@ -1723,6 +1768,44 @@ async function submitEod(e){ e.preventDefault(); const btn=e.target.querySelecto
     if(!(o.client||'').trim()){ toast('Choose a client / account first.',true); return; }
     const units={}; document.querySelectorAll('#eodProducts input[data-prod]').forEach(i=>{ const v=parseFloat(i.value)||0; if(v) units[i.dataset.prod]=v; }); if(Object.keys(units).length) o.productUnits=JSON.stringify(units);
     await addRecord(o); e.target.reset(); presetDates(); setEodRole(o.role); if(repMode()) applyIdentity(); toast('End of day submitted.'); if(!repMode()) renderDash(); ok=true; }
+  catch(err){ toast('Submit failed - try again',true); }
+  finally{ if(ok) btnDone(btn,'Submitted!'); else btnBusy(btn,false); } }
+/* ---- Start of Day projections ---- */
+function setSodRole(r){
+  document.querySelectorAll('#sodRoleSeg button').forEach(b=>b.classList.toggle('on',b.dataset.role===r));
+  const rf=document.querySelector('#sodForm [name=role]'); if(rf) rf.value=r;
+  document.querySelectorAll('#sodForm .closerOnly').forEach(e=>e.hidden=r!=='Closer');
+  document.querySelectorAll('#sodForm .setterOnly').forEach(e=>e.hidden=r!=='Setter');
+  const ch=document.getElementById('sodCallsHelp'); if(ch) ch.textContent = r==='Setter' ? 'How many calls are on your calendar to run today.' : 'Sales calls booked on your calendar today.';
+  const note=document.getElementById('sodRoleNote');
+  if(note) note.innerHTML = r==='Setter'
+    ? "You're projecting as a <b>Setter</b>: your calls, confirms, VSL views, and how many sets you're committing to today by booking window."
+    : "You're projecting as a <b>Closer</b>: your calls today, plus what you expect to close and collect this week (with the account names).";
+  if(isHybridRep()) REP_ACTAS=r;
+  if(repMode()) return;
+  const repSel=document.querySelector('#sodForm [name=rep]'); if(!repSel) return;
+  let items=r==='Closer'?repNames('closer'):repNames('setter');
+  const ldr=leaderNames(); if(ldr.length) items=[...ldr.filter(n=>!items.includes(n)), ...items];
+  repSel.innerHTML='<option value="">-</option>'+items.map(i=>`<option>${esc(i)}</option>`).join('');
+}
+function sodSum(){ const g=n=>parseFloat((document.querySelector('#sodForm [name='+n+']')||{}).value)||0; const el=document.getElementById('sodSetTotal'); if(el) el.value=g('sodSameDay')+g('sod24')+g('sod48')+g('sod72'); }
+function renderSodTab(){
+  presetDates();
+  if(repMode()){
+    setSodRole(myRepRole());
+    const seg=document.getElementById('sodRoleSegWrap'); if(seg) seg.hidden=!isHybridRep();
+    const rep=document.querySelector('#sodForm [name=rep]'); if(rep){ rep.innerHTML='<option>'+esc(SESSION.name)+'</option>'; rep.value=SESSION.name; rep.disabled=true; }
+    const myTeams=teamsFor(SESSION&&SESSION.username), opts=myTeams.length?myTeams:clientNames(), cs=document.querySelector('#sodForm [name=client]');
+    if(cs){ if(opts.length===1){ cs.innerHTML='<option>'+esc(opts[0])+'</option>'; cs.value=opts[0]; cs.disabled=true; } else { const cur=cs.value; cs.innerHTML='<option value="">-</option>'+opts.map(c=>'<option>'+esc(c)+'</option>').join(''); cs.value=(cur&&opts.includes(cur))?cur:''; cs.disabled=false; } }
+  } else { const seg=document.getElementById('sodRoleSegWrap'); if(seg) seg.hidden=false; const cur=document.querySelector('#sodForm [name=role]'); setSodRole((cur&&cur.value)||'Closer'); }
+  sodSum();
+}
+async function submitSod(e){ e.preventDefault(); const btn=e.target.querySelector('[type=submit]'); if(btn&&btn.disabled) return; btnBusy(btn,true); let ok=false;
+  try{ const o=num(formObj(e.target)); o.type='sod'; if(repMode()){ o.rep=SESSION.name; o.role=myRepRole(); }
+    const csel=e.target.querySelector('[name=client]'); if(csel && !(o.client||'').trim()) o.client=csel.value;
+    if(!(o.client||'').trim()){ toast('Choose a client / account first.',true); return; }
+    if((o.role||'Closer')==='Setter') o.sodSetTotal=(parseFloat(o.sodSameDay)||0)+(parseFloat(o.sod24)||0)+(parseFloat(o.sod48)||0)+(parseFloat(o.sod72)||0);
+    await addRecord(o); e.target.reset(); renderSodTab(); toast('Start of day submitted.'); if(!repMode()) renderDash(); ok=true; }
   catch(err){ toast('Submit failed - try again',true); }
   finally{ if(ok) btnDone(btn,'Submitted!'); else btnBusy(btn,false); } }
 /* ---- End of Day: one page, one section per account, for reps who work 2+ accounts ---- */

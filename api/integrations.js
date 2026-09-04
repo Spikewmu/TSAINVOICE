@@ -200,7 +200,9 @@ export default async function handler(req, res) {
       } else if (field === 'sodSetter' || field === 'sodCloser') {
         const role = field === 'sodSetter' ? 'Setter' : 'Closer', who = role === 'Setter' ? 'Jordan' : 'Alex';
         text = `Start-of-day projection · ${who} · ${client}`;
-        bodyTxt = `📅 *Start-of-day projection* · ${who} (${role}) · ${client}\nToday's plan: 4 calls booked, target ${money(3000)}`;
+        bodyTxt = role === 'Setter'
+          ? `📅 *Start-of-day projection* · ${who} (Setter) · ${client}\n*Calls today:* 6  ·  *Confirmed:* 4  ·  *Watched VSL:* 3\n*Set commitment today:* 5  (same-day 2 · 24h 1 · 48h 1 · 72h 1)`
+          : `📅 *Start-of-day projection* · ${who} (Closer) · ${client}\n*Calls today:* 5  ·  *Confirmed:* 4\n*Projected to close today:* 2 - John Smith (Acme), Dana Lee (BrightCo)\n*In blood today:* 1 - Sam Poe\n*Projected to collect this week:* ${money(9000)} - Acme, BrightCo`;
       } else if (field === 'setter') {
         text = `EOD from Jordan · ${client}`;
         bodyTxt = `📝 *EOD · Jordan* (Setter) · ${client}\n5h · 120 dials · 30 conn · 8 sets`;

@@ -60,11 +60,22 @@ async function eventToSlack(rec) {
       if (!dest) return;
       await postChan(dest, `Post-call · ${who}${rec.client ? ' · ' + rec.client : ''}${rec.outcome ? ' · ' + rec.outcome : ''}`,
         [{ type: 'section', text: { type: 'mrkdwn', text: `📞 *Post-call checkout* · ${who}${rec.role ? ' (' + rec.role + ')' : ''}${rec.client ? ' · ' + rec.client : ''}${rec.outcome ? '\n*Outcome:* ' + rec.outcome : ''}${rec.lead ? '\n*Lead:* ' + rec.lead : ''}${rec.setter ? '\n*Setter:* ' + rec.setter : ''}` } }]);
-    } else { // sod (start-of-day projection; record shape lands with T-407) — route by role to the setter/closer channel, else combined
+    } else { // sod (start-of-day projection) — route by role to the setter/closer channel, else combined
       const dest = (rec.role === 'Setter' ? (cfg.sodSetterSlack || cfg.sodSlack) : (cfg.sodCloserSlack || cfg.sodSlack));
       if (!dest) return;
+      const n = v => v || 0;
+      let lines;
+      if (rec.role === 'Setter') {
+        lines = `*Calls today:* ${n(rec.sodCallsToday)}  ·  *Confirmed:* ${n(rec.sodConfirmed)}  ·  *Watched VSL:* ${n(rec.sodWatchedVsl)}\n*Set commitment today:* ${n(rec.sodSetTotal)}  (same-day ${n(rec.sodSameDay)} · 24h ${n(rec.sod24)} · 48h ${n(rec.sod48)} · 72h ${n(rec.sod72)})`;
+      } else {
+        const row = (lbl, v) => (v && String(v).trim()) ? `\n*${lbl}:* ${String(v).trim()}` : '';
+        lines = `*Calls today:* ${n(rec.sodCallsToday)}  ·  *Confirmed:* ${n(rec.sodConfirmed)}`
+          + row('Projected to close today', rec.sodProjClose) + row('In blood today', rec.sodBloodToday)
+          + row('Projected to collect this week', rec.sodProjCollectWk) + row('In blood to collect this week', rec.sodBloodCollectWk);
+      }
+      const head = `📅 *Start-of-day projection* · ${who}${rec.role ? ' (' + rec.role + ')' : ''}${rec.client ? ' · ' + rec.client : ''}`;
       await postChan(dest, `Start-of-day projection · ${who}${rec.client ? ' · ' + rec.client : ''}`,
-        [{ type: 'section', text: { type: 'mrkdwn', text: `📅 *Start-of-day projection* · ${who}${rec.role ? ' (' + rec.role + ')' : ''}${rec.client ? ' · ' + rec.client : ''}${rec.notes ? '\n' + String(rec.notes).slice(0, 200) : ''}` } }]);
+        [{ type: 'section', text: { type: 'mrkdwn', text: head + '\n' + lines } }].concat(rec.notes ? [{ type: 'context', elements: [{ type: 'mrkdwn', text: '"' + String(rec.notes).slice(0, 200) + '"' }] }] : []));
     }
   } catch (e) { }
 }
