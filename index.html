@@ -992,7 +992,7 @@
         <div style="padding:12px" id="integEod"></div>
       </div>
     </div>
-    <div class="panel" id="integTplLib" style="display:none"><h3>Template library <button class="btn gold sm" style="float:right" onclick="tplLibAdd()">+ New template</button> <span class="muted" style="font-weight:400;font-size:12px">- reusable message formats, available to every client's webhooks</span></h3>
+    <div class="panel" id="integTplLib" style="display:none"><h3>Template library <span style="float:right"><button class="btn ghost sm" onclick="tplLibSeed()">Load starters</button> <button class="btn gold sm" onclick="tplLibAdd()">+ New template</button></span> <span class="muted" style="font-weight:400;font-size:12px">- reusable message formats, available to every client's webhooks</span></h3>
       <div style="padding:12px" id="integTplList"></div>
     </div>
   </section>
@@ -4502,7 +4502,7 @@ function renderEodRouting(){
 function renderTemplateLib(){
   const panel=document.getElementById('integTplLib'), box=document.getElementById('integTplList'); if(!panel||!box) return;
   const isSuper=SESSION&&SESSION.role==='admin'&&currentWs()===DEFAULT_WS; panel.style.display=isSuper?'':'none'; if(!isSuper) return;
-  if(!INTEG_TEMPLATES.length){ box.innerHTML='<p class="muted" style="padding:6px 0">No templates yet. Create reusable formats (e.g. "Fanbasis sale", "Refund") that any client webhook can apply.</p>'; return; }
+  if(!INTEG_TEMPLATES.length){ box.innerHTML='<p class="muted" style="padding:6px 0">No templates yet. Click <b>Load starters</b> above for a ready set (New sale, Fanbasis sale, Whop member, Refund), or <b>+ New template</b> to make your own.</p>'; return; }
   box.innerHTML=INTEG_TEMPLATES.map(t=>`
     <div class="panel" style="margin:0 0 12px;box-shadow:none;border:1px solid var(--border)"><div style="padding:12px 14px">
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
@@ -4516,6 +4516,18 @@ function renderTemplateLib(){
     </div></div>`).join('');
 }
 async function tplLibAdd(){ const res=await integApi('saveTemplate',{name:'New template', body:'💰 *{{name}}* {{amountFmt}}\n{{customer}}{{product}}'}); if(res&&res.ok){ INTEG_TEMPLATES.push(res.template); renderTemplateLib(); } else toast((res&&res.error)||'Could not add',true); }
+async function tplLibSeed(){
+  const have=new Set(INTEG_TEMPLATES.map(t=>t.name.toLowerCase()));
+  const seeds=[
+    {name:'New sale', processor:'', body:'💰 *New sale* {{amountFmt}}\n{{customer}}{{product}}'},
+    {name:'New Fanbasis sale', processor:'fanbasis', body:'💰 *New Fanbasis Sale* {{amountFmt}}\n{{customer}}{{product}}'},
+    {name:'New Whop member', processor:'whop', body:'🎉 *New Whop member* {{amountFmt}}\n{{customer}}{{product}}'},
+    {name:'Refund', processor:'', body:'↩️ *Refund* {{amountFmt}}\n{{customer}}{{product}}'}
+  ].filter(s=>!have.has(s.name.toLowerCase()));
+  if(!seeds.length){ toast('Starters already loaded'); return; }
+  for(const s of seeds){ const res=await integApi('saveTemplate',s); if(res&&res.ok) INTEG_TEMPLATES.push(res.template); }
+  renderTemplateLib(); renderWebhookList(); toast('Loaded '+seeds.length+' starter templates');
+}
 async function tplLibSave(id){ const body={id, name:(document.getElementById('tn_'+id)||{}).value||'', processor:(document.getElementById('tp_'+id)||{}).value||'', body:(document.getElementById('tb_'+id)||{}).value||''}; const res=await integApi('saveTemplate',body); if(res&&res.ok){ const i=INTEG_TEMPLATES.findIndex(x=>x.id===id); if(i>=0) INTEG_TEMPLATES[i]=res.template; toast('Template saved'); renderTemplateLib(); renderWebhookList(); } else toast((res&&res.error)||'Could not save',true); }
 async function tplLibDelete(id,name){ if(!confirm('Delete template "'+name+'"?')) return; const res=await integApi('deleteTemplate',{id}); if(res&&res.ok){ INTEG_TEMPLATES=INTEG_TEMPLATES.filter(x=>x.id!==id); renderTemplateLib(); renderWebhookList(); toast('Deleted'); } else toast('Could not delete',true); }
 async function integSaveEod(){
