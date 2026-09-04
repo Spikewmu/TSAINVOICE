@@ -989,22 +989,28 @@
         <span id="integPlanTag" class="tag" style="align-self:center"></span>
       </div>
     </div>
-    <div class="panel" id="integAllWrap"><h3>All webhooks <span class="muted" style="font-weight:400;font-size:12px">- every source across all clients, flip on/off here</span></h3>
-      <div style="padding:12px" id="integAll"></div>
+    <style>
+      #tab-integrations .csec{cursor:pointer;user-select:none}
+      #tab-integrations .csec .chev{display:inline-block;transition:transform .15s ease;font-size:11px;opacity:.6;margin-right:6px}
+      #tab-integrations .panel.collapsed .csec-body{display:none}
+      #tab-integrations .panel.collapsed .csec .chev{transform:rotate(-90deg)}
+    </style>
+    <div class="panel collapse" id="secAll"><h3 class="csec" onclick="integToggleSec('secAll')"><span class="chev">&#9662;</span>All webhooks <span class="muted" style="font-weight:400;font-size:12px">- every source across ALL clients (admin overview, not just the one selected above)</span></h3>
+      <div class="csec-body"><div style="padding:12px" id="integAll"></div></div>
     </div>
     <div id="integBody" hidden>
-      <div class="panel"><h3>Payment webhooks <button class="btn gold sm" style="float:right" onclick="integAddWebhook()">+ Add webhook</button></h3>
-        <div style="padding:12px">
+      <div class="panel collapse" id="secPay"><h3 class="csec" onclick="integToggleSec('secPay')"><span class="chev">&#9662;</span>Payment webhooks <button class="btn gold sm" style="float:right" onclick="event.stopPropagation();integAddWebhook()">+ Add webhook</button></h3>
+        <div class="csec-body"><div style="padding:12px">
           <p class="hint" style="margin:0 0 12px">One per source (Whop, Elective, Fanbasis, a specific offer...). Name it, paste the Slack channel it should post to, copy the inbound URL into the processor, and edit the message format. Fields you can use: <code>{{amount}}</code> <code>{{customer}}</code> <code>{{product}}</code> <code>{{currency}}</code> <code>{{event}}</code> <code>{{raw.any.path}}</code>.</p>
           <div id="integWebhooks"></div>
-        </div>
+        </div></div>
       </div>
-      <div class="panel"><h3>Event &amp; report alerts to Slack <span class="muted" style="font-weight:400;font-size:12px">- new deal, post-call, start-of-day, EOD</span></h3>
-        <div style="padding:12px" id="integEod"></div>
+      <div class="panel collapse" id="secEvents"><h3 class="csec" onclick="integToggleSec('secEvents')"><span class="chev">&#9662;</span>Event &amp; report alerts to Slack <span class="muted" style="font-weight:400;font-size:12px">- new deal, post-call, start-of-day, EOD</span></h3>
+        <div class="csec-body"><div style="padding:12px" id="integEod"></div></div>
       </div>
     </div>
-    <div class="panel" id="integTplLib" style="display:none"><h3>Template library <span style="float:right"><button class="btn ghost sm" onclick="tplLibSeed()">Load starters</button> <button class="btn gold sm" onclick="tplLibAdd()">+ New template</button></span> <span class="muted" style="font-weight:400;font-size:12px">- reusable message formats, available to every client's webhooks</span></h3>
-      <div style="padding:12px" id="integTplList"></div>
+    <div class="panel collapse" id="integTplLib" style="display:none"><h3 class="csec" onclick="integToggleSec('integTplLib')"><span class="chev">&#9662;</span>Template library <span style="float:right"><button class="btn ghost sm" onclick="event.stopPropagation();tplLibSeed()">Load starters</button> <button class="btn gold sm" onclick="event.stopPropagation();tplLibAdd()">+ New template</button></span> <span class="muted" style="font-weight:400;font-size:12px">- reusable message formats, available to every client's webhooks</span></h3>
+      <div class="csec-body"><div style="padding:12px" id="integTplList"></div></div>
     </div>
   </section>
 
@@ -4493,8 +4499,10 @@ async function renderIntegrations(){
   if(unmanaged.length) opts+=`<optgroup label="Unmanaged">`+unmanaged.map(t=>`<option value="${esc(t.key)}">${esc(t.label)}</option>`).join('')+`</optgroup>`;
   sel.innerHTML=opts;
   if(cur&&targets.some(t=>t.key===cur)) sel.value=cur;
-  renderAllWebhooks(); renderTemplateLib(); integPick();
+  renderAllWebhooks(); renderTemplateLib(); integPick(); integApplySecState();
 }
+function integToggleSec(id){ const p=document.getElementById(id); if(!p) return; const c=p.classList.toggle('collapsed'); try{ localStorage.setItem('integsec:'+id, c?'1':'0'); }catch(e){} }
+function integApplySecState(){ const defs={secAll:'1',secPay:'0',secEvents:'0',integTplLib:'1'}; Object.keys(defs).forEach(id=>{ const p=document.getElementById(id); if(!p) return; let v=null; try{ v=localStorage.getItem('integsec:'+id); }catch(e){} if(v==null) v=defs[id]; p.classList.toggle('collapsed', v==='1'); }); }
 function integClientLabel(key){ const t=INTEG_TARGETS.find(x=>x.key===key); return t?t.label:key; }
 function renderAllWebhooks(){
   const box=document.getElementById('integAll'); if(!box) return;
