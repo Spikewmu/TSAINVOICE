@@ -1004,6 +1004,15 @@
   <section id="tab-reps" hidden>
     <h2 class="section">Rep Breakdown</h2>
     <p class="hint" id="repsHint">Every setter and closer, split out. Click a rep's name to see their day-by-day submissions. Numbers reconcile with the Dashboard leaderboard.</p>
+    <div class="panel" id="sodCheckPanel" hidden><h3>Start-of-day projections <span style="font-weight:400;color:var(--muted);font-size:12px">- today's plan + who submitted</span></h3>
+      <div style="padding:14px">
+        <div class="filters" style="margin:0 0 10px"><div class="field"><label>Day</label><input type="date" id="sodCheckDate" onchange="renderSodCheck()"></div><span id="sodCheckSummary" class="tag" style="align-self:flex-end;margin-bottom:2px"></span></div>
+        <div id="sodAgg" class="cards" style="grid-template-columns:repeat(auto-fill,minmax(190px,1fr));margin:0 0 12px"></div>
+        <div style="margin-bottom:12px"><div style="font-size:12px;text-transform:uppercase;color:var(--muted);font-weight:700;letter-spacing:.02em">Setters</div><div class="chiprow" id="sodCheckSetters" style="margin-top:6px"></div></div>
+        <div style="margin-bottom:8px"><div style="font-size:12px;text-transform:uppercase;color:var(--muted);font-weight:700;letter-spacing:.02em">Closers</div><div class="chiprow" id="sodCheckClosers" style="margin-top:6px"></div></div>
+        <div id="sodDetail"></div>
+      </div>
+    </div>
     <div class="panel" id="eodCheckPanel" hidden><h3>EOD submissions <span style="font-weight:400;color:var(--muted);font-size:12px">- who checked out that day</span></h3>
       <div style="padding:14px">
         <div class="filters" style="margin:0 0 12px"><div class="field"><label>Day</label><input type="date" id="eodCheckDate" onchange="renderEodCheck()"></div><span id="eodCheckSummary" class="tag" style="align-self:flex-end;margin-bottom:2px"></span></div>
@@ -2550,6 +2559,45 @@ function renderEodCheck(){
   sum.textContent=`Setters ${sIn}/${sAcc} · Closers ${cIn}/${cAcc} submitted`+(miss?` · ${miss} missing`:' · all in');
   sum.style.color=miss?'var(--warn)':'var(--good)'; sum.style.borderColor=miss?'var(--warn)':'var(--good)';
 }
+// Start-of-day compliance + aggregation: who submitted a projection today, and the rolled-up plan
+function submittedSod(name, day){ const n=String(name||'').trim().toLowerCase(); return RECORDS.some(x=>x.type==='sod' && String(x.rep||'').trim().toLowerCase()===n && String(x.date||'').slice(0,10)===day); }
+function sodRecsFor(day){ const m={}; RECORDS.forEach(x=>{ if(x.type!=='sod' || String(x.date||'').slice(0,10)!==day) return; const k=(x.rep||'').trim().toLowerCase()+'|'+(x.client||'').trim().toLowerCase(); if(!m[k]||(x.submittedAt||'')>(m[k].submittedAt||'')) m[k]=x; }); return Object.values(m); }
+function renderSodCheck(){
+  const panel=document.getElementById('sodCheckPanel'); if(!panel) return;
+  if(repMode()){ panel.hidden=true; return; } // managers/admin only
+  panel.hidden=false;
+  const di=document.getElementById('sodCheckDate'); if(!di.value) di.value=todayLocal();
+  const day=di.value;
+  const chip=(n)=>{ const ok=submittedSod(n,day);
+    if(ok) return `<span class="chip" style="background:var(--good-soft);color:var(--good);font-weight:600">✓ ${esc(n)}</span>`;
+    if(offdayStatus(n,day)==='approved') return `<span class="chip" style="background:var(--surface-2);color:var(--muted);font-weight:600" title="Approved day off">○ ${esc(n)} (off)</span>`;
+    if(accountableDays(n,[day]).length===0) return '';
+    return `<span class="chip" style="background:var(--warn-soft);color:var(--warn);font-weight:600">✗ ${esc(n)}</span>`; };
+  const setters=repNames('setter'), closers=repNames('closer');
+  document.getElementById('sodCheckSetters').innerHTML=setters.map(chip).filter(Boolean).join('')||'<span class="muted" style="font-size:12px">No setters working today.</span>';
+  document.getElementById('sodCheckClosers').innerHTML=closers.map(chip).filter(Boolean).join('')||'<span class="muted" style="font-size:12px">No closers working today.</span>';
+  const acc=n=>accountableDays(n,[day]).length>0;
+  const sAcc=setters.filter(acc).length, cAcc=closers.filter(acc).length, sIn=setters.filter(n=>submittedSod(n,day)).length, cIn=closers.filter(n=>submittedSod(n,day)).length;
+  const miss=(sAcc-sIn)+(cAcc-cIn), sum=document.getElementById('sodCheckSummary');
+  sum.textContent=`Setters ${sIn}/${sAcc} · Closers ${cIn}/${cAcc} submitted`+(miss?` · ${miss} missing`:' · all in');
+  sum.style.color=miss?'var(--warn)':'var(--good)'; sum.style.borderColor=miss?'var(--warn)':'var(--good)';
+  // rolled-up projection for the day
+  const recs=sodRecsFor(day), setRecs=recs.filter(x=>(x.role||'Closer')==='Setter'), closeRecs=recs.filter(x=>(x.role||'Closer')!=='Setter');
+  const S=(arr,f)=>arr.reduce((a,x)=>a+(+x[f]||0),0);
+  const card=(label,val,sub)=>`<div class="panel" style="box-shadow:none;border:1px solid var(--border);padding:10px 12px;margin:0"><div style="font-size:11px;text-transform:uppercase;color:var(--muted);font-weight:700;letter-spacing:.02em">${label}</div><div style="font-size:22px;font-weight:700;margin:2px 0">${val}</div>${sub?`<div class="muted" style="font-size:11px">${sub}</div>`:''}</div>`;
+  document.getElementById('sodAgg').innerHTML =
+      card('Closers projecting', closeRecs.length, `${S(closeRecs,'sodCallsToday')} calls · ${S(closeRecs,'sodConfirmed')} confirmed`)
+    + card('Setters projecting', setRecs.length, `${S(setRecs,'sodCallsToday')} calls · ${S(setRecs,'sodConfirmed')} confirmed`)
+    + card('Set commitment today', S(setRecs,'sodSetTotal'), `same-day ${S(setRecs,'sodSameDay')} · 24h ${S(setRecs,'sod24')} · 48h ${S(setRecs,'sod48')} · 72h ${S(setRecs,'sod72')}`)
+    + card('VSL views (setter proj.)', S(setRecs,'sodWatchedVsl'), 'expected to have watched');
+  const line=(x)=>{ const p=[]; const g=k=>(x[k]||'').trim();
+    if(g('sodProjClose')) p.push('<b>Close today:</b> '+esc(g('sodProjClose')));
+    if(g('sodProjCollectWk')) p.push('<b>Collect this wk:</b> '+esc(g('sodProjCollectWk')));
+    if(g('sodBloodToday')) p.push('<b>In blood:</b> '+esc(g('sodBloodToday')));
+    return p.length?`<div style="margin:5px 0;font-size:13px;line-height:1.4"><span class="pill">${esc(x.rep||'?')}</span>${x.client?' <span class="muted" style="font-size:11px">'+esc(x.client)+'</span> ':' '}${p.join(' &nbsp;·&nbsp; ')}</div>`:''; };
+  const detHtml=closeRecs.map(line).filter(Boolean).join('');
+  document.getElementById('sodDetail').innerHTML = detHtml ? `<div style="border-top:1px solid var(--border);padding-top:10px;margin-top:4px"><div style="font-size:12px;text-transform:uppercase;color:var(--muted);font-weight:700;letter-spacing:.02em;margin-bottom:6px">Closer targets today</div>${detHtml}</div>` : '';
+}
 /* ---------------- admin report: submission compliance across setters/closers/managers ---------------- */
 // everyone assigned as a webinar/setter/closer manager on any client = who should submit a Manager EOD
 function managerNames(){ const s=new Set(); latestClients().forEach(c=>['webinarMgr','setterMgr','closerMgr'].forEach(f=>{ const v=(c[f]||'').trim(); if(v)s.add(v); })); return [...s].sort((a,b)=>a.localeCompare(b)); }
@@ -3704,6 +3752,7 @@ function repFiltered(){
 }
 function renderReps(){
   const rm=repMode();
+  renderSodCheck();
   renderEodCheck();
   // rep sees their ASSIGNED teams; if none assigned yet, fall back to the accounts they've submitted for
   const assigned = rm ? teamsFor(SESSION&&SESSION.username) : [];
