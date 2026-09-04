@@ -3421,7 +3421,20 @@ function recSelectAll(on){ recList().forEach(c=>{ if(on)REC_SEL.add(c.id); else 
 function recSelCount(){ ['rcSelCount','rcSelCountTop'].forEach(id=>{ const e=document.getElementById(id); if(e)e.textContent=REC_SEL.size+' selected'; }); }
 /* ---- instant local best-fit ranker (no API, runs in the browser in ms) ---- */
 const REC_STOP=new Set(['the','a','an','and','or','who','with','for','in','of','to','that','have','has','star','stars','plus','at','on','is','are','who','someone','somebody','person','people','reps','rep','sold','sell','sells','selling','experience','exp','years','year','can','looking','need','want','good','great','strong','high','level']);
-const REC_SYN={ ht:['high-ticket','ticket'], 'high-ticket':['ticket','premium'], est:['eastern'], eastern:['est'], pst:['pacific'], pacific:['pst','pt'], cst:['central'], central:['cst'], mst:['mountain'], remote:['wfh','anywhere'], coaching:['coach','course','program','info'], closer:['closing','close'], setter:['setting','appointment','appointments'], b2b:['business'], saas:['software'], solar:['energy'] };
+const REC_SYN={
+  // finance / investing cluster (so "trading" also surfaces investment / high-ticket finance reps)
+  trading:['invest','investment','investing','finance','financial','forex','crypto','stocks','stock','options','wealth','trader','markets'],
+  invest:['investment','investing','trading','finance','wealth','portfolio'], finance:['financial','invest','trading','wealth','money'], forex:['trading','currency','fx'], crypto:['bitcoin','blockchain','trading'], wealth:['finance','invest','money','financial'],
+  // offer types
+  ht:['high-ticket','ticket','premium'], 'high-ticket':['ticket','premium','luxury'], premium:['high-ticket','luxury'],
+  coaching:['coach','course','program','info','education','mentor','mentorship','consulting'], course:['coaching','program','education'], mentorship:['mentor','coaching'],
+  'real estate':['realestate','property','realtor'], realestate:['property','realtor','real'], realtor:['realestate','property'],
+  solar:['energy','renewable'], insurance:['life','health','medicare'], saas:['software','tech','b2b'], b2b:['business','saas'], fitness:['health','wellness','gym','nutrition'],
+  // roles
+  closer:['closing','close'], setter:['setting','appointment','appointments','booking'],
+  // timezones
+  est:['eastern'], eastern:['est'], pst:['pacific'], pacific:['pst','pt'], cst:['central'], central:['cst'], mst:['mountain'], remote:['wfh','anywhere']
+};
 function recRatingFloor(q){ const m=String(q||'').toLowerCase().match(/(\d)\s*\+|\b(\d)\s*stars?\b/); return m?+(m[1]||m[2]||0):0; } // "3+" or "3 stars" -> min rating 3
 function recStem(t){ return t.length>4 ? t.slice(0, Math.max(4, t.length-3)) : t; } // trading->trad, coaching->coach, closer->clos (catches trader/trades/coach/closing)
 function recTerms(q){
