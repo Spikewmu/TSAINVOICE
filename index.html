@@ -999,14 +999,18 @@
       <div class="csec-body"><div style="padding:12px" id="integAll"></div></div>
     </div>
     <div id="integBody" hidden>
+      <div id="integStatus" style="margin:0 0 12px"></div>
       <div class="panel collapse" id="secPay"><h3 class="csec" onclick="integToggleSec('secPay')"><span class="chev">&#9662;</span>Payment webhooks <button class="btn gold sm" style="float:right" onclick="event.stopPropagation();integAddWebhook()">+ Add webhook</button></h3>
         <div class="csec-body"><div style="padding:12px">
           <p class="hint" style="margin:0 0 12px">One per source (Whop, Elective, Fanbasis, a specific offer...). Name it, paste the Slack channel it should post to, copy the inbound URL into the processor, and edit the message format. Fields you can use: <code>{{amount}}</code> <code>{{customer}}</code> <code>{{product}}</code> <code>{{currency}}</code> <code>{{event}}</code> <code>{{raw.any.path}}</code>.</p>
           <div id="integWebhooks"></div>
         </div></div>
       </div>
-      <div class="panel collapse" id="secEvents"><h3 class="csec" onclick="integToggleSec('secEvents')"><span class="chev">&#9662;</span>Event &amp; report alerts to Slack <span class="muted" style="font-weight:400;font-size:12px">- new deal, post-call, start-of-day, EOD</span></h3>
-        <div class="csec-body"><div style="padding:12px" id="integEod"></div></div>
+      <div class="panel collapse" id="secFeeds"><h3 class="csec" onclick="integToggleSec('secFeeds')"><span class="chev">&#9662;</span>Event feeds <span class="muted" style="font-weight:400;font-size:12px">- new closed deal, post-call, start-of-day</span></h3>
+        <div class="csec-body"><div style="padding:12px" id="integFeeds"></div></div>
+      </div>
+      <div class="panel collapse" id="secEod"><h3 class="csec" onclick="integToggleSec('secEod')"><span class="chev">&#9662;</span>EOD reports <span class="muted" style="font-weight:400;font-size:12px">- setter, closer, manager end-of-day</span></h3>
+        <div class="csec-body"><div style="padding:12px" id="integEodRep"></div></div>
       </div>
     </div>
     <div class="panel collapse" id="integTplLib" style="display:none"><h3 class="csec" onclick="integToggleSec('integTplLib')"><span class="chev">&#9662;</span>Template library <span style="float:right"><button class="btn ghost sm" onclick="event.stopPropagation();tplLibSeed()">Load starters</button> <button class="btn gold sm" onclick="event.stopPropagation();tplLibAdd()">+ New template</button></span> <span class="muted" style="font-weight:400;font-size:12px">- reusable message formats, available to every client's webhooks</span></h3>
@@ -4502,7 +4506,7 @@ async function renderIntegrations(){
   renderAllWebhooks(); renderTemplateLib(); integPick(); integApplySecState();
 }
 function integToggleSec(id){ const p=document.getElementById(id); if(!p) return; const c=p.classList.toggle('collapsed'); try{ localStorage.setItem('integsec:'+id, c?'1':'0'); }catch(e){} }
-function integApplySecState(){ const defs={secAll:'1',secPay:'1',secEvents:'1',integTplLib:'1'}; Object.keys(defs).forEach(id=>{ const p=document.getElementById(id); if(!p) return; let v=null; try{ v=localStorage.getItem('integsec:'+id); }catch(e){} if(v==null) v=defs[id]; p.classList.toggle('collapsed', v==='1'); }); }
+function integApplySecState(){ const defs={secAll:'1',secPay:'1',secFeeds:'1',secEod:'1',integTplLib:'1'}; Object.keys(defs).forEach(id=>{ const p=document.getElementById(id); if(!p) return; let v=null; try{ v=localStorage.getItem('integsec:'+id); }catch(e){} if(v==null) v=defs[id]; p.classList.toggle('collapsed', v==='1'); }); }
 function integClientLabel(key){ const t=INTEG_TARGETS.find(x=>x.key===key); return t?t.label:key; }
 function renderAllWebhooks(){
   const box=document.getElementById('integAll'); if(!box) return;
@@ -4592,27 +4596,45 @@ async function integHookLog(id){
 }
 function integCopy(id){ const el=document.getElementById(id); if(!el||!el.value){ toast('Save first',true); return; } navigator.clipboard.writeText(el.value).then(()=>toast('Copied'),()=>toast('Copy failed',true)); }
 function renderEodRouting(){
-  const t=integTarget(), box=document.getElementById('integEod'); if(!box||!t) return;
+  const t=integTarget(); if(!t) return;
   const c=INTEG_CFGS[t.key]||{};
-  box.innerHTML=`
-    <b style="font-size:12.5px">In-app event feeds</b>
-    <div class="cards" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr));margin-top:8px">
+  const feeds=document.getElementById('integFeeds');
+  if(feeds) feeds.innerHTML=`
+    <div class="cards" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr))">
       <div class="field"><label>New closed deal channel</label>${slackField('evDeal',c.deal,`'config','','deal'`,'deal','New closed deal')}</div>
       <div class="field"><label>Post-call checkout (Setters)</label>${slackField('evPostcallSetter',c.postcallSetter,`'config','','postcallSetter'`,'postcallSetter','Post-call checkout (Setters)')}</div>
       <div class="field"><label>Post-call checkout (Closers)</label>${slackField('evPostcallCloser',c.postcallCloser,`'config','','postcallCloser'`,'postcallCloser','Post-call checkout (Closers)')}</div>
       <div class="field"><label>Start-of-day projections (Setters)</label>${slackField('evSodSetter',c.sodSetter,`'config','','sodSetter'`,'sodSetter','Start-of-day projections (Setters)')}</div>
       <div class="field"><label>Start-of-day projections (Closers)</label>${slackField('evSodCloser',c.sodCloser,`'config','','sodCloser'`,'sodCloser','Start-of-day projections (Closers)')}</div>
     </div>
-    <p class="fieldhelp" style="margin:2px 0 0">Setters' start-of-day projections post to the Setters channel, closers' to the Closers channel (routed by the rep's role).</p>
-    <label style="display:flex;gap:8px;align-items:center;font-weight:500;margin:16px 0 8px"><input type="checkbox" id="eodOn" ${c.eodToSlack?'checked':''}> Post submitted <b style="margin:0 3px">EOD reports</b> to Slack</label>
+    <p class="fieldhelp" style="margin:8px 0 0">Setters' post-call & start-of-day posts route to the Setters channel, closers' to the Closers channel (by the rep's role).</p>
+    <div class="row-actions" style="margin-top:12px"><button class="btn gold sm" onclick="integSaveEod()">Save routing</button></div>`;
+  const eod=document.getElementById('integEodRep');
+  if(eod) eod.innerHTML=`
+    <label style="display:flex;gap:8px;align-items:center;font-weight:500;margin:0 0 8px"><input type="checkbox" id="eodOn" ${c.eodToSlack?'checked':''}> Post submitted <b style="margin:0 3px">EOD reports</b> to Slack</label>
     <div class="cards" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr))">
       <div class="field"><label>Setter EOD channel</label>${slackField('eodSetter',c.setter,`'config','','setter'`,'setter','Setter EOD')}</div>
       <div class="field"><label>Closer EOD channel</label>${slackField('eodCloser',c.closer,`'config','','closer'`,'closer','Closer EOD')}</div>
       <div class="field"><label>Manager EOD channel</label>${slackField('eodMgr',c.mgr,`'config','','mgr'`,'mgr','Manager EOD')}</div>
       <div class="field"><label>Fallback channel</label>${slackField('eodFallback',c.slack,`'config','','slack'`,'slack','Fallback')}</div>
     </div>
-    <p class="fieldhelp" style="margin:8px 0 0">Each feed posts to its own channel when that event happens (a channel set = on). Blank EOD channels fall back to the fallback channel, which also covers any payment webhook with no channel set.</p>
+    <p class="fieldhelp" style="margin:8px 0 0">Blank EOD channels fall back to the fallback channel, which also covers any payment webhook with no channel set. Check the box above to turn EOD posting on.</p>
     <div class="row-actions" style="margin-top:12px"><button class="btn gold sm" onclick="integSaveEod()">Save routing</button></div>`;
+  renderIntegStatus(t,c);
+}
+function renderIntegStatus(t,c){
+  const box=document.getElementById('integStatus'); if(!box||!t) return; c=c||{};
+  const on=v=>!!(v&&String(v).trim());
+  const yes='<span style="color:#3ba55d;font-weight:700">&#10003;</span>', no='<span style="opacity:.4">&#8211;</span>';
+  const d=ok=>ok?yes:no, hooks=INTEG_HOOKS.filter(w=>w.key===t.key).length;
+  const chips=[
+    `New deal ${d(on(c.deal))}`,
+    `Post-call S${d(on(c.postcallSetter))} C${d(on(c.postcallCloser))}`,
+    `Start-of-day S${d(on(c.sodSetter))} C${d(on(c.sodCloser))}`,
+    `EOD ${c.eodToSlack?'<span style="color:#3ba55d;font-weight:600">on</span>':'<span style="opacity:.5">off</span>'} S${d(on(c.setter))} C${d(on(c.closer))} M${d(on(c.mgr))}`,
+    `Webhooks ${hooks}`
+  ];
+  box.innerHTML=`<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center"><span class="muted" style="font-size:11px;margin-right:2px">${esc(t.label)} setup:</span>`+chips.map(x=>`<span class="pill" style="font-size:12px;white-space:nowrap">${x}</span>`).join('')+`</div>`;
 }
 function renderTemplateLib(){
   const panel=document.getElementById('integTplLib'), box=document.getElementById('integTplList'); if(!panel||!box) return;
