@@ -4516,7 +4516,7 @@ function integPick(){
   const tag=document.getElementById('integPlanTag'); if(tag) tag.textContent=t.plan||'';
   renderWebhookList(); renderEodRouting();
 }
-function slackAppKeyForField(f){ return (f==='deal'||f==='postcall')?f:(f==='sod'||f==='sodSetter'||f==='sodCloser')?'sod':'default'; }
+function slackAppKeyForField(f){ return (f==='deal')?f:(f==='postcall'||f==='postcallSetter'||f==='postcallCloser')?'postcall':(f==='sod'||f==='sodSetter'||f==='sodCloser')?'sod':'default'; }
 function canConnectField(field){ return !!(INTEG_SLACK_APPS[slackAppKeyForField(field)] || INTEG_SLACK_APPS['default']); }
 function slackField(id,value,connectExpr,field){ const showConnect = connectExpr && canConnectField(field||'slack'); const connected = !!(value && String(value).trim()); const badge = connected ? `<span class="pill good" style="white-space:nowrap">&#10003; Connected</span>` : `<span class="pill" style="opacity:.55;white-space:nowrap">Not connected</span>`; const connectLabel = connected ? 'Reconnect' : 'Connect Slack'; return `<span style="display:flex;flex-direction:column;gap:6px;align-items:stretch"><span>${badge}</span><input id="${id}" type="password" autocomplete="off" value="${esc(value||'')}" placeholder="https://hooks.slack.com/services/..." style="width:100%"><span style="display:flex;gap:6px"><button type="button" class="btn sm ghost" onclick="integReveal('${id}',this)">Show</button>${showConnect?`<button type="button" class="btn sm ghost" onclick="integConnectSlack(${connectExpr})">${connectLabel}</button>`:''}</span></span>`; }
 function integReveal(id,btn){ const el=document.getElementById(id); if(!el) return; const hidden=el.type==='password'; el.type=hidden?'text':'password'; if(btn) btn.textContent=hidden?'Hide':'Show'; }
@@ -4584,7 +4584,8 @@ function renderEodRouting(){
     <b style="font-size:12.5px">In-app event feeds</b>
     <div class="cards" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr));margin-top:8px">
       <div class="field"><label>New closed deal channel</label>${slackField('evDeal',c.deal,`'config','','deal'`,'deal')}</div>
-      <div class="field"><label>Post-call checkout channel</label>${slackField('evPostcall',c.postcall,`'config','','postcall'`,'postcall')}</div>
+      <div class="field"><label>Post-call checkout (Setters)</label>${slackField('evPostcallSetter',c.postcallSetter,`'config','','postcallSetter'`,'postcallSetter')}</div>
+      <div class="field"><label>Post-call checkout (Closers)</label>${slackField('evPostcallCloser',c.postcallCloser,`'config','','postcallCloser'`,'postcallCloser')}</div>
       <div class="field"><label>Start-of-day projections (Setters)</label>${slackField('evSodSetter',c.sodSetter,`'config','','sodSetter'`,'sodSetter')}</div>
       <div class="field"><label>Start-of-day projections (Closers)</label>${slackField('evSodCloser',c.sodCloser,`'config','','sodCloser'`,'sodCloser')}</div>
     </div>
@@ -4634,7 +4635,7 @@ async function integSaveEod(){
   const t=integTarget(); if(!t) return; const g=id=>((document.getElementById(id)||{}).value||'').trim();
   const body={key:t.key, ws:t.ws, client:t.client, eodToSlack:(document.getElementById('eodOn')||{}).checked,
     eodSetterSlack:g('eodSetter'), eodCloserSlack:g('eodCloser'), eodMgrSlack:g('eodMgr'), slackWebhook:g('eodFallback'),
-    dealSlack:g('evDeal'), postcallSlack:g('evPostcall'), sodSetterSlack:g('evSodSetter'), sodCloserSlack:g('evSodCloser')};
+    dealSlack:g('evDeal'), postcallSetterSlack:g('evPostcallSetter'), postcallCloserSlack:g('evPostcallCloser'), sodSetterSlack:g('evSodSetter'), sodCloserSlack:g('evSodCloser')};
   const res=await integApi('save',body);
   if(res&&res.ok){ INTEG_CFGS[t.key]=res.config; toast('Routing saved'); renderEodRouting(); }
   else toast((res&&res.error)||'Could not save',true);

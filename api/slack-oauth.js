@@ -52,7 +52,7 @@ export default async function handler(req, res) {
       const rec = Object.assign({}, cur, { slackWebhook: url, updatedAt: now });
       await supa('records', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ rid: crypto.randomUUID(), type: 'webhook', submitted_at: now, data: rec }) });
     } else {
-      const map = { slack: 'slackWebhook', setter: 'eodSetterSlack', closer: 'eodCloserSlack', mgr: 'eodMgrSlack', deal: 'dealSlack', postcall: 'postcallSlack', sod: 'sodSlack', sodSetter: 'sodSetterSlack', sodCloser: 'sodCloserSlack' };
+      const map = { slack: 'slackWebhook', setter: 'eodSetterSlack', closer: 'eodCloserSlack', mgr: 'eodMgrSlack', deal: 'dealSlack', postcall: 'postcallSlack', postcallSetter: 'postcallSetterSlack', postcallCloser: 'postcallCloserSlack', sod: 'sodSlack', sodSetter: 'sodSetterSlack', sodCloser: 'sodCloserSlack' };
       const f = map[st.field] || 'slackWebhook';
       const cur = (await latest('integration', 'key', st.key)) || { id: crypto.randomUUID(), type: 'integration', key: st.key, ws: st.ws || 'tsa', client: '' };
       const rec = Object.assign({}, cur, { [f]: url, updatedAt: now });

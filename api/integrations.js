@@ -47,13 +47,13 @@ const SLACK_APPS = {
   postcall: { id: 'SLACK_CLIENT_ID_POSTCALL', secret: 'SLACK_CLIENT_SECRET_POSTCALL' },
   sod: { id: 'SLACK_CLIENT_ID_SOD', secret: 'SLACK_CLIENT_SECRET_SOD' }
 };
-const appKeyForField = f => (f === 'deal' || f === 'postcall') ? f : (f === 'sod' || f === 'sodSetter' || f === 'sodCloser') ? 'sod' : 'default';
+const appKeyForField = f => (f === 'deal') ? f : (f === 'postcall' || f === 'postcallSetter' || f === 'postcallCloser') ? 'postcall' : (f === 'sod' || f === 'sodSetter' || f === 'sodCloser') ? 'sod' : 'default';
 const slackAppId = k => { const a = SLACK_APPS[k]; return a && process.env[a.id]; };
 const slackApps = () => Object.fromEntries(Object.keys(SLACK_APPS).map(k => [k, !!slackAppId(k)]));
 const keepOr = (val, prev) => (val === '') ? '' : ((val && val !== '__keep__') ? String(val) : (prev || ''));
 const pubCfg = d => ({ key: d.key, ws: d.ws, client: d.client || '', eodToSlack: !!d.eodToSlack,
   slack: d.slackWebhook || '', setter: d.eodSetterSlack || '', closer: d.eodCloserSlack || '', mgr: d.eodMgrSlack || '',
-  deal: d.dealSlack || '', postcall: d.postcallSlack || '', sod: d.sodSlack || '', sodSetter: d.sodSetterSlack || '', sodCloser: d.sodCloserSlack || '' });
+  deal: d.dealSlack || '', postcall: d.postcallSlack || '', postcallSetter: d.postcallSetterSlack || '', postcallCloser: d.postcallCloserSlack || '', sod: d.sodSlack || '', sodSetter: d.sodSetterSlack || '', sodCloser: d.sodCloserSlack || '' });
 const pubHook = (d, req) => ({ id: d.id, key: d.key, ws: d.ws, client: d.client || '', name: d.name || 'Webhook', processor: d.processor || 'generic', enabled: d.enabled !== false, template: d.template || DEFAULT_TEMPLATE, hasSlack: !!d.slackWebhook, slack: d.slackWebhook || '', token: d.token, inbound: baseUrl(req) + '/api/hook?t=' + d.token });
 const chanDest = u => (/discord(app)?\.com\/api\/webhooks\//i.test(String(u || '')) && !/\/slack\/?$/i.test(String(u))) ? String(u).replace(/\/+$/, '') + '/slack' : u; // Discord accepts Slack payloads at /slack
 async function postSlack(webhook, payload) {
@@ -129,6 +129,8 @@ export default async function handler(req, res) {
         eodMgrSlack: keepOr(b.eodMgrSlack, cur && cur.eodMgrSlack),
         dealSlack: keepOr(b.dealSlack, cur && cur.dealSlack),
         postcallSlack: keepOr(b.postcallSlack, cur && cur.postcallSlack),
+        postcallSetterSlack: keepOr(b.postcallSetterSlack, cur && cur.postcallSetterSlack),
+        postcallCloserSlack: keepOr(b.postcallCloserSlack, cur && cur.postcallCloserSlack),
         sodSlack: keepOr(b.sodSlack, cur && cur.sodSlack),
         sodSetterSlack: keepOr(b.sodSetterSlack, cur && cur.sodSetterSlack),
         sodCloserSlack: keepOr(b.sodCloserSlack, cur && cur.sodCloserSlack),

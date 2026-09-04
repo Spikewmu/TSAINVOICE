@@ -56,8 +56,9 @@ async function eventToSlack(rec) {
       await postChan(cfg.dealSlack, `New closed deal${rec.client ? ' · ' + rec.client : ''} · ${money(rec.cashCollected)} (${who})`,
         [{ type: 'section', text: { type: 'mrkdwn', text: `💰 *New closed deal* · ${money(rec.cashCollected)}\n*Closer:* ${who}${setter}${rec.client ? '\n*Account:* ' + rec.client : ''}${rec.product ? '\n*Product:* ' + rec.product : ''}${rec.contractValue ? '\n*Contract:* ' + money(rec.contractValue) : ''}` } }]);
     } else if (rec.type === 'postcall') {
-      if (!cfg.postcallSlack) return;
-      await postChan(cfg.postcallSlack, `Post-call · ${who}${rec.client ? ' · ' + rec.client : ''}${rec.outcome ? ' · ' + rec.outcome : ''}`,
+      const dest = (rec.role === 'Setter' ? (cfg.postcallSetterSlack || cfg.postcallSlack) : (cfg.postcallCloserSlack || cfg.postcallSlack));
+      if (!dest) return;
+      await postChan(dest, `Post-call · ${who}${rec.client ? ' · ' + rec.client : ''}${rec.outcome ? ' · ' + rec.outcome : ''}`,
         [{ type: 'section', text: { type: 'mrkdwn', text: `📞 *Post-call checkout* · ${who}${rec.role ? ' (' + rec.role + ')' : ''}${rec.client ? ' · ' + rec.client : ''}${rec.outcome ? '\n*Outcome:* ' + rec.outcome : ''}${rec.lead ? '\n*Lead:* ' + rec.lead : ''}${rec.setter ? '\n*Setter:* ' + rec.setter : ''}` } }]);
     } else { // sod (start-of-day projection; record shape lands with T-407) — route by role to the setter/closer channel, else combined
       const dest = (rec.role === 'Setter' ? (cfg.sodSetterSlack || cfg.sodSlack) : (cfg.sodCloserSlack || cfg.sodSlack));
