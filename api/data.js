@@ -33,6 +33,32 @@ async function wsForUser(username) {
   const rows = await r.json();
   return (rows[0] && rows[0].data && rows[0].data.ws) || DEFAULT_WS;
 }
+// the integration config for a client (TakeOver client -> "tsa:<name>", independent account -> its ws id)
+async function integrationFor(ws, client) {
+  const key = (ws === DEFAULT_WS && client) ? 'tsa:' + client : ws;
+  const r = await supa(`records?select=data&type=eq.integration&data->>key=eq.${encodeURIComponent(key)}&order=submitted_at.desc&limit=1`);
+  if (!r || !r.ok) return null;
+  const rows = await r.json();
+  return (rows[0] && rows[0].data) || null;
+}
+// post a submitted End-of-Day (or Manager EOD) to the client's Slack channel, if that client turned EOD alerts on
+async function eodToSlack(rec) {
+  try {
+    if (!rec || (rec.type !== 'eod' && rec.type !== 'mgreod')) return;
+    const cfg = await integrationFor(rec.ws, rec.client);
+    if (!cfg || !cfg.slackWebhook || !cfg.eodToSlack) return;
+    const n = v => v || 0, who = rec.rep || rec.by || 'Someone';
+    let line;
+    if (rec.type === 'mgreod') line = `Setters ${n(rec.settersWorking)} · Closers ${n(rec.closersWorking)} · ${n(rec.closerCalls)} calls · $${n(rec.cash).toLocaleString('en-US')} cash`;
+    else if ((rec.role || 'Closer') === 'Setter') line = `${n(rec.hoursDialing)}h · ${n(rec.newOutreach)} dials · ${n(rec.connectedCalls)} conn · ${n(rec.callsSet)} sets`;
+    else line = `${n(rec.hoursDialing)}h · ${n(rec.connectedMeetings)} calls · ${n(rec.closedDeals)} deals · $${n(rec.cashCollected).toLocaleString('en-US')} cash`;
+    const blocks = [
+      { type: 'section', text: { type: 'mrkdwn', text: `📝 *EOD · ${who}*${rec.role ? ' (' + rec.role + ')' : rec.type === 'mgreod' ? ' (Manager)' : ''}${rec.client ? ' · ' + rec.client : ''}\n${line}` } }
+    ];
+    if (rec.notes || rec.bottleneck) blocks.push({ type: 'context', elements: [{ type: 'mrkdwn', text: '“' + String(rec.notes || rec.bottleneck).slice(0, 200) + '”' }] });
+    await fetch(cfg.slackWebhook, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: `EOD from ${who}${rec.client ? ' · ' + rec.client : ''}`, blocks }) });
+  } catch (e) { /* never block the write on a Slack failure */ }
+}
 
 export default async function handler(req, res) {
   const h = req.headers || {}, b = req.body || {}, q = req.query || {};
@@ -66,6 +92,7 @@ export default async function handler(req, res) {
       const row = { rid: rec.id || crypto.randomUUID(), type: rec.type, submitted_at: rec.submittedAt || new Date().toISOString(), data: rec };
       const r = await supa('records', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify(row) });
       if (!r.ok) { const t = await r.text(); return res.status(200).json({ ok: false, error: 'db ' + r.status + ' ' + t.slice(0, 160) }); }
+      if (rec.type === 'eod' || rec.type === 'mgreod') await eodToSlack(rec); // mirror the submitted report to the client's Slack, if enabled
       return res.status(200).json({ ok: true });
     }
     if (action === 'accounts') {

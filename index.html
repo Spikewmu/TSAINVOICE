@@ -972,6 +972,28 @@
     <h2 class="section">Settings</h2>
     <p class="hint">Manage clients, reps, products, goals, commission rates, the shared-data endpoint, and the master admin password.</p>
     <div class="panel" id="billingPanel" style="margin-bottom:16px"></div>
+    <div class="panel" id="integrationsPanel" style="margin-bottom:16px;display:none">
+      <h3>Integrations <span class="muted" style="font-weight:400;font-size:12px">- payment alerts + EOD reports to Slack</span></h3>
+      <div style="padding:14px">
+        <p class="hint" style="margin:0 0 12px">Route a client's payments (Whop, Elective, Fanbasis, etc.) and daily reports into a Slack channel. Paste the client's <b>Slack Incoming Webhook</b>, copy the <b>Sales HQ inbound URL</b> into their payment processor, and switch on what should post.</p>
+        <div class="filters" style="align-items:flex-end;margin:0 0 12px">
+          <div class="field" style="min-width:300px"><label>Client / account</label><select id="integTarget" onchange="integPick()"></select></div>
+          <span id="integPlanTag" class="tag" style="align-self:center"></span>
+        </div>
+        <div id="integForm" hidden>
+          <div class="field full"><label>Slack Incoming Webhook URL <span class="muted" style="font-weight:400">- the client makes this in their Slack (Apps &rsaquo; Incoming Webhooks)</span></label>
+            <input id="integSlack" type="password" placeholder="https://hooks.slack.com/services/..." autocomplete="off"><span class="fieldhelp" id="integSlackNote"></span></div>
+          <div style="display:flex;gap:20px;flex-wrap:wrap;margin:12px 0">
+            <label style="display:flex;gap:8px;align-items:center;font-weight:500"><input type="checkbox" id="integPay"> Post <b style="margin:0 3px">payments</b> to Slack</label>
+            <label style="display:flex;gap:8px;align-items:center;font-weight:500"><input type="checkbox" id="integEod"> Post <b style="margin:0 3px">EOD reports</b> to Slack</label>
+          </div>
+          <div class="field full"><label>Sales HQ inbound webhook URL <span class="muted" style="font-weight:400">- paste this into Whop / Elective / Fanbasis</span></label>
+            <div class="row-actions"><input id="integInbound" readonly style="font-family:ui-monospace,monospace;font-size:12px"><button class="btn sm ghost" onclick="integCopy()">Copy</button></div>
+            <span class="fieldhelp">Unique and secret to this client. Save once to generate it.</span></div>
+          <div class="row-actions" style="margin-top:14px"><button class="btn gold sm" onclick="integSave()">Save</button><button class="btn ghost sm" onclick="integTest()">Send test to Slack</button></div>
+        </div>
+      </div>
+    </div>
     <div class="cards" style="grid-template-columns:repeat(auto-fill,minmax(300px,1fr))">
       <div class="panel" style="margin:0"><h3>Clients</h3><div style="padding:14px"><p class="hint" style="margin:0">Clients are managed on the <b>Client Overview</b> tab now (status, manager, offers, cash). Add or edit them there - this list is retired to avoid two places to keep in sync.</p></div></div>
       <div class="panel" style="margin:0"><h3>Closers &amp; setters</h3><div style="padding:14px"><p class="hint" style="margin:0">Reps come from the <b>Users</b> tab. Create a login there with their role and team, and they'll appear automatically in the Log Closed Deal and End of Day dropdowns - no separate list to maintain here.</p></div></div>
@@ -4352,8 +4374,56 @@ function loadSettingsForm(){
   document.getElementById('setSetter').value=CFG.setterRate;
   document.getElementById('setEndpoint').value=CFG.endpoint;
   document.getElementById('setAdmin').value=CFG.adminCode;
-  renderSlackLinks(); renderBilling();
+  renderSlackLinks(); renderBilling(); renderIntegrations();
 }
+/* ---- Integrations: payment webhook + EOD -> Slack, per client ---- */
+function integHdr(){ const h={'Content-Type':'application/json'}; if(SESSION&&SESSION.token) h['x-session-token']=SESSION.token; else if(SESSION&&SESSION.pw) h['x-admin-pass']=SESSION.pw; return h; }
+async function integApi(action,body){ try{ const r=await fetch('/api/integrations?action='+action,{method:'POST',headers:integHdr(),body:JSON.stringify(body||{})}); return await r.json(); }catch(e){ return {ok:false,error:String(e)}; } }
+let INTEG={}, INTEG_TARGETS=[];
+async function renderIntegrations(){
+  const panel=document.getElementById('integrationsPanel'); if(!panel) return;
+  const isAdmin=SESSION&&SESSION.role==='admin'; panel.style.display=isAdmin?'':'none'; if(!isAdmin) return;
+  const res=await integApi('get',{}); if(res&&res.error==='not-provisioned'){ panel.style.display='none'; return; }
+  INTEG={}; ((res&&res.integrations)||[]).forEach(c=>INTEG[c.key]=c);
+  const isSuper=!!(res&&res.super), targets=[];
+  if(isSuper){
+    targets.push({key:'tsa',client:'',ws:'tsa',label:'The Sales Agency (internal)',plan:'Internal'});
+    latestClients().forEach(c=>{ if(c.name && !c.graduated) targets.push({key:'tsa:'+c.name,client:c.name,ws:'tsa',label:c.name+' (TakeOver)',plan:'TakeOver (managed)'}); });
+    try{ const a=await fetch('/api/data?action=accounts',{method:'POST',headers:integHdr(),body:'{}'}).then(r=>r.json()); ((a&&a.accounts)||[]).filter(x=>x.ws!=='tsa').forEach(x=>targets.push({key:x.ws,client:x.name||x.ws,ws:x.ws,label:(x.name||x.ws)+' (individual plan)',plan:'Individual plan'})); }catch(e){}
+  } else { targets.push({key:currentWs(),client:'',ws:currentWs(),label:currentWsName()+' (your account)',plan:'Individual plan'}); }
+  INTEG_TARGETS=targets;
+  const sel=document.getElementById('integTarget'); if(!sel) return; const cur=sel.value;
+  sel.innerHTML=targets.map(t=>`<option value="${esc(t.key)}">${esc(t.label)}</option>`).join('');
+  if(cur&&targets.some(t=>t.key===cur)) sel.value=cur;
+  integPick();
+}
+function integPick(){
+  const sel=document.getElementById('integTarget'); if(!sel) return; const t=INTEG_TARGETS.find(x=>x.key===sel.value);
+  const form=document.getElementById('integForm'); if(!t){ if(form)form.hidden=true; return; }
+  if(form) form.hidden=false;
+  const c=INTEG[t.key]||{};
+  const slack=document.getElementById('integSlack'); if(slack) slack.value='';
+  const note=document.getElementById('integSlackNote'); if(note) note.textContent=c.hasSlack?('Currently set ('+(c.slackTail||'…')+'). Leave blank to keep it, or paste a new URL to replace.'):'Not set yet.';
+  const pay=document.getElementById('integPay'); if(pay) pay.checked=c.payToSlack!==false;
+  const eod=document.getElementById('integEod'); if(eod) eod.checked=!!c.eodToSlack;
+  const inb=document.getElementById('integInbound'); if(inb) inb.value=c.inbound||'(save to generate)';
+  const tag=document.getElementById('integPlanTag'); if(tag) tag.textContent=t.plan||'';
+}
+async function integSave(){
+  const t=INTEG_TARGETS.find(x=>x.key===(document.getElementById('integTarget')||{}).value); if(!t) return;
+  const slack=(document.getElementById('integSlack').value||'').trim();
+  const body={key:t.key, ws:t.ws, client:t.client, payToSlack:document.getElementById('integPay').checked, eodToSlack:document.getElementById('integEod').checked};
+  if(slack) body.slackWebhook=slack; // blank = keep existing
+  const res=await integApi('save',body);
+  if(res&&res.ok){ INTEG[t.key]=res.integration; toast('Integration saved'); integPick(); }
+  else toast((res&&res.error)||'Could not save',true);
+}
+async function integTest(){
+  const key=(document.getElementById('integTarget')||{}).value;
+  const res=await integApi('test',{key});
+  if(res&&res.ok) toast('Test sent - check the Slack channel'); else toast((res&&res.error)||'Test failed',true);
+}
+function integCopy(){ const el=document.getElementById('integInbound'); if(!el||!el.value||/generate/.test(el.value)){ toast('Save first to generate the URL',true); return; } navigator.clipboard.writeText(el.value).then(()=>toast('Inbound URL copied'),()=>toast('Copy failed',true)); }
 /* ---- Slack bot workspace linking (admin) ---- */
 function botToken(){ try{ return sessionStorage.getItem('tsaBotToken')||''; }catch(e){ return ''; } }
 function saveSlackToken(){ const v=(document.getElementById('slackToken').value||'').trim(); if(!v){ toast('Enter the token',true); return; } try{ sessionStorage.setItem('tsaBotToken',v); }catch(e){} renderSlackLinks(); }
