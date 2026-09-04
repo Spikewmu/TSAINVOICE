@@ -184,8 +184,37 @@ export default async function handler(req, res) {
       const dest = cur[FIELD_MAP[String(b.field || 'slack')] || 'slackWebhook'] || '';
       if (!dest) return res.status(200).json({ ok: false, error: 'Nothing connected on this channel yet' });
       const label = String(b.label || 'this feed').slice(0, 80);
-      const text = `🔔 *Sales HQ channel test · ${label}*\nIf you can see this message, *${label}* is linked to *this channel* correctly. ✅`;
-      return res.status(200).json(await postSlack(dest, { text, blocks: [{ type: 'section', text: { type: 'mrkdwn', text } }, { type: 'context', elements: [{ type: 'mrkdwn', text: (cur.client ? cur.client + ' · ' : '') + 'Test sent from Sales HQ Integrations' }] }] }));
+      const field = String(b.field || 'slack');
+      const money = n => '$' + Number(n || 0).toLocaleString('en-US');
+      const client = cur.client || 'Sample Client';
+      // Build a preview that matches the REAL feed format in api/data.js (eventToSlack / eodToSlack), with sample data.
+      let text = '', bodyTxt = '';
+      if (field === 'deal') {
+        text = `New closed deal · ${client} · ${money(2500)} (Alex)`;
+        bodyTxt = `💰 *New closed deal* · ${money(2500)}\n*Closer:* Alex\n*Setter:* Jordan\n*Account:* ${client}\n*Product:* Sample Offer\n*Contract:* ${money(6000)}`;
+      } else if (field === 'postcallSetter' || field === 'postcallCloser') {
+        const role = field === 'postcallSetter' ? 'Setter' : 'Closer', who = role === 'Setter' ? 'Jordan' : 'Alex';
+        text = `Post-call · ${who} · ${client} · Booked`;
+        bodyTxt = `📞 *Post-call checkout* · ${who} (${role}) · ${client}\n*Outcome:* Booked${role === 'Closer' ? '\n*Setter:* Jordan' : '\n*Lead:* Sample Lead'}`;
+      } else if (field === 'sodSetter' || field === 'sodCloser') {
+        const role = field === 'sodSetter' ? 'Setter' : 'Closer', who = role === 'Setter' ? 'Jordan' : 'Alex';
+        text = `Start-of-day projection · ${who} · ${client}`;
+        bodyTxt = `📅 *Start-of-day projection* · ${who} (${role}) · ${client}\nToday's plan: 4 calls booked, target ${money(3000)}`;
+      } else if (field === 'setter') {
+        text = `EOD from Jordan · ${client}`;
+        bodyTxt = `📝 *EOD · Jordan* (Setter) · ${client}\n5h · 120 dials · 30 conn · 8 sets`;
+      } else if (field === 'closer') {
+        text = `EOD from Alex · ${client}`;
+        bodyTxt = `📝 *EOD · Alex* (Closer) · ${client}\n6h · 7 calls · 3 deals · ${money(9000)} cash`;
+      } else if (field === 'mgr') {
+        text = `EOD from Sam · ${client}`;
+        bodyTxt = `📝 *EOD · Sam* (Manager) · ${client}\nSetters 4 · Closers 3 · 22 calls · ${money(12000)} cash`;
+      } else {
+        text = `Sales HQ test · ${client}`;
+        bodyTxt = `🔔 *Fallback channel* · ${client}\nAny alert with no specific channel set lands here.`;
+      }
+      const blocks = [{ type: 'section', text: { type: 'mrkdwn', text: bodyTxt } }, { type: 'context', elements: [{ type: 'mrkdwn', text: `🧪 Test preview from Sales HQ · this is how a real "${label}" post will look` }] }];
+      return res.status(200).json(await postSlack(dest, { text, blocks }));
     }
     if (action === 'log') {
       const id = String(b.id || ''); if (!id) return res.status(200).json({ ok: false, error: 'id required' });
