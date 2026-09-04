@@ -4419,8 +4419,8 @@ function renderAllWebhooks(){
   const box=document.getElementById('integAll'); if(!box) return;
   if(!INTEG_HOOKS.length){ box.innerHTML='<p class="muted" style="padding:6px 0">No webhooks created yet. Pick a client below and add one.</p>'; return; }
   const rows=INTEG_HOOKS.slice().sort((a,b)=>integClientLabel(a.key).localeCompare(integClientLabel(b.key))||String(a.name).localeCompare(String(b.name)))
-    .map(w=>`<tr><td>${esc(integClientLabel(w.key))}</td><td><b>${esc(w.name)}</b></td><td>${w.hasSlack?'<span class="muted" style="font-size:11px">'+esc(w.slackTail)+'</span>':'<span class="tag" style="color:var(--warn);border-color:var(--warn)">no channel</span>'}</td><td><span class="pill ${w.enabled?'good':''}" style="${w.enabled?'':'opacity:.6'}">${w.enabled?'On':'Off'}</span></td><td><label style="display:inline-flex"><input type="checkbox" ${w.enabled?'checked':''} onchange="integToggle('${w.id}',this.checked)"></label></td></tr>`).join('');
-  box.innerHTML=`<div class="tablewrap"><table><thead><tr><th>Client</th><th>Webhook</th><th>Channel</th><th>Status</th><th>On/off</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+    .map(w=>`<tr><td>${esc(integClientLabel(w.key))}</td><td><b>${esc(w.name)}</b></td><td>${w.hasSlack?'<span class="muted" style="font-size:11px">'+esc(w.slackTail)+'</span>':'<span class="tag" style="color:var(--warn);border-color:var(--warn)">no channel</span>'}</td><td><span class="pill ${w.enabled?'good':''}" style="${w.enabled?'':'opacity:.6'}">${w.enabled?'On':'Off'}</span></td><td><label style="display:inline-flex"><input type="checkbox" ${w.enabled?'checked':''} onchange="integToggle('${w.id}',this.checked)"></label></td><td><button class="btn sm ghost" style="color:var(--warn);border-color:var(--warn)" onclick="integDeleteWebhook('${w.id}','${esc(w.name).replace(/'/g,"\\'")}')">Delete</button></td></tr>`).join('');
+  box.innerHTML=`<div class="tablewrap"><table><thead><tr><th>Client</th><th>Webhook</th><th>Channel</th><th>Status</th><th>On/off</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 async function integToggle(id,on){
   const w=INTEG_HOOKS.find(x=>x.id===id); if(!w) return;
@@ -4476,7 +4476,7 @@ async function integSaveWebhook(id){
   else toast((res&&res.error)||'Could not save',true);
 }
 async function integTestWebhook(id){ const res=await integApi('testWebhook',{id}); if(res&&res.ok) toast('Test sent - check Slack'); else toast((res&&res.error)||'Test failed',true); }
-async function integDeleteWebhook(id,name){ if(!confirm('Delete webhook "'+name+'"? Its inbound URL stops working.')) return; const res=await integApi('deleteWebhook',{id}); if(res&&res.ok){ INTEG_HOOKS=INTEG_HOOKS.filter(w=>w.id!==id); renderWebhookList(); toast('Deleted'); } else toast('Could not delete',true); }
+async function integDeleteWebhook(id,name){ if(!confirm('Delete webhook "'+name+'"? Its inbound URL stops working.')) return; const res=await integApi('deleteWebhook',{id}); if(res&&res.ok){ INTEG_HOOKS=INTEG_HOOKS.filter(w=>w.id!==id); renderAllWebhooks(); renderWebhookList(); toast('Deleted "'+name+'"'); } else toast('Could not delete',true); }
 async function integHookLog(id){
   const box=document.getElementById('wl_'+id); if(!box) return;
   if(box.dataset.open==='1'){ box.dataset.open=''; box.innerHTML=''; return; }
