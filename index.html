@@ -723,7 +723,7 @@
         <button class="btn ghost sm" style="align-self:flex-end" onclick="recUnshortlist()">Remove from shortlist</button>
       </div>
       <div class="tablewrap"><table id="rcTbl"></table></div>
-      <div class="filters" style="align-items:flex-end;margin-top:12px">
+      <div class="filters" id="rcActionsBot" style="align-items:flex-end;margin-top:12px">
         <b id="rcSelCount" style="align-self:center">0 selected</b><span style="flex:1"></span>
         <div class="field" style="min-width:220px"><label>Campaign tag to apply</label><input id="rcCamp" placeholder="e.g. Trading-Sept" list="rcTagList"><datalist id="rcTagList"></datalist></div>
         <button class="btn gold sm" style="align-self:flex-end" onclick="recTag('add')">Tag selected</button>
@@ -3398,6 +3398,10 @@ function recRender(){
   if(!document.getElementById('rcTbl')) return;
   const list=recList();
   document.getElementById('rcResultCount').textContent=list.length+' candidate'+(list.length===1?'':'s');
+  // declutter: no action bars on an empty result; the duplicate bottom bar only appears for long lists that actually scroll
+  const empty=list.length===0;
+  const topBar=document.getElementById('rcActionsTop'); if(topBar) topBar.style.display=empty?'none':'';
+  const botBar=document.getElementById('rcActionsBot'); if(botBar) botBar.style.display=(!empty && list.length>8)?'':'none';
   const stars=n=>n?('<span class="stars">'+'★'.repeat(Math.max(0,Math.min(10,n)))+'</span>'):'<span class="muted">-</span>';
   const showContact = SESSION && SESSION.role !== 'recruiter'; // recruiters never see candidate emails or phone numbers
   const head='<thead><tr><th></th><th>Name</th><th>Rating</th><th>Role</th><th>Has sold</th><th>Status</th>'+(showContact?'<th>Contact</th>':'')+'<th>Tags</th></tr></thead><tbody>';
@@ -3418,7 +3422,14 @@ function recSelCount(){ ['rcSelCount','rcSelCountTop'].forEach(id=>{ const e=doc
 /* ---- instant local best-fit ranker (no API, runs in the browser in ms) ---- */
 const REC_STOP=new Set(['the','a','an','and','or','who','with','for','in','of','to','that','have','has','star','stars','plus','at','on','is','are','who','someone','somebody','person','people','reps','rep','sold','sell','sells','selling','experience','exp','years','year','can','looking','need','want','good','great','strong','high','level']);
 const REC_SYN={ ht:['high-ticket','ticket'], 'high-ticket':['ticket','premium'], est:['eastern'], eastern:['est'], pst:['pacific'], pacific:['pst','pt'], cst:['central'], central:['cst'], mst:['mountain'], remote:['wfh','anywhere'], coaching:['coach','course','program','info'], closer:['closing','close'], setter:['setting','appointment','appointments'], b2b:['business'], saas:['software'], solar:['energy'] };
-function recTerms(q){ let ts=String(q||'').toLowerCase().replace(/[^a-z0-9+ ]/g,' ').split(/\s+/).filter(t=>t.length>1&&!REC_STOP.has(t)); const ex=[]; ts.forEach(t=>{ ex.push(t); (REC_SYN[t]||[]).forEach(s=>ex.push(s)); }); return [...new Set(ex)]; }
+function recRatingFloor(q){ const m=String(q||'').toLowerCase().match(/(\d)\s*\+|\b(\d)\s*stars?\b/); return m?+(m[1]||m[2]||0):0; } // "3+" or "3 stars" -> min rating 3
+function recStem(t){ return t.length>4 ? t.slice(0, Math.max(4, t.length-3)) : t; } // trading->trad, coaching->coach, closer->clos (catches trader/trades/coach/closing)
+function recTerms(q){
+  let s=String(q||'').toLowerCase().replace(/(\d)\s*\+/g,' ').replace(/[^a-z0-9 ]/g,' '); // strip "3+" rating tokens
+  let ts=s.split(/\s+/).filter(t=>t.length>1 && !REC_STOP.has(t) && !/^\d+$/.test(t));
+  const ex=[]; ts.forEach(t=>{ ex.push(t); (REC_SYN[t]||[]).forEach(x=>ex.push(x)); });
+  return [...new Set(ex)];
+}
 function recBlob(c){
   return { strong:[c.sold, recArr(c.role).join(' '), recArr(c.achievements).join(' ')].join(' ').toLowerCase(),
     mid:[recArr(c.timezones).join(' '), recArr(c.tech).join(' '), recArr(c.languages).join(' '), String(c.workPref||'')].join(' ').toLowerCase(),
@@ -3427,10 +3438,15 @@ function recBlob(c){
 function recLocalRank(query){
   query=String(query||'').trim();
   if(!query){ REC_AIRANK=null; const cb=document.getElementById('rcAiOnly'); if(cb)cb.checked=false; recRender(); return; }
-  const terms=recTerms(query), pool=REC_ALL.filter(recMatch), ql=query.toLowerCase();
+  const terms=recTerms(query), floor=recRatingFloor(query), stems=terms.map(recStem);
+  let pool=REC_ALL.filter(recMatch); if(floor>0) pool=pool.filter(c=>(c.rating||0)>=floor);
+  if(!terms.length){ // rating-only query like "3+ stars": just show that rating band, best first
+    if(floor>0){ const list=pool.slice().sort((a,b)=>(b.rating||0)-(a.rating||0)); REC_AIRANK=list.map(c=>({id:c.id,reason:floor+'+ stars'})); const cb=document.getElementById('rcAiOnly'); if(cb)cb.checked=true; const cnt=document.getElementById('rcCount'); if(cnt)cnt.textContent=REC_AIRANK.length+' matches'; recRender(); return; }
+    REC_AIRANK=null; const cb=document.getElementById('rcAiOnly'); if(cb)cb.checked=false; recRender(); return;
+  }
   const scored=pool.map(c=>{ const b=recBlob(c); let s=0; const hit=[];
-    terms.forEach(t=>{ if(b.strong.indexOf(t)>=0){ s+=5; hit.push(t); } else if(b.mid.indexOf(t)>=0){ s+=3; hit.push(t); } else if(b.weak.indexOf(t)>=0){ s+=1.5; hit.push(t); } });
-    if(s>0){ if(ql.length>4 && (b.strong+' '+b.mid+' '+b.weak).indexOf(ql)>=0) s+=4; s+=(c.rating||0)*0.6; } // phrase bonus + rating tiebreak
+    stems.forEach((st,i)=>{ if(b.strong.indexOf(st)>=0){ s+=5; hit.push(terms[i]); } else if(b.mid.indexOf(st)>=0){ s+=3; hit.push(terms[i]); } else if(b.weak.indexOf(st)>=0){ s+=1.5; hit.push(terms[i]); } });
+    if(s>0){ s+=(c.rating||0)*0.6; } // rating tiebreak
     return {c,s,hit:[...new Set(hit)]};
   }).filter(x=>x.s>0).sort((a,b)=>b.s-a.s || (b.c.rating||0)-(a.c.rating||0));
   REC_AIRANK=scored.map(x=>({id:x.c.id, reason:x.hit.length?('match: '+x.hit.slice(0,5).join(', ')):''}));
