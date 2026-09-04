@@ -907,11 +907,11 @@
       <form class="grid" id="clientForm" onsubmit="saveClient(event)" style="box-shadow:none;border:none">
         <div class="field"><label>Client name *</label><input name="name" required placeholder="Prime (Billy)"></div>
         <div class="field"><label>Status *</label><select name="status" required><option>Active</option><option>Onboarding</option><option>Prospect</option><option>Inactive</option><option>Dropped</option></select></div>
-        <div class="field"><label>Manager (primary)</label><input name="manager" placeholder="optional overall contact"></div>
+        <div class="field"><label>Manager (primary)</label><select name="manager"></select><span class="fieldhelp">Overall contact for the account.</span></div>
         <div class="field"><label>Webinar manager</label><select name="webinarMgr"></select><span class="fieldhelp">Sees this account. Leave "- none -" if not applicable.</span></div>
         <div class="field"><label>Setter manager</label><select name="setterMgr"></select></div>
         <div class="field"><label>Closer manager</label><select name="closerMgr"></select></div>
-        <div class="field"><label>Service line</label><input name="serviceLine" placeholder="TakeOver + Webinar"></div>
+        <div class="field"><label>Service line</label><select name="serviceLine"></select></div>
         <div class="field"><label>Existing monthly ($)</label><input name="monthly" type="number" min="0" step="100"><span class="fieldhelp">What they're already doing per month (context).</span></div>
         <div class="field"><label>Monthly goal ($)</label><input name="monthlyGoal" type="number" min="0" step="100" placeholder="e.g. 50000"><span class="fieldhelp">Cash-collected target to shoot for this month - drives the goal bar on the dashboard.</span></div>
         <div class="field full"><label>Products / offers</label>
@@ -4187,10 +4187,10 @@ async function deleteClient(name){
 function editClient(name){
   const c=latestClients().find(x=>String(x.name).toLowerCase()===String(name).toLowerCase())||{name:name};
   const f=document.getElementById('clientForm'), g=n=>f.querySelector('[name="'+n+'"]');
-  g('name').value=c.name||''; g('status').value=c.status||'Active'; g('manager').value=c.manager||'';
-  g('serviceLine').value=c.serviceLine||''; g('monthly').value=c.monthly||''; g('monthlyGoal').value=c.monthlyGoal||''; g('nextStep').value=c.nextStep||'';
+  g('name').value=c.name||''; g('status').value=c.status||'Active';
+  g('monthly').value=c.monthly||''; g('monthlyGoal').value=c.monthlyGoal||''; g('nextStep').value=c.nextStep||'';
   fillMgrSelects();
-  ['webinarMgr','setterMgr','closerMgr'].forEach(nm=>{ const sel=g(nm), v=c[nm]||''; if(v&&![...sel.options].some(o=>o.value===v)) sel.add(new Option(v,v)); sel.value=v; });
+  ['webinarMgr','setterMgr','closerMgr','manager','serviceLine'].forEach(nm=>{ const sel=g(nm), v=c[nm]||''; if(!sel)return; if(v&&![...sel.options].some(o=>o.value===v)) sel.add(new Option(v,v)); sel.value=v; }); // set dropdown values after options exist
   // pre-fill with all global products if this client has none yet, so you can trim
   const prods=(c.products&&String(c.products).trim())?String(c.products).split(',').map(s=>s.trim()).filter(Boolean):(CFG.products||[]);
   setClientProducts(prods);
@@ -4206,7 +4206,11 @@ async function saveClient(e){
 // people selectable as account managers = real user accounts that can manage (admin / manager / webinar team).
 // Using actual accounts (not typed names) so the assignment always maps to a real login for scoping.
 function mgrPeople(){ const s=new Set(); (USERS_CACHE||[]).filter(u=>['admin','manager','webinarteam'].includes(u.role)).forEach(u=>{ if(u.name) s.add(String(u.name).trim()); }); return [...s].filter(Boolean).sort((a,b)=>a.localeCompare(b)); }
-function fillMgrSelects(){ const people=mgrPeople(); ['webinarMgr','setterMgr','closerMgr'].forEach(nm=>{ const sel=document.querySelector('#clientForm [name="'+nm+'"]'); if(!sel)return; const cur=sel.value; sel.innerHTML='<option value="">- none -</option>'+people.map(p=>`<option>${esc(p)}</option>`).join(''); if(cur&&![...sel.options].some(o=>o.value===cur)) sel.add(new Option(cur,cur)); sel.value=cur; }); }
+const SERVICE_LINES=['TakeOver','TakeOver + Webinar','Webinar','RepMatch','Sales Team HQ','Consulting','Other'];
+function fillMgrSelects(){ const people=mgrPeople();
+  ['webinarMgr','setterMgr','closerMgr','manager'].forEach(nm=>{ const sel=document.querySelector('#clientForm [name="'+nm+'"]'); if(!sel)return; const cur=sel.value; sel.innerHTML='<option value="">- none -</option>'+people.map(p=>`<option>${esc(p)}</option>`).join(''); if(cur&&![...sel.options].some(o=>o.value===cur)) sel.add(new Option(cur,cur)); sel.value=cur; });
+  const sl=document.querySelector('#clientForm [name="serviceLine"]'); if(sl){ const cur=sl.value; sl.innerHTML='<option value="">- none -</option>'+SERVICE_LINES.map(s=>`<option>${esc(s)}</option>`).join(''); if(cur&&!SERVICE_LINES.includes(cur)) sl.add(new Option(cur,cur)); sl.value=cur; }
+}
 function mgrCellHTML(c){ const rows=[c.webinarMgr&&('Web: '+c.webinarMgr), c.setterMgr&&('Set: '+c.setterMgr), c.closerMgr&&('Clo: '+c.closerMgr)].filter(Boolean); return rows.length?rows.map(esc).join('<br>'):(c.manager?esc(c.manager):'<span class="muted">-</span>'); }
 function renderClientOverview(){
   const scope=dashScopeClients();
