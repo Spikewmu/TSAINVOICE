@@ -45,6 +45,8 @@ function parsePayment(processor, b) {
   const amt = (typeof amount === 'number') ? amount : Number(String(amount).replace(/[^0-9.]/g, '')) || 0;
   return { amount: amt, currency, customer: String(customer || ''), product: String(product || ''), event: String(event || '') };
 }
+// Discord incoming webhooks accept Slack-formatted payloads at the /slack suffix; append it so a pasted Discord URL just works
+function chanDest(url) { url = String(url || ''); return (/discord(app)?\.com\/api\/webhooks\//i.test(url) && !/\/slack\/?$/i.test(url)) ? url.replace(/\/+$/, '') + '/slack' : url; }
 function renderTemplate(tpl, ctx) {
   return String(tpl || '').replace(/\{\{\s*([\w.]+)\s*\}\}/g, (m, k) => {
     if (k.startsWith('raw.')) { const v = getPath(ctx.raw || {}, k.slice(4)); return v === '' ? '' : String(typeof v === 'object' ? JSON.stringify(v) : v); }
@@ -77,7 +79,7 @@ export default async function handler(req, res) {
         const ctx = { name: hook.name || 'Payment', amount: p.amount || '', amountFmt: p.amount ? money(p.amount) : '', currency: p.currency, event: p.event, client: hook.client || '', customer: p.customer, product: p.product, raw: body };
         const tpl = hook.template || '💰 *{{name}}* {{amountFmt}}\nCustomer: {{customer}}\nProduct: {{product}}';
         const text = renderTemplate(tpl, ctx).trim() || (hook.name || 'Payment received');
-        await fetch(dest, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text, blocks: [{ type: 'section', text: { type: 'mrkdwn', text } }] }) }).catch(() => { });
+        await fetch(chanDest(dest), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text, blocks: [{ type: 'section', text: { type: 'mrkdwn', text } }] }) }).catch(() => { });
       }
     }
     return res.status(200).json({ ok: true });

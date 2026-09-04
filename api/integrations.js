@@ -44,9 +44,10 @@ const keepOr = (val, prev) => (val === '') ? '' : ((val && val !== '__keep__') ?
 const pubCfg = d => ({ key: d.key, ws: d.ws, client: d.client || '', eodToSlack: !!d.eodToSlack,
   slack: d.slackWebhook || '', setter: d.eodSetterSlack || '', closer: d.eodCloserSlack || '', mgr: d.eodMgrSlack || '' });
 const pubHook = (d, req) => ({ id: d.id, key: d.key, ws: d.ws, client: d.client || '', name: d.name || 'Webhook', processor: d.processor || 'generic', enabled: d.enabled !== false, template: d.template || DEFAULT_TEMPLATE, hasSlack: !!d.slackWebhook, slack: d.slackWebhook || '', token: d.token, inbound: baseUrl(req) + '/api/hook?t=' + d.token });
+const chanDest = u => (/discord(app)?\.com\/api\/webhooks\//i.test(String(u || '')) && !/\/slack\/?$/i.test(String(u))) ? String(u).replace(/\/+$/, '') + '/slack' : u; // Discord accepts Slack payloads at /slack
 async function postSlack(webhook, payload) {
-  if (!webhook) return { ok: false, error: 'no Slack webhook set' };
-  try { const r = await fetch(webhook, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) }); return r.ok ? { ok: true } : { ok: false, error: 'slack ' + r.status + ' ' + (await r.text()).slice(0, 120) }; }
+  if (!webhook) return { ok: false, error: 'no channel webhook set' };
+  try { const r = await fetch(chanDest(webhook), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) }); return r.ok ? { ok: true } : { ok: false, error: 'post ' + r.status + ' ' + (await r.text()).slice(0, 120) }; }
   catch (e) { return { ok: false, error: String(e) }; }
 }
 

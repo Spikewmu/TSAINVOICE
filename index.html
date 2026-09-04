@@ -982,7 +982,7 @@
   <!-- ===== INTEGRATIONS ===== -->
   <section id="tab-integrations" hidden>
     <h2 class="section">Integrations</h2>
-    <p class="hint">Connect payment processors and daily reports to a client's Slack channels. Each webhook posts to its own channel with its own message format, and every hit is logged so we can map the fields.</p>
+    <p class="hint">Connect payment processors and daily reports to a client's Slack or Discord channels. Each webhook posts to its own channel with its own message format, and every hit is logged so we can map the fields.</p>
     <div class="panel">
       <div class="filters" style="align-items:flex-end;margin:0">
         <div class="field" style="min-width:300px"><label>Client / account</label><select id="integTarget" onchange="integPick()"></select></div>
@@ -4546,7 +4546,7 @@ function renderWebhookList(){
         <div class="field" style="min-width:150px"><label>Processor</label><select id="wp_${w.id}">${PROC_LIST.map(([v,l])=>`<option value="${v}" ${(w.processor||'generic')===v?'selected':''}>${l}</option>`).join('')}</select></div>
         <div class="field" style="min-width:200px"><label>Apply a saved template</label><select onchange="integApplyTpl('${w.id}',this.value);this.selectedIndex=0"><option value="">Choose from library...</option>${INTEG_TEMPLATES.map(t=>`<option value="${t.id}">${esc(t.name)}${t.processor?' ('+esc(t.processor)+')':''}</option>`).join('')}</select></div>
       </div>
-      <div class="field full"><label>Slack channel webhook</label>${slackField('ws_'+w.id, w.slack, `'webhook','${w.id}'`)}<span class="fieldhelp">Connect Slack (or paste a URL). Blank uses the client's fallback channel below.</span></div>
+      <div class="field full"><label>Channel webhook <span class="muted" style="font-weight:400">(Slack or Discord)</span></label>${slackField('ws_'+w.id, w.slack, `'webhook','${w.id}'`)}<span class="fieldhelp">Connect Slack in one click, or paste a Slack/Discord webhook URL. Blank uses the client's fallback channel below.</span></div>
       <div class="field full" style="margin-bottom:2px"><label>Message format</label><textarea id="wt_${w.id}" rows="3" style="width:100%;font-family:ui-monospace,monospace;font-size:12px">${esc(w.template)}</textarea></div>
       <div style="margin:0 0 10px"><span class="fieldhelp">Insert field:</span> ${['amountFmt','amount','customer','product','currency','event','name'].map(f=>`<button type="button" class="btn sm ghost" style="margin:2px 2px 0 0;padding:2px 8px" onclick="integInsert('${w.id}','${f}')">${f}</button>`).join('')} <button type="button" class="btn sm ghost" style="margin:2px 0 0;padding:2px 8px" onclick="integLoadFields('${w.id}')">+ fields from received data</button><div id="wf_${w.id}" style="margin-top:5px"></div></div>
       <div class="field full"><label>Inbound URL (paste into the processor)</label><div class="row-actions"><input readonly value="${esc(w.inbound)}" id="wi_${w.id}" style="font-family:ui-monospace,monospace;font-size:12px"><button class="btn sm ghost" onclick="integCopy('wi_${w.id}')">Copy</button></div></div>
