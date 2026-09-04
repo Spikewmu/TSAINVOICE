@@ -4458,7 +4458,7 @@ function integHdr(){ const h={'Content-Type':'application/json'}; if(SESSION&&SE
 async function integApi(action,body){ try{ const r=await fetch('/api/integrations?action='+action,{method:'POST',headers:integHdr(),body:JSON.stringify(body||{})}); return await r.json(); }catch(e){ return {ok:false,error:String(e)}; } }
 function prettyJson(s){ try{ return JSON.stringify(JSON.parse(s),null,2); }catch(e){ return String(s||''); } }
 const PROC_LIST=[['generic','Generic'],['whop','Whop'],['elective','Elective'],['fanbasis','Fanbasis'],['stripe','Stripe'],['ghl','GoHighLevel']];
-let INTEG_CFGS={}, INTEG_HOOKS=[], INTEG_TARGETS=[], INTEG_KEY='', INTEG_TEMPLATES=[];
+let INTEG_CFGS={}, INTEG_HOOKS=[], INTEG_TARGETS=[], INTEG_KEY='', INTEG_TEMPLATES=[], INTEG_SLACK_OAUTH=false;
 function integApplyTpl(id,tplId){ const t=INTEG_TEMPLATES.find(x=>x.id===tplId); const ta=document.getElementById('wt_'+id); if(t&&ta){ ta.value=t.body||''; toast('Template applied - Save to keep it'); } }
 // insert a {{field}} token at the cursor in a webhook's message box
 function integInsert(id,field){ const ta=document.getElementById('wt_'+id); if(!ta) return; const tok='{{'+field+'}}'; const s=(ta.selectionStart!=null)?ta.selectionStart:ta.value.length, e=(ta.selectionEnd!=null)?ta.selectionEnd:ta.value.length; ta.value=ta.value.slice(0,s)+tok+ta.value.slice(e); ta.focus(); ta.selectionStart=ta.selectionEnd=s+tok.length; }
@@ -4478,7 +4478,7 @@ async function renderIntegrations(){
   const sel=document.getElementById('integTarget'); if(!sel) return;
   const res=await integApi('get',{}); if(res&&res.error==='not-provisioned'){ const b=document.getElementById('integBody'); if(b)b.hidden=true; sel.innerHTML='<option>Backend not provisioned</option>'; return; }
   INTEG_CFGS={}; ((res&&res.configs)||[]).forEach(c=>INTEG_CFGS[c.key]=c);
-  INTEG_HOOKS=(res&&res.webhooks)||[]; INTEG_TEMPLATES=(res&&res.templates)||[];
+  INTEG_HOOKS=(res&&res.webhooks)||[]; INTEG_TEMPLATES=(res&&res.templates)||[]; INTEG_SLACK_OAUTH=!!(res&&res.slackOauth);
   const isSuper=!!(res&&res.super), targets=[];
   if(isSuper){
     targets.push({key:'tsa',client:'',ws:'tsa',label:'The Sales Agency (internal)',plan:'Internal',grp:'internal'});
@@ -4516,8 +4516,16 @@ function integPick(){
   const tag=document.getElementById('integPlanTag'); if(tag) tag.textContent=t.plan||'';
   renderWebhookList(); renderEodRouting();
 }
-function slackField(id,value){ return `<span style="display:flex;gap:6px;align-items:center"><input id="${id}" type="password" autocomplete="off" value="${esc(value||'')}" placeholder="https://hooks.slack.com/services/..." style="flex:1"><button type="button" class="btn sm ghost" onclick="integReveal('${id}',this)">Show</button></span>`; }
+function slackField(id,value,connectExpr){ return `<span style="display:flex;gap:6px;align-items:center"><input id="${id}" type="password" autocomplete="off" value="${esc(value||'')}" placeholder="https://hooks.slack.com/services/..." style="flex:1"><button type="button" class="btn sm ghost" onclick="integReveal('${id}',this)">Show</button>${(connectExpr&&INTEG_SLACK_OAUTH)?`<button type="button" class="btn sm ghost" onclick="integConnectSlack(${connectExpr})">Connect Slack</button>`:''}</span>`; }
 function integReveal(id,btn){ const el=document.getElementById(id); if(!el) return; const hidden=el.type==='password'; el.type=hidden?'text':'password'; if(btn) btn.textContent=hidden?'Hide':'Show'; }
+async function integConnectSlack(t,id,field){
+  if(!INTEG_SLACK_OAUTH){ toast('Slack Connect is not set up yet - paste the webhook URL manually',true); return; }
+  let body; if(t==='webhook'){ body={t:'webhook', id}; } else { const tt=integTarget(); if(!tt) return; body={t:'config', key:tt.key, field:field||'slack', ws:tt.ws}; }
+  const res=await integApi('connectUrl',body);
+  if(res&&res.ok&&res.url){ window.open(res.url,'_blank','noopener'); toast('Pick a channel in the Slack tab, then come back and refresh'); }
+  else toast((res&&res.error)||'Could not start Slack connect',true);
+}
+if(typeof window!=='undefined' && !window.__integMsgWired){ window.__integMsgWired=1; window.addEventListener('message',e=>{ if(e&&e.data==='slack-connected'){ try{ renderIntegrations(); }catch(_){} } }); }
 function renderWebhookList(){
   const t=integTarget(), wrap=document.getElementById('integWebhooks'); if(!wrap||!t) return;
   const hooks=INTEG_HOOKS.filter(w=>w.key===t.key);
@@ -4538,7 +4546,7 @@ function renderWebhookList(){
         <div class="field" style="min-width:150px"><label>Processor</label><select id="wp_${w.id}">${PROC_LIST.map(([v,l])=>`<option value="${v}" ${(w.processor||'generic')===v?'selected':''}>${l}</option>`).join('')}</select></div>
         <div class="field" style="min-width:200px"><label>Apply a saved template</label><select onchange="integApplyTpl('${w.id}',this.value);this.selectedIndex=0"><option value="">Choose from library...</option>${INTEG_TEMPLATES.map(t=>`<option value="${t.id}">${esc(t.name)}${t.processor?' ('+esc(t.processor)+')':''}</option>`).join('')}</select></div>
       </div>
-      <div class="field full"><label>Slack channel webhook</label>${slackField('ws_'+w.id, w.slack)}<span class="fieldhelp">Blank uses the client's fallback channel below.</span></div>
+      <div class="field full"><label>Slack channel webhook</label>${slackField('ws_'+w.id, w.slack, `'webhook','${w.id}'`)}<span class="fieldhelp">Connect Slack (or paste a URL). Blank uses the client's fallback channel below.</span></div>
       <div class="field full" style="margin-bottom:2px"><label>Message format</label><textarea id="wt_${w.id}" rows="3" style="width:100%;font-family:ui-monospace,monospace;font-size:12px">${esc(w.template)}</textarea></div>
       <div style="margin:0 0 10px"><span class="fieldhelp">Insert field:</span> ${['amountFmt','amount','customer','product','currency','event','name'].map(f=>`<button type="button" class="btn sm ghost" style="margin:2px 2px 0 0;padding:2px 8px" onclick="integInsert('${w.id}','${f}')">${f}</button>`).join('')} <button type="button" class="btn sm ghost" style="margin:2px 0 0;padding:2px 8px" onclick="integLoadFields('${w.id}')">+ fields from received data</button><div id="wf_${w.id}" style="margin-top:5px"></div></div>
       <div class="field full"><label>Inbound URL (paste into the processor)</label><div class="row-actions"><input readonly value="${esc(w.inbound)}" id="wi_${w.id}" style="font-family:ui-monospace,monospace;font-size:12px"><button class="btn sm ghost" onclick="integCopy('wi_${w.id}')">Copy</button></div></div>
@@ -4573,10 +4581,10 @@ function renderEodRouting(){
   box.innerHTML=`
     <label style="display:flex;gap:8px;align-items:center;font-weight:500;margin-bottom:10px"><input type="checkbox" id="eodOn" ${c.eodToSlack?'checked':''}> Post submitted EOD reports to Slack</label>
     <div class="cards" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr))">
-      <div class="field"><label>Setter EOD channel</label>${slackField('eodSetter',c.setter)}</div>
-      <div class="field"><label>Closer EOD channel</label>${slackField('eodCloser',c.closer)}</div>
-      <div class="field"><label>Manager EOD channel</label>${slackField('eodMgr',c.mgr)}</div>
-      <div class="field"><label>Fallback channel</label>${slackField('eodFallback',c.slack)}</div>
+      <div class="field"><label>Setter EOD channel</label>${slackField('eodSetter',c.setter,`'config','','setter'`)}</div>
+      <div class="field"><label>Closer EOD channel</label>${slackField('eodCloser',c.closer,`'config','','closer'`)}</div>
+      <div class="field"><label>Manager EOD channel</label>${slackField('eodMgr',c.mgr,`'config','','mgr'`)}</div>
+      <div class="field"><label>Fallback channel</label>${slackField('eodFallback',c.slack,`'config','','slack'`)}</div>
     </div>
     <p class="fieldhelp" style="margin:8px 0 0">Each role's EOD posts to its own channel; blank falls back to the fallback channel. The fallback also covers any payment webhook with no channel set.</p>
     <div class="row-actions" style="margin-top:12px"><button class="btn gold sm" onclick="integSaveEod()">Save routing</button></div>`;
