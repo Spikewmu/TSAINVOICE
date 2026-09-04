@@ -971,27 +971,25 @@
   <!-- ===== INTEGRATIONS ===== -->
   <section id="tab-integrations" hidden>
     <h2 class="section">Integrations</h2>
-    <p class="hint">Connect a client's payment processor and daily reports to their Slack channel. Pick the client, paste their Slack Incoming Webhook, copy the Sales HQ inbound URL into their processor, and choose what posts.</p>
-    <div class="panel" id="integrationsPanel">
-      <h3>Payments &amp; reports to Slack</h3>
-      <div style="padding:14px">
-        <p class="hint" style="margin:0 0 12px">Route a client's payments (Whop, Elective, Fanbasis, etc.) and daily reports into a Slack channel. Paste the client's <b>Slack Incoming Webhook</b>, copy the <b>Sales HQ inbound URL</b> into their payment processor, and switch on what should post.</p>
-        <div class="filters" style="align-items:flex-end;margin:0 0 12px">
-          <div class="field" style="min-width:300px"><label>Client / account</label><select id="integTarget" onchange="integPick()"></select></div>
-          <span id="integPlanTag" class="tag" style="align-self:center"></span>
+    <p class="hint">Connect payment processors and daily reports to a client's Slack channels. Each webhook posts to its own channel with its own message format, and every hit is logged so we can map the fields.</p>
+    <div class="panel">
+      <div class="filters" style="align-items:flex-end;margin:0">
+        <div class="field" style="min-width:300px"><label>Client / account</label><select id="integTarget" onchange="integPick()"></select></div>
+        <span id="integPlanTag" class="tag" style="align-self:center"></span>
+      </div>
+    </div>
+    <div class="panel" id="integAllWrap"><h3>All webhooks <span class="muted" style="font-weight:400;font-size:12px">- every source across all clients, flip on/off here</span></h3>
+      <div style="padding:12px" id="integAll"></div>
+    </div>
+    <div id="integBody" hidden>
+      <div class="panel"><h3>Payment webhooks <button class="btn gold sm" style="float:right" onclick="integAddWebhook()">+ Add webhook</button></h3>
+        <div style="padding:12px">
+          <p class="hint" style="margin:0 0 12px">One per source (Whop, Elective, Fanbasis, a specific offer...). Name it, paste the Slack channel it should post to, copy the inbound URL into the processor, and edit the message format. Fields you can use: <code>{{amount}}</code> <code>{{customer}}</code> <code>{{product}}</code> <code>{{currency}}</code> <code>{{event}}</code> <code>{{raw.any.path}}</code>.</p>
+          <div id="integWebhooks"></div>
         </div>
-        <div id="integForm" hidden>
-          <div class="field full"><label>Slack Incoming Webhook URL <span class="muted" style="font-weight:400">- the client makes this in their Slack (Apps &rsaquo; Incoming Webhooks)</span></label>
-            <input id="integSlack" type="password" placeholder="https://hooks.slack.com/services/..." autocomplete="off"><span class="fieldhelp" id="integSlackNote"></span></div>
-          <div style="display:flex;gap:20px;flex-wrap:wrap;margin:12px 0">
-            <label style="display:flex;gap:8px;align-items:center;font-weight:500"><input type="checkbox" id="integPay"> Post <b style="margin:0 3px">payments</b> to Slack</label>
-            <label style="display:flex;gap:8px;align-items:center;font-weight:500"><input type="checkbox" id="integEod"> Post <b style="margin:0 3px">EOD reports</b> to Slack</label>
-          </div>
-          <div class="field full"><label>Sales HQ inbound webhook URL <span class="muted" style="font-weight:400">- paste this into Whop / Elective / Fanbasis</span></label>
-            <div class="row-actions"><input id="integInbound" readonly style="font-family:ui-monospace,monospace;font-size:12px"><button class="btn sm ghost" onclick="integCopy()">Copy</button></div>
-            <span class="fieldhelp">Unique and secret to this client. Save once to generate it.</span></div>
-          <div class="row-actions" style="margin-top:14px"><button class="btn gold sm" onclick="integSave()">Save</button><button class="btn ghost sm" onclick="integTest()">Send test to Slack</button></div>
-        </div>
+      </div>
+      <div class="panel"><h3>Daily report routing (EOD)</h3>
+        <div style="padding:12px" id="integEod"></div>
       </div>
     </div>
   </section>
@@ -4384,54 +4382,122 @@ function loadSettingsForm(){
   document.getElementById('setAdmin').value=CFG.adminCode;
   renderSlackLinks(); renderBilling();
 }
-/* ---- Integrations: payment webhook + EOD -> Slack, per client ---- */
+/* ---- Integrations: named payment webhooks + per-role EOD routing to Slack ---- */
 function integHdr(){ const h={'Content-Type':'application/json'}; if(SESSION&&SESSION.token) h['x-session-token']=SESSION.token; else if(SESSION&&SESSION.pw) h['x-admin-pass']=SESSION.pw; return h; }
 async function integApi(action,body){ try{ const r=await fetch('/api/integrations?action='+action,{method:'POST',headers:integHdr(),body:JSON.stringify(body||{})}); return await r.json(); }catch(e){ return {ok:false,error:String(e)}; } }
-let INTEG={}, INTEG_TARGETS=[];
+function prettyJson(s){ try{ return JSON.stringify(JSON.parse(s),null,2); }catch(e){ return String(s||''); } }
+let INTEG_CFGS={}, INTEG_HOOKS=[], INTEG_TARGETS=[], INTEG_KEY='';
 async function renderIntegrations(){
-  const panel=document.getElementById('integrationsPanel'); if(!panel) return;
-  const isAdmin=SESSION&&SESSION.role==='admin'; panel.style.display=isAdmin?'':'none'; if(!isAdmin) return;
-  const res=await integApi('get',{}); if(res&&res.error==='not-provisioned'){ panel.style.display='none'; return; }
-  INTEG={}; ((res&&res.integrations)||[]).forEach(c=>INTEG[c.key]=c);
+  if(!(SESSION&&SESSION.role==='admin')) return;
+  const sel=document.getElementById('integTarget'); if(!sel) return;
+  const res=await integApi('get',{}); if(res&&res.error==='not-provisioned'){ const b=document.getElementById('integBody'); if(b)b.hidden=true; sel.innerHTML='<option>Backend not provisioned</option>'; return; }
+  INTEG_CFGS={}; ((res&&res.configs)||[]).forEach(c=>INTEG_CFGS[c.key]=c);
+  INTEG_HOOKS=(res&&res.webhooks)||[];
   const isSuper=!!(res&&res.super), targets=[];
   if(isSuper){
-    targets.push({key:'tsa',client:'',ws:'tsa',label:'The Sales Agency (internal)',plan:'Internal'});
-    latestClients().forEach(c=>{ if(c.name && !c.graduated) targets.push({key:'tsa:'+c.name,client:c.name,ws:'tsa',label:c.name+' (TakeOver)',plan:'TakeOver (managed)'}); });
-    try{ const a=await fetch('/api/data?action=accounts',{method:'POST',headers:integHdr(),body:'{}'}).then(r=>r.json()); ((a&&a.accounts)||[]).filter(x=>x.ws!=='tsa').forEach(x=>targets.push({key:x.ws,client:x.name||x.ws,ws:x.ws,label:(x.name||x.ws)+' (individual plan)',plan:'Individual plan'})); }catch(e){}
-  } else { targets.push({key:currentWs(),client:'',ws:currentWs(),label:currentWsName()+' (your account)',plan:'Individual plan'}); }
+    targets.push({key:'tsa',client:'',ws:'tsa',label:'The Sales Agency (internal)',plan:'Internal',grp:'internal'});
+    latestClients().forEach(c=>{ if(c.name && !c.graduated) targets.push({key:'tsa:'+c.name,client:c.name,ws:'tsa',label:c.name,plan:'TakeOver (managed)',grp:'takeover'}); });
+    try{ const a=await fetch('/api/data?action=accounts',{method:'POST',headers:integHdr(),body:'{}'}).then(r=>r.json()); ((a&&a.accounts)||[]).filter(x=>x.ws!=='tsa').forEach(x=>targets.push({key:x.ws,client:x.name||x.ws,ws:x.ws,label:(x.name||x.ws),plan:'Individual plan',grp:'unmanaged'})); }catch(e){}
+  } else { targets.push({key:currentWs(),client:'',ws:currentWs(),label:currentWsName()+' (your account)',plan:'Individual plan',grp:'unmanaged'}); }
   INTEG_TARGETS=targets;
-  const sel=document.getElementById('integTarget'); if(!sel) return; const cur=sel.value;
-  sel.innerHTML=targets.map(t=>`<option value="${esc(t.key)}">${esc(t.label)}</option>`).join('');
+  const cur=sel.value, alpha=(a,b)=>String(a.client||a.label).localeCompare(String(b.client||b.label));
+  const takeover=targets.filter(t=>t.grp==='takeover').sort(alpha), unmanaged=targets.filter(t=>t.grp==='unmanaged').sort(alpha), internal=targets.filter(t=>t.grp==='internal');
+  let opts=internal.map(t=>`<option value="${esc(t.key)}">${esc(t.label)}</option>`).join('');
+  if(takeover.length) opts+=`<optgroup label="Take Over Sales">`+takeover.map(t=>`<option value="${esc(t.key)}">${esc(t.label)}</option>`).join('')+`</optgroup>`;
+  if(unmanaged.length) opts+=`<optgroup label="Unmanaged">`+unmanaged.map(t=>`<option value="${esc(t.key)}">${esc(t.label)}</option>`).join('')+`</optgroup>`;
+  sel.innerHTML=opts;
   if(cur&&targets.some(t=>t.key===cur)) sel.value=cur;
-  integPick();
+  renderAllWebhooks(); integPick();
 }
+function integClientLabel(key){ const t=INTEG_TARGETS.find(x=>x.key===key); return t?t.label:key; }
+function renderAllWebhooks(){
+  const box=document.getElementById('integAll'); if(!box) return;
+  if(!INTEG_HOOKS.length){ box.innerHTML='<p class="muted" style="padding:6px 0">No webhooks created yet. Pick a client below and add one.</p>'; return; }
+  const rows=INTEG_HOOKS.slice().sort((a,b)=>integClientLabel(a.key).localeCompare(integClientLabel(b.key))||String(a.name).localeCompare(String(b.name)))
+    .map(w=>`<tr><td>${esc(integClientLabel(w.key))}</td><td><b>${esc(w.name)}</b></td><td>${w.hasSlack?'<span class="muted" style="font-size:11px">'+esc(w.slackTail)+'</span>':'<span class="tag" style="color:var(--warn);border-color:var(--warn)">no channel</span>'}</td><td><span class="pill ${w.enabled?'good':''}" style="${w.enabled?'':'opacity:.6'}">${w.enabled?'On':'Off'}</span></td><td><label style="display:inline-flex"><input type="checkbox" ${w.enabled?'checked':''} onchange="integToggle('${w.id}',this.checked)"></label></td></tr>`).join('');
+  box.innerHTML=`<div class="tablewrap"><table><thead><tr><th>Client</th><th>Webhook</th><th>Channel</th><th>Status</th><th>On/off</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+async function integToggle(id,on){
+  const w=INTEG_HOOKS.find(x=>x.id===id); if(!w) return;
+  const res=await integApi('saveWebhook',{id, key:w.key, ws:w.ws, client:w.client, name:w.name, template:w.template, enabled:on});
+  if(res&&res.ok){ const i=INTEG_HOOKS.findIndex(x=>x.id===id); if(i>=0) INTEG_HOOKS[i]=res.webhook; toast('Webhook turned '+(on?'on':'off')); renderAllWebhooks(); if(INTEG_KEY===w.key) renderWebhookList(); }
+  else toast('Could not update',true);
+}
+function integTarget(){ return INTEG_TARGETS.find(x=>x.key===(document.getElementById('integTarget')||{}).value); }
 function integPick(){
-  const sel=document.getElementById('integTarget'); if(!sel) return; const t=INTEG_TARGETS.find(x=>x.key===sel.value);
-  const form=document.getElementById('integForm'); if(!t){ if(form)form.hidden=true; return; }
-  if(form) form.hidden=false;
-  const c=INTEG[t.key]||{};
-  const slack=document.getElementById('integSlack'); if(slack) slack.value='';
-  const note=document.getElementById('integSlackNote'); if(note) note.textContent=c.hasSlack?('Currently set ('+(c.slackTail||'…')+'). Leave blank to keep it, or paste a new URL to replace.'):'Not set yet.';
-  const pay=document.getElementById('integPay'); if(pay) pay.checked=c.payToSlack!==false;
-  const eod=document.getElementById('integEod'); if(eod) eod.checked=!!c.eodToSlack;
-  const inb=document.getElementById('integInbound'); if(inb) inb.value=c.inbound||'(save to generate)';
+  const t=integTarget(), body=document.getElementById('integBody'); if(!t){ if(body)body.hidden=true; return; }
+  if(body) body.hidden=false; INTEG_KEY=t.key;
   const tag=document.getElementById('integPlanTag'); if(tag) tag.textContent=t.plan||'';
+  renderWebhookList(); renderEodRouting();
 }
-async function integSave(){
-  const t=INTEG_TARGETS.find(x=>x.key===(document.getElementById('integTarget')||{}).value); if(!t) return;
-  const slack=(document.getElementById('integSlack').value||'').trim();
-  const body={key:t.key, ws:t.ws, client:t.client, payToSlack:document.getElementById('integPay').checked, eodToSlack:document.getElementById('integEod').checked};
-  if(slack) body.slackWebhook=slack; // blank = keep existing
-  const res=await integApi('save',body);
-  if(res&&res.ok){ INTEG[t.key]=res.integration; toast('Integration saved'); integPick(); }
+function slackField(id,tail){ return `<input id="${id}" type="password" autocomplete="off" placeholder="${tail?('set '+esc(tail)+' - blank keeps it'):'https://hooks.slack.com/services/...'}">`; }
+function renderWebhookList(){
+  const t=integTarget(), wrap=document.getElementById('integWebhooks'); if(!wrap||!t) return;
+  const hooks=INTEG_HOOKS.filter(w=>w.key===t.key);
+  if(!hooks.length){ wrap.innerHTML='<p class="muted" style="padding:6px 0">No webhooks yet. Add one per payment source.</p>'; return; }
+  wrap.innerHTML=hooks.map(w=>`
+    <div class="panel" style="margin:0 0 12px;box-shadow:none;border:1px solid var(--border)"><div style="padding:12px 14px">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <input id="wn_${w.id}" value="${esc(w.name)}" style="font-weight:600;min-width:180px" placeholder="e.g. New Fanbasis Sale">
+        <label style="display:flex;gap:6px;align-items:center;font-weight:400"><input type="checkbox" id="we_${w.id}" ${w.enabled?'checked':''}> On</label>
+        <span style="flex:1"></span>
+        <button class="btn sm gold" onclick="integSaveWebhook('${w.id}')">Save</button>
+        <button class="btn sm ghost" onclick="integTestWebhook('${w.id}')">Test</button>
+        <button class="btn sm ghost" onclick="integHookLog('${w.id}')">Log</button>
+        <button class="btn sm ghost" style="color:var(--warn);border-color:var(--warn)" onclick="integDeleteWebhook('${w.id}','${esc(w.name).replace(/'/g,"\\'")}')">Delete</button>
+      </div>
+      <div class="field full" style="margin-top:10px"><label>Slack channel webhook</label>${slackField('ws_'+w.id, w.slackTail)}<span class="fieldhelp">Blank uses the client's fallback channel below.</span></div>
+      <div class="field full"><label>Message format</label><textarea id="wt_${w.id}" rows="3" style="width:100%;font-family:ui-monospace,monospace;font-size:12px">${esc(w.template)}</textarea></div>
+      <div class="field full"><label>Inbound URL (paste into the processor)</label><div class="row-actions"><input readonly value="${esc(w.inbound)}" id="wi_${w.id}" style="font-family:ui-monospace,monospace;font-size:12px"><button class="btn sm ghost" onclick="integCopy('wi_${w.id}')">Copy</button></div></div>
+      <div id="wl_${w.id}"></div>
+    </div></div>`).join('');
+}
+async function integAddWebhook(){
+  const t=integTarget(); if(!t) return;
+  const res=await integApi('saveWebhook',{key:t.key, ws:t.ws, client:t.client, name:'New webhook'});
+  if(res&&res.ok){ INTEG_HOOKS.push(res.webhook); renderWebhookList(); } else toast((res&&res.error)||'Could not add',true);
+}
+async function integSaveWebhook(id){
+  const t=integTarget(); if(!t) return;
+  const body={id, key:t.key, ws:t.ws, client:t.client, name:(document.getElementById('wn_'+id)||{}).value||'', enabled:(document.getElementById('we_'+id)||{}).checked, template:(document.getElementById('wt_'+id)||{}).value||''};
+  const slack=((document.getElementById('ws_'+id)||{}).value||'').trim(); if(slack) body.slackWebhook=slack;
+  const res=await integApi('saveWebhook',body);
+  if(res&&res.ok){ const i=INTEG_HOOKS.findIndex(w=>w.id===id); if(i>=0) INTEG_HOOKS[i]=res.webhook; toast('Webhook saved'); renderWebhookList(); }
   else toast((res&&res.error)||'Could not save',true);
 }
-async function integTest(){
-  const key=(document.getElementById('integTarget')||{}).value;
-  const res=await integApi('test',{key});
-  if(res&&res.ok) toast('Test sent - check the Slack channel'); else toast((res&&res.error)||'Test failed',true);
+async function integTestWebhook(id){ const res=await integApi('testWebhook',{id}); if(res&&res.ok) toast('Test sent - check Slack'); else toast((res&&res.error)||'Test failed',true); }
+async function integDeleteWebhook(id,name){ if(!confirm('Delete webhook "'+name+'"? Its inbound URL stops working.')) return; const res=await integApi('deleteWebhook',{id}); if(res&&res.ok){ INTEG_HOOKS=INTEG_HOOKS.filter(w=>w.id!==id); renderWebhookList(); toast('Deleted'); } else toast('Could not delete',true); }
+async function integHookLog(id){
+  const box=document.getElementById('wl_'+id); if(!box) return;
+  if(box.dataset.open==='1'){ box.dataset.open=''; box.innerHTML=''; return; }
+  box.dataset.open='1'; box.innerHTML='<p class="muted" style="font-size:12px;padding:6px 0">Loading log...</p>';
+  const res=await integApi('log',{id}), log=(res&&res.log)||[];
+  box.innerHTML='<div style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px"><b style="font-size:12px">Recent payloads ('+log.length+')</b>'+(log.length?log.map(e=>`<div style="margin:6px 0"><div class="muted" style="font-size:11px">${esc(new Date(e.at).toLocaleString('en-US'))} · parsed: amount=${esc(String((e.parsed&&e.parsed.amount)||''))} · customer=${esc(String((e.parsed&&e.parsed.customer)||''))}</div><pre style="background:var(--surface-2);padding:8px;border-radius:6px;font-size:11px;overflow:auto;max-height:200px;white-space:pre-wrap">${esc(prettyJson(e.payload))}</pre></div>`).join(''):'<p class="muted" style="font-size:12px">Nothing received yet. Fire a test payment from the processor, then reopen this to see the format.</p>')+'</div>';
 }
-function integCopy(){ const el=document.getElementById('integInbound'); if(!el||!el.value||/generate/.test(el.value)){ toast('Save first to generate the URL',true); return; } navigator.clipboard.writeText(el.value).then(()=>toast('Inbound URL copied'),()=>toast('Copy failed',true)); }
+function integCopy(id){ const el=document.getElementById(id); if(!el||!el.value){ toast('Save first',true); return; } navigator.clipboard.writeText(el.value).then(()=>toast('Copied'),()=>toast('Copy failed',true)); }
+function renderEodRouting(){
+  const t=integTarget(), box=document.getElementById('integEod'); if(!box||!t) return;
+  const c=INTEG_CFGS[t.key]||{};
+  box.innerHTML=`
+    <label style="display:flex;gap:8px;align-items:center;font-weight:500;margin-bottom:10px"><input type="checkbox" id="eodOn" ${c.eodToSlack?'checked':''}> Post submitted EOD reports to Slack</label>
+    <div class="cards" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr))">
+      <div class="field"><label>Setter EOD channel</label>${slackField('eodSetter',c.setterTail)}</div>
+      <div class="field"><label>Closer EOD channel</label>${slackField('eodCloser',c.closerTail)}</div>
+      <div class="field"><label>Manager EOD channel</label>${slackField('eodMgr',c.mgrTail)}</div>
+      <div class="field"><label>Fallback channel</label>${slackField('eodFallback',c.slackTail)}</div>
+    </div>
+    <p class="fieldhelp" style="margin:8px 0 0">Each role's EOD posts to its own channel; blank falls back to the fallback channel. The fallback also covers any payment webhook with no channel set.</p>
+    <div class="row-actions" style="margin-top:12px"><button class="btn gold sm" onclick="integSaveEod()">Save routing</button></div>`;
+}
+async function integSaveEod(){
+  const t=integTarget(); if(!t) return; const g=id=>((document.getElementById(id)||{}).value||'').trim();
+  const body={key:t.key, ws:t.ws, client:t.client, eodToSlack:(document.getElementById('eodOn')||{}).checked};
+  const st=g('eodSetter'), cl=g('eodCloser'), mg=g('eodMgr'), fb=g('eodFallback');
+  if(st) body.eodSetterSlack=st; if(cl) body.eodCloserSlack=cl; if(mg) body.eodMgrSlack=mg; if(fb) body.slackWebhook=fb;
+  const res=await integApi('save',body);
+  if(res&&res.ok){ INTEG_CFGS[t.key]=res.config; toast('Routing saved'); renderEodRouting(); }
+  else toast((res&&res.error)||'Could not save',true);
+}
 /* ---- Slack bot workspace linking (admin) ---- */
 function botToken(){ try{ return sessionStorage.getItem('tsaBotToken')||''; }catch(e){ return ''; } }
 function saveSlackToken(){ const v=(document.getElementById('slackToken').value||'').trim(); if(!v){ toast('Enter the token',true); return; } try{ sessionStorage.setItem('tsaBotToken',v); }catch(e){} renderSlackLinks(); }

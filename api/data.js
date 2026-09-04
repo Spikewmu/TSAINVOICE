@@ -46,7 +46,11 @@ async function eodToSlack(rec) {
   try {
     if (!rec || (rec.type !== 'eod' && rec.type !== 'mgreod')) return;
     const cfg = await integrationFor(rec.ws, rec.client);
-    if (!cfg || !cfg.slackWebhook || !cfg.eodToSlack) return;
+    if (!cfg || !cfg.eodToSlack) return;
+    // route to the channel for this role (setter EOD, closer EOD, manager EOD can each be a different channel), fall back to the general one
+    const dest = rec.type === 'mgreod' ? (cfg.eodMgrSlack || cfg.slackWebhook)
+      : ((rec.role || 'Closer') === 'Setter' ? (cfg.eodSetterSlack || cfg.slackWebhook) : (cfg.eodCloserSlack || cfg.slackWebhook));
+    if (!dest) return;
     const n = v => v || 0, who = rec.rep || rec.by || 'Someone';
     let line;
     if (rec.type === 'mgreod') line = `Setters ${n(rec.settersWorking)} · Closers ${n(rec.closersWorking)} · ${n(rec.closerCalls)} calls · $${n(rec.cash).toLocaleString('en-US')} cash`;
@@ -56,7 +60,7 @@ async function eodToSlack(rec) {
       { type: 'section', text: { type: 'mrkdwn', text: `📝 *EOD · ${who}*${rec.role ? ' (' + rec.role + ')' : rec.type === 'mgreod' ? ' (Manager)' : ''}${rec.client ? ' · ' + rec.client : ''}\n${line}` } }
     ];
     if (rec.notes || rec.bottleneck) blocks.push({ type: 'context', elements: [{ type: 'mrkdwn', text: '“' + String(rec.notes || rec.bottleneck).slice(0, 200) + '”' }] });
-    await fetch(cfg.slackWebhook, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: `EOD from ${who}${rec.client ? ' · ' + rec.client : ''}`, blocks }) });
+    await fetch(dest, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: `EOD from ${who}${rec.client ? ' · ' + rec.client : ''}`, blocks }) });
   } catch (e) { /* never block the write on a Slack failure */ }
 }
 
