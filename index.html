@@ -4518,7 +4518,8 @@ function integPick(){
 }
 function slackAppKeyForField(f){ return (f==='deal')?f:(f==='postcall'||f==='postcallSetter'||f==='postcallCloser')?'postcall':(f==='sod'||f==='sodSetter'||f==='sodCloser')?'sod':'default'; }
 function canConnectField(field){ return !!(INTEG_SLACK_APPS[slackAppKeyForField(field)] || INTEG_SLACK_APPS['default']); }
-function slackField(id,value,connectExpr,field){ const showConnect = connectExpr && canConnectField(field||'slack'); const connected = !!(value && String(value).trim()); const badge = connected ? `<span class="pill good" style="white-space:nowrap">&#10003; Connected</span>` : `<span class="pill" style="opacity:.55;white-space:nowrap">Not connected</span>`; const connectLabel = connected ? 'Reconnect' : 'Connect Slack'; return `<span style="display:flex;flex-direction:column;gap:6px;align-items:stretch"><span>${badge}</span><input id="${id}" type="password" autocomplete="off" value="${esc(value||'')}" placeholder="https://hooks.slack.com/services/..." style="width:100%"><span style="display:flex;gap:6px"><button type="button" class="btn sm ghost" onclick="integReveal('${id}',this)">Show</button>${showConnect?`<button type="button" class="btn sm ghost" onclick="integConnectSlack(${connectExpr})">${connectLabel}</button>`:''}</span></span>`; }
+function slackField(id,value,connectExpr,field,label){ const showConnect = connectExpr && canConnectField(field||'slack'); const connected = !!(value && String(value).trim()); const badge = connected ? `<span class="pill good" style="white-space:nowrap">&#10003; Connected</span>` : `<span class="pill" style="opacity:.55;white-space:nowrap">Not connected</span>`; const connectLabel = connected ? 'Reconnect' : 'Connect Slack'; const testBtn = (connected && label) ? `<button type="button" class="btn sm ghost" onclick="integTestChannel('${field}','${String(label).replace(/'/g,"\\'")}')">Test</button>` : ''; return `<span style="display:flex;flex-direction:column;gap:6px;align-items:stretch"><span>${badge}</span><input id="${id}" type="password" autocomplete="off" value="${esc(value||'')}" placeholder="https://hooks.slack.com/services/..." style="width:100%"><span style="display:flex;gap:6px;flex-wrap:wrap"><button type="button" class="btn sm ghost" onclick="integReveal('${id}',this)">Show</button>${testBtn}${showConnect?`<button type="button" class="btn sm ghost" onclick="integConnectSlack(${connectExpr})">${connectLabel}</button>`:''}</span></span>`; }
+async function integTestChannel(field,label){ const t=integTarget(); if(!t) return; toast('Sending test to '+label+'...'); const res=await integApi('testChannel',{key:t.key, ws:t.ws, field, label}); if(res&&res.ok) toast('Test sent - check that it landed in the '+label+' channel'); else toast((res&&res.error)||'Could not send test',true); }
 function integReveal(id,btn){ const el=document.getElementById(id); if(!el) return; const hidden=el.type==='password'; el.type=hidden?'text':'password'; if(btn) btn.textContent=hidden?'Hide':'Show'; }
 async function integConnectSlack(t,id,field){
   if(!INTEG_SLACK_OAUTH){ toast('Slack Connect is not set up yet - paste the webhook URL manually',true); return; }
@@ -4583,19 +4584,19 @@ function renderEodRouting(){
   box.innerHTML=`
     <b style="font-size:12.5px">In-app event feeds</b>
     <div class="cards" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr));margin-top:8px">
-      <div class="field"><label>New closed deal channel</label>${slackField('evDeal',c.deal,`'config','','deal'`,'deal')}</div>
-      <div class="field"><label>Post-call checkout (Setters)</label>${slackField('evPostcallSetter',c.postcallSetter,`'config','','postcallSetter'`,'postcallSetter')}</div>
-      <div class="field"><label>Post-call checkout (Closers)</label>${slackField('evPostcallCloser',c.postcallCloser,`'config','','postcallCloser'`,'postcallCloser')}</div>
-      <div class="field"><label>Start-of-day projections (Setters)</label>${slackField('evSodSetter',c.sodSetter,`'config','','sodSetter'`,'sodSetter')}</div>
-      <div class="field"><label>Start-of-day projections (Closers)</label>${slackField('evSodCloser',c.sodCloser,`'config','','sodCloser'`,'sodCloser')}</div>
+      <div class="field"><label>New closed deal channel</label>${slackField('evDeal',c.deal,`'config','','deal'`,'deal','New closed deal')}</div>
+      <div class="field"><label>Post-call checkout (Setters)</label>${slackField('evPostcallSetter',c.postcallSetter,`'config','','postcallSetter'`,'postcallSetter','Post-call checkout (Setters)')}</div>
+      <div class="field"><label>Post-call checkout (Closers)</label>${slackField('evPostcallCloser',c.postcallCloser,`'config','','postcallCloser'`,'postcallCloser','Post-call checkout (Closers)')}</div>
+      <div class="field"><label>Start-of-day projections (Setters)</label>${slackField('evSodSetter',c.sodSetter,`'config','','sodSetter'`,'sodSetter','Start-of-day projections (Setters)')}</div>
+      <div class="field"><label>Start-of-day projections (Closers)</label>${slackField('evSodCloser',c.sodCloser,`'config','','sodCloser'`,'sodCloser','Start-of-day projections (Closers)')}</div>
     </div>
     <p class="fieldhelp" style="margin:2px 0 0">Setters' start-of-day projections post to the Setters channel, closers' to the Closers channel (routed by the rep's role).</p>
     <label style="display:flex;gap:8px;align-items:center;font-weight:500;margin:16px 0 8px"><input type="checkbox" id="eodOn" ${c.eodToSlack?'checked':''}> Post submitted <b style="margin:0 3px">EOD reports</b> to Slack</label>
     <div class="cards" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr))">
-      <div class="field"><label>Setter EOD channel</label>${slackField('eodSetter',c.setter,`'config','','setter'`,'setter')}</div>
-      <div class="field"><label>Closer EOD channel</label>${slackField('eodCloser',c.closer,`'config','','closer'`,'closer')}</div>
-      <div class="field"><label>Manager EOD channel</label>${slackField('eodMgr',c.mgr,`'config','','mgr'`,'mgr')}</div>
-      <div class="field"><label>Fallback channel</label>${slackField('eodFallback',c.slack,`'config','','slack'`,'slack')}</div>
+      <div class="field"><label>Setter EOD channel</label>${slackField('eodSetter',c.setter,`'config','','setter'`,'setter','Setter EOD')}</div>
+      <div class="field"><label>Closer EOD channel</label>${slackField('eodCloser',c.closer,`'config','','closer'`,'closer','Closer EOD')}</div>
+      <div class="field"><label>Manager EOD channel</label>${slackField('eodMgr',c.mgr,`'config','','mgr'`,'mgr','Manager EOD')}</div>
+      <div class="field"><label>Fallback channel</label>${slackField('eodFallback',c.slack,`'config','','slack'`,'slack','Fallback')}</div>
     </div>
     <p class="fieldhelp" style="margin:8px 0 0">Each feed posts to its own channel when that event happens (a channel set = on). Blank EOD channels fall back to the fallback channel, which also covers any payment webhook with no channel set.</p>
     <div class="row-actions" style="margin-top:12px"><button class="btn gold sm" onclick="integSaveEod()">Save routing</button></div>`;

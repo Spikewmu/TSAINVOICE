@@ -175,6 +175,18 @@ export default async function handler(req, res) {
       const text = renderTemplate(cur.template || DEFAULT_TEMPLATE, sample) || (cur.name + ' (test)');
       return res.status(200).json(await postSlack(dest, { text, blocks: [{ type: 'section', text: { type: 'mrkdwn', text: text } }, { type: 'context', elements: [{ type: 'mrkdwn', text: 'Sales HQ test · ' + (cur.name || '') }] }] }));
     }
+    if (action === 'testChannel') {
+      const key = String(b.key || ''); if (!key) return res.status(200).json({ ok: false, error: 'key required' });
+      const cfgs = await allByType('integration'); const cur = cfgs[key];
+      if (!cur) return res.status(200).json({ ok: false, error: 'Save/connect a channel first' });
+      if (!mayTouch(cur)) return res.status(200).json({ ok: false, error: 'not your client' });
+      const FIELD_MAP = { slack: 'slackWebhook', setter: 'eodSetterSlack', closer: 'eodCloserSlack', mgr: 'eodMgrSlack', deal: 'dealSlack', postcall: 'postcallSlack', postcallSetter: 'postcallSetterSlack', postcallCloser: 'postcallCloserSlack', sod: 'sodSlack', sodSetter: 'sodSetterSlack', sodCloser: 'sodCloserSlack' };
+      const dest = cur[FIELD_MAP[String(b.field || 'slack')] || 'slackWebhook'] || '';
+      if (!dest) return res.status(200).json({ ok: false, error: 'Nothing connected on this channel yet' });
+      const label = String(b.label || 'this feed').slice(0, 80);
+      const text = `🔔 *Sales HQ channel test · ${label}*\nIf you can see this message, *${label}* is linked to *this channel* correctly. ✅`;
+      return res.status(200).json(await postSlack(dest, { text, blocks: [{ type: 'section', text: { type: 'mrkdwn', text } }, { type: 'context', elements: [{ type: 'mrkdwn', text: (cur.client ? cur.client + ' · ' : '') + 'Test sent from Sales HQ Integrations' }] }] }));
+    }
     if (action === 'log') {
       const id = String(b.id || ''); if (!id) return res.status(200).json({ ok: false, error: 'id required' });
       const hooks = await allByType('webhook'); const cur = hooks[id];
