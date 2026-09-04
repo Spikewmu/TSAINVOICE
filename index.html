@@ -670,7 +670,7 @@
     <div class="filters" style="margin:0 0 8px;align-items:flex-end">
       <div class="field"><label>From</label><input type="date" id="arFrom" onchange="renderAdminReport()" oninput="renderAdminReport()"></div>
       <div class="field"><label>To</label><input type="date" id="arTo" onchange="renderAdminReport()" oninput="renderAdminReport()"></div>
-      <div class="field"><label>Quick range</label><div class="row-actions"><button class="btn ghost sm" onclick="setArPreset('yesterday')">Yesterday</button><button class="btn ghost sm" onclick="setArPreset('week')">This week</button><button class="btn ghost sm" onclick="setArPreset('month')">This month</button><button class="btn ghost sm" onclick="setArPreset('30')">Last 30d</button></div></div>
+      <div class="field"><label>Quick range</label><div class="row-actions"><button class="btn ghost sm" onclick="setArPreset('yesterday')">Yesterday</button><button class="btn ghost sm" onclick="setArPreset('week')">This week</button><button class="btn ghost sm" onclick="setArPreset('7')">Past 7 days</button><button class="btn ghost sm" onclick="setArPreset('month')">This month</button><button class="btn ghost sm" onclick="setArPreset('30')">Last 30d</button></div></div>
       <span id="arSummary" class="tag" style="align-self:flex-end;margin-bottom:2px"></span>
       <button class="btn ghost sm" style="align-self:flex-end" onclick="renderAdminReport()">Refresh</button>
     </div>
@@ -2448,6 +2448,7 @@ function setArPreset(p){
   if(p==='yesterday'){ from=to=isoOffset(t,-1); }
   else if(p==='today'){ from=to=t; }
   else if(p==='week'){ const dow=new Date(t+'T00:00:00').getDay(); from=isoOffset(t,dow===0?-6:1-dow); to=t; }
+  else if(p==='7'){ from=isoOffset(t,-6); to=t; } // last 7 days incl. today
   else if(p==='month'){ from=t.slice(0,7)+'-01'; to=t; }
   else { from=isoOffset(t,-29); to=t; } // last 30 days
   const fi=document.getElementById('arFrom'), ti=document.getElementById('arTo'); if(fi)fi.value=from; if(ti)ti.value=to;
