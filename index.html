@@ -4502,7 +4502,7 @@ async function renderIntegrations(){
   renderAllWebhooks(); renderTemplateLib(); integPick(); integApplySecState();
 }
 function integToggleSec(id){ const p=document.getElementById(id); if(!p) return; const c=p.classList.toggle('collapsed'); try{ localStorage.setItem('integsec:'+id, c?'1':'0'); }catch(e){} }
-function integApplySecState(){ const defs={secAll:'1',secPay:'0',secEvents:'0',integTplLib:'1'}; Object.keys(defs).forEach(id=>{ const p=document.getElementById(id); if(!p) return; let v=null; try{ v=localStorage.getItem('integsec:'+id); }catch(e){} if(v==null) v=defs[id]; p.classList.toggle('collapsed', v==='1'); }); }
+function integApplySecState(){ const defs={secAll:'1',secPay:'1',secEvents:'1',integTplLib:'1'}; Object.keys(defs).forEach(id=>{ const p=document.getElementById(id); if(!p) return; let v=null; try{ v=localStorage.getItem('integsec:'+id); }catch(e){} if(v==null) v=defs[id]; p.classList.toggle('collapsed', v==='1'); }); }
 function integClientLabel(key){ const t=INTEG_TARGETS.find(x=>x.key===key); return t?t.label:key; }
 function renderAllWebhooks(){
   const box=document.getElementById('integAll'); if(!box) return;
