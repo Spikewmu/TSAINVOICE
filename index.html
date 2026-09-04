@@ -14,7 +14,7 @@
     --navy:#C9A24A; --navy-2:#100D09; --gold:#C9A24A; --gold-2:#E6CB7C; --gold-soft:#2A2012;
     --ground:#0E0C09; --surface:#17130D; --surface-2:#201A11;
     --ink:#ECE5D7; --muted:#9A9081; --border:#2C2416;
-    --good:#5FC1A2; --good-soft:#14251E; --warn:#E5A15D; --warn-soft:#2C2114;
+    --good:#5FC1A2; --good-soft:#14251E; --warn:#E5A15D; --warn-soft:#2C2114; --bad:#E8635F; --bad-soft:#331716;
     --shadow:0 1px 2px rgba(0,0,0,.4),0 12px 34px rgba(0,0,0,.5);
     --radius:14px;
     --serif:"Playfair Display",Georgia,"Times New Roman",serif;
@@ -86,6 +86,12 @@
   .panel{background:var(--glass);border:1px solid var(--glass-brd);border-radius:var(--radius);box-shadow:var(--glass-hi),var(--shadow);margin-bottom:22px;overflow:hidden;backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur)}
   .panel > h3{font-family:var(--serif);font-weight:700;margin:0;padding:13px 16px;font-size:16px;border-bottom:1px solid var(--glass-brd);background:rgba(255,255,255,.03);letter-spacing:.01em}
   .tablewrap{overflow-x:auto}
+  /* Admin Report day-by-day cells: color blocks so the grid reads at a glance */
+  .dc{text-align:center;font-weight:800;font-size:15px;line-height:1}
+  .dc-sub{color:var(--good);background:var(--good-soft)}
+  .dc-miss{color:var(--bad);background:var(--bad-soft)}
+  .dc-off{color:var(--muted);background:rgba(255,255,255,.05)}
+  .dc-na,.dc-pend{color:var(--muted);opacity:.65}
   table{width:100%;border-collapse:collapse;font-size:13px}
   th,td{padding:9px 12px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap}
   th{font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:600}
@@ -2460,15 +2466,15 @@ function rangePreset(fromId,toId,p,fn){
   const f=document.getElementById(fromId), tt=document.getElementById(toId); if(f)f.value=from; if(tt)tt.value=to;
   if(fn&&window[fn]) window[fn]();
 }
-// day status marker: green check if submitted, neutral circle for an approved day off, dash if not yet hired / after termination,
-// a muted dot for today / future (not due yet), red X for a real weekday miss
-function dayMark(name,day,submitted){
-  if(submitted) return '<span style="color:var(--good);font-weight:700">✓</span>';
-  if(offdayStatus(name,day)==='approved') return '<span title="Approved day off" style="color:var(--muted);font-weight:700">○</span>';
+// a full day cell (green submitted, red miss, neutral circle for an approved day off, dash if not employed, dot if not due).
+// approved time off shows a circle and never counts as a miss , same logic for setters, closers AND managers.
+function dayCell(name,day,submitted){
+  if(submitted) return '<td class="num dc dc-sub" title="Submitted">✓</td>';
+  if(offdayStatus(name,day)==='approved') return '<td class="num dc dc-off" title="Approved day off - does not count against them">○</td>';
   const m=repMetaForName(name), s=m&&m.startDate?m.startDate.slice(0,10):null, e=m&&m.endDate?m.endDate.slice(0,10):null;
-  if((s&&day<s)||(e&&day>e)) return '<span title="Not employed on this day" class="muted">–</span>';
-  if(day>=todayLocal()) return '<span title="Not due yet" class="muted">·</span>';
-  return '<span style="color:var(--bad);font-weight:700">✗</span>';
+  if((s&&day<s)||(e&&day>e)) return '<td class="num dc dc-na" title="Not employed this day">–</td>';
+  if(day>=todayLocal()) return '<td class="num dc dc-pend" title="Not due yet">·</td>';
+  return '<td class="num dc dc-miss" title="Missed report">✗</td>';
 }
 // the actual submitted report text/numbers for a day, in a friendly one-page format
 function eodDetailsHTML(day){
@@ -2512,14 +2518,21 @@ function dayGridHTML(range,setters,closers,managers){
   const gd=range.days;
   if(gd.length>16) return `<div class="panel"><h3>Day-by-day</h3><p class="muted" style="padding:12px">Range is ${gd.length} days - choose 16 days or fewer to see the day-by-day grid. The tables above already cover the whole range.</p></div>`;
   const dow=d=>['Su','Mo','Tu','We','Th','Fr','Sa'][new Date(d+'T00:00:00').getDay()];
-  const mgrMark=(n,d)=> submittedMgrEod(n,d)?'<span style="color:var(--good);font-weight:700">✓</span>':(d>=todayLocal()?'<span class="muted">·</span>':'<span style="color:var(--bad);font-weight:700">✗</span>');
-  const grows=(names,role,mark)=>names.map(n=>`<tr><td>${esc(n)}</td><td class="muted" style="font-size:11px">${role}</td>`+gd.map(d=>`<td class="num">${mark(n,d)}</td>`).join('')+`</tr>`).join('');
+  const grows=(names,role,cell)=>names.map(n=>`<tr><td>${esc(n)}</td><td class="muted" style="font-size:11px">${role}</td>`+gd.map(d=>cell(n,d)).join('')+`</tr>`).join('');
   const ghead=`<thead><tr><th>Person</th><th>Role</th>`+gd.map(d=>`<th class="num" style="white-space:nowrap">${dow(d)} ${(+d.slice(5,7))}-${(+d.slice(8,10))}</th>`).join('')+`</tr></thead>`;
   const ggrp=l=>`<tr><td colspan="${2+gd.length}" style="background:var(--surface-2);font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--gold)">${l}</td></tr>`;
-  const body=(setters.length?ggrp('Setters')+grows(setters,'Setter',(n,d)=>dayMark(n,d,submittedEod(n,d))):'')
-    +(closers.length?ggrp('Closers')+grows(closers,'Closer',(n,d)=>dayMark(n,d,submittedEod(n,d))):'')
-    +(managers.length?ggrp('Managers')+grows(managers,'Manager',mgrMark):'');
-  return `<div class="panel"><h3>Day-by-day <span style="font-weight:400;color:var(--muted);font-size:12px">- ✓ submitted · <span style="color:var(--bad)">✗</span> missed · ○ approved day off · – not employed · · not due yet</span></h3><div class="tablewrap"><table>${ghead}<tbody>${body||'<tr><td class="muted" style="padding:14px">No one to show.</td></tr>'}</tbody></table></div></div>`;
+  const body=(setters.length?ggrp('Setters')+grows(setters,'Setter',(n,d)=>dayCell(n,d,submittedEod(n,d))):'')
+    +(closers.length?ggrp('Closers')+grows(closers,'Closer',(n,d)=>dayCell(n,d,submittedEod(n,d))):'')
+    +(managers.length?ggrp('Managers')+grows(managers,'Manager',(n,d)=>dayCell(n,d,submittedMgrEod(n,d))):'');
+  return `<div class="panel"><h3>Day-by-day <span style="font-weight:400;color:var(--muted);font-size:12px">quick glance , who reported each day</span></h3>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;margin:0 0 10px;font-size:12px">
+      <span><span class="dc dc-sub" style="padding:1px 7px;border-radius:4px">✓</span> submitted</span>
+      <span><span class="dc dc-miss" style="padding:1px 7px;border-radius:4px">✗</span> missed</span>
+      <span><span class="dc dc-off" style="padding:1px 7px;border-radius:4px">○</span> approved day off (does not count)</span>
+      <span><span class="dc dc-na" style="padding:1px 7px;border-radius:4px">–</span> not employed</span>
+      <span><span class="dc dc-pend" style="padding:1px 7px;border-radius:4px">·</span> not due yet</span>
+    </div>
+    <div class="tablewrap"><table>${ghead}<tbody>${body||'<tr><td class="muted" style="padding:14px">No one to show.</td></tr>'}</tbody></table></div></div>`;
 }
 // churn per offer: of the setters/closers assigned to each account, how many have a termination date on file
 function churnPanelHTML(){
