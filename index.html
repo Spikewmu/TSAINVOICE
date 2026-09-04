@@ -990,9 +990,11 @@
       </div>
     </div>
     <style>
-      #tab-integrations .csec{cursor:pointer;user-select:none}
-      #tab-integrations .csec .chev{display:inline-block;transition:transform .15s ease;font-size:11px;opacity:.6;margin-right:6px}
+      #tab-integrations .csec{cursor:pointer;user-select:none;padding:4px 6px;margin:-4px -6px 6px;border-radius:6px;transition:background .12s ease}
+      #tab-integrations .csec:hover{background:rgba(212,175,55,.10)}
+      #tab-integrations .csec .chev{display:inline-block;transition:transform .15s ease;font-size:12px;opacity:.75;margin-right:8px;color:var(--gold,#d4af37)}
       #tab-integrations .panel.collapsed .csec-body{display:none}
+      #tab-integrations .panel.collapsed .csec{margin-bottom:-4px}
       #tab-integrations .panel.collapsed .csec .chev{transform:rotate(-90deg)}
     </style>
     <div class="panel collapse" id="secAll"><h3 class="csec" onclick="integToggleSec('secAll')"><span class="chev">&#9662;</span>All webhooks <span class="muted" style="font-weight:400;font-size:12px">- every source across ALL clients (admin overview, not just the one selected above)</span></h3>
