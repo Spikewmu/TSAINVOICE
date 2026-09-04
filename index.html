@@ -990,11 +990,12 @@
       </div>
     </div>
     <style>
-      #tab-integrations .csec{cursor:pointer;user-select:none;padding:4px 6px;margin:-4px -6px 6px;border-radius:6px;transition:background .12s ease}
+      #tab-integrations .csec{cursor:pointer;user-select:none;padding:14px 16px;margin:-6px -8px 8px;border-radius:8px;transition:background .12s ease;line-height:1.35}
       #tab-integrations .csec:hover{background:rgba(212,175,55,.10)}
-      #tab-integrations .csec .chev{display:inline-block;transition:transform .15s ease;font-size:12px;opacity:.75;margin-right:8px;color:var(--gold,#d4af37)}
+      #tab-integrations .csec .muted{display:block;margin-top:4px;font-size:12px}
+      #tab-integrations .csec .chev{display:inline-block;transition:transform .15s ease;font-size:13px;opacity:.8;margin-right:9px;color:var(--gold,#d4af37)}
       #tab-integrations .panel.collapsed .csec-body{display:none}
-      #tab-integrations .panel.collapsed .csec{margin-bottom:-4px}
+      #tab-integrations .panel.collapsed .csec{margin-bottom:-6px}
       #tab-integrations .panel.collapsed .csec .chev{transform:rotate(-90deg)}
     </style>
     <div class="panel collapse" id="secAll"><h3 class="csec" onclick="integToggleSec('secAll')"><span class="chev">&#9662;</span>All webhooks <span class="muted" style="font-weight:400;font-size:12px">- every source across ALL clients (admin overview, not just the one selected above)</span></h3>
@@ -1002,7 +1003,7 @@
     </div>
     <div id="integBody" hidden>
       <div id="integStatus" style="margin:0 0 12px"></div>
-      <div class="panel collapse" id="secPay"><h3 class="csec" onclick="integToggleSec('secPay')"><span class="chev">&#9662;</span>Payment webhooks <button class="btn gold sm" style="float:right" onclick="event.stopPropagation();integAddWebhook()">+ Add webhook</button></h3>
+      <div class="panel collapse" id="secPay"><h3 class="csec" onclick="integToggleSec('secPay')"><span class="chev">&#9662;</span>Payment webhooks <button class="btn gold sm" style="float:right" onclick="event.stopPropagation();integAddWebhook()">+ Add webhook</button><span class="muted" style="font-weight:400;font-size:12px">- one inbound URL per payment source (Whop, Elective, Fanbasis)</span></h3>
         <div class="csec-body"><div style="padding:12px">
           <p class="hint" style="margin:0 0 12px">One per source (Whop, Elective, Fanbasis, a specific offer...). Name it, paste the Slack channel it should post to, copy the inbound URL into the processor, and edit the message format. Fields you can use: <code>{{amount}}</code> <code>{{customer}}</code> <code>{{product}}</code> <code>{{currency}}</code> <code>{{event}}</code> <code>{{raw.any.path}}</code>.</p>
           <div id="integWebhooks"></div>
