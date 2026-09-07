@@ -1270,14 +1270,15 @@
 
 <div class="modal" id="pwModal" hidden onclick="if(event.target===this)closeChangePw()">
   <div class="modalcard">
-    <h3 style="margin:0 0 4px">Change password</h3>
-    <p class="hint" id="pwWho" style="margin:0 0 14px"></p>
+    <h3 style="margin:0 0 4px" id="pwTitle">Change password</h3>
+    <p class="hint" id="pwWho" style="margin:0 0 6px"></p>
+    <p id="pwForceNote" style="margin:0 0 14px;color:var(--gold);font-size:13px" hidden>&#128273; Your password was reset by an admin. Set a new password to continue.</p>
     <form onsubmit="submitChangePw(event)">
       <div class="field"><label>Current password</label><input type="password" id="pwCurrent" autocomplete="current-password" required></div>
       <div class="field" style="margin-top:10px"><label>New password</label><input type="password" id="pwNew" autocomplete="new-password" minlength="6" required></div>
       <div class="field" style="margin-top:10px"><label>Confirm new password</label><input type="password" id="pwConfirm" autocomplete="new-password" required></div>
       <div id="pwErr" class="fieldhelp" style="color:var(--warn);margin-top:8px" hidden></div>
-      <div class="row-actions" style="margin-top:16px"><button class="btn gold" type="submit">Update password</button><button class="btn ghost" type="button" onclick="closeChangePw()">Cancel</button></div>
+      <div class="row-actions" style="margin-top:16px"><button class="btn gold" type="submit">Update password</button><button class="btn ghost" type="button" id="pwCancelBtn" onclick="closeChangePw()">Cancel</button></div>
     </form>
   </div>
 </div>
@@ -1536,17 +1537,32 @@ async function signUp(){
   if(res && res.ok){ setSession({username:res.username||email, name:res.name||name, role:res.role||'admin', token:res.token, supaKey:res.supaKey, pw:pass}); return; }
   show((res&&res.error)||'Could not create your team. Try a different email.');
 }
-function setSession(s){ SESSION=s; save(LS.auth,s); try{ localStorage.removeItem('tsarec_cache'); }catch(e){} /* drop any prior user's cached candidates so a new login (e.g. a recruiter) never reads them - the server re-fetches with the right redaction */ startApp(); }
+function setSession(s){ SESSION=s; save(LS.auth,s); try{ localStorage.removeItem('tsarec_cache'); }catch(e){} /* drop any prior user's cached candidates so a new login (e.g. a recruiter) never reads them - the server re-fetches with the right redaction */ window.__justLoggedIn=true; startApp(); }
 function logout(){ SESSION=null; localStorage.removeItem(LS.auth); location.reload(); }
 /* ---- change own password (click your name, top right) ---- */
+let FORCE_PW=false;
 function openChangePw(){
   if(!(SESSION && SESSION.token)){ toast('Password change opens after you sign in with the new login. The master account is changed in Vercel.',true); return; }
+  FORCE_PW=false;
+  const t=document.getElementById('pwTitle'); if(t) t.textContent='Change password';
+  const fn=document.getElementById('pwForceNote'); if(fn) fn.hidden=true;
+  const cb=document.getElementById('pwCancelBtn'); if(cb) cb.hidden=false;
   document.getElementById('pwWho').textContent='Signed in as '+SESSION.name+' ('+SESSION.username+')';
   ['pwCurrent','pwNew','pwConfirm'].forEach(id=>document.getElementById(id).value='');
   const e=document.getElementById('pwErr'); e.hidden=true; e.textContent='';
   document.getElementById('pwModal').hidden=false; document.getElementById('pwCurrent').focus();
 }
-function closeChangePw(){ document.getElementById('pwModal').hidden=true; }
+// forced change after an admin reset: same modal, but can't be dismissed and the (reset) current password is prefilled
+function forcePwChange(){
+  if(!(SESSION && SESSION.token)) return; // the master account is changed in Vercel, not here
+  openChangePw();
+  FORCE_PW=true;
+  const t=document.getElementById('pwTitle'); if(t) t.textContent='Set a new password';
+  const fn=document.getElementById('pwForceNote'); if(fn) fn.hidden=false;
+  const cb=document.getElementById('pwCancelBtn'); if(cb) cb.hidden=true;
+  const cur=document.getElementById('pwCurrent'); if(cur && SESSION.pw){ cur.value=SESSION.pw; const nw=document.getElementById('pwNew'); if(nw) nw.focus(); }
+}
+function closeChangePw(){ if(FORCE_PW) return; document.getElementById('pwModal').hidden=true; } // cannot dismiss a forced change
 async function submitChangePw(ev){
   ev.preventDefault();
   const cur=document.getElementById('pwCurrent').value, nw=document.getElementById('pwNew').value, cf=document.getElementById('pwConfirm').value;
@@ -1554,8 +1570,27 @@ async function submitChangePw(ev){
   if(nw.length<6){ showErr('New password must be at least 6 characters.'); return; }
   if(nw!==cf){ showErr('New passwords do not match.'); return; }
   const res=await authApi({action:'changePassword', token:SESSION.token, currentPassword:cur, newPassword:nw});
-  if(res && res.ok){ SESSION.pw=nw; save(LS.auth,SESSION); closeChangePw(); toast('Password updated'); }
+  if(res && res.ok){ SESSION.pw=nw; save(LS.auth,SESSION);
+    try{ addRecord({type:'pwchange', username:SESSION.username, at:new Date().toISOString()}); }catch(_){} // clears any pending forced-change + records it for the Users page
+    FORCE_PW=false; closeChangePw(); toast('Password updated'); }
   else showErr((res&&res.error)||'Could not update password.');
+}
+/* ---- password reset / login tracking (records layer; drives the forced change + Users-page status) ---- */
+function pwEventsFor(username){ const n=nrmName(username); let reset=null,change=null,login=null;
+  const t=x=>x.at||x.submittedAt||'';
+  RECORDS.forEach(x=>{ if(nrmName(x.username)!==n) return;
+    if(x.type==='pwreset'){ if(!reset||t(x)>t(reset)) reset=x; }
+    else if(x.type==='pwchange'){ if(!change||t(x)>t(change)) change=x; }
+    else if(x.type==='login'){ if(!login||t(x)>t(login)) login=x; } });
+  return {reset,change,login};
+}
+function pwForced(username){ const e=pwEventsFor(username); if(!e.reset) return false; const r=e.reset.at||e.reset.submittedAt||'', c=e.change?(e.change.at||e.change.submittedAt||''):''; return r>c; }
+function userAuthSummary(username){ const e=pwEventsFor(username), bits=[];
+  const dt=v=>{ try{ return new Date(v).toLocaleString('en-US',{month:'numeric',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'}); }catch(_){ return ''; } };
+  if(e.login) bits.push('last login '+dt(e.login.at||e.login.submittedAt));
+  if(pwForced(username)) bits.push('<span style="color:var(--warn)">password reset - awaiting change</span>');
+  else if(e.change) bits.push('password changed '+dt(e.change.at||e.change.submittedAt));
+  return bits.length?`<div class="muted" style="font-size:11px;margin-top:2px">${bits.join(' &middot; ')}</div>`:'';
 }
 
 /* ---------------- start ---------------- */
@@ -1578,6 +1613,9 @@ function startApp(){
     else if(role==='recruiter'){ Promise.all([syncRecords(),loadUsers()]).then(()=>{ fillLists(); applyNavAccess(); renderDash(); }); showTab('recruiting'); } // recruiter: dashboard scoped to their client + Recruiting + Time Off
     else { applyIdentity(); syncRecords().then(()=>{ applyNavAccess(); applyIdentity(); }); showTab(allow[0]); }
     startMsgPolling(); // background unread-message polling for the badge + notifications (self-gates by role)
+    if(window.__justLoggedIn){ window.__justLoggedIn=false; // real sign-in (not a page-reload session restore): stamp last-login + force a password change if an admin reset it
+      syncRecords().then(()=>{ try{ addRecord({type:'login', username:SESSION.username, at:new Date().toISOString()}); }catch(_){} try{ if(pwForced(SESSION.username)) forcePwChange(); }catch(_){} });
+    }
   });
 }
 // base tabs a login TIER can see; per-account responsibilities add to this in applyNavAccess()
@@ -3997,10 +4035,10 @@ function userRowHTML(u, isAdmin){
   const teamEditBtn = canManage ? ` <button class="btn sm ghost" onclick="editTeams('${esc(u.username)}')">Edit</button>` : '';
   const teamCell = u.master ? '<span class="muted">-</span>'
     : (['closer','setter','founder','recruiter'].includes(u.role)
-        ? ((teams.length?teams.map(t=>`<span class="teamtag">${esc(t)}</span>`).join(''):'<span class="tag" style="color:var(--warn);border-color:var(--warn)">none - not scoped</span>')+teamEditBtn+datesBtn+(isStaff?repMetaSummary(u.username):''))
+        ? ((teams.length?teams.map(t=>`<span class="teamtag">${esc(t)}</span>`).join(''):'<span class="tag" style="color:var(--warn);border-color:var(--warn)">none - not scoped</span>')+teamEditBtn+datesBtn+(isStaff?repMetaSummary(u.username)+userAuthSummary(u.username):''))
         : (u.role==='admin'
-            ? '<span class="muted">all (admin)</span>'+roleSummaryHTML(u)+rolesBtn+datesBtn+repMetaSummary(u.username)
-            : ((roleSummaryHTML(u)||'<span class="tag" style="color:var(--warn);border-color:var(--warn)">no accounts assigned yet</span>')+rolesBtn+datesBtn+repMetaSummary(u.username))));
+            ? '<span class="muted">all (admin)</span>'+roleSummaryHTML(u)+rolesBtn+datesBtn+repMetaSummary(u.username)+userAuthSummary(u.username)
+            : ((roleSummaryHTML(u)||'<span class="tag" style="color:var(--warn);border-color:var(--warn)">no accounts assigned yet</span>')+rolesBtn+datesBtn+repMetaSummary(u.username)+userAuthSummary(u.username))));
   const actions = u.master ? '<span class="tag">master, set in Settings</span>'
     : (canManage ? `<button class="btn sm ghost" onclick="resetPassword('${esc(u.username)}')">Reset password</button> <button class="btn sm ghost" style="color:var(--warn);border-color:var(--warn)" onclick="delUser('${esc(u.username)}')">Remove</button>` : '');
   const myRoles = u.master?['admin']:rolesFor(u.username);
@@ -4285,7 +4323,8 @@ async function resetPassword(username){
   if(SESSION && SESSION.token){ const res=await authApi({action:'saveUser', token:SESSION.token, user}); ok=!!(res&&res.ok); if(!ok) toast('Reset failed'+(res&&res.error?': '+res.error:''),true); }
   else if(CFG.endpoint){ const res=await api({action:'saveUser', ...authFields(), user}); ok=!!(res&&res.ok); if(!ok) toast('Reset failed',true); }
   else { const i=LOCAL_USERS.findIndex(x=>x.username===username); if(i>=0){ LOCAL_USERS[i].passHash=await sha(pw); save(LS.users,LOCAL_USERS); ok=true; } }
-  if(ok) toast('Password reset for '+(u.name||username)+'. Share the new password with them.');
+  if(ok){ try{ addRecord({type:'pwreset', username, at:new Date().toISOString(), by:(SESSION&&SESSION.name)||'admin'}); }catch(_){} // they'll be forced to set their own on next login
+    toast('Password reset for '+(u.name||username)+'. Share it - they\'ll be asked to set their own on next login.'); renderUsers(); }
 }
 // change a user's role in place, no password required (the backend keeps the existing password when none is sent)
 async function changeUserRole(username, role){
