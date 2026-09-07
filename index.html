@@ -900,6 +900,7 @@
         </form>
       </div>
     </div>
+    <div class="panel" id="usersOnboardPanel" hidden><h3>Rep onboarding <span style="font-weight:400;color:var(--muted);font-size:12px">- new setters/closers being set up. Work down each step so no one stalls.</span></h3><div style="padding:6px 2px" id="usersOnboard"></div></div>
     <div class="panel">
       <h3>Add a user</h3>
       <p class="hint" style="margin:-4px 0 10px">Create a new login here. To change someone who already exists, use the controls on their row below - <b>Access</b> dropdown for role, <b>Edit</b> for teams, <b>Hire / dates</b> for dates, <b>Reset password</b> to set a new password.</p>
@@ -4015,6 +4016,43 @@ function renderUsersTable(list){
   renderUsersStats();
   renderUsersGrouped();
   renderUnassigned(list);
+  renderRepOnboarding();
+}
+/* ---- Rep onboarding checklist: contract -> Slack -> GHL -> training (Ra-eez's 4 steps) ---- */
+const ONBOARD_STEPS=[['contract','Contract','Sent + signed (TSA or the client company)'],['slack','Slack','Invited to the client Slack + channels'],['ghl','GHL','CRM access (closers also added to payment options)'],['training','Training','Sales HQ login + how to submit reports (Fathom for closers)']];
+function repOnboardMap(){ const m={}; RECORDS.forEach(x=>{ if(x.type!=='reponboard')return; const k=nrmName(x.username); if(!k)return; if(!m[k]||(x.submittedAt||'')>(m[k].submittedAt||'')) m[k]=x; }); return m; }
+function repOnboardFor(username){ return repOnboardMap()[nrmName(username)]||null; }
+function onboardDone(ob){ return !!(ob&&ob.contract&&ob.slack&&ob.ghl&&ob.training); }
+function renderRepOnboarding(){
+  const panel=document.getElementById('usersOnboardPanel'), box=document.getElementById('usersOnboard'); if(!panel||!box) return;
+  const reps=(USERS_CACHE||[]).filter(u=>['setter','closer'].includes(u.role));
+  const recentHire=u=>{ const m=repMetaFor(u.username); if(!m||!m.startDate||m.endDate) return false; const days=(Date.now()-Date.parse(m.startDate))/86400000; return days>=0&&days<=21; };
+  const list=reps.filter(u=>{ const m=repMetaFor(u.username); if(m&&m.endDate) return false; const ob=repOnboardFor(u.username); if(onboardDone(ob)) return false; return !!ob || recentHire(u); })
+    .sort((a,b)=>String(a.name||a.username).localeCompare(String(b.name||b.username)));
+  if(!list.length){ panel.hidden=true; box.innerHTML=''; return; }
+  panel.hidden=false;
+  box.innerHTML=list.map(u=>{ const ob=repOnboardFor(u.username)||{}, done=['contract','slack','ghl','training'].filter(s=>ob[s]).length;
+    const teams=teamsFor(u.username), mgr=(repMetaFor(u.username)||{}).mgr, uname=esc(u.username).replace(/'/g,"\\'");
+    const steps=ONBOARD_STEPS.map(([k,lbl,hint])=>`<label style="display:inline-flex;gap:6px;align-items:center;font-size:13px;cursor:pointer" title="${esc(hint)}"><input type="checkbox" ${ob[k]?'checked':''} onchange="toggleOnboardStep('${uname}','${k}',this.checked)"> ${lbl}</label>`).join('');
+    return `<div style="border:1px solid var(--border);border-radius:9px;padding:10px 12px;margin-bottom:10px">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <b>${esc(u.name||u.username)}</b> <span class="pill">${esc(roleLabel(u.role))}</span>
+        ${teams.length?`<span class="muted" style="font-size:12px">${esc(teams.join(', '))}</span>`:'<span class="tag" style="color:var(--warn);border-color:var(--warn)">no account assigned</span>'}
+        ${mgr?`<span class="muted" style="font-size:12px">mgr: ${esc(mgr)}</span>`:''}
+        <span style="flex:1"></span>
+        <span class="pill ${done===4?'good':''}">${done}/4</span>
+      </div>
+      <div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:8px">${steps}</div>
+    </div>`;
+  }).join('');
+}
+async function toggleOnboardStep(username, step, on){
+  const u=userByName(username)||{username,name:username}, cur=repOnboardFor(username)||{contract:false,slack:false,ghl:false,training:false};
+  const rec={type:'reponboard', username:(u.username||username), name:(u.name||username), contract:!!cur.contract, slack:!!cur.slack, ghl:!!cur.ghl, training:!!cur.training};
+  rec[step]=!!on;
+  await addRecord(rec);
+  if(onboardDone(rec)) toast((u.name||username)+' fully onboarded');
+  renderRepOnboarding();
 }
 function renderUsersStats(){
   const el=document.getElementById('usersStats'); if(!el) return;
@@ -4314,6 +4352,7 @@ async function saveUser(e){
     save(LS.users,LOCAL_USERS);
   }
   await addRecord({type:'team', username:o.username, teams:JSON.stringify(teams)}); // assign teams (also clears if none ticked)
+  if((o.role==='setter'||o.role==='closer') && !repOnboardFor(o.username)){ await addRecord({type:'reponboard', username:o.username, name:o.name, contract:false, slack:false, ghl:false, training:false}); } // start their onboarding checklist
   e.target.reset(); toast('User saved'); renderUsers(); setTimeout(renderUsers, 2500);
 }
 async function importUsers(){
