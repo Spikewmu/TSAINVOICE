@@ -398,6 +398,7 @@
     <div class="cards" id="kpis"></div>
     <div class="kpisec">Setters - activity</div>
     <div class="cards" id="kpisSetters"></div>
+    <div class="panel" id="dashTeamValue" style="margin:0 0 16px" hidden></div>
     <div class="panel" id="dashChartPanel" style="margin:0 0 16px">
       <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px">
         <h3 style="margin:0">Daily dials <span style="font-weight:400;color:var(--muted);font-size:12px">- recent activity in this view</span></h3>
@@ -2474,10 +2475,40 @@ function renderDash(){
     <div class="kpi"><div class="lbl">Hours dialing</div><div class="val small">${Math.round(ss.hours*10)/10}</div></div>
     <div class="kpi"><div class="lbl">Cash set</div><div class="val small">${money(ss.cashSet)}</div></div>`;
   renderGettingStarted();
+  renderTeamValue();
   renderActivityChart(recs);
   renderLeaderboard(recs);
   renderBreakdownTables(recs, {setterEl:'dashSetterTable', closerEl:'dashCloserTable', rm:(SESSION&&(SESSION.role==='founder'||repMode())), clickable:false});
   renderClients(recs); renderDeals(recs);
+}
+// Team retention + AOV per team member (value per hire before they leave), segmented setter/closer.
+// All-time + client-scoped on purpose: retention and value-per-hire are lifetime metrics, not a monthly slice.
+function renderTeamValue(){
+  const panel=document.getElementById('dashTeamValue'); if(!panel) return;
+  const c=(document.getElementById('fClient')||{}).value||'', sc=dashScopeClients();
+  const scopeClients = c ? [c] : (sc || null); // null = all clients
+  const inScope = u => !scopeClients || teamsFor(u.username).some(t=>scopeClients.includes(t));
+  const roleReps = role => (USERS_CACHE||[]).filter(u=>u.role===role && inScope(u));
+  const setters=roleReps('setter'), closers=roleReps('closer');
+  if(!setters.length && !closers.length){ panel.hidden=true; return; }
+  panel.hidden=false;
+  const scoped = activityRecords().filter(x=> !scopeClients || scopeClients.includes(x.client)); // client scope, ALL-TIME (ignore month filter)
+  const closerCash = agg(scoped).cashCollected;   // closer-credited cash
+  const setterCash = aggSetters(scoped).cashSet;  // setter-credited cash
+  const stat = (reps, cash) => { const total=reps.length, left=reps.filter(u=>{const m=repMetaFor(u.username);return m&&m.endDate;}).length, active=total-left;
+    return { total, active, retention: total?active/total:0, aov: total?cash/total:0 }; };
+  const S=stat(setters,setterCash), C=stat(closers,closerCash);
+  const col=(label,d)=>`<div style="flex:1;min-width:230px">
+      <div style="font-size:12px;text-transform:uppercase;letter-spacing:.03em;color:var(--muted);font-weight:700;margin-bottom:8px">${label}</div>
+      <div class="cards" style="grid-template-columns:repeat(auto-fill,minmax(115px,1fr));gap:10px">
+        <div class="kpi"><div class="lbl">Retention</div><div class="val">${pct(d.retention)}</div><div class="lbl" style="margin-top:4px">${d.active}/${d.total} still active</div></div>
+        <div class="kpi"><div class="lbl" title="Average cash credited to this role divided by reps hired - the value per hire before they leave.">AOV / hire</div><div class="val small">${money(Math.round(d.aov))}</div></div>
+        <div class="kpi"><div class="lbl">Reps hired</div><div class="val">${d.total}</div></div>
+      </div></div>`;
+  const scopeLabel = scopeClients ? (scopeClients.length===1 ? esc(scopeClients[0]) : 'your accounts') : 'all clients';
+  panel.innerHTML=`<h3>Team retention &amp; value <span style="font-weight:400;color:var(--muted);font-size:12px">- ${scopeLabel}, all-time</span></h3>
+    <div style="padding:6px 2px;display:flex;gap:22px;flex-wrap:wrap">${col('Setters',S)}${col('Closers',C)}</div>
+    <p class="fieldhelp" style="margin:6px 2px 0">Retention = reps still active out of everyone assigned to this account (a termination date under Users &rsaquo; Details marks a rep as churned). AOV / hire = total cash credited to that role divided by reps hired - what each hire is worth before they leave.</p>`;
 }
 // daily dials trend for the current dashboard scope (last ~14 days with activity)
 function renderActivityChart(recs){
