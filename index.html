@@ -4391,8 +4391,9 @@ async function saveUser(e){
     save(LS.users,LOCAL_USERS);
   }
   await addRecord({type:'team', username:o.username, teams:JSON.stringify(teams)}); // assign teams (also clears if none ticked)
+  if(o.password){ try{ await addRecord({type:'pwreset', username:o.username, at:new Date().toISOString(), by:(SESSION&&SESSION.name)||'admin'}); }catch(_){} } // admin-set password -> force them to set their own on first login
   if((o.role==='setter'||o.role==='closer') && !repOnboardFor(o.username)){ await addRecord({type:'reponboard', username:o.username, name:o.name, contract:false, slack:false, ghl:false, training:false}); } // start their onboarding checklist
-  e.target.reset(); toast('User saved'); renderUsers(); setTimeout(renderUsers, 2500);
+  e.target.reset(); toast(o.password?'User saved - they\'ll set their own password on first login':'User saved'); renderUsers(); setTimeout(renderUsers, 2500);
 }
 async function importUsers(){
   if(!(SESSION && SESSION.token)){ toast('Sign in through the new login first (needed to import).',true); return; }
