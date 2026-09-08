@@ -3673,9 +3673,11 @@ function trainingRoster(){
     const intakeDone=!!(p['intake']&&p['intake'].done), intakeData=(p['intake']&&p['intake'].data)||{};
     const td=tasks.filter(t=>p['task:'+t.id]&&p['task:'+t.id].done).length, md=mods.filter(m=>p[m.id]&&p[m.id].done).length;
     const q=p['quiz'], stage=repStageLabel(u.username,cfg,p);
+    const teams=teamsFor(u.username);
+    const offers = teams.length ? `<div style="margin-top:3px">${teams.map(t=>`<span class="teamtag">${esc(t)}</span>`).join('')}</div>` : '<div class="muted" style="font-size:11px;margin-top:3px">no account assigned</div>';
     const chip=(lab,ok,cnt)=>`<span style="font-size:11px;color:${ok?'var(--good,#3ddc84)':'var(--muted)'}">${ok?'✓':'○'} ${lab}${cnt!=null?' '+cnt:''}</span>`;
     const row=`<div class="trrow" style="grid-template-columns:1.2fr 1.5fr auto auto;align-items:center;cursor:pointer" onclick="trToggleRep(${i})">
-      <div><b>${esc(u.name||u.username)}</b> <span class="muted" style="font-size:12px">${esc(roleLabel(u.role))}</span></div>
+      <div><b>${esc(u.name||u.username)}</b> <span class="muted" style="font-size:12px">${esc(roleLabel(u.role))}</span>${offers}</div>
       <div><div class="progbar" style="height:8px"><i style="width:${pct}%"></i></div>
         <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:5px">${intakeF.length?chip('Details',intakeDone):''}${chip('Checklist',td>=tasks.length,td+'/'+tasks.length)}${chip('Training',md>=mods.length,md+'/'+mods.length)}${chip('Certified',grad)}</div></div>
       <div>${grad?'<span class="gradbadge" style="font-size:12px;padding:3px 10px">Graduated</span>':`<span class="pill">${esc(stage)}</span>`}</div>
