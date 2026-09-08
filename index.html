@@ -2551,17 +2551,49 @@ function renderTeamValue(){
   const stat = (reps, cash) => { const total=reps.length, left=reps.filter(u=>{const m=repMetaFor(u.username);return m&&m.endDate;}).length, active=total-left;
     return { total, active, retention: total?active/total:0, aov: total?cash/total:0 }; };
   const S=stat(setters,setterCash), C=stat(closers,closerCash);
-  const col=(label,d)=>`<div style="flex:1;min-width:230px">
+  TV_REPS={setter:setters, closer:closers}; // stash in-scope reps for the drill-down
+  const col=(label,role,d)=>`<div style="flex:1;min-width:230px">
       <div style="font-size:12px;text-transform:uppercase;letter-spacing:.03em;color:var(--muted);font-weight:700;margin-bottom:8px">${label}</div>
       <div class="cards" style="grid-template-columns:repeat(auto-fill,minmax(115px,1fr));gap:10px">
-        <div class="kpi"><div class="lbl">Retention</div><div class="val">${pct(d.retention)}</div><div class="lbl" style="margin-top:4px">${d.active}/${d.total} still active</div></div>
+        <div class="kpi" style="cursor:pointer" onclick="tvToggle('${role}')" title="Click to see who is active vs churned"><div class="lbl">Retention</div><div class="val">${pct(d.retention)}</div><div class="lbl" style="margin-top:4px">${d.active}/${d.total} still active</div></div>
         <div class="kpi"><div class="lbl" title="Average cash credited to this role divided by reps hired - the value per hire before they leave.">AOV / hire</div><div class="val small">${money(Math.round(d.aov))}</div></div>
-        <div class="kpi"><div class="lbl">Reps hired</div><div class="val">${d.total}</div></div>
-      </div></div>`;
+        <div class="kpi" style="cursor:pointer" onclick="tvToggle('${role}')" title="Click to see the roster"><div class="lbl">Reps hired</div><div class="val">${d.total} <span style="font-size:11px;color:var(--muted)">&#9662;</span></div></div>
+      </div>
+      <div id="tvDetail_${role}" hidden style="margin-top:10px"></div></div>`;
   const scopeLabel = scopeClients ? (scopeClients.length===1 ? esc(scopeClients[0]) : 'your accounts') : 'all clients';
   panel.innerHTML=`<h3>Team retention &amp; value <span style="font-weight:400;color:var(--muted);font-size:12px">- ${scopeLabel}, all-time</span></h3>
-    <div style="padding:6px 2px;display:flex;gap:22px;flex-wrap:wrap">${col('Setters',S)}${col('Closers',C)}</div>
-    <p class="fieldhelp" style="margin:6px 2px 0">Retention = reps still active out of everyone assigned to this account (a termination date under Users &rsaquo; Details marks a rep as churned). AOV / hire = total cash credited to that role divided by reps hired - what each hire is worth before they leave.</p>`;
+    <div style="padding:6px 2px;display:flex;gap:22px;flex-wrap:wrap">${col('Setters','setter',S)}${col('Closers','closer',C)}</div>
+    <p class="fieldhelp" style="margin:6px 2px 0">Retention = reps still active out of everyone assigned to this account (a termination date under Users &rsaquo; Details marks a rep as churned). AOV / hire = total cash credited to that role divided by reps hired - what each hire is worth before they leave. Click a <b>Retention</b> or <b>Reps hired</b> card to see the names.</p>`;
+}
+// drill-down: who's on the retention/AOV panel, active vs churned, with hire/term dates + accounts
+let TV_REPS={setter:[],closer:[]};
+function tvToggle(role){
+  const el=document.getElementById('tvDetail_'+role); if(!el) return;
+  if(!el.hidden){ el.hidden=true; el.innerHTML=''; return; }
+  el.innerHTML=teamValueRoster(role); el.hidden=false;
+}
+function teamValueRoster(role){
+  const reps=(TV_REPS&&TV_REPS[role])||[];
+  if(!reps.length) return `<div class="muted" style="font-size:12px;padding:6px 2px">No ${role}s in scope.</div>`;
+  const row=u=>{
+    const m=repMetaFor(u.username), churned=!!(m&&m.endDate);
+    const bits=[]; if(m&&m.startDate) bits.push('hired '+usDate(m.startDate)); if(churned) bits.push('left '+usDate(m.endDate)); if(m&&m.mgr) bits.push('mgr '+esc(m.mgr));
+    const accts=teamsFor(u.username);
+    const acctHtml=accts.length?accts.map(t=>`<span class="teamtag">${esc(t)}</span>`).join(''):'<span class="muted" style="font-size:11px">no account</span>';
+    const badge=churned
+      ? '<span class="chip" style="background:var(--bad-soft);color:var(--bad);font-weight:600">churned</span>'
+      : '<span class="chip" style="background:var(--good-soft);color:var(--good);font-weight:600">active</span>';
+    return `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:7px 2px;border-top:1px solid var(--border)">
+      <span style="font-weight:600">${esc(u.name||u.username)}</span>${badge}
+      <span style="margin-left:auto;text-align:right">${acctHtml}</span>
+      ${bits.length?`<div class="muted" style="font-size:11px;flex-basis:100%">${bits.join(' &middot; ')}</div>`:''}</div>`;
+  };
+  const active=reps.filter(u=>{const m=repMetaFor(u.username);return !(m&&m.endDate);});
+  const churned=reps.filter(u=>{const m=repMetaFor(u.username);return (m&&m.endDate);});
+  return `<div style="border:1px solid var(--border);border-radius:8px;padding:2px 10px 8px;background:var(--glass)">`+
+    active.map(row).join('')+
+    (churned.length?`<div class="muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.03em;margin-top:8px;padding:2px">Churned (${churned.length})</div>`+churned.map(row).join(''):'')+
+    `</div>`;
 }
 // daily dials trend for the current dashboard scope (last ~14 days with activity)
 function renderActivityChart(recs){
