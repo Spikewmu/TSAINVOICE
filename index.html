@@ -4040,12 +4040,19 @@ function userRowHTML(u, isAdmin){
   const isStaff = !u.master && u.role!=='founder';
   const datesBtn = (canManage&&isStaff) ? ` <button class="btn sm ghost" onclick="editRepMeta('${esc(u.username)}')">Hire / dates</button>` : '';
   const teamEditBtn = canManage ? ` <button class="btn sm ghost" onclick="editTeams('${esc(u.username)}')">Edit</button>` : '';
-  const teamCell = u.master ? '<span class="muted">-</span>'
+  const detailInner = u.master ? '<span class="muted">-</span>'
     : (['closer','setter','founder','recruiter'].includes(u.role)
         ? ((teams.length?teams.map(t=>`<span class="teamtag">${esc(t)}</span>`).join(''):'<span class="tag" style="color:var(--warn);border-color:var(--warn)">none - not scoped</span>')+teamEditBtn+datesBtn+(isStaff?repMetaSummary(u.username)+userAuthSummary(u.username):''))
         : (u.role==='admin'
             ? '<span class="muted">all (admin)</span>'+roleSummaryHTML(u)+rolesBtn+datesBtn+repMetaSummary(u.username)+userAuthSummary(u.username)
             : ((roleSummaryHTML(u)||'<span class="tag" style="color:var(--warn);border-color:var(--warn)">no accounts assigned yet</span>')+rolesBtn+datesBtn+repMetaSummary(u.username)+userAuthSummary(u.username))));
+  // compact summary shown by default; the full breakdown + management buttons live behind a per-row "Details" toggle
+  const acctCount = u.role==='admin' ? 'all accounts'
+    : (teams.length ? teams.length+' account'+(teams.length===1?'':'s')
+      : (['closer','setter','founder','recruiter'].includes(u.role) ? '<span style="color:var(--warn)">no account</span>' : 'assignments'));
+  const did='ud_'+String(u.username).replace(/[^a-z0-9]/gi,'_');
+  const teamCell = u.master ? '<span class="muted">-</span>'
+    : `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span class="muted" style="font-size:12.5px">${acctCount}</span><button class="btn sm ghost" onclick="toggleUserDetail('${did}',this)">Details</button></div><div id="${did}" hidden style="margin-top:8px">${detailInner}</div>`;
   const actions = u.master ? '<span class="tag">master, set in Settings</span>'
     : (canManage ? `<button class="btn sm ghost" onclick="resetPassword('${esc(u.username)}')">Reset password</button> <button class="btn sm ghost" style="color:var(--warn);border-color:var(--warn)" onclick="delUser('${esc(u.username)}')">Remove</button>` : '');
   const myRoles = u.master?['admin']:rolesFor(u.username);
@@ -4055,6 +4062,7 @@ function userRowHTML(u, isAdmin){
   const accessCell = `${chips}${founderNote}${editRolesBtn?('<div>'+editRolesBtn+'</div>'):''}`;
   return `<tr><td>${esc(u.name)}</td><td>${esc(u.username)}</td><td>${accessCell}</td><td>${teamCell}</td><td>${actions}</td></tr>`;
 }
+function toggleUserDetail(id, btn){ const d=document.getElementById(id); if(!d) return; d.hidden=!d.hidden; if(btn) btn.textContent=d.hidden?'Details':'Hide'; }
 function renderUsersTable(list){
   USERS_LIST=list.slice();
   USERS_LIST.push({username:'tsaboss',name:'Admin (master)',role:'admin',master:true});
@@ -4145,7 +4153,7 @@ function renderUsersGrouped(){
     ['reps','Reps','Closers and setters working on client accounts.'],
     ['clients','Client accounts','Account Admins (founders). Dashboard-only while managed by TSA; full access once graduated to their own account.']
   ];
-  const head='<div class="tablewrap"><table><thead><tr><th>Name</th><th>Username</th><th>Roles</th><th>Teams / responsibilities</th><th></th></tr></thead><tbody>';
+  const head='<div class="tablewrap"><table><thead><tr><th>Name</th><th>Username</th><th>Roles</th><th>Accounts</th><th></th></tr></thead><tbody>';
   let any=false;
   const html=GROUPS.map(([gid,label,desc])=>{
     if(showG && showG!==gid) return '';
