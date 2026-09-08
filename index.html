@@ -424,6 +424,8 @@
       <div class="field"><label>Date *</label><input type="date" name="date" required></div>
       <div class="field"><label>Client / account *</label><select name="client" data-list="clients" required onchange="dealClientChanged()"></select><span class="fieldhelp">Which account this deal is for.</span></div>
       <div class="field"><label>Lead / prospect name *</label><input type="text" name="lead" required placeholder="the person who bought"><span class="fieldhelp">Who you closed - the customer's name.</span></div>
+      <div class="field"><label>Lead email</label><input type="email" name="leadEmail" placeholder="name@email.com"><span class="fieldhelp">Used to match this lead in GHL (more reliable than name).</span></div>
+      <div class="field"><label>Lead source</label><select name="source"><option value="">-</option><option>Paid ads</option><option>Organic</option><option>Webinar</option></select><span class="fieldhelp"><b>Paid ads</b> = we paid for the lead; <b>Organic</b> = free/audience. Drives paid-vs-organic attribution.</span></div>
       <div class="field"><label>Closer (who closed it) *</label><select name="rep" data-list="closers" required></select><span class="fieldhelp">The rep who ran the closing call.</span></div>
       <div class="field"><label>Setter (who set the call) *</label><select name="setter" data-list="setters" required></select><span class="fieldhelp">The setter who booked this appointment - they get setter credit + commission.</span></div>
       <div class="field"><label>Product sold</label><select name="product" data-list="products"></select><span class="fieldhelp">Filters to the selected client's offers (set on Client Overview).</span></div>
@@ -455,7 +457,7 @@
       <div class="field"><label>Lead / prospect name *</label><input type="text" name="lead" required placeholder="who the call was with"></div>
       <div class="field"><label>Lead email</label><input type="email" name="leadEmail" placeholder="name@email.com"><span class="fieldhelp">Used to match this lead in GHL (more reliable than name).</span></div>
       <div class="field closerPc"><label>Setter (who set the call)</label><select name="setter" data-list="setters"></select><span class="fieldhelp">Leave blank if it was inbound / you set it yourself.</span></div>
-      <div class="field"><label>Lead source</label><select name="source"><option value="">-</option><option>Inbound</option><option>Webinar</option></select><span class="fieldhelp">Where this lead came from. Pick <b>Webinar</b> so webinar sales are tracked separately.</span></div>
+      <div class="field"><label>Lead source</label><select name="source"><option value="">-</option><option>Paid ads</option><option>Organic</option><option>Webinar</option></select><span class="fieldhelp"><b>Paid ads</b> = we paid for the lead; <b>Organic</b> = free/audience. Drives paid-vs-organic attribution for the marketing team.</span></div>
       <div class="field"><label>Call outcome *</label><select name="outcome" required onchange="postcallOutcomeChanged()"></select><span class="fieldhelp">What happened on this call.</span></div>
       <div class="field"><label>Call type</label><select name="callType"><option value="">-</option><option>First call</option><option>Second call</option><option>Follow-up</option></select></div>
       <div class="field followOnly" hidden><label>Follow-up date</label><input type="date" name="followUpDate"><span class="fieldhelp">The date the next call is booked for.</span></div>
