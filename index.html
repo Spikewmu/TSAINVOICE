@@ -873,6 +873,8 @@
       #tab-users .csec .chev{display:inline-block;transition:transform .15s ease;font-size:13px;opacity:.8;margin-right:9px;color:var(--gold,#d4af37)}
       #tab-users .panel.collapsed > :not(.csec){display:none}
       #tab-users .panel.collapsed .csec .chev{transform:rotate(-90deg)}
+      #tab-users .ugroup.collapsed > :not(.csec){display:none}
+      #tab-users .ugroup.collapsed .csec .chev{transform:rotate(-90deg)}
     </style>
     <h2 class="section">Users</h2>
     <p class="hint">Create a login for each rep, pick their role, and assign the team(s) / account(s) they work. Setters see only the setter end-of-day form; closers see the closed-deal + closer forms; both see a Rep Breakdown scoped to their assigned teams. Admins see everything.</p>
@@ -4139,6 +4141,8 @@ function userOnTeam(u,team){
   try{ if(managedClientsForUser(u).includes(team)) return true; }catch(e){}
   return false;
 }
+let USER_GROUP_OPEN={}; // which staff/reps/clients groups the admin has expanded (default: all collapsed)
+function toggleUserGroup(gid){ USER_GROUP_OPEN[gid]=!USER_GROUP_OPEN[gid]; const g=document.getElementById('ug_'+gid); if(g) g.classList.toggle('collapsed', !USER_GROUP_OPEN[gid]); }
 function renderUsersGrouped(){
   const cont=document.getElementById('usersGrouped'); if(!cont) return;
   const isAdmin=SESSION.role==='admin';
@@ -4162,7 +4166,8 @@ function renderUsersGrouped(){
     if(qn) members=members.filter(u=>((u.name||'')+' '+(u.username||'')).toLowerCase().includes(qn));
     if(!members.length) return '';
     any=true;
-    return `<div style="margin-bottom:20px"><h4 style="margin:0 0 3px;display:flex;align-items:center;gap:8px">${label} <span class="tag">${members.length}</span></h4><p class="muted" style="margin:0 0 8px;font-size:12px">${esc(desc)}</p>`
+    const collapsed = !USER_GROUP_OPEN[gid] && !qn && !team; // collapsed by default; a search or account filter opens matching groups
+    return `<div class="ugroup${collapsed?' collapsed':''}" id="ug_${gid}" style="margin-bottom:20px"><h4 class="csec" style="margin:0 0 3px;display:flex;align-items:center;gap:8px" onclick="toggleUserGroup('${gid}')"><span class="chev">&#9662;</span>${label} <span class="tag">${members.length}</span></h4><p class="muted" style="margin:0 0 8px;font-size:12px">${esc(desc)}</p>`
       +head+members.map(u=>userRowHTML(u,isAdmin)).join('')+'</tbody></table></div></div>';
   }).join('');
   cont.innerHTML=any?html:'<p class="muted" style="padding:14px">No people match those filters.</p>';
