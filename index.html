@@ -867,10 +867,17 @@
 
   <!-- ===== USERS ===== -->
   <section id="tab-users" hidden>
+    <style>
+      #tab-users .csec{cursor:pointer;user-select:none;padding:2px 4px;margin:-2px -4px;border-radius:8px;transition:background .12s ease}
+      #tab-users .csec:hover{background:rgba(212,175,55,.10)}
+      #tab-users .csec .chev{display:inline-block;transition:transform .15s ease;font-size:13px;opacity:.8;margin-right:9px;color:var(--gold,#d4af37)}
+      #tab-users .panel.collapsed > :not(.csec){display:none}
+      #tab-users .panel.collapsed .csec .chev{transform:rotate(-90deg)}
+    </style>
     <h2 class="section">Users</h2>
     <p class="hint">Create a login for each rep, pick their role, and assign the team(s) / account(s) they work. Setters see only the setter end-of-day form; closers see the closed-deal + closer forms; both see a Rep Breakdown scoped to their assigned teams. Admins see everything.</p>
     <div class="panel" id="clientAccountsPanel" style="display:none">
-      <h3>Client accounts</h3>
+      <h3 class="csec" onclick="integToggleSec('clientAccountsPanel')"><span class="chev">&#9662;</span>Client accounts</h3>
       <p class="hint" style="margin:-4px 0 8px">Every company on the platform: the ones you run (TakeOver, under The Sales Agency) and the ones on their own monthly account. Graduate a TakeOver client to move them onto their own account with a Founder-admin.</p>
       <h4 style="margin:16px 0 6px">TakeOver clients <span class="muted" style="font-weight:400;font-size:12px">- run under The Sales Agency</span></h4>
       <div id="takeoverList"></div>
@@ -901,8 +908,8 @@
       </div>
     </div>
     <div class="panel" id="usersOnboardPanel" hidden><h3>Rep onboarding <span style="font-weight:400;color:var(--muted);font-size:12px">- new setters/closers being set up. Work down each step so no one stalls.</span></h3><div style="padding:6px 2px" id="usersOnboard"></div></div>
-    <div class="panel">
-      <h3>Add a user</h3>
+    <div class="panel" id="secUsersAdd">
+      <h3 class="csec" onclick="integToggleSec('secUsersAdd')"><span class="chev">&#9662;</span>Add a user</h3>
       <p class="hint" style="margin:-4px 0 10px">Create a new login here. To change someone who already exists, use the controls on their row below - <b>Access</b> dropdown for role, <b>Edit</b> for teams, <b>Hire / dates</b> for dates, <b>Reset password</b> to set a new password.</p>
       <form class="grid" id="userForm" onsubmit="saveUser(event)" style="box-shadow:none;border:none">
         <div class="field"><label>Full name *</label><input name="name" required placeholder="Bree Smith"></div>
@@ -913,7 +920,7 @@
         <div class="full row-actions"><button class="btn gold" type="submit">Save user</button><span class="tag">Creating a new login. Existing users: change them on their row below (no need to re-enter a password).</span></div>
       </form>
     </div>
-    <div class="panel" id="reassignPanel" style="display:none"><h3>Reassign a departed staffer</h3>
+    <div class="panel" id="reassignPanel" style="display:none"><h3 class="csec" onclick="integToggleSec('reassignPanel')"><span class="chev">&#9662;</span>Reassign a departed staffer</h3>
       <p class="hint" style="margin:0 0 10px">Moves every client assignment (webinar / setter / closer / primary manager) and rep "manager" pointer from one person to another in one pass. Use it when someone leaves.</p>
       <div class="filters" style="align-items:flex-end">
         <div class="field" style="min-width:200px"><label>From (leaving)</label><select id="reassignFrom"></select></div>
@@ -921,7 +928,7 @@
         <button class="btn sm" style="align-self:flex-end" onclick="reassignStaff((document.getElementById('reassignFrom')||{}).value,(document.getElementById('reassignTo')||{}).value)">Reassign all</button>
       </div>
     </div>
-    <div class="panel"><h3>Team members <button class="btn ghost sm" style="float:right" onclick="importUsers()" title="Copy all accounts from the old backend into the new one">Import from old backend</button></h3>
+    <div class="panel" id="secUsersTeam"><h3 class="csec" onclick="integToggleSec('secUsersTeam')"><span class="chev">&#9662;</span>Team members <button class="btn ghost sm" style="float:right" onclick="event.stopPropagation();importUsers()" title="Copy all accounts from the old backend into the new one">Import from old backend</button></h3>
       <div id="usersUnassigned" style="padding:0 2px 8px"></div>
       <div id="usersStats" class="cards" style="grid-template-columns:repeat(auto-fit,minmax(104px,1fr));margin:0 0 14px"></div>
       <div class="filters" style="align-items:flex-end;margin:0 0 14px">
@@ -1724,7 +1731,7 @@ function showTab(t){
   if(render){ render(); syncRecords().then(()=>{ if(currentTab()===t) render(); updateNavBadges(); renderReminders(); }); }
   updateNavBadges();
   if(t==='data'){ renderDailyEntry(); }
-  if(t==='users'){ renderUsers(); }
+  if(t==='users'){ renderUsers(); usersApplySecState(); }
   if(t==='settings'){ loadSettingsForm(); }
   if(t==='integrations'){ renderIntegrations(); }
   if(t==='sod'){ renderSodTab(); }
@@ -4233,6 +4240,8 @@ async function graduateClient(ev){
   toast('Graduated '+client+' to their own account. Send '+res.founder+' the login, then remove your reps from this client via Client Overview / Edit teams.');
   f.reset(); const w=document.getElementById('graduateFormWrap'); if(w) w.hidden=true; renderClientAccounts(); if(typeof renderClientOverview==='function') renderClientOverview();
 }
+// collapse the occasional Users-tab panels by default (Add a user / Reassign / Client accounts), keep Team members open. Runs on tab open only, so manual toggles survive re-renders.
+function usersApplySecState(){ const defs={clientAccountsPanel:1, secUsersAdd:1, reassignPanel:1, secUsersTeam:0}; Object.keys(defs).forEach(id=>{ const p=document.getElementById(id); if(p) p.classList.toggle('collapsed', !!defs[id]); }); }
 async function renderUsers(){
   const isAdmin = SESSION.role==='admin';
   renderClientAccounts(); renderReassignPanel();
