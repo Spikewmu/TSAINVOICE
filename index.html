@@ -1088,6 +1088,9 @@
       <div class="panel collapse" id="secEod"><h3 class="csec" onclick="integToggleSec('secEod')"><span class="chev">&#9662;</span>EOD reports <span class="muted" style="font-weight:400;font-size:12px">- setter, closer, manager end-of-day</span></h3>
         <div class="csec-body"><div style="padding:12px" id="integEodRep"></div></div>
       </div>
+      <div class="panel collapse" id="secGhl"><h3 class="csec" onclick="integToggleSec('secGhl')"><span class="chev">&#9662;</span>CRM push (GHL) <span class="muted" style="font-weight:400;font-size:12px">- send closed deals + post-call dispositions back to the client's GHL (paid/organic attribution)</span></h3>
+        <div class="csec-body"><div style="padding:12px" id="integGhl"></div></div>
+      </div>
     </div>
     <div class="panel collapse" id="integTplLib" style="display:none"><h3 class="csec" onclick="integToggleSec('integTplLib')"><span class="chev">&#9662;</span>Template library <span style="float:right"><button class="btn ghost sm" onclick="event.stopPropagation();tplLibSeed()">Load starters</button> <button class="btn gold sm" onclick="event.stopPropagation();tplLibAdd()">+ New template</button></span> <span class="muted" style="font-weight:400;font-size:12px">- reusable message formats, available to every client's webhooks</span></h3>
       <div class="csec-body"><div style="padding:12px" id="integTplList"></div></div>
@@ -4802,7 +4805,40 @@ async function renderIntegrations(){
   renderAllWebhooks(); renderTemplateLib(); integPick(); integApplySecState();
 }
 function integToggleSec(id){ const p=document.getElementById(id); if(!p) return; p.classList.toggle('collapsed'); }
-function integApplySecState(){ ['secAll','secPay','secFeeds','secEod','integTplLib'].forEach(id=>{ const p=document.getElementById(id); if(p) p.classList.add('collapsed'); }); }
+function integApplySecState(){ ['secAll','secPay','secFeeds','secEod','secGhl','integTplLib'].forEach(id=>{ const p=document.getElementById(id); if(p) p.classList.add('collapsed'); }); }
+function renderGhlConfig(){
+  const t=integTarget(), box=document.getElementById('integGhl'); if(!box||!t) return;
+  const c=INTEG_CFGS[t.key]||{}, has=!!c.ghl;
+  box.innerHTML=`
+    <p class="hint" style="margin:0 0 12px">Pushes each <b>closed deal</b> + <b>post-call</b> back to this client's GHL: matches the contact by <b>lead email</b>, adds a note (source, outcome, cash, closer, setter) and stamps the lead source - so the marketing team can attribute paid vs organic. Paste the client's GHL <b>API key</b> (GHL: Settings &rsaquo; Business Info / API Key). Stored server-side, never shown back.</p>
+    <div class="cards" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr))">
+      <div class="field"><label>GHL API key ${has?'<span class="pill good">&#10003; set</span>':'<span class="pill" style="opacity:.55">not set</span>'}</label>
+        <span style="display:flex;gap:6px"><input id="ghlKey" type="password" autocomplete="off" placeholder="${has?'•••• (leave blank to keep)':'paste the GHL API key'}" style="flex:1"><button type="button" class="btn sm ghost" onclick="integReveal('ghlKey',this)">Show</button></span></div>
+      <div class="field"><label>Location ID <span class="muted" style="font-weight:400">(optional)</span></label><input id="ghlLoc" value="${esc(c.ghlLocation||'')}" placeholder="GHL sub-account id"></div>
+    </div>
+    <label style="display:flex;gap:8px;align-items:center;font-weight:500;margin:12px 0 8px"><input type="checkbox" id="ghlOn" ${c.ghlEnabled?'checked':''}> Push dispositions to GHL</label>
+    <div class="row-actions" style="margin:2px 0 12px"><button class="btn gold sm" onclick="integSaveGhl()">Save GHL</button></div>
+    <div style="border-top:1px solid var(--border);padding-top:12px">
+      <div class="field" style="max-width:440px"><label>Test: push a sample close to a GHL contact</label>
+        <span style="display:flex;gap:6px"><input id="ghlTestEmail" type="email" placeholder="a lead email that exists in this GHL" style="flex:1"><button class="btn sm ghost" onclick="integTestGhl()">Send test</button></span>
+        <span class="fieldhelp">Sends a sample "Paid ads" post-call to that contact so you + the marketer can see exactly where it lands (a note on the contact + the lead source). Save the key first.</span></div>
+    </div>`;
+}
+async function integSaveGhl(){
+  const t=integTarget(); if(!t) return; const key=(document.getElementById('ghlKey').value||'').trim();
+  const body={key:t.key, ws:t.ws, client:t.client, ghlLocationId:(document.getElementById('ghlLoc').value||'').trim(), ghlEnabled:(document.getElementById('ghlOn')||{}).checked, ghlApiKey: key? key : '__keep__'}; // blank = keep the existing key
+  const res=await integApi('save',body);
+  if(res&&res.ok){ INTEG_CFGS[t.key]=res.config; toast('GHL settings saved'); renderGhlConfig(); }
+  else toast((res&&res.error)||'Could not save',true);
+}
+async function integTestGhl(){
+  const t=integTarget(); if(!t) return; const email=(document.getElementById('ghlTestEmail').value||'').trim();
+  if(!email){ toast('Enter a test lead email that exists in this GHL',true); return; }
+  toast('Pushing a test to GHL...');
+  const res=await integApi('testGhl',{key:t.key, ws:t.ws, email});
+  if(res&&res.ok) toast('Sent to GHL - check that contact’s Notes + Lead source');
+  else toast('GHL: '+((res&&res.error)||'failed'),true);
+}
 function integClientLabel(key){ const t=INTEG_TARGETS.find(x=>x.key===key); return t?t.label:key; }
 function renderAllWebhooks(){
   const box=document.getElementById('integAll'); if(!box) return;
@@ -4822,7 +4858,7 @@ function integPick(){
   const t=integTarget(), body=document.getElementById('integBody'); if(!t){ if(body)body.hidden=true; return; }
   if(body) body.hidden=false; INTEG_KEY=t.key;
   const tag=document.getElementById('integPlanTag'); if(tag) tag.textContent=t.plan||'';
-  renderWebhookList(); renderEodRouting();
+  renderWebhookList(); renderEodRouting(); renderGhlConfig();
 }
 function slackAppKeyForField(f){ return (f==='deal')?f:(f==='postcall'||f==='postcallSetter'||f==='postcallCloser')?'postcall':(f==='sod'||f==='sodSetter'||f==='sodCloser')?'sod':(f==='setter'||f==='closer'||f==='mgr')?'eod':'default'; }
 function canConnectField(field){ return !!(INTEG_SLACK_APPS[slackAppKeyForField(field)] || INTEG_SLACK_APPS['default']); }

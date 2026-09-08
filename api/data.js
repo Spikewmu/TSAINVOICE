@@ -101,6 +101,30 @@ async function eodToSlack(rec) {
     await fetch(chanDest(dest), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: `EOD from ${who}${rec.client ? ' · ' + rec.client : ''}`, blocks }) });
   } catch (e) { /* never block the write on a Slack failure */ }
 }
+// push a post-call / closed-deal disposition back to the client's GHL: find the contact by email, add a note + stamp the source.
+// Returns a status so the Integrations "Test" button can surface errors; the write path fires it and ignores failures.
+async function ghlPush(cfg, rec) {
+  if (!cfg || !cfg.ghlApiKey) return { ok: false, error: 'no GHL API key set for this client' };
+  const email = String(rec.leadEmail || rec.email || '').trim();
+  if (!email) return { ok: false, error: 'no lead email on this record (needed to match the GHL contact)' };
+  try {
+    const base = 'https://rest.gohighlevel.com/v1', H = { Authorization: 'Bearer ' + cfg.ghlApiKey, 'Content-Type': 'application/json' };
+    const look = await fetch(base + '/contacts/lookup?email=' + encodeURIComponent(email), { headers: H });
+    if (!look.ok) return { ok: false, error: 'GHL lookup failed (' + look.status + ') - check the API key' };
+    const lj = await look.json().catch(() => ({}));
+    const contact = (lj.contacts && lj.contacts[0]) || null;
+    if (!contact || !contact.id) return { ok: false, error: 'no GHL contact found for ' + email };
+    const id = contact.id, m = n => '$' + Number(n || 0).toLocaleString('en-US'), lines = [];
+    const add = (l, v) => { if (v !== undefined && v !== null && v !== '') lines.push(l + ': ' + v); };
+    add('Type', rec.type === 'deal' ? 'Closed deal' : 'Post-call'); add('Source', rec.source); add('Outcome', rec.outcome); add('Product', rec.product);
+    if (rec.cashCollected) add('Cash collected', m(rec.cashCollected)); if (rec.contractValue) add('Contract value', m(rec.contractValue));
+    add('Closer', rec.rep); add('Setter', rec.setter); add('Call type', rec.callType); add('Call date', String(rec.date || '').slice(0, 10));
+    const body = 'Sales HQ ' + (rec.type === 'deal' ? 'closed deal' : 'post-call') + ' (' + new Date().toISOString().slice(0, 10) + ')\n' + lines.join('\n');
+    await fetch(base + '/contacts/' + id + '/notes', { method: 'POST', headers: H, body: JSON.stringify({ body }) }).catch(() => { });
+    if (rec.source) await fetch(base + '/contacts/' + id, { method: 'PUT', headers: H, body: JSON.stringify({ source: rec.source }) }).catch(() => { });
+    return { ok: true, contactId: id };
+  } catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
+}
 
 export default async function handler(req, res) {
   const h = req.headers || {}, b = req.body || {}, q = req.query || {};
@@ -136,6 +160,7 @@ export default async function handler(req, res) {
       if (!r.ok) { const t = await r.text(); return res.status(200).json({ ok: false, error: 'db ' + r.status + ' ' + t.slice(0, 160) }); }
       if (rec.type === 'eod' || rec.type === 'mgreod') await eodToSlack(rec); // mirror the submitted report to the client's Slack, if enabled
       else if (rec.type === 'deal' || rec.type === 'postcall' || rec.type === 'sod') await eventToSlack(rec); // New closed deal / Post-call / SOD projection feeds
+      if (rec.type === 'postcall' || rec.type === 'deal') { try { const gcfg = await integrationFor(rec.ws, rec.client); if (gcfg && gcfg.ghlEnabled && gcfg.ghlApiKey) await ghlPush(gcfg, rec); } catch (e) { } } // push the disposition back to the client's GHL (paid/organic attribution loop)
       return res.status(200).json({ ok: true });
     }
     if (action === 'accounts') {

@@ -54,13 +54,36 @@ const slackApps = () => Object.fromEntries(Object.keys(SLACK_APPS).map(k => [k, 
 const keepOr = (val, prev) => (val === '') ? '' : ((val && val !== '__keep__') ? String(val) : (prev || ''));
 const pubCfg = d => ({ key: d.key, ws: d.ws, client: d.client || '', eodToSlack: !!d.eodToSlack,
   slack: d.slackWebhook || '', setter: d.eodSetterSlack || '', closer: d.eodCloserSlack || '', mgr: d.eodMgrSlack || '',
-  deal: d.dealSlack || '', postcall: d.postcallSlack || '', postcallSetter: d.postcallSetterSlack || '', postcallCloser: d.postcallCloserSlack || '', sod: d.sodSlack || '', sodSetter: d.sodSetterSlack || '', sodCloser: d.sodCloserSlack || '' });
+  deal: d.dealSlack || '', postcall: d.postcallSlack || '', postcallSetter: d.postcallSetterSlack || '', postcallCloser: d.postcallCloserSlack || '', sod: d.sodSlack || '', sodSetter: d.sodSetterSlack || '', sodCloser: d.sodCloserSlack || '',
+  ghl: !!d.ghlApiKey, ghlLocation: d.ghlLocationId || '', ghlEnabled: !!d.ghlEnabled }); // ghlApiKey itself is write-only, never returned
 const pubHook = (d, req) => ({ id: d.id, key: d.key, ws: d.ws, client: d.client || '', name: d.name || 'Webhook', processor: d.processor || 'generic', enabled: d.enabled !== false, template: d.template || DEFAULT_TEMPLATE, hasSlack: !!d.slackWebhook, slack: d.slackWebhook || '', token: d.token, inbound: baseUrl(req) + '/api/hook?t=' + d.token });
 const chanDest = u => (/discord(app)?\.com\/api\/webhooks\//i.test(String(u || '')) && !/\/slack\/?$/i.test(String(u))) ? String(u).replace(/\/+$/, '') + '/slack' : u; // Discord accepts Slack payloads at /slack
 async function postSlack(webhook, payload) {
   if (!webhook) return { ok: false, error: 'no channel webhook set' };
   try { const r = await fetch(chanDest(webhook), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) }); return r.ok ? { ok: true } : { ok: false, error: 'post ' + r.status + ' ' + (await r.text()).slice(0, 120) }; }
   catch (e) { return { ok: false, error: String(e) }; }
+}
+// push a disposition to GHL (find contact by email -> add note + stamp source). Mirrors api/data.js ghlPush; used by the Test button.
+async function ghlPush(cfg, rec) {
+  if (!cfg || !cfg.ghlApiKey) return { ok: false, error: 'no GHL API key set for this client' };
+  const email = String(rec.leadEmail || rec.email || '').trim();
+  if (!email) return { ok: false, error: 'no lead email to match a GHL contact' };
+  try {
+    const base = 'https://rest.gohighlevel.com/v1', H = { Authorization: 'Bearer ' + cfg.ghlApiKey, 'Content-Type': 'application/json' };
+    const look = await fetch(base + '/contacts/lookup?email=' + encodeURIComponent(email), { headers: H });
+    if (!look.ok) return { ok: false, error: 'GHL lookup failed (' + look.status + ') - check the API key' };
+    const lj = await look.json().catch(() => ({})); const contact = (lj.contacts && lj.contacts[0]) || null;
+    if (!contact || !contact.id) return { ok: false, error: 'no GHL contact found for ' + email + ' - add one first, then test' };
+    const id = contact.id, m = n => '$' + Number(n || 0).toLocaleString('en-US'), lines = [];
+    const add = (l, v) => { if (v !== undefined && v !== null && v !== '') lines.push(l + ': ' + v); };
+    add('Type', rec.type === 'deal' ? 'Closed deal' : 'Post-call'); add('Source', rec.source); add('Outcome', rec.outcome); add('Product', rec.product);
+    if (rec.cashCollected) add('Cash collected', m(rec.cashCollected)); if (rec.contractValue) add('Contract value', m(rec.contractValue));
+    add('Closer', rec.rep); add('Setter', rec.setter); add('Call type', rec.callType); add('Call date', String(rec.date || '').slice(0, 10));
+    const body = 'Sales HQ ' + (rec.type === 'deal' ? 'closed deal' : 'post-call') + ' TEST (' + new Date().toISOString().slice(0, 10) + ')\n' + lines.join('\n');
+    const noteR = await fetch(base + '/contacts/' + id + '/notes', { method: 'POST', headers: H, body: JSON.stringify({ body }) });
+    if (rec.source) await fetch(base + '/contacts/' + id, { method: 'PUT', headers: H, body: JSON.stringify({ source: rec.source }) }).catch(() => { });
+    return { ok: true, contactId: id, note: noteR.ok };
+  } catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
 }
 
 export default async function handler(req, res) {
@@ -135,6 +158,9 @@ export default async function handler(req, res) {
         sodSlack: keepOr(b.sodSlack, cur && cur.sodSlack),
         sodSetterSlack: keepOr(b.sodSetterSlack, cur && cur.sodSetterSlack),
         sodCloserSlack: keepOr(b.sodCloserSlack, cur && cur.sodCloserSlack),
+        ghlApiKey: keepOr(b.ghlApiKey, cur && cur.ghlApiKey),
+        ghlLocationId: keepOr(b.ghlLocationId, cur && cur.ghlLocationId),
+        ghlEnabled: b.ghlEnabled != null ? !!b.ghlEnabled : !!(cur && cur.ghlEnabled),
         eodToSlack: b.eodToSlack != null ? !!b.eodToSlack : !!(cur && cur.eodToSlack), updatedAt: now };
       const r = await supa('records', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ rid: rec.id, type: 'integration', submitted_at: now, data: rec }) });
       if (!r || !r.ok) return res.status(200).json({ ok: false, error: 'db write failed' });
@@ -218,6 +244,17 @@ export default async function handler(req, res) {
       }
       const blocks = [{ type: 'section', text: { type: 'mrkdwn', text: bodyTxt } }, { type: 'context', elements: [{ type: 'mrkdwn', text: `🧪 Test preview from Sales HQ · this is how a real "${label}" post will look` }] }];
       return res.status(200).json(await postSlack(dest, { text, blocks }));
+    }
+    if (action === 'testGhl') {
+      const key = String(b.key || ''); if (!key) return res.status(200).json({ ok: false, error: 'key required' });
+      const cfgs = await allByType('integration'); const cur = cfgs[key];
+      if (!cur) return res.status(200).json({ ok: false, error: 'Save the GHL API key first' });
+      if (!mayTouch(cur)) return res.status(200).json({ ok: false, error: 'not your client' });
+      const email = String(b.email || '').trim();
+      if (!email) return res.status(200).json({ ok: false, error: 'Enter a test lead email that exists in this GHL' });
+      const sample = { type: 'postcall', leadEmail: email, source: 'Paid ads', outcome: 'Won - closed', product: 'Sample Offer', cashCollected: 2500, contractValue: 5000, rep: 'Alex (test)', setter: 'Jordan (test)', callType: 'First call', date: new Date().toISOString().slice(0, 10) };
+      const r = await ghlPush(cur, sample);
+      return res.status(200).json(r.ok ? { ok: true, contactId: r.contactId } : r);
     }
     if (action === 'log') {
       const id = String(b.id || ''); if (!id) return res.status(200).json({ ok: false, error: 'id required' });
