@@ -435,7 +435,8 @@
         </div>
         <div class="row-actions" style="margin-top:10px">
           <button class="btn gold sm" onclick="invPreview()">Generate invoice</button>
-          <button class="btn ghost sm" onclick="invThisWeek()">This billing week (Fri-Thu)</button>
+          <button class="btn ghost sm" onclick="invCurrentWeek()">Current week</button>
+          <button class="btn ghost sm" onclick="invThisWeek()">Last completed week (invoice)</button>
           <button class="btn ghost sm" onclick="invPrevWeek()">&#8592; Previous week</button>
           <button class="btn ghost sm" onclick="invPrint()">&#128424; Print / save PDF</button>
         </div>
@@ -2958,6 +2959,9 @@ function isoLocal(d){ return new Date(d.getTime()-d.getTimezoneOffset()*60000).t
 // So on Thursday you preview the closing week and on Friday you invoice the week that just ended.
 function billingWeek(ref){ const d=ref?new Date(ref):new Date(); const back=(d.getDay()-4+7)%7; const to=new Date(d); to.setDate(d.getDate()-back); const from=new Date(to); from.setDate(to.getDate()-6); return {from:isoLocal(from), to:isoLocal(to)}; }
 function invThisWeek(){ const bw=billingWeek(); document.getElementById('invFrom').value=bw.from; document.getElementById('invTo').value=bw.to; invPreview(); }
+// the in-progress Fri-Thu cycle (this week, not yet closed): from = most recent Friday on/before today, to = that Friday + 6 (Thu)
+function currentWeek(ref){ const d=ref?new Date(ref):new Date(); const back=(d.getDay()-5+7)%7; const from=new Date(d); from.setDate(d.getDate()-back); const to=new Date(from); to.setDate(from.getDate()+6); return {from:isoLocal(from), to:isoLocal(to)}; }
+function invCurrentWeek(){ const cw=currentWeek(); document.getElementById('invFrom').value=cw.from; document.getElementById('invTo').value=cw.to; invPreview(); }
 function invPrevWeek(){ const f=document.getElementById('invFrom').value; const ref=f?new Date(f+'T00:00:00'):new Date(); ref.setDate(ref.getDate()-7); const bw=billingWeek(ref); document.getElementById('invFrom').value=bw.from; document.getElementById('invTo').value=bw.to; invPreview(); }
 function invModeChanged(){ const mode=document.getElementById('invMode').value; document.querySelector('#invSettings .invFlat').hidden=mode!=='flat'; document.querySelector('#invSettings .invRep').hidden=mode!=='repcomp'; }
 function invLoadCfg(){
