@@ -466,8 +466,9 @@
           <div class="field"><label>Beneficiary / business name</label><input type="text" id="biName" placeholder="The Sales Agency"></div>
           <div class="field"><label>Billing email</label><input type="email" id="biEmail" placeholder="billing@thesalesagency.com"></div>
           <div class="field"><label>Bank name</label><input type="text" id="biBank"></div>
+          <div class="field"><label>Bank address</label><input type="text" id="biBankAddr" placeholder="street, city, state ZIP"></div>
           <div class="field"><label>Account number</label><input type="text" id="biAcct"></div>
-          <div class="field"><label>Routing number (ACH / wire)</label><input type="text" id="biRouting"></div>
+          <div class="field"><label>Routing number (ABA / ACH / wire)</label><input type="text" id="biRouting"></div>
           <div class="field"><label>SWIFT / BIC (international, optional)</label><input type="text" id="biSwift"></div>
           <div class="field full"><label>Extra instructions (optional)</label><input type="text" id="biNotes" placeholder="e.g. reference the invoice # in the memo"></div>
         </div>
@@ -2949,7 +2950,7 @@ function renderInvoicing(){
   // load workspace wire/ACH details into the settings form
   const bi=billingInfo()||{};
   const setv=(id,v)=>{ const el=document.getElementById(id); if(el) el.value=v||''; };
-  setv('biName',bi.name); setv('biEmail',bi.email); setv('biBank',bi.bank); setv('biAcct',bi.acct); setv('biRouting',bi.routing); setv('biSwift',bi.swift); setv('biNotes',bi.notes);
+  setv('biName',bi.name); setv('biEmail',bi.email); setv('biBank',bi.bank); setv('biBankAddr',bi.bankAddr); setv('biAcct',bi.acct); setv('biRouting',bi.routing); setv('biSwift',bi.swift); setv('biNotes',bi.notes);
   invLoadCfg();
   invPreview();
 }
@@ -2985,7 +2986,7 @@ async function saveClientBilling(){
 async function saveBillingInfo(){
   if(!invAllowed()){ toast('Super Admin only',true); return; }
   const g=id=>document.getElementById(id).value.trim();
-  const rec={type:'billinginfo',name:g('biName'),email:g('biEmail'),bank:g('biBank'),acct:g('biAcct'),routing:g('biRouting'),swift:g('biSwift'),notes:g('biNotes'),by:(SESSION&&SESSION.name)||''};
+  const rec={type:'billinginfo',name:g('biName'),email:g('biEmail'),bank:g('biBank'),bankAddr:g('biBankAddr'),acct:g('biAcct'),routing:g('biRouting'),swift:g('biSwift'),notes:g('biNotes'),by:(SESSION&&SESSION.name)||''};
   try{ await addRecord(rec); toast('Payment details saved'); invPreview(); }
   catch(e){ toast('Save failed: '+(e&&e.message||e),true); }
 }
@@ -3035,8 +3036,9 @@ function genFounderInvoice(client,from,to){
     <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 18px;font-size:13px;color:#2b3242">
       ${bi.name?`<div style="color:#6b7488">Beneficiary</div><div style="font-weight:600">${esc(bi.name)}</div>`:''}
       ${bi.bank?`<div style="color:#6b7488">Bank</div><div style="font-weight:600">${esc(bi.bank)}</div>`:''}
+      ${bi.bankAddr?`<div style="color:#6b7488">Bank address</div><div style="font-weight:600">${esc(bi.bankAddr)}</div>`:''}
       ${bi.acct?`<div style="color:#6b7488">Account #</div><div style="font-weight:600;font-variant-numeric:tabular-nums">${esc(bi.acct)}</div>`:''}
-      ${bi.routing?`<div style="color:#6b7488">Routing (ACH/wire)</div><div style="font-weight:600;font-variant-numeric:tabular-nums">${esc(bi.routing)}</div>`:''}
+      ${bi.routing?`<div style="color:#6b7488">Routing / ABA</div><div style="font-weight:600;font-variant-numeric:tabular-nums">${esc(bi.routing)}</div>`:''}
       ${bi.swift?`<div style="color:#6b7488">SWIFT/BIC</div><div style="font-weight:600">${esc(bi.swift)}</div>`:''}
       ${bi.notes?`<div style="color:#6b7488">Note</div><div>${esc(bi.notes)}</div>`:''}
     </div>`
