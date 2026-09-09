@@ -134,25 +134,38 @@ async function eodToSlack(rec) {
 async function ghlPush(cfg, rec, contactIdOverride) {
   if (!cfg || !cfg.ghlApiKey) return { ok: false, error: 'no GHL API key set for this client' };
   try {
-    const base = 'https://rest.gohighlevel.com/v1', H = { Authorization: 'Bearer ' + cfg.ghlApiKey, 'Content-Type': 'application/json' };
+    // auto-detect the key type: v2 Private Integration Token (starts "pit-") vs legacy v1 Location API Key (a JWT, "eyJ...")
+    const key = String(cfg.ghlApiKey || ''), v2 = /^pit-/i.test(key), loc = String(cfg.ghlLocationId || '').trim();
+    const base = v2 ? 'https://services.leadconnectorhq.com' : 'https://rest.gohighlevel.com/v1';
+    const H = v2 ? { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json', Version: '2021-07-28' }
+                 : { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json' };
+    if (v2 && !loc) return { ok: false, error: 'This is a v2 Private Integration token - it needs the Location ID set on Integrations.' };
+    // search contacts by a query (email or name); returns an array of {id,email,...} or {__err:status}
+    const searchContacts = async (query) => {
+      const url = v2 ? base + '/contacts/?locationId=' + encodeURIComponent(loc) + '&query=' + encodeURIComponent(query)
+                     : base + '/contacts/?query=' + encodeURIComponent(query) + '&limit=5';
+      const r = await fetch(url, { headers: H });
+      if (!r.ok) return { __err: r.status };
+      const j = await r.json().catch(() => ({}));
+      return j.contacts || [];
+    };
     let id = String(contactIdOverride || '').trim(); // when given, push straight to this contact
     if (!id) {
       const email = String(rec.leadEmail || rec.email || '').trim();
       if (email) { // 1) match by email (most reliable)
-        const look = await fetch(base + '/contacts/lookup?email=' + encodeURIComponent(email), { headers: H });
-        if (!look.ok) return { ok: false, error: 'GHL lookup failed (' + look.status + ') - check the API key' };
-        const lj = await look.json().catch(() => ({}));
-        const c = (lj.contacts && lj.contacts[0]) || null;
+        let c = null;
+        if (v2) { const arr = await searchContacts(email); if (arr.__err) return { ok: false, error: 'GHL lookup failed (' + arr.__err + ') - check the API token' }; c = (arr || []).find(x => x && x.id && String(x.email || '').toLowerCase() === email.toLowerCase()) || (arr || [])[0] || null; }
+        else { const look = await fetch(base + '/contacts/lookup?email=' + encodeURIComponent(email), { headers: H }); if (!look.ok) return { ok: false, error: 'GHL lookup failed (' + look.status + ') - check the API key' }; const lj = await look.json().catch(() => ({})); c = (lj.contacts && lj.contacts[0]) || null; }
         if (c && c.id) id = c.id;
       }
       if (!id) { // 2) auto-fallback: match by the lead's name (covers closes logged without / with a wrong email)
         const name = String(rec.lead || '').trim();
         if (name) {
-          const q = await fetch(base + '/contacts/?query=' + encodeURIComponent(name) + '&limit=5', { headers: H });
-          if (q.ok) {
-            const arr = ((await q.json().catch(() => ({}))).contacts || []).filter(c => c && c.id);
-            if (arr.length === 1) id = arr[0].id; // unique name match -> use it
-            else if (arr.length > 1) return { ok: false, ambiguous: true, error: 'multiple GHL contacts match "' + name + '" - push with the exact contact link' };
+          const arr = await searchContacts(name);
+          if (!arr.__err) {
+            const list = (arr || []).filter(c => c && c.id);
+            if (list.length === 1) id = list[0].id; // unique name match -> use it
+            else if (list.length > 1) return { ok: false, ambiguous: true, error: 'multiple GHL contacts match "' + name + '" - push with the exact contact link' };
           }
         }
       }
@@ -184,7 +197,7 @@ async function ghlPush(cfg, rec, contactIdOverride) {
     await fetch(base + '/contacts/' + id + '/notes', { method: 'POST', headers: H, body: JSON.stringify({ body }) }).catch(() => { });
     if (rec.source) await fetch(base + '/contacts/' + id, { method: 'PUT', headers: H, body: JSON.stringify({ source: rec.source }) }).catch(() => { });
     const tsaTag = rec.type === 'deal' ? 'tsa - closed deal' : 'tsa - post-call'; // append (never replaces existing tags) so the marketer can filter TSA outcomes
-    await fetch(base + '/contacts/' + id + '/tags/', { method: 'POST', headers: H, body: JSON.stringify({ tags: [tsaTag] }) }).catch(() => { });
+    await fetch(base + '/contacts/' + id + '/tags' + (v2 ? '' : '/'), { method: 'POST', headers: H, body: JSON.stringify({ tags: [tsaTag] }) }).catch(() => { });
     return { ok: true, contactId: id };
   } catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
 }

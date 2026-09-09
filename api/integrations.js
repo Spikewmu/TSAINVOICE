@@ -69,10 +69,23 @@ async function ghlPush(cfg, rec) {
   const email = String(rec.leadEmail || rec.email || '').trim();
   if (!email) return { ok: false, error: 'no lead email to match a GHL contact' };
   try {
-    const base = 'https://rest.gohighlevel.com/v1', H = { Authorization: 'Bearer ' + cfg.ghlApiKey, 'Content-Type': 'application/json' };
-    const look = await fetch(base + '/contacts/lookup?email=' + encodeURIComponent(email), { headers: H });
-    if (!look.ok) return { ok: false, error: 'GHL lookup failed (' + look.status + ') - check the API key' };
-    const lj = await look.json().catch(() => ({})); const contact = (lj.contacts && lj.contacts[0]) || null;
+    // v2 Private Integration Token (starts "pit-") vs legacy v1 Location API Key (JWT "eyJ...")
+    const key = String(cfg.ghlApiKey || ''), v2 = /^pit-/i.test(key), loc = String(cfg.ghlLocationId || '').trim();
+    const base = v2 ? 'https://services.leadconnectorhq.com' : 'https://rest.gohighlevel.com/v1';
+    const H = v2 ? { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json', Version: '2021-07-28' }
+                 : { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json' };
+    if (v2 && !loc) return { ok: false, error: 'This is a v2 Private Integration token - set the Location ID first, then test.' };
+    let contact = null;
+    if (v2) {
+      const r = await fetch(base + '/contacts/?locationId=' + encodeURIComponent(loc) + '&query=' + encodeURIComponent(email), { headers: H });
+      if (!r.ok) return { ok: false, error: 'GHL lookup failed (' + r.status + ') - check the API token' };
+      const arr = ((await r.json().catch(() => ({}))).contacts) || [];
+      contact = arr.find(x => x && x.id && String(x.email || '').toLowerCase() === email.toLowerCase()) || arr[0] || null;
+    } else {
+      const look = await fetch(base + '/contacts/lookup?email=' + encodeURIComponent(email), { headers: H });
+      if (!look.ok) return { ok: false, error: 'GHL lookup failed (' + look.status + ') - check the API key' };
+      contact = ((await look.json().catch(() => ({}))).contacts || [])[0] || null;
+    }
     if (!contact || !contact.id) return { ok: false, error: 'no GHL contact found for ' + email + ' - add one first, then test' };
     const id = contact.id, m = n => '$' + Number(n || 0).toLocaleString('en-US'), lines = [];
     const add = (l, v) => { if (v !== undefined && v !== null && v !== '') lines.push(l + ': ' + v); };
@@ -83,7 +96,7 @@ async function ghlPush(cfg, rec) {
     const noteR = await fetch(base + '/contacts/' + id + '/notes', { method: 'POST', headers: H, body: JSON.stringify({ body }) });
     if (rec.source) await fetch(base + '/contacts/' + id, { method: 'PUT', headers: H, body: JSON.stringify({ source: rec.source }) }).catch(() => { });
     const tsaTag = rec.type === 'deal' ? 'tsa - closed deal' : 'tsa - post-call'; // append a TSA outcome tag (never replaces existing tags)
-    await fetch(base + '/contacts/' + id + '/tags/', { method: 'POST', headers: H, body: JSON.stringify({ tags: [tsaTag] }) }).catch(() => { });
+    await fetch(base + '/contacts/' + id + '/tags' + (v2 ? '' : '/'), { method: 'POST', headers: H, body: JSON.stringify({ tags: [tsaTag] }) }).catch(() => { });
     return { ok: true, contactId: id, note: noteR.ok };
   } catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
 }
