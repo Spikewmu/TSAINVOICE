@@ -2800,12 +2800,18 @@ async function resendDealSlack(id){
 async function pushDealGhl(id){
   const d=(RECORDS||[]).filter(x=>x.type==='deal'&&String(x.id||'')===String(id)).sort((a,b)=>(b.submittedAt||'').localeCompare(a.submittedAt||''))[0];
   if(!d){ toast('Could not find that deal to push',true); return; }
-  if(!(d.leadEmail||d.email)){ toast('This deal has no lead email, so GHL can\'t match the contact. Add the email on the deal first.',true); return; }
+  let contactId='';
+  if(!(d.leadEmail||d.email)){
+    const link=prompt('This deal has no lead email, so GHL can\'t auto-match the contact.\n\nPaste the lead\'s GHL contact link (or ID) to push this close to that contact:');
+    if(link===null) return; // cancelled
+    const m=String(link).match(/contacts\/detail\/([A-Za-z0-9_-]+)/); contactId=m?m[1]:String(link).trim();
+    if(!contactId){ toast('Could not read a contact ID from that link',true); return; }
+  }
   const btn=(typeof event!=='undefined'&&event&&event.target)?event.target:null;
   if(btn){ btn.disabled=true; btn.textContent='Pushing...'; }
   try{
     const hdr={'Content-Type':'application/json'}; if(SESSION&&SESSION.token) hdr['x-session-token']=SESSION.token; else if(SESSION&&SESSION.pw) hdr['x-admin-pass']=SESSION.pw;
-    const r=await fetch('/api/data?action=pushGhl',{method:'POST',headers:hdr,body:JSON.stringify({record:d})});
+    const r=await fetch('/api/data?action=pushGhl',{method:'POST',headers:hdr,body:JSON.stringify({record:d,contactId})});
     const j=await r.json();
     toast((j&&j.ok)?('Pushed to GHL'+(d.client?' - '+d.client:'')+' (note + source on the contact)'):((j&&j.error)||'Could not push to GHL'), !(j&&j.ok));
   }catch(e){ toast('Could not push to GHL',true); }

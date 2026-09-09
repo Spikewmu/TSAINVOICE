@@ -131,18 +131,22 @@ async function eodToSlack(rec) {
 }
 // push a post-call / closed-deal disposition back to the client's GHL: find the contact by email, add a note + stamp the source.
 // Returns a status so the Integrations "Test" button can surface errors; the write path fires it and ignores failures.
-async function ghlPush(cfg, rec) {
+async function ghlPush(cfg, rec, contactIdOverride) {
   if (!cfg || !cfg.ghlApiKey) return { ok: false, error: 'no GHL API key set for this client' };
-  const email = String(rec.leadEmail || rec.email || '').trim();
-  if (!email) return { ok: false, error: 'no lead email on this record (needed to match the GHL contact)' };
   try {
     const base = 'https://rest.gohighlevel.com/v1', H = { Authorization: 'Bearer ' + cfg.ghlApiKey, 'Content-Type': 'application/json' };
-    const look = await fetch(base + '/contacts/lookup?email=' + encodeURIComponent(email), { headers: H });
-    if (!look.ok) return { ok: false, error: 'GHL lookup failed (' + look.status + ') - check the API key' };
-    const lj = await look.json().catch(() => ({}));
-    const contact = (lj.contacts && lj.contacts[0]) || null;
-    if (!contact || !contact.id) return { ok: false, error: 'no GHL contact found for ' + email };
-    const id = contact.id, m = n => '$' + Number(n || 0).toLocaleString('en-US'), lines = [];
+    let id = String(contactIdOverride || '').trim(); // when given, push straight to this contact (deals with no lead email)
+    if (!id) {
+      const email = String(rec.leadEmail || rec.email || '').trim();
+      if (!email) return { ok: false, error: 'no lead email on this record (needed to match the GHL contact)' };
+      const look = await fetch(base + '/contacts/lookup?email=' + encodeURIComponent(email), { headers: H });
+      if (!look.ok) return { ok: false, error: 'GHL lookup failed (' + look.status + ') - check the API key' };
+      const lj = await look.json().catch(() => ({}));
+      const contact = (lj.contacts && lj.contacts[0]) || null;
+      if (!contact || !contact.id) return { ok: false, error: 'no GHL contact found for ' + email };
+      id = contact.id;
+    }
+    const m = n => '$' + Number(n || 0).toLocaleString('en-US'), lines = [];
     const add = (l, v) => { if (v !== undefined && v !== null && v !== '') lines.push(l + ': ' + v); };
     add('Type', rec.type === 'deal' ? 'Closed deal' : 'Post-call'); add('Source', rec.source); add('Outcome', rec.outcome); add('Product', rec.product);
     if (rec.cashCollected) add('Cash collected', m(rec.cashCollected)); if (rec.contractValue) add('Contract value', m(rec.contractValue));
@@ -222,7 +226,7 @@ export default async function handler(req, res) {
       rec.ws = callerWs; // only ever push within the caller's own workspace
       const cfg = await integrationFor(rec.ws, rec.client);
       if (!cfg || !cfg.ghlApiKey) return res.status(200).json({ ok: false, error: 'No GHL API key set for ' + (rec.client || 'this client') + ' - add it on Integrations first.' });
-      const out = await ghlPush(cfg, rec); // real note + real source, matched by the record's lead email
+      const out = await ghlPush(cfg, rec, b.contactId); // real note + real source; contactId (optional) pushes straight to that contact when the deal has no lead email
       return res.status(200).json(out);
     }
     if (action === 'accounts') {
