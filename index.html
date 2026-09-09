@@ -1755,14 +1755,14 @@ async function loadUsers(){
   return USERS_CACHE;
 }
 function repNames(role){
-  const fromUsers=[...new Set(USERS_CACHE.filter(u=>u.role===role).map(u=>String(u.name||'').trim()).filter(Boolean))];
+  const fromUsers=[...new Set(USERS_CACHE.filter(u=>u.role===role && !u.archived).map(u=>String(u.name||'').trim()).filter(Boolean))];
   if(fromUsers.length) return fromUsers.sort((a,b)=>a.localeCompare(b));
   return (role==='closer'?CFG.closers:CFG.setters)||[]; // fallback until accounts exist
 }
 // admin/manager account names, so an admin/manager filling a form can credit ANY leader who also sells (e.g. Robb closing on MSP), not just themselves
 function leaderNames(){
   if(!(SESSION && (SESSION.role==='admin'||SESSION.role==='manager'))) return [];
-  const s=new Set(USERS_CACHE.filter(u=>u.role==='admin'||u.role==='manager').map(u=>String(u.name||'').trim()).filter(Boolean));
+  const s=new Set(USERS_CACHE.filter(u=>(u.role==='admin'||u.role==='manager') && !u.archived).map(u=>String(u.name||'').trim()).filter(Boolean));
   if(SESSION.name) s.add(SESSION.name);
   return [...s].sort((a,b)=>a.localeCompare(b));
 }
@@ -2033,6 +2033,11 @@ function activityRecords(){
   Object.values(latestEod).forEach(x=>out.push(x));
   return out;
 }
+// Option A (deals = source of truth for money): count cash/contract/deposit/closed-deals from DEAL records only,
+// never from EODs. A closer's EOD also carries those numbers, but only as a manager cross-check - so summing both
+// a deal AND its EOD would double-count the same sale. Every won call auto-creates a deal, so deals are complete.
+// (Activity fields - hours, dials, connects, no-shows, capacity, sets - are still counted from EODs as normal.)
+const countsMoney = x => x && x.type !== 'eod' && x.type !== 'mgreod';
 // Post-call corrections work the same way: collapse to the LATEST submission per rep+day+lead+callType
 // (append-only backend, so a re-submitted call supersedes the earlier one instead of duplicating).
 function collapsePostcall(list){
@@ -2442,7 +2447,7 @@ function buildFilterOptions(){
 function agg(recs){
   const s={contractValue:0,cashCollected:0,depositCollected:0,closedDeals:0,connectedMeetings:0,noShows:0,callCapacity:0};
   recs.forEach(x=>{
-    s.contractValue+=x.contractValue||0; s.cashCollected+=x.cashCollected||0; s.depositCollected+=x.depositCollected||0; s.closedDeals+=x.closedDeals||0;
+    if(countsMoney(x)){ s.contractValue+=x.contractValue||0; s.cashCollected+=x.cashCollected||0; s.depositCollected+=x.depositCollected||0; s.closedDeals+=x.closedDeals||0; } // deals only, not EODs (Option A - avoids double-count)
     // meetings/connects/no-shows/capacity are closer-reported only - never count setter activity (would push capacity used past 100%)
     if(x.role!=='Setter'){ s.connectedMeetings+=x.connectedMeetings||0; s.noShows+=x.noShows||0; s.callCapacity+=x.callCapacity||0; }
   });
@@ -2465,7 +2470,7 @@ function renderBreakdownTables(recs, opts){
       if(x.date) o.days.add(x.date.slice(0,10));
       o.hours+=x.hoursDialing||0; o.newOut+=x.newOutreach||0; o.fuOut+=x.followUpOutreach||0; o.offered+=x.callsOffered||0; o.set+=x.callsSet||0; o.connCalls+=x.connectedCalls||0; o.convos4+=x.convos4min||0;
       o.connected+=x.connectedMeetings||0; o.noShows+=x.noShows||0; o.capacity+=x.callCapacity||0;
-      if(x.role!=='Setter'){ o.cash+=x.cashCollected||0; o.deals+=x.closedDeals||0; o.contract+=x.contractValue||0; }
+      if(x.role!=='Setter' && countsMoney(x)){ o.cash+=x.cashCollected||0; o.deals+=x.closedDeals||0; o.contract+=x.contractValue||0; } // cash/deals from DEALS only, not EODs (Option A)
     }
     if(x.type==='deal'){
       if(rep){ const o=b(closers,rep); if(x.date)o.days.add(x.date.slice(0,10)); o.cash+=x.cashCollected||0; o.deals+=x.closedDeals||0; o.contract+=x.contractValue||0; }
@@ -2631,7 +2636,7 @@ function renderLeaderboard(recs){
   function bucket(name,role){ const k=name+'|'+role; if(!byRep[k]) byRep[k]={rep:name,role:role,cash:0,deals:0,connected:0,set:0}; return byRep[k]; }
   recs.forEach(x=>{
     const rep=(x.rep||'').trim(), setter=(x.setter||'').trim();
-    if(rep){ const b=bucket(rep,x.role||'Closer'); b.cash+=x.cashCollected||0; b.deals+=x.closedDeals||0; if(x.role!=='Setter') b.connected+=x.connectedMeetings||0; b.set+=x.callsSet||0; }
+    if(rep){ const b=bucket(rep,x.role||'Closer'); if(countsMoney(x)){ b.cash+=x.cashCollected||0; b.deals+=x.closedDeals||0; } if(x.role!=='Setter') b.connected+=x.connectedMeetings||0; b.set+=x.callsSet||0; }
     if(x.type==='deal'&&setter){ const s=bucket(setter,'Setter'); s.cash+=x.cashCollected||0; s.deals+=x.closedDeals||0; }
   });
   const all=Object.values(byRep);
@@ -3931,7 +3936,7 @@ function renderReps(){
       if(x.date) o.days.add(x.date.slice(0,10));
       o.hours+=x.hoursDialing||0; o.newOut+=x.newOutreach||0; o.fuOut+=x.followUpOutreach||0; o.offered+=x.callsOffered||0; o.set+=x.callsSet||0; o.connCalls+=x.connectedCalls||0; o.convos4+=x.convos4min||0;
       o.connected+=x.connectedMeetings||0; o.noShows+=x.noShows||0; o.capacity+=x.callCapacity||0;
-      if(x.role!=='Setter'){ o.cash+=x.cashCollected||0; o.deals+=x.closedDeals||0; o.contract+=x.contractValue||0; }
+      if(x.role!=='Setter' && countsMoney(x)){ o.cash+=x.cashCollected||0; o.deals+=x.closedDeals||0; o.contract+=x.contractValue||0; } // cash/deals from DEALS only, not EODs (Option A)
     }
     // closed deals: credit the closer (rep) and attribute cash to the setter who set it
     if(x.type==='deal'){
@@ -4110,7 +4115,11 @@ function userRowHTML(u, isAdmin){
   const teamCell = u.master ? '<span class="muted">-</span>'
     : `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span class="muted" style="font-size:12.5px">${acctCount}</span><button class="btn sm ghost" onclick="toggleUserDetail('${did}',this)">Details</button></div><div id="${did}" hidden style="margin-top:8px">${detailInner}</div>`;
   const actions = u.master ? '<span class="tag">master, set in Settings</span>'
-    : (canManage ? `<button class="btn sm ghost" onclick="resetPassword('${esc(u.username)}')">Reset password</button> <button class="btn sm ghost" style="color:var(--warn);border-color:var(--warn)" onclick="delUser('${esc(u.username)}')">Remove</button>` : '');
+    : (canManage
+        ? (u.archived
+            ? `<button class="btn sm ghost" style="color:var(--good);border-color:var(--good)" onclick="archiveUser('${esc(u.username)}',false)">Un-archive</button> <button class="btn sm ghost" style="color:var(--warn);border-color:var(--warn)" onclick="delUser('${esc(u.username)}')">Remove</button>`
+            : `<button class="btn sm ghost" onclick="resetPassword('${esc(u.username)}')">Reset password</button> <button class="btn sm ghost" onclick="archiveUser('${esc(u.username)}',true)" title="Deactivate their login + hide them, but keep all their data. Reversible.">Archive</button> <button class="btn sm ghost" style="color:var(--warn);border-color:var(--warn)" onclick="delUser('${esc(u.username)}')">Remove</button>`)
+        : '');
   const myRoles = u.master?['admin']:rolesFor(u.username);
   const chips = (myRoles.length?myRoles:['closer']).map(r=>`<span class="pill">${esc(roleLabel(r))}</span>`).join(' ');
   const founderNote = (!u.master && myRoles.includes('founder') && !isTsaStaff(u.username)) ? '<div class="muted" style="font-size:11px;margin-top:3px">Dashboard only while managed by TSA</div>' : '';
@@ -4134,7 +4143,7 @@ function repOnboardFor(username){ return repOnboardMap()[nrmName(username)]||nul
 function onboardDone(ob){ return !!(ob&&ob.contract&&ob.slack&&ob.ghl&&ob.training); }
 function renderRepOnboarding(){
   const panel=document.getElementById('usersOnboardPanel'), box=document.getElementById('usersOnboard'); if(!panel||!box) return;
-  const reps=(USERS_CACHE||[]).filter(u=>['setter','closer'].includes(u.role));
+  const reps=(USERS_CACHE||[]).filter(u=>['setter','closer'].includes(u.role) && !u.archived);
   const recentHire=u=>{ const m=repMetaFor(u.username); if(!m||!m.startDate||m.endDate) return false; const days=(Date.now()-Date.parse(m.startDate))/86400000; return days>=0&&days<=21; };
   const list=reps.filter(u=>{ const m=repMetaFor(u.username); if(m&&m.endDate) return false; const ob=repOnboardFor(u.username); if(onboardDone(ob)) return false; return !!ob || recentHire(u); })
     .sort((a,b)=>String(a.name||a.username).localeCompare(String(b.name||b.username)));
@@ -4166,7 +4175,7 @@ async function toggleOnboardStep(username, step, on){
 function renderUsersStats(){
   const el=document.getElementById('usersStats'); if(!el) return;
   if(!(SESSION&&(SESSION.role==='admin'||SESSION.role==='director'))){ el.innerHTML=''; return; } // managers see only their reps, not org-wide counts
-  const real=(USERS_LIST||[]).filter(u=>!u.master);
+  const real=(USERS_LIST||[]).filter(u=>!u.master && !u.archived); // counts reflect active people; archived are excluded
   const by=r=>real.filter(u=>u.role===r).length;
   const internal=(typeof currentPlan==='function'&&currentPlan()==='internal');
   const seats=(typeof wsSeatCount==='function'?wsSeatCount():real.length), lim=(typeof planSeatLimit==='function'?planSeatLimit():0);
@@ -4215,7 +4224,7 @@ function renderUsersGrouped(){
   let any=false;
   const html=GROUPS.map(([gid,label,desc])=>{
     if(showG && showG!==gid) return '';
-    let members=(USERS_LIST||[]).filter(u=>userGroup(u)===gid).filter(canViewUser);
+    let members=(USERS_LIST||[]).filter(u=>userGroup(u)===gid).filter(canViewUser).filter(u=>!u.archived);
     if(team) members=members.filter(u=>userOnTeam(u,team));
     if(qn) members=members.filter(u=>((u.name||'')+' '+(u.username||'')).toLowerCase().includes(qn));
     if(!members.length) return '';
@@ -4224,13 +4233,26 @@ function renderUsersGrouped(){
     return `<div class="ugroup${collapsed?' collapsed':''}" id="ug_${gid}" style="margin-bottom:20px"><h4 class="csec" style="margin:0 0 3px;display:flex;align-items:center;gap:8px" onclick="toggleUserGroup('${gid}')"><span class="chev">&#9662;</span>${label} <span class="tag">${members.length}</span></h4><p class="muted" style="margin:0 0 8px;font-size:12px">${esc(desc)}</p>`
       +head+members.map(u=>userRowHTML(u,isAdmin)).join('')+'</tbody></table></div></div>';
   }).join('');
-  cont.innerHTML=any?html:'<p class="muted" style="padding:14px">No people match those filters.</p>';
+  // Archived people: their own collapsed section at the bottom (only in the unfiltered "Everyone" view)
+  let archHtml='';
+  if(!showG){
+    let archived=(USERS_LIST||[]).filter(u=>u.archived).filter(canViewUser);
+    if(team) archived=archived.filter(u=>userOnTeam(u,team));
+    if(qn) archived=archived.filter(u=>((u.name||'')+' '+(u.username||'')).toLowerCase().includes(qn));
+    if(archived.length){
+      any=true;
+      const gid='archived', collapsed=!USER_GROUP_OPEN[gid] && !qn && !team;
+      archHtml=`<div class="ugroup${collapsed?' collapsed':''}" id="ug_${gid}" style="margin-bottom:20px"><h4 class="csec" style="margin:0 0 3px;display:flex;align-items:center;gap:8px" onclick="toggleUserGroup('${gid}')"><span class="chev">&#9662;</span>Archived <span class="tag">${archived.length}</span></h4><p class="muted" style="margin:0 0 8px;font-size:12px">Deactivated logins - hidden from the active roster + pickers, but all their data is kept. Un-archive to restore.</p>`
+        +head+archived.map(u=>userRowHTML(u,isAdmin)).join('')+'</tbody></table></div></div>';
+    }
+  }
+  cont.innerHTML=any?(html+archHtml):'<p class="muted" style="padding:14px">No people match those filters.</p>';
 }
 // at-a-glance callout: who has no account/role assigned yet
 function renderUnassigned(list){
   const box=document.getElementById('usersUnassigned'); if(!box) return;
   const un=(list||[]).filter(canViewUser).filter(u=>{
-    if(u.master||u.role==='admin') return false;
+    if(u.master||u.role==='admin'||u.archived) return false;
     if(['manager','webinarteam'].includes(u.role)) return managedClientsForUser(u).length===0; // managers need at least one Responsibility
     return teamsFor(u.username).length===0; // closers/setters/founders need at least one account
   });
@@ -4477,6 +4499,18 @@ async function importUsers(){
   const res=await authApi({action:'importUsers', token:SESSION.token});
   if(res && res.ok){ toast('Imported '+res.imported+' of '+res.total+' accounts'); renderUsers(); }
   else toast('Import failed'+(res&&res.error?': '+res.error:''),true);
+}
+// soft-deactivate (archive) or restore (un-archive) a user: blocks their login + hides them, but keeps all their data. Reversible.
+async function archiveUser(username, archive){
+  if(!canManageUser(username)){ toast('You can only archive Sales Managers and below',true); return; }
+  const act=archive?'archiveUser':'unarchiveUser';
+  if(!confirm(archive
+      ? 'Archive '+username+'?\n\nThey will be signed out and can no longer log in, and drop off the active roster + all pickers. All their reports, deals and history stay. You can un-archive them anytime.'
+      : 'Un-archive '+username+'?\n\nRestores their login and puts them back on the active roster.')) return;
+  if(SESSION && SESSION.token){ const res=await authApi({action:act, token:SESSION.token, username}); if(!res||!res.ok){ toast((res&&res.error)||'Could not update',true); return; } }
+  else if(CFG.endpoint){ const res=await api({action:act, ...authFields(), username}); if(!res||!res.ok){ toast('Could not update',true); return; } }
+  else { LOCAL_USERS=LOCAL_USERS.map(x=>x.username===username?{...x,archived:archive}:x); save(LS.users,LOCAL_USERS); }
+  toast(archive?'Archived - login deactivated':'Un-archived - login restored'); renderUsers();
 }
 async function delUser(username){
   if(!canManageUser(username)){ toast('You can only remove Sales Managers and below',true); return; }
