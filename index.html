@@ -438,9 +438,16 @@
       <div class="field"><label>Setter (who set the call) *</label><select name="setter" data-list="setters" required></select><span class="fieldhelp">The setter who booked this appointment - they get setter credit + commission.</span></div>
       <div class="field"><label>Product sold</label><select name="product" data-list="products"></select><span class="fieldhelp">Filters to the selected client's offers (set on Client Overview).</span></div>
       <div class="field"><label>Call type</label><select name="callType"><option value="">-</option><option>First-call close</option><option>Second-call close</option><option>Follow-up close</option></select></div>
-      <div class="field"><label>Contract value ($) *</label><input type="number" name="contractValue" min="0" step="0.01" required></div>
-      <div class="field"><label>Cash collected ($) *</label><input type="number" name="cashCollected" min="0" step="0.01" required></div>
+      <div class="field"><label>Contract value ($) *</label><input type="number" name="contractValue" min="0" step="0.01" required oninput="schedRemainId('dealSched')"></div>
+      <div class="field"><label>Cash collected ($) *</label><input type="number" name="cashCollected" min="0" step="0.01" required oninput="schedRemainId('dealSched')"><span class="fieldhelp">What they paid <b>today</b>. The rest goes below as expected payments.</span></div>
       <div class="field"><label>Deposit collected ($)</label><input type="number" name="depositCollected" min="0" step="0.01"></div>
+      <div class="field full">
+        <label>Expected payments (payment plan) <span style="font-weight:400;color:var(--muted)">- optional</span></label>
+        <span class="fieldhelp"><b>One-time / paid-in-full deal? Leave this blank</b> - do not type 0. Only add a row if the balance is coming later (a wire or installments), so each is tracked and the closer just confirms it in <b>My Deals</b> when it lands.</span>
+        <div id="dealSched" class="schedList" style="margin-top:8px"></div>
+        <button type="button" class="btn ghost sm" onclick="addSchedRow('dealSched')">&#43; Add expected payment</button>
+        <div id="dealSchedRemain" class="fieldhelp" style="margin-top:8px"></div>
+      </div>
       <div class="field full"><label>Fathom recording link</label><input type="url" name="fathom" placeholder="https://fathom.video/share/..."><span class="fieldhelp">Go to <a href="https://www.fathom.ai/" target="_blank" rel="noopener" class="linklike">fathom.ai</a> -> open the call -> three dots -> Copy share link.</span></div>
       <div class="field full"><label>Notes</label><input type="text" name="notes" placeholder="anything the invoice or team should know"></div>
       <div class="full row-actions"><button class="btn gold" type="submit">Submit closed deal</button></div>
@@ -472,9 +479,16 @@
       <div class="field followOnly" hidden><label>Follow-up time</label><input type="time" name="followUpTime"><span class="fieldhelp">Start time of the booked follow-up.</span></div>
       <div class="field dqOnly" hidden><label>DQ reason</label><select name="dqReason"><option value="">-</option><option>Financial DQ</option><option>Personally unsuitable</option><option>Not interested</option><option>Other (see notes)</option></select><span class="fieldhelp">Why they did not qualify. Kept general across all offers, add detail in notes.</span></div>
       <div class="field wonOnly" hidden><label>Product sold</label><select name="product"></select><span class="fieldhelp">This client's offer that was sold.</span></div>
-      <div class="field wonOnly" hidden><label>Contract value ($)</label><input type="number" name="contractValue" min="0" step="0.01" placeholder="0.00"></div>
-      <div class="field wonOnly" hidden><label>Cash collected ($)</label><input type="number" name="cashCollected" min="0" step="0.01" placeholder="0.00"></div>
+      <div class="field wonOnly" hidden><label>Contract value ($)</label><input type="number" name="contractValue" min="0" step="0.01" placeholder="0.00" oninput="schedRemainId('pcSched')"></div>
+      <div class="field wonOnly" hidden><label>Cash collected ($)</label><input type="number" name="cashCollected" min="0" step="0.01" placeholder="0.00" oninput="schedRemainId('pcSched')"><span class="fieldhelp">What they paid <b>today</b>. The rest goes below as expected payments.</span></div>
       <div class="field wonOnly" hidden><label>Deposit collected ($)</label><input type="number" name="depositCollected" min="0" step="0.01" placeholder="0.00"></div>
+      <div class="field full wonOnly" hidden>
+        <label>Expected payments (payment plan) <span style="font-weight:400;color:var(--muted)">- optional</span></label>
+        <span class="fieldhelp"><b>One-time / paid-in-full deal? Leave this blank</b> - do not type 0. Only add a row if the balance is coming later (a wire or installments), so each is tracked and the closer just confirms it in <b>My Deals</b> when it lands.</span>
+        <div id="pcSched" class="schedList" style="margin-top:8px"></div>
+        <button type="button" class="btn ghost sm" onclick="addSchedRow('pcSched')">&#43; Add expected payment</button>
+        <div id="pcSchedRemain" class="fieldhelp" style="margin-top:8px"></div>
+      </div>
       <div class="field full closerPc"><label>Fathom recording link</label><input type="url" name="fathom" placeholder="https://fathom.video/share/..."><span class="fieldhelp">Go to <a href="https://www.fathom.ai/" target="_blank" rel="noopener" class="linklike">fathom.ai</a> -> open the call -> three dots -> Copy share link.</span></div>
       <div class="field full"><label>Notes</label><input type="text" name="notes" placeholder="what tripped it up, next step, anything your manager should know"></div>
       <div class="full row-actions"><button class="btn gold" type="submit">Submit post-call</button></div>
@@ -1867,7 +1881,7 @@ async function submitDeal(e){ e.preventDefault(); const btn=e.target.querySelect
   try{ const o=num(formObj(e.target)); o.type='deal'; o.role='Closer'; o.closedDeals=1; if(repMode()) o.rep=SESSION.name;
     const csel=e.target.querySelector('[name=client]'); if(csel && !(o.client||'').trim()) o.client=csel.value; // locked/disabled selects drop out of FormData
     if(!(o.client||'').trim()){ toast('Choose a client / account first.',true); return; }
-    await addRecord(o); e.target.reset(); presetDates(); if(repMode()) applyIdentity(); toast('Closed deal logged. Nice.'); if(!repMode()) renderDash(); ok=true; }
+    await addRecord(o); await createScheduledPayments(o,'dealSched'); e.target.reset(); clearSchedule('dealSched'); presetDates(); if(repMode()) applyIdentity(); toast('Closed deal logged. Nice.'); if(!repMode()) renderDash(); ok=true; }
   catch(err){ toast('Submit failed - try again',true); }
   finally{ if(ok) btnDone(btn,'Deal logged'); else btnBusy(btn,false); } }
 async function submitEod(e){ e.preventDefault(); const btn=e.target.querySelector('[type=submit]'); if(btn&&btn.disabled) return; btnBusy(btn,true); let ok=false;
@@ -1984,8 +1998,9 @@ async function submitPostCall(e){ e.preventDefault(); const btn=e.target.querySe
     if(won){ // a win ALSO logs a closed deal so it flows into cash / leaderboards / invoicing
       const d=num({type:'deal',role:'Closer',date:o.date,client:o.client,lead:o.lead,leadEmail:o.leadEmail||'',rep:o.rep,setter:o.setter||'',source:o.source||'',product:o.product||'',callType:o.callType||'',contractValue:o.contractValue||0,cashCollected:o.cashCollected||0,depositCollected:o.depositCollected||0,fathom:o.fathom||'',notes:o.notes||'',closedDeals:1});
       await addRecord(d);
+      await createScheduledPayments(d,'pcSched'); // expected wire/installments -> Pending payments on the deal
     }
-    e.target.reset(); presetDates(); if(repMode()) applyIdentity(); postcallOutcomeChanged();
+    e.target.reset(); clearSchedule('pcSched'); presetDates(); if(repMode()) applyIdentity(); postcallOutcomeChanged();
     toast(won?'Won! Logged as a closed deal.':'Post-call logged.'); if(!repMode()) renderDash(); ok=true; }
   catch(err){ toast('Submit failed - try again',true); }
   finally{ if(ok) btnDone(btn, won?'Deal logged':'Post-call logged'); else btnBusy(btn,false); } }
@@ -2721,8 +2736,30 @@ async function resendDealSlack(id){
   if(btn){ btn.disabled=false; btn.innerHTML='&#8599; Slack'; }
 }
 
+/* ---- expected payments (payment plan) captured at close -> auto-create Pending payments on the new deal ---- */
+function schedRowHTML(){ return `<div class="schedRow" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:6px">
+  <input type="number" class="schedAmt" min="0" step="0.01" placeholder="Amount $" style="width:130px" oninput="schedRemainFor(this)">
+  <input type="date" class="schedDate" style="width:160px" title="Expected arrival date">
+  <select class="schedMethod" style="width:120px"><option>Wire</option><option>Card</option><option>ACH</option><option>Check</option><option>Other</option></select>
+  <button type="button" class="btn ghost sm" title="Remove this row" onclick="var w=this.closest('.schedList');this.closest('.schedRow').remove();if(w)schedRemainId(w.id)">&times;</button>
+</div>`; }
+function addSchedRow(id){ const c=document.getElementById(id); if(c) c.insertAdjacentHTML('beforeend', schedRowHTML()); }
+function readSchedule(id){ const c=document.getElementById(id); if(!c) return []; return [...c.querySelectorAll('.schedRow')].map(r=>({amount:parseFloat(r.querySelector('.schedAmt').value)||0, date:r.querySelector('.schedDate').value||'', method:r.querySelector('.schedMethod').value||'Wire'})).filter(x=>x.amount>0); }
+function clearSchedule(id){ const c=document.getElementById(id); if(c) c.innerHTML=''; const rem=document.getElementById(id+'Remain'); if(rem) rem.textContent=''; }
+function schedRemainFor(inp){ const c=inp.closest('.schedList'); if(c) schedRemainId(c.id); }
+function schedRemainId(id){
+  const rem=document.getElementById(id+'Remain'); if(!rem) return;
+  const form = id==='pcSched' ? '#postcallForm' : '#dealForm';
+  const g=sel=>{ const el=document.querySelector(form+' [name='+sel+']'); return el?(parseFloat(el.value)||0):0; };
+  const contract=g('contractValue'), cash=g('cashCollected'), sched=readSchedule(id).reduce((s,x)=>s+x.amount,0);
+  if(!contract && !sched){ rem.textContent=''; return; }
+  const gap=contract-cash-sched;
+  rem.innerHTML=`Cash now ${money(cash)} + scheduled ${money(sched)} = <b>${money(cash+sched)}</b> of ${money(contract)} contract · `+(Math.abs(gap)<0.005?'<span style="color:#7bd487">balanced</span>':(gap>0?`<span style="color:var(--gold)">${money(gap)} still unscheduled</span>`:`<span style="color:var(--warn)">${money(-gap)} over contract</span>`));
+}
+async function createScheduledPayments(deal, id){ const rows=readSchedule(id); for(const r of rows){ await addRecord({type:'payment', pid:uid(), dealId:deal.id, client:deal.client||'', rep:deal.rep||'', setter:deal.setter||'', lead:deal.lead||'', product:deal.product||'', amount:r.amount, method:r.method||'Wire', status:'pending', date:r.date||'', notes:'scheduled at close'}); } }
+
 /* ---------------- deal payments (append payments to a closed deal) ---------------- */
-let PAY_DEAL=null;
+let PAY_DEAL=null, PAY_CONFIRMING=null;
 function openPayments(dealId){
   const d=(RECORDS||[]).filter(x=>x.type==='deal'&&String(x.id||'')===String(dealId)).sort((a,b)=>(b.submittedAt||'').localeCompare(a.submittedAt||''))[0];
   if(!d){ toast('Could not find that deal',true); return; }
@@ -2742,7 +2779,14 @@ function renderPaymentsModal(){
   let rows=`<tr><td>${esc(usDate(d.date))}</td><td class="num">${money(d.cashCollected)}</td><td class="muted">at close</td><td>${pill('confirmed')}</td><td></td></tr>`;
   pays.forEach(p=>{
     const pid=esc(p.pid||p.id);
-    const act=canMng?((p.status==='pending'?`<button class="btn sm gold" onclick="confirmPayment('${pid}')">Confirm</button>`:`<button class="btn sm ghost" onclick="revertPayment('${pid}')" title="Back to pending">Undo</button>`)+` <button class="btn sm ghost" onclick="removePayment('${pid}')" title="Remove this payment">&times;</button>`):'';
+    let act='';
+    if(canMng){
+      if(String(PAY_CONFIRMING||'')===String(p.pid||p.id)){
+        act=`<span style="white-space:nowrap">Date cleared <input type="date" id="payConfirmDate" value="${esc(p.date||todayCentral())}" style="width:150px;display:inline-block"> <button class="btn sm gold" onclick="doConfirm('${pid}')">Confirm</button> <button class="btn sm ghost" onclick="cancelConfirm()">Cancel</button></span>`;
+      } else {
+        act=(p.status==='pending'?`<button class="btn sm gold" onclick="confirmPayment('${pid}')">Confirm</button>`:`<button class="btn sm ghost" onclick="revertPayment('${pid}')" title="Back to pending">Undo</button>`)+` <button class="btn sm ghost" onclick="removePayment('${pid}')" title="Remove this payment">&times;</button>`;
+      }
+    }
     rows+=`<tr><td>${esc(usDate(p.date))}</td><td class="num">${money(p.amount)}</td><td>${esc(p.method||'')}${p.notes?`<div class="muted" style="font-size:11px">${esc(p.notes)}</div>`:''}</td><td>${pill(p.status)}</td><td>${act}</td></tr>`;
   });
   const table=`<table style="margin-bottom:14px"><thead><tr><th>Date</th><th class="num">Amount</th><th>Method</th><th>Status</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
@@ -2775,14 +2819,16 @@ async function addPayment(){
   toast(rec.status==='confirmed'?'Payment added':'Pending payment logged');
   renderPaymentsModal(); try{ const md=document.getElementById('tab-mydeals'); if(md&&!md.hidden) renderMyDeals(); }catch(_){}; if(!repMode()) renderDash();
 }
-async function setPaymentStatus(pid,status,del){
+async function setPaymentStatus(pid,status,del,dateOverride){
   const p=paymentsCollapsed().find(x=>String(x.pid||x.id)===String(pid)); if(!p) return;
   const rec={...p}; delete rec.id; delete rec.submittedAt; delete rec.submittedET; rec.pid=p.pid||p.id;
-  if(del) rec.deleted=true; else { rec.status=status; if(status==='confirmed'){ rec.confirmedBy=SESSION&&SESSION.name; rec.confirmedAt=new Date().toISOString(); } }
+  if(del) rec.deleted=true; else { rec.status=status; if(status==='confirmed'){ if(dateOverride) rec.date=dateOverride; rec.confirmedBy=SESSION&&SESSION.name; rec.confirmedAt=new Date().toISOString(); } }
   await addRecord(rec);
   renderPaymentsModal(); try{ const md=document.getElementById('tab-mydeals'); if(md&&!md.hidden) renderMyDeals(); }catch(_){}; if(!repMode()) renderDash();
 }
-function confirmPayment(pid){ setPaymentStatus(pid,'confirmed',false); toast('Payment confirmed'); }
+function confirmPayment(pid){ PAY_CONFIRMING=pid; renderPaymentsModal(); } // reveal the "date cleared" picker before confirming
+function doConfirm(pid){ const el=document.getElementById('payConfirmDate'); const dt=(el&&el.value)||todayCentral(); PAY_CONFIRMING=null; setPaymentStatus(pid,'confirmed',false,dt); toast('Payment confirmed'); }
+function cancelConfirm(){ PAY_CONFIRMING=null; renderPaymentsModal(); }
 function revertPayment(pid){ setPaymentStatus(pid,'pending',false); }
 function removePayment(pid){ if(!confirm('Remove this payment? This cannot be undone.')) return; setPaymentStatus(pid,null,true); toast('Payment removed'); }
 // My Deals & Payments tab: a closer's own closed deals as cards (oversight roles see all), each opening the payments ledger.
