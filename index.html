@@ -1585,7 +1585,7 @@ function updateWsBrand(){ const el=document.getElementById('storeTag'); if(el) e
 async function addRecord(rec){
   // "View as" is a read-only preview: never let a previewed action write real data (it would save under YOUR account)
   if(typeof VIEW_AS_REAL!=='undefined' && VIEW_AS_REAL){ toast('Preview mode - changes are not saved. Exit preview to make real changes.',true); return; }
-  rec.id=uid(); rec.submittedAt=new Date().toISOString(); rec.submittedET=nowET();
+  rec.id=rec.id||uid(); rec.submittedAt=new Date().toISOString(); rec.submittedET=nowET(); // respect a pre-minted id (e.g. a deal whose scheduled payments must reference it before it's written)
   if(rec.ws==null) rec.ws=currentWs(); // stamp the tenant so data is walled off by workspace
   RECORDS.push(rec); save(LS.data,RECORDS);
   // primary: write through the server so it stamps the workspace authoritatively (write-side isolation)
@@ -1941,7 +1941,7 @@ async function submitDeal(e){ e.preventDefault(); const btn=e.target.querySelect
   try{ const o=num(formObj(e.target)); o.type='deal'; o.role='Closer'; o.closedDeals=1; if(repMode()) o.rep=SESSION.name;
     const csel=e.target.querySelector('[name=client]'); if(csel && !(o.client||'').trim()) o.client=csel.value; // locked/disabled selects drop out of FormData
     if(!(o.client||'').trim()){ toast('Choose a client / account first.',true); return; }
-    await addRecord(o); await createScheduledPayments(o,'dealSched'); e.target.reset(); clearSchedule('dealSched'); presetDates(); if(repMode()) applyIdentity(); toast('Closed deal logged. Nice.'); if(!repMode()) renderDash(); ok=true; }
+    o.id=uid(); await createScheduledPayments(o,'dealSched'); await addRecord(o); e.target.reset(); clearSchedule('dealSched'); presetDates(); if(repMode()) applyIdentity(); toast('Closed deal logged. Nice.'); if(!repMode()) renderDash(); ok=true; }
   catch(err){ toast('Submit failed - try again',true); }
   finally{ if(ok) btnDone(btn,'Deal logged'); else btnBusy(btn,false); } }
 async function submitEod(e){ e.preventDefault(); const btn=e.target.querySelector('[type=submit]'); if(btn&&btn.disabled) return; btnBusy(btn,true); let ok=false;
@@ -2058,8 +2058,9 @@ async function submitPostCall(e){ e.preventDefault(); const btn=e.target.querySe
     await addRecord(o); // every call logs a post-call record
     if(won){ // a win ALSO logs a closed deal so it flows into cash / leaderboards / invoicing
       const d=num({type:'deal',role:'Closer',date:o.date,client:o.client,lead:o.lead,leadEmail:o.leadEmail||'',rep:o.rep,setter:o.setter||'',source:o.source||'',product:o.product||'',callType:o.callType||'',contractValue:o.contractValue||0,cashCollected:o.cashCollected||0,depositCollected:o.depositCollected||0,fathom:o.fathom||'',notes:o.notes||'',closedDeals:1});
-      await addRecord(d);
-      await createScheduledPayments(d,'pcSched'); // expected wire/installments -> Pending payments on the deal
+      d.id=uid(); // pre-mint so the expected payments reference it AND are written before the deal's CRM auto-push runs
+      await createScheduledPayments(d,'pcSched'); // expected wire/installments -> Pending payments FIRST
+      await addRecord(d); // then the deal - its CRM auto-push now sees the full payment plan
     }
     e.target.reset(); clearSchedule('pcSched'); presetDates(); if(repMode()) applyIdentity(); postcallOutcomeChanged();
     toast(won?'Won! Logged as a closed deal.':'Post-call logged.'); if(!repMode()) renderDash(); ok=true; }
