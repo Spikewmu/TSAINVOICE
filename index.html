@@ -421,7 +421,7 @@
   <!-- ===== INVOICING (admin/director) ===== -->
   <section id="tab-invoicing" hidden>
     <h2 class="section">Invoicing</h2>
-    <p class="hint">Generate each client's <b>founder invoice</b> (they pay TSA weekly), auto-built from closed deals + collected payments. Billing cycle runs <b>Friday to Thursday</b> and invoices go out Friday. Admin and director only. Set each client's billing rate and TSA's wire/ACH details under <b>Billing settings</b>.</p>
+    <p class="hint">Generate each client's <b>founder invoice</b> (they pay TSA weekly), auto-built from closed deals + collected payments. Billing cycle runs <b>Friday to Thursday</b> and invoices go out Friday. <b>Super Admin only.</b> Set each client's billing rate and TSA's wire/ACH details under <b>Billing settings</b>.</p>
     <div class="seg" id="invSeg" style="margin-bottom:16px">
       <button class="on" data-inv="gen" onclick="invTab('gen')">Founder invoices</button>
       <button data-inv="settings" onclick="invTab('settings')">Billing settings</button>
@@ -445,7 +445,7 @@
     <div id="invSettings" hidden>
       <div class="panel" style="padding:18px;max-width:760px">
         <h3 style="margin:0 0 4px">Client billing rate</h3>
-        <p class="fieldhelp" style="margin:0 0 12px">What each client pays TSA. <b>Flat</b> = one % of their cash collected. <b>Rep comp + override</b> = closer % + setter % + TSA override %, summed. Managers never see this tab.</p>
+        <p class="fieldhelp" style="margin:0 0 12px">What each client pays TSA. <b>Flat</b> = one % of their cash collected. <b>Rep comp + override</b> = closer % + setter % + TSA override %, summed. Visible to Super Admin only.</p>
         <div class="field"><label>Client</label><select id="invCfgClient" data-list="clients" onchange="invLoadCfg()"></select></div>
         <div class="field"><label>Billing mode</label><select id="invMode" onchange="invModeChanged()"><option value="flat">Flat rate (% of cash collected)</option><option value="repcomp">Rep comp + TSA override</option></select></div>
         <div class="field invFlat"><label>Flat rate (%)</label><input type="number" id="invFlatRate" step="0.1" placeholder="e.g. 12.5"></div>
@@ -1724,7 +1724,7 @@ function startApp(){
 function baseAllow(role){
   return ({
     admin:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','postcall','sod','eod','training','mgreod','webinar','calllog','adminreport','recruiting','messages','invoicing','data','users','integrations','settings'],
-    director:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','recruiting','messages','invoicing','adminreport'],
+    director:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','recruiting','messages','adminreport'],
     manager:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','recruiting','messages'],
     founder:['dash'],
     recruiter:['dash','recruiting','messages','timeoff'],
@@ -2925,7 +2925,7 @@ function renderMyDeals(){
  *   type 'billinginfo'    single workspace record -> TSA's wire/ACH details shown on every invoice
  * The founder invoice is generated per client per billing period from closed deals + confirmed payments.
  * Amount Due is HYBRID: flat rate = one % of cash collected; rep-comp = (closer+setter+override)% of cash collected. */
-function invAllowed(){ return SESSION && (SESSION.role==='admin'||SESSION.role==='director'); }
+function invAllowed(){ return !!(SESSION && SESSION.role==='admin'); } // Super Admin only
 function clientBillingCfg(client){
   const k=String(client||'').trim().toLowerCase(); if(!k) return null;
   let best=null; RECORDS.forEach(x=>{ if(x.type==='clientbilling' && String(x.client||'').trim().toLowerCase()===k){ if(!best||(x.submittedAt||'')>(best.submittedAt||'')) best=x; } });
@@ -2970,7 +2970,7 @@ function invLoadCfg(){
   invModeChanged();
 }
 async function saveClientBilling(){
-  if(!invAllowed()){ toast('Admins/directors only',true); return; }
+  if(!invAllowed()){ toast('Super Admin only',true); return; }
   const client=document.getElementById('invCfgClient').value;
   if(!client){ toast('Pick a client first',true); return; }
   const num=id=>{ const v=parseFloat(document.getElementById(id).value); return isNaN(v)?null:v; };
@@ -2979,7 +2979,7 @@ async function saveClientBilling(){
   catch(e){ toast('Save failed: '+(e&&e.message||e),true); }
 }
 async function saveBillingInfo(){
-  if(!invAllowed()){ toast('Admins/directors only',true); return; }
+  if(!invAllowed()){ toast('Super Admin only',true); return; }
   const g=id=>document.getElementById(id).value.trim();
   const rec={type:'billinginfo',name:g('biName'),email:g('biEmail'),bank:g('biBank'),acct:g('biAcct'),routing:g('biRouting'),swift:g('biSwift'),notes:g('biNotes'),by:(SESSION&&SESSION.name)||''};
   try{ await addRecord(rec); toast('Payment details saved'); invPreview(); }
