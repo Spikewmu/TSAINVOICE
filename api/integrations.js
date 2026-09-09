@@ -82,6 +82,8 @@ async function ghlPush(cfg, rec) {
     const body = 'Sales HQ ' + (rec.type === 'deal' ? 'closed deal' : 'post-call') + ' TEST (' + new Date().toISOString().slice(0, 10) + ')\n' + lines.join('\n');
     const noteR = await fetch(base + '/contacts/' + id + '/notes', { method: 'POST', headers: H, body: JSON.stringify({ body }) });
     if (rec.source) await fetch(base + '/contacts/' + id, { method: 'PUT', headers: H, body: JSON.stringify({ source: rec.source }) }).catch(() => { });
+    const tsaTag = rec.type === 'deal' ? 'tsa - closed deal' : 'tsa - post-call'; // append a TSA outcome tag (never replaces existing tags)
+    await fetch(base + '/contacts/' + id + '/tags/', { method: 'POST', headers: H, body: JSON.stringify({ tags: [tsaTag] }) }).catch(() => { });
     return { ok: true, contactId: id, note: noteR.ok };
   } catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
 }

@@ -154,6 +154,8 @@ async function ghlPush(cfg, rec, contactIdOverride) {
     const body = 'Sales HQ ' + (rec.type === 'deal' ? 'closed deal' : 'post-call') + ' (' + new Date().toISOString().slice(0, 10) + ')\n' + lines.join('\n');
     await fetch(base + '/contacts/' + id + '/notes', { method: 'POST', headers: H, body: JSON.stringify({ body }) }).catch(() => { });
     if (rec.source) await fetch(base + '/contacts/' + id, { method: 'PUT', headers: H, body: JSON.stringify({ source: rec.source }) }).catch(() => { });
+    const tsaTag = rec.type === 'deal' ? 'tsa - closed deal' : 'tsa - post-call'; // append (never replaces existing tags) so the marketer can filter TSA outcomes
+    await fetch(base + '/contacts/' + id + '/tags/', { method: 'POST', headers: H, body: JSON.stringify({ tags: [tsaTag] }) }).catch(() => { });
     return { ok: true, contactId: id };
   } catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
 }
