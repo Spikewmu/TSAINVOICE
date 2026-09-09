@@ -340,6 +340,7 @@
   <div class="navgroup collapsed">
     <button class="navhead"><svg class="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14v-2a8 8 0 0116 0v2"/><rect x="2" y="14" width="4" height="6" rx="1"/><rect x="18" y="14" width="4" height="6" rx="1"/></svg><span class="nlabel">Setter / Closer tools</span><svg class="nchev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
     <div class="navsub">
+      <button data-tab="mydeals">My Deals & Payments</button>
       <button data-tab="postcall">Post-Call Checkout</button>
       <button data-tab="sod">Start of Day</button>
       <button data-tab="eod">End of Day</button>
@@ -414,6 +415,13 @@
     <div class="panel"><h3>Closers <span style="font-weight:400;color:var(--muted);font-size:12px">- activity + output, ranked</span></h3><div class="tablewrap"><table id="dashCloserTable"></table></div></div>
     <div class="panel"><h3>By client (invoicing view)</h3><div class="tablewrap"><table id="clientTable"></table></div></div>
     <div class="panel"><h3>Closed deals</h3><div class="tablewrap"><table id="dealTable"></table></div></div>
+  </section>
+
+  <!-- ===== MY DEALS & PAYMENTS ===== -->
+  <section id="tab-mydeals" hidden>
+    <h2 class="section">My Deals & Payments</h2>
+    <p class="hint">Your closed deals. When a wire or a later payment lands, open a deal and <b>add the payment</b> - log a wire as <b>Pending</b> until it clears, then hit <b>Confirm</b>. It only counts toward your cash and commission once confirmed.</p>
+    <div id="myDealsWrap"></div>
   </section>
 
   <!-- ===== CLOSED DEAL ===== -->
@@ -1643,14 +1651,14 @@ function startApp(){
 // base tabs a login TIER can see; per-account responsibilities add to this in applyNavAccess()
 function baseAllow(role){
   return ({
-    admin:['dash','reps','clients','onboarding','meeting','promises','timeoff','postcall','sod','eod','training','mgreod','webinar','calllog','adminreport','recruiting','messages','data','users','integrations','settings'],
-    director:['dash','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','recruiting','messages','adminreport'],
-    manager:['dash','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','recruiting','messages'],
+    admin:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','postcall','sod','eod','training','mgreod','webinar','calllog','adminreport','recruiting','messages','data','users','integrations','settings'],
+    director:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','recruiting','messages','adminreport'],
+    manager:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','recruiting','messages'],
     founder:['dash'],
     recruiter:['dash','recruiting','messages','timeoff'],
     webinarteam:['dash','meeting','promises','timeoff','webinar'],
-    closer:['dash','postcall','sod','eod','training','timeoff','calllog','reps'],
-    setter:['dash','postcall','sod','eod','training','timeoff','calllog','reps']
+    closer:['dash','mydeals','postcall','sod','eod','training','timeoff','calllog','reps'],
+    setter:['dash','mydeals','postcall','sod','eod','training','timeoff','calllog','reps']
   })[role] || ['eod'];
 }
 // ---- multi-role: a user can hold several roles (stored as a 'userroles' record); access = the union ----
@@ -1740,9 +1748,9 @@ function showTab(t){
   document.querySelectorAll('#tabs button[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
   document.querySelectorAll('#tabs .navgroup').forEach(g=>{ if(g.querySelector('button[data-tab="'+t+'"]')) g.classList.remove('collapsed'); }); // reveal the active tab's group
 
-  ['dash','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','sod','eod','training','mgreod','webinar','calllog','adminreport','recruiting','messages','data','users','integrations','settings'].forEach(x=>{ const el=document.getElementById('tab-'+x); if(el) el.hidden = (x!==t); });
+  ['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','sod','eod','training','mgreod','webinar','calllog','adminreport','recruiting','messages','data','users','integrations','settings'].forEach(x=>{ const el=document.getElementById('tab-'+x); if(el) el.hidden = (x!==t); });
   // stale-while-revalidate: render instantly from the cached records, then refresh in the background
-  const render={dash:renderDash, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, promises:renderPromisesTab, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, webinar:renderWebinars, calllog:renderCallLog, adminreport:renderAdminReport, recruiting:renderRecruiting, messages:renderMessages, training:renderTraining, data:renderAll}[t];
+  const render={dash:renderDash, mydeals:renderMyDeals, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, promises:renderPromisesTab, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, webinar:renderWebinars, calllog:renderCallLog, adminreport:renderAdminReport, recruiting:renderRecruiting, messages:renderMessages, training:renderTraining, data:renderAll}[t];
   if(render){ render(); syncRecords().then(()=>{ if(currentTab()===t) render(); updateNavBadges(); renderReminders(); }); }
   updateNavBadges();
   if(t==='data'){ renderDailyEntry(); }
@@ -2765,18 +2773,47 @@ async function addPayment(){
     date:document.getElementById('payDate').value||todayCentral(), notes:(document.getElementById('payNotes').value||'').trim()};
   await addRecord(rec);
   toast(rec.status==='confirmed'?'Payment added':'Pending payment logged');
-  renderPaymentsModal(); if(!repMode()) renderDash();
+  renderPaymentsModal(); try{ const md=document.getElementById('tab-mydeals'); if(md&&!md.hidden) renderMyDeals(); }catch(_){}; if(!repMode()) renderDash();
 }
 async function setPaymentStatus(pid,status,del){
   const p=paymentsCollapsed().find(x=>String(x.pid||x.id)===String(pid)); if(!p) return;
   const rec={...p}; delete rec.id; delete rec.submittedAt; delete rec.submittedET; rec.pid=p.pid||p.id;
   if(del) rec.deleted=true; else { rec.status=status; if(status==='confirmed'){ rec.confirmedBy=SESSION&&SESSION.name; rec.confirmedAt=new Date().toISOString(); } }
   await addRecord(rec);
-  renderPaymentsModal(); if(!repMode()) renderDash();
+  renderPaymentsModal(); try{ const md=document.getElementById('tab-mydeals'); if(md&&!md.hidden) renderMyDeals(); }catch(_){}; if(!repMode()) renderDash();
 }
 function confirmPayment(pid){ setPaymentStatus(pid,'confirmed',false); toast('Payment confirmed'); }
 function revertPayment(pid){ setPaymentStatus(pid,'pending',false); }
 function removePayment(pid){ if(!confirm('Remove this payment? This cannot be undone.')) return; setPaymentStatus(pid,null,true); toast('Payment removed'); }
+// My Deals & Payments tab: a closer's own closed deals as cards (oversight roles see all), each opening the payments ledger.
+function renderMyDeals(){
+  const wrap=document.getElementById('myDealsWrap'); if(!wrap) return;
+  const oversight=SESSION&&['admin','director','manager'].includes(SESSION.role);
+  const me=String((SESSION&&SESSION.name)||'').trim();
+  const seen={}, uniq=[];
+  (RECORDS||[]).filter(x=>x.type==='deal').filter(d=>oversight?true:String(d.rep||'').trim()===me)
+    .sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.submittedAt||'').localeCompare(a.submittedAt||''))
+    .forEach(d=>{ const k=String(d.id||''); if(k&&!seen[k]){ seen[k]=1; uniq.push(d); } });
+  if(!uniq.length){ wrap.innerHTML=`<div class="panel" style="padding:20px"><p class="muted" style="margin:0">${oversight?'No closed deals yet.':'You have no closed deals yet. When you close one it shows here, so you can log wires and later payments against it.'}</p></div>`; return; }
+  wrap.innerHTML=`<div class="cards" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">`+uniq.map(d=>{
+    const contract=d.contractValue||0, collected=dealCollected(d), pend=dealPending(d), bal=Math.max(0,contract-collected);
+    const paid=contract>0&&collected>=contract;
+    const badge=paid?'<span class="chip" style="background:rgba(74,160,80,.15);color:#7bd487">paid in full</span>':(pend>0?`<span class="chip" style="background:rgba(212,175,90,.15);color:var(--gold)">${money(pend)} pending</span>`:(bal>0?`<span class="chip" style="background:rgba(212,175,90,.12);color:var(--gold)">bal ${money(bal)}</span>`:''));
+    const barPct=contract>0?Math.min(100,Math.round(collected/contract*100)):0;
+    const who=oversight&&String(d.rep||'').trim()!==me?`<div class="muted" style="font-size:11px;margin-top:2px">closer: ${esc(d.rep||'')}</div>`:'';
+    return `<div class="panel" style="margin:0;padding:16px 16px 14px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><div style="font-weight:600;font-size:15px">${esc(d.lead||'(no name)')}</div>${badge}</div>
+      <div class="muted" style="font-size:12px;margin:2px 0 12px">${esc(d.client||'')}${d.product?' · '+esc(d.product):''} · ${esc(usDate(d.date))}</div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:10px">
+        <div><div class="muted" style="font-size:11px">Collected</div><div style="font-size:17px;color:#7bd487">${money(collected)}</div></div>
+        <div><div class="muted" style="font-size:11px">Contract</div><div style="font-size:17px">${money(contract)}</div></div>
+        <div><div class="muted" style="font-size:11px">Balance</div><div style="font-size:17px">${money(bal)}</div></div>
+      </div>
+      <div class="bar" style="margin-bottom:12px"><i style="width:${barPct}%"></i></div>
+      <button class="btn gold sm" onclick="openPayments('${esc(String(d.id))}')">Manage payments</button>${who}
+    </div>`;
+  }).join('')+`</div>`;
+}
 
 /* ---------------- rep breakdown tab ---------------- */
 let REP_SEL=null, REP_SCOPE=null;
