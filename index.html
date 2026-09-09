@@ -2803,20 +2803,22 @@ async function resendDealSlack(id){
 async function pushDealGhl(id){
   const d=(RECORDS||[]).filter(x=>x.type==='deal'&&String(x.id||'')===String(id)).sort((a,b)=>(b.submittedAt||'').localeCompare(a.submittedAt||''))[0];
   if(!d){ toast('Could not find that deal to push',true); return; }
-  let contactId='';
-  if(!(d.leadEmail||d.email)){
-    const link=prompt('This deal has no lead email, so GHL can\'t auto-match the contact.\n\nPaste the lead\'s GHL contact link (or ID) to push this close to that contact:');
-    if(link===null) return; // cancelled
-    const m=String(link).match(/contacts\/detail\/([A-Za-z0-9_-]+)/); contactId=m?m[1]:String(link).trim();
-    if(!contactId){ toast('Could not read a contact ID from that link',true); return; }
-  }
   const btn=(typeof event!=='undefined'&&event&&event.target)?event.target:null;
+  const hdr={'Content-Type':'application/json'}; if(SESSION&&SESSION.token) hdr['x-session-token']=SESSION.token; else if(SESSION&&SESSION.pw) hdr['x-admin-pass']=SESSION.pw;
+  const send=async(contactId)=>{ const r=await fetch('/api/data?action=pushGhl',{method:'POST',headers:hdr,body:JSON.stringify(contactId?{record:d,contactId}:{record:d})}); return r.json(); };
   if(btn){ btn.disabled=true; btn.textContent='Pushing...'; }
   try{
-    const hdr={'Content-Type':'application/json'}; if(SESSION&&SESSION.token) hdr['x-session-token']=SESSION.token; else if(SESSION&&SESSION.pw) hdr['x-admin-pass']=SESSION.pw;
-    const r=await fetch('/api/data?action=pushGhl',{method:'POST',headers:hdr,body:JSON.stringify({record:d,contactId})});
-    const j=await r.json();
-    toast((j&&j.ok)?('Pushed to GHL'+(d.client?' - '+d.client:'')+' (note + source on the contact)'):((j&&j.error)||'Could not push to GHL'), !(j&&j.ok));
+    let j=await send(); // server auto-matches: email first, then the lead's name
+    if(!(j&&j.ok) && ((j&&j.ambiguous) || /no GHL contact/i.test((j&&j.error)||''))){
+      if(btn){ btn.disabled=false; btn.innerHTML='&#8599; CRM'; }
+      const link=prompt(((j&&j.error)||'Could not auto-match a GHL contact.')+'\n\nPaste the lead\'s GHL contact link (or ID) to push to that contact:');
+      if(link===null) return; // cancelled
+      const mm=String(link).match(/contacts\/detail\/([A-Za-z0-9_-]+)/); const cid=mm?mm[1]:String(link).trim();
+      if(!cid){ toast('Could not read a contact ID from that link',true); return; }
+      if(btn){ btn.disabled=true; btn.textContent='Pushing...'; }
+      j=await send(cid);
+    }
+    toast((j&&j.ok)?('Pushed to GHL'+(d.client?' - '+d.client:'')+' (note + source + tag)'):((j&&j.error)||'Could not push to GHL'), !(j&&j.ok));
   }catch(e){ toast('Could not push to GHL',true); }
   if(btn){ btn.disabled=false; btn.innerHTML='&#8599; CRM'; }
 }

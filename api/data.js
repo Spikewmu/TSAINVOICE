@@ -135,16 +135,28 @@ async function ghlPush(cfg, rec, contactIdOverride) {
   if (!cfg || !cfg.ghlApiKey) return { ok: false, error: 'no GHL API key set for this client' };
   try {
     const base = 'https://rest.gohighlevel.com/v1', H = { Authorization: 'Bearer ' + cfg.ghlApiKey, 'Content-Type': 'application/json' };
-    let id = String(contactIdOverride || '').trim(); // when given, push straight to this contact (deals with no lead email)
+    let id = String(contactIdOverride || '').trim(); // when given, push straight to this contact
     if (!id) {
       const email = String(rec.leadEmail || rec.email || '').trim();
-      if (!email) return { ok: false, error: 'no lead email on this record (needed to match the GHL contact)' };
-      const look = await fetch(base + '/contacts/lookup?email=' + encodeURIComponent(email), { headers: H });
-      if (!look.ok) return { ok: false, error: 'GHL lookup failed (' + look.status + ') - check the API key' };
-      const lj = await look.json().catch(() => ({}));
-      const contact = (lj.contacts && lj.contacts[0]) || null;
-      if (!contact || !contact.id) return { ok: false, error: 'no GHL contact found for ' + email };
-      id = contact.id;
+      if (email) { // 1) match by email (most reliable)
+        const look = await fetch(base + '/contacts/lookup?email=' + encodeURIComponent(email), { headers: H });
+        if (!look.ok) return { ok: false, error: 'GHL lookup failed (' + look.status + ') - check the API key' };
+        const lj = await look.json().catch(() => ({}));
+        const c = (lj.contacts && lj.contacts[0]) || null;
+        if (c && c.id) id = c.id;
+      }
+      if (!id) { // 2) auto-fallback: match by the lead's name (covers closes logged without / with a wrong email)
+        const name = String(rec.lead || '').trim();
+        if (name) {
+          const q = await fetch(base + '/contacts/?query=' + encodeURIComponent(name) + '&limit=5', { headers: H });
+          if (q.ok) {
+            const arr = ((await q.json().catch(() => ({}))).contacts || []).filter(c => c && c.id);
+            if (arr.length === 1) id = arr[0].id; // unique name match -> use it
+            else if (arr.length > 1) return { ok: false, ambiguous: true, error: 'multiple GHL contacts match "' + name + '" - push with the exact contact link' };
+          }
+        }
+      }
+      if (!id) return { ok: false, error: 'no GHL contact found' + (rec.leadEmail ? ' for ' + rec.leadEmail : rec.lead ? ' matching "' + rec.lead + '"' : '') };
     }
     const m = n => '$' + Number(n || 0).toLocaleString('en-US'), lines = [];
     const add = (l, v) => { if (v !== undefined && v !== null && v !== '') lines.push(l + ': ' + v); };
