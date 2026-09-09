@@ -67,8 +67,27 @@ async function eventToSlack(rec) {
     } else if (rec.type === 'postcall') {
       const dest = (rec.role === 'Setter' ? (cfg.postcallSetterSlack || cfg.postcallSlack) : (cfg.postcallCloserSlack || cfg.postcallSlack));
       if (!dest) return;
-      await postChan(dest, `Post-call · ${who}${rec.client ? ' · ' + rec.client : ''}${rec.outcome ? ' · ' + rec.outcome : ''}`,
-        [{ type: 'section', text: { type: 'mrkdwn', text: `📞 *Post-call checkout* · ${who}${rec.role ? ' (' + rec.role + ')' : ''}${rec.client ? ' · ' + rec.client : ''}${rec.outcome ? '\n*Outcome:* ' + rec.outcome : ''}${rec.lead ? '\n*Lead:* ' + rec.lead : ''}${rec.setter ? '\n*Setter:* ' + rec.setter : ''}` } }]);
+      const L = (label, val) => (val !== undefined && val !== null && String(val).trim() !== '') ? `\n*${label}:* ${String(val).trim()}` : ''; // only show a line if it has a value
+      const outcome = String(rec.outcome || '');
+      const won = /^Won/.test(outcome), isFollow = /(Follow-up booked|Callback scheduled|Rescheduled)/.test(outcome), isDq = /^Disqualified/.test(outcome);
+      const fmtDate = d => { const p = String(d || '').slice(0, 10).split('-'); return p.length === 3 ? (Number(p[1]) + '-' + Number(p[2]) + '-' + p[0]) : ''; }; // 2026-09-11 -> 9-11-2026
+      const fmtTime = t => { const m = /^(\d{1,2}):(\d{2})/.exec(String(t || '')); if (!m) return ''; let h = Number(m[1]); const ap = h >= 12 ? 'PM' : 'AM'; h = h % 12 || 12; return h + ':' + m[2] + ' ' + ap; }; // 14:30 -> 2:30 PM
+      let body = `📞 *Post-call checkout* · ${who}${rec.role ? ' (' + rec.role + ')' : ''}${rec.client ? ' · ' + rec.client : ''}`
+        + L('Outcome', outcome) + L('Lead', rec.lead);
+      if (won) {
+        body += L('Offer', rec.product);
+        if (rec.cashCollected) body += `\n*Cash collected:* ${money(rec.cashCollected)}` + (rec.contractValue ? ` · *Contract:* ${money(rec.contractValue)}` : '');
+        else if (rec.contractValue) body += `\n*Contract:* ${money(rec.contractValue)}`;
+      }
+      if (isFollow) { const fd = fmtDate(rec.followUpDate), ft = fmtTime(rec.followUpTime); if (fd || ft) body += `\n*Follow-up:* ${fd}${ft ? ' at ' + ft : ''}`; }
+      if (isDq) body += L('DQ reason', rec.dqReason);
+      body += L('Call type', rec.callType) + L('Source', rec.source);
+      if (rec.role !== 'Setter') body += (rec.setter && String(rec.setter).trim()) ? `\n*Setter:* ${String(rec.setter).trim()}` : (won ? '\n*Setter:* self-booked' : '');
+      body += L('Notes', rec.notes);
+      if (won) body += `\n_(full deal detail also posts to the closed-deals channel)_`;
+      if (rec.fathom && String(rec.fathom).trim()) body += `\n🎥 <${String(rec.fathom).trim()}|Recording>`;
+      await postChan(dest, `Post-call · ${who}${rec.client ? ' · ' + rec.client : ''}${outcome ? ' · ' + outcome : ''}`,
+        [{ type: 'section', text: { type: 'mrkdwn', text: body } }]);
     } else { // sod (start-of-day projection) — route by role to the setter/closer channel, else combined
       const dest = (rec.role === 'Setter' ? (cfg.sodSetterSlack || cfg.sodSlack) : (cfg.sodCloserSlack || cfg.sodSlack));
       if (!dest) return;
