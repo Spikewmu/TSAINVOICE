@@ -492,7 +492,7 @@
       <div class="field"><label>Date *</label><input type="date" name="date" required></div>
       <div class="field"><label>Client / account *</label><select name="client" data-list="clients" required onchange="dealClientChanged()"></select><span class="fieldhelp">Which account this deal is for.</span></div>
       <div class="field"><label>Lead / prospect name *</label><input type="text" name="lead" required placeholder="the person who bought"><span class="fieldhelp">Who you closed - the customer's name.</span></div>
-      <div class="field"><label>Lead email</label><input type="email" name="leadEmail" placeholder="name@email.com"><span class="fieldhelp">Used to match this lead in GHL (more reliable than name).</span></div>
+      <div class="field"><label>Lead email *</label><input type="email" name="leadEmail" required placeholder="name@email.com"><span class="fieldhelp">Required - matches this lead to their GHL/CRM contact (more reliable than name).</span></div>
       <div class="field"><label>Lead source</label><select name="source"><option value="">-</option><option>Paid ads</option><option>Organic</option><option>Webinar</option></select><span class="fieldhelp"><b>Paid ads</b> = we paid for the lead; <b>Organic</b> = free/audience. Drives paid-vs-organic attribution.</span></div>
       <div class="field"><label>Closer (who closed it) *</label><select name="rep" data-list="closers" required></select><span class="fieldhelp">The rep who ran the closing call.</span></div>
       <div class="field"><label>Setter (who set the call) *</label><select name="setter" data-list="setters" required></select><span class="fieldhelp">The setter who booked this appointment - they get setter credit + commission.</span></div>
@@ -530,7 +530,7 @@
       <div class="field"><label>Client / account *</label><select name="client" data-list="clients" required onchange="postcallClientChanged()"></select></div>
       <div class="field"><label id="pcRepLabel">Closer *</label><select name="rep" data-list="closers" required></select><span class="fieldhelp">You (locked to your login).</span></div>
       <div class="field"><label>Lead / prospect name *</label><input type="text" name="lead" required placeholder="who the call was with"></div>
-      <div class="field"><label>Lead email</label><input type="email" name="leadEmail" placeholder="name@email.com"><span class="fieldhelp">Used to match this lead in GHL (more reliable than name).</span></div>
+      <div class="field"><label id="pcEmailLabel">Lead email</label><input type="email" name="leadEmail" placeholder="name@email.com"><span class="fieldhelp">Required on a Won close - matches the lead to their GHL/CRM contact (more reliable than name).</span></div>
       <div class="field closerPc"><label>Setter (who set the call)</label><select name="setter" data-list="setters"></select><span class="fieldhelp">Leave blank if it was inbound / you set it yourself.</span></div>
       <div class="field"><label>Lead source</label><select name="source"><option value="">-</option><option>Paid ads</option><option>Organic</option><option>Webinar</option></select><span class="fieldhelp"><b>Paid ads</b> = we paid for the lead; <b>Organic</b> = free/audience. Drives paid-vs-organic attribution for the marketing team.</span></div>
       <div class="field"><label>Call outcome *</label><select name="outcome" required onchange="postcallOutcomeChanged()"></select><span class="fieldhelp">What happened on this call.</span></div>
@@ -2054,6 +2054,7 @@ async function submitPostCall(e){ e.preventDefault(); const btn=e.target.querySe
     if(!(o.client||'').trim()){ toast('Choose a client / account first.',true); return; }
     if(o.role==='Setter' && !(o.setter||'').trim()) o.setter=o.rep; // a setter's post-call credits themselves
     won=/^Won/.test(o.outcome||'');
+    if(won && !(o.leadEmail||'').trim()){ toast('Lead email is required on a Won close - it matches the deal to the CRM contact.',true); return; }
     await addRecord(o); // every call logs a post-call record
     if(won){ // a win ALSO logs a closed deal so it flows into cash / leaderboards / invoicing
       const d=num({type:'deal',role:'Closer',date:o.date,client:o.client,lead:o.lead,leadEmail:o.leadEmail||'',rep:o.rep,setter:o.setter||'',source:o.source||'',product:o.product||'',callType:o.callType||'',contractValue:o.contractValue||0,cashCollected:o.cashCollected||0,depositCollected:o.depositCollected||0,fathom:o.fathom||'',notes:o.notes||'',closedDeals:1});
@@ -2076,6 +2077,8 @@ function postcallOutcomeChanged(){
   document.querySelectorAll('#postcallForm .wonOnly').forEach(e=>e.hidden=!won);
   document.querySelectorAll('#postcallForm .dqOnly').forEach(e=>e.hidden=!dq);
   document.querySelectorAll('#postcallForm .followOnly').forEach(e=>e.hidden=!fu);
+  const em=document.querySelector('#postcallForm [name=leadEmail]'), eml=document.getElementById('pcEmailLabel');
+  if(em) em.required=!!won; if(eml) eml.textContent = won ? 'Lead email *' : 'Lead email'; // required only when it's a close
   if(won) postcallClientChanged();
 }
 // Post-Call Checkout is role-aware: closers report a call's result (Won reveals the deal fields);
