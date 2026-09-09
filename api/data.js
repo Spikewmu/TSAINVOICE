@@ -151,6 +151,23 @@ async function ghlPush(cfg, rec, contactIdOverride) {
     add('Type', rec.type === 'deal' ? 'Closed deal' : 'Post-call'); add('Source', rec.source); add('Outcome', rec.outcome); add('Product', rec.product);
     if (rec.cashCollected) add('Cash collected', m(rec.cashCollected)); if (rec.contractValue) add('Contract value', m(rec.contractValue));
     add('Closer', rec.rep); add('Setter', rec.setter); add('Call type', rec.callType); add('Call date', String(rec.date || '').slice(0, 10));
+    // payment plan: close-day cash + any logged/scheduled payments on this deal (e.g. "5k today, 10k in 2 days")
+    const usd = ss => { ss = String(ss || '').slice(0, 10); const dm = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ss); return dm ? (+dm[2]) + '-' + (+dm[3]) + '-' + dm[1] : ss; };
+    const payLines = [];
+    if (rec.cashCollected) payLines.push(m(rec.cashCollected) + ' collected at close' + (rec.date ? ' (' + usd(rec.date) + ')' : ''));
+    if (rec.type === 'deal' && rec.id) {
+      try {
+        const pr = await supa('records?select=data&type=eq.payment&data->>dealId=eq.' + encodeURIComponent(rec.id));
+        if (pr.ok) {
+          const latest = {};
+          (await pr.json()).map(x => x.data).filter(Boolean).forEach(p => { const k = p.pid || p.id; if (!latest[k] || String(p.submittedAt || '') > String(latest[k].submittedAt || '')) latest[k] = p; });
+          Object.values(latest).filter(p => !p.deleted).sort((a, b) => String(a.date || '').localeCompare(String(b.date || ''))).forEach(p => {
+            payLines.push(m(p.amount) + (p.method ? ' by ' + p.method : '') + ' - ' + (p.status === 'confirmed' ? 'confirmed' : 'expected') + (p.date ? ' ' + usd(p.date) : ''));
+          });
+        }
+      } catch (e) { }
+    }
+    if (payLines.length > 1) { lines.push('Payment plan:'); payLines.forEach(l => lines.push('  - ' + l)); } // only when there's more than the close-day cash
     const body = 'Sales HQ ' + (rec.type === 'deal' ? 'closed deal' : 'post-call') + ' (' + new Date().toISOString().slice(0, 10) + ')\n' + lines.join('\n');
     await fetch(base + '/contacts/' + id + '/notes', { method: 'POST', headers: H, body: JSON.stringify({ body }) }).catch(() => { });
     if (rec.source) await fetch(base + '/contacts/' + id, { method: 'PUT', headers: H, body: JSON.stringify({ source: rec.source }) }).catch(() => { });
