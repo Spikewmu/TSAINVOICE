@@ -421,7 +421,7 @@
   <!-- ===== INVOICING (admin/director) ===== -->
   <section id="tab-invoicing" hidden>
     <h2 class="section">Invoicing</h2>
-    <p class="hint">Generate each client's <b>founder invoice</b> (they pay TSA weekly), auto-built from closed deals + collected payments. Admin and director only. Set each client's billing rate and TSA's wire/ACH details under <b>Billing settings</b>.</p>
+    <p class="hint">Generate each client's <b>founder invoice</b> (they pay TSA weekly), auto-built from closed deals + collected payments. Billing cycle runs <b>Friday to Thursday</b> and invoices go out Friday. Admin and director only. Set each client's billing rate and TSA's wire/ACH details under <b>Billing settings</b>.</p>
     <div class="seg" id="invSeg" style="margin-bottom:16px">
       <button class="on" data-inv="gen" onclick="invTab('gen')">Founder invoices</button>
       <button data-inv="settings" onclick="invTab('settings')">Billing settings</button>
@@ -435,7 +435,8 @@
         </div>
         <div class="row-actions" style="margin-top:10px">
           <button class="btn gold sm" onclick="invPreview()">Generate invoice</button>
-          <button class="btn ghost sm" onclick="invThisWeek()">Last 7 days</button>
+          <button class="btn ghost sm" onclick="invThisWeek()">This billing week (Fri-Thu)</button>
+          <button class="btn ghost sm" onclick="invPrevWeek()">&#8592; Previous week</button>
           <button class="btn ghost sm" onclick="invPrint()">&#128424; Print / save PDF</button>
         </div>
       </div>
@@ -2941,8 +2942,9 @@ function renderInvoicing(){
   if(!invAllowed()){ const s=document.getElementById('tab-invoicing'); if(s) s.querySelectorAll('#invGen,#invSettings').forEach(e=>e.hidden=true); return; }
   fillLists();
   const f=document.getElementById('invFrom'), t=document.getElementById('invTo');
-  if(f&&!f.value){ const d=new Date(); const dow=d.getDay(); const monday=new Date(d); monday.setDate(d.getDate()-(dow===0?6:dow-1)); f.value=isoLocal(monday); }
-  if(t&&!t.value) t.value=todayLocal();
+  const bw=billingWeek();
+  if(f&&!f.value) f.value=bw.from;
+  if(t&&!t.value) t.value=bw.to;
   // load workspace wire/ACH details into the settings form
   const bi=billingInfo()||{};
   const setv=(id,v)=>{ const el=document.getElementById(id); if(el) el.value=v||''; };
@@ -2951,7 +2953,12 @@ function renderInvoicing(){
   invPreview();
 }
 function isoLocal(d){ return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10); }
-function invThisWeek(){ const t=new Date(); const from=new Date(t); from.setDate(t.getDate()-6); document.getElementById('invFrom').value=isoLocal(from); document.getElementById('invTo').value=todayLocal(); invPreview(); }
+// TSA billing cycle is Friday -> Thursday (invoices go out Friday). Returns the most recent
+// completed Fri-Thu week: `to` = the most recent Thursday on or before today, `from` = that Thursday - 6.
+// So on Thursday you preview the closing week and on Friday you invoice the week that just ended.
+function billingWeek(ref){ const d=ref?new Date(ref):new Date(); const back=(d.getDay()-4+7)%7; const to=new Date(d); to.setDate(d.getDate()-back); const from=new Date(to); from.setDate(to.getDate()-6); return {from:isoLocal(from), to:isoLocal(to)}; }
+function invThisWeek(){ const bw=billingWeek(); document.getElementById('invFrom').value=bw.from; document.getElementById('invTo').value=bw.to; invPreview(); }
+function invPrevWeek(){ const f=document.getElementById('invFrom').value; const ref=f?new Date(f+'T00:00:00'):new Date(); ref.setDate(ref.getDate()-7); const bw=billingWeek(ref); document.getElementById('invFrom').value=bw.from; document.getElementById('invTo').value=bw.to; invPreview(); }
 function invModeChanged(){ const mode=document.getElementById('invMode').value; document.querySelector('#invSettings .invFlat').hidden=mode!=='flat'; document.querySelector('#invSettings .invRep').hidden=mode!=='repcomp'; }
 function invLoadCfg(){
   const client=document.getElementById('invCfgClient').value; const cfg=clientBillingCfg(client)||{};
