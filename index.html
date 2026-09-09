@@ -375,6 +375,7 @@
   <div class="navgroup collapsed">
     <button class="navhead"><svg class="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4-3 7-7 8-4-1-7-4-7-8V6z"/></svg><span class="nlabel">Admin</span><svg class="nchev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
     <div class="navsub">
+      <button data-tab="invoicing">Invoicing</button>
       <button data-tab="data">Data + Export</button>
       <button data-tab="users">Users</button>
       <button data-tab="integrations">Integrations</button>
@@ -415,6 +416,62 @@
     <div class="panel"><h3>Closers <span style="font-weight:400;color:var(--muted);font-size:12px">- activity + output, ranked</span></h3><div class="tablewrap"><table id="dashCloserTable"></table></div></div>
     <div class="panel"><h3>By client (invoicing view)</h3><div class="tablewrap"><table id="clientTable"></table></div></div>
     <div class="panel"><h3>Closed deals</h3><div class="tablewrap"><table id="dealTable"></table></div></div>
+  </section>
+
+  <!-- ===== INVOICING (admin/director) ===== -->
+  <section id="tab-invoicing" hidden>
+    <h2 class="section">Invoicing</h2>
+    <p class="hint">Generate each client's <b>founder invoice</b> (they pay TSA weekly), auto-built from closed deals + collected payments. Admin and director only. Set each client's billing rate and TSA's wire/ACH details under <b>Billing settings</b>.</p>
+    <div class="seg" id="invSeg" style="margin-bottom:16px">
+      <button class="on" data-inv="gen" onclick="invTab('gen')">Founder invoices</button>
+      <button data-inv="settings" onclick="invTab('settings')">Billing settings</button>
+    </div>
+    <div id="invGen">
+      <div class="panel" style="padding:16px">
+        <div class="grid3" style="gap:12px">
+          <div class="field"><label>Client / account</label><select id="invClient" data-list="clients" onchange="invPreview()"></select></div>
+          <div class="field"><label>Billing period from</label><input type="date" id="invFrom" onchange="invPreview()"></div>
+          <div class="field"><label>Billing period to</label><input type="date" id="invTo" onchange="invPreview()"></div>
+        </div>
+        <div class="row-actions" style="margin-top:10px">
+          <button class="btn gold sm" onclick="invPreview()">Generate invoice</button>
+          <button class="btn ghost sm" onclick="invThisWeek()">Last 7 days</button>
+          <button class="btn ghost sm" onclick="invPrint()">&#128424; Print / save PDF</button>
+        </div>
+      </div>
+      <div id="invoiceOut" style="margin-top:18px"></div>
+    </div>
+    <div id="invSettings" hidden>
+      <div class="panel" style="padding:18px;max-width:760px">
+        <h3 style="margin:0 0 4px">Client billing rate</h3>
+        <p class="fieldhelp" style="margin:0 0 12px">What each client pays TSA. <b>Flat</b> = one % of their cash collected. <b>Rep comp + override</b> = closer % + setter % + TSA override %, summed. Managers never see this tab.</p>
+        <div class="field"><label>Client</label><select id="invCfgClient" data-list="clients" onchange="invLoadCfg()"></select></div>
+        <div class="field"><label>Billing mode</label><select id="invMode" onchange="invModeChanged()"><option value="flat">Flat rate (% of cash collected)</option><option value="repcomp">Rep comp + TSA override</option></select></div>
+        <div class="field invFlat"><label>Flat rate (%)</label><input type="number" id="invFlatRate" step="0.1" placeholder="e.g. 12.5"></div>
+        <div class="invRep" hidden>
+          <div class="grid3" style="gap:10px">
+            <div class="field"><label>Closer (%)</label><input type="number" id="invCloserRate" step="0.1" placeholder="7"></div>
+            <div class="field"><label>Setter (%)</label><input type="number" id="invSetterRate" step="0.1" placeholder="3"></div>
+            <div class="field"><label>TSA override (%)</label><input type="number" id="invOverrideRate" step="0.1" placeholder="e.g. 3"></div>
+          </div>
+        </div>
+        <div class="row-actions" style="margin-top:10px"><button class="btn gold sm" onclick="saveClientBilling()">Save client rate</button></div>
+      </div>
+      <div class="panel" style="padding:18px;max-width:760px;margin-top:16px">
+        <h3 style="margin:0 0 4px">TSA payment details (wire / ACH)</h3>
+        <p class="fieldhelp" style="margin:0 0 12px">Shown on every founder invoice so clients know where to send the wire/ACH. Stored once for your workspace.</p>
+        <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px;padding:0;background:none;border:0;box-shadow:none">
+          <div class="field"><label>Beneficiary / business name</label><input type="text" id="biName" placeholder="The Sales Agency"></div>
+          <div class="field"><label>Billing email</label><input type="email" id="biEmail" placeholder="billing@thesalesagency.com"></div>
+          <div class="field"><label>Bank name</label><input type="text" id="biBank"></div>
+          <div class="field"><label>Account number</label><input type="text" id="biAcct"></div>
+          <div class="field"><label>Routing number (ACH / wire)</label><input type="text" id="biRouting"></div>
+          <div class="field"><label>SWIFT / BIC (international, optional)</label><input type="text" id="biSwift"></div>
+          <div class="field full"><label>Extra instructions (optional)</label><input type="text" id="biNotes" placeholder="e.g. reference the invoice # in the memo"></div>
+        </div>
+        <div class="row-actions" style="margin-top:10px"><button class="btn gold sm" onclick="saveBillingInfo()">Save payment details</button></div>
+      </div>
+    </div>
   </section>
 
   <!-- ===== MY DEALS & PAYMENTS ===== -->
@@ -1665,8 +1722,8 @@ function startApp(){
 // base tabs a login TIER can see; per-account responsibilities add to this in applyNavAccess()
 function baseAllow(role){
   return ({
-    admin:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','postcall','sod','eod','training','mgreod','webinar','calllog','adminreport','recruiting','messages','data','users','integrations','settings'],
-    director:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','recruiting','messages','adminreport'],
+    admin:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','postcall','sod','eod','training','mgreod','webinar','calllog','adminreport','recruiting','messages','invoicing','data','users','integrations','settings'],
+    director:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','recruiting','messages','invoicing','adminreport'],
     manager:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','recruiting','messages'],
     founder:['dash'],
     recruiter:['dash','recruiting','messages','timeoff'],
@@ -1762,9 +1819,9 @@ function showTab(t){
   document.querySelectorAll('#tabs button[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
   document.querySelectorAll('#tabs .navgroup').forEach(g=>{ if(g.querySelector('button[data-tab="'+t+'"]')) g.classList.remove('collapsed'); }); // reveal the active tab's group
 
-  ['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','sod','eod','training','mgreod','webinar','calllog','adminreport','recruiting','messages','data','users','integrations','settings'].forEach(x=>{ const el=document.getElementById('tab-'+x); if(el) el.hidden = (x!==t); });
+  ['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','sod','eod','training','mgreod','webinar','calllog','adminreport','recruiting','messages','invoicing','data','users','integrations','settings'].forEach(x=>{ const el=document.getElementById('tab-'+x); if(el) el.hidden = (x!==t); });
   // stale-while-revalidate: render instantly from the cached records, then refresh in the background
-  const render={dash:renderDash, mydeals:renderMyDeals, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, promises:renderPromisesTab, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, webinar:renderWebinars, calllog:renderCallLog, adminreport:renderAdminReport, recruiting:renderRecruiting, messages:renderMessages, training:renderTraining, data:renderAll}[t];
+  const render={dash:renderDash, mydeals:renderMyDeals, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, promises:renderPromisesTab, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, webinar:renderWebinars, calllog:renderCallLog, adminreport:renderAdminReport, recruiting:renderRecruiting, messages:renderMessages, training:renderTraining, invoicing:renderInvoicing, data:renderAll}[t];
   if(render){ render(); syncRecords().then(()=>{ if(currentTab()===t) render(); updateNavBadges(); renderReminders(); }); }
   updateNavBadges();
   if(t==='data'){ renderDailyEntry(); }
@@ -2859,6 +2916,179 @@ function renderMyDeals(){
       <button class="btn gold sm" onclick="openPayments('${esc(String(d.id))}')">Manage payments</button>${who}
     </div>`;
   }).join('')+`</div>`;
+}
+
+/* ================= INVOICING (founder invoice) ================= *
+ * Two record types, both latest-wins:
+ *   type 'clientbilling'  keyed by client  -> what a client pays TSA (flat % of cash, or closer%+setter%+override%)
+ *   type 'billinginfo'    single workspace record -> TSA's wire/ACH details shown on every invoice
+ * The founder invoice is generated per client per billing period from closed deals + confirmed payments.
+ * Amount Due is HYBRID: flat rate = one % of cash collected; rep-comp = (closer+setter+override)% of cash collected. */
+function invAllowed(){ return SESSION && (SESSION.role==='admin'||SESSION.role==='director'); }
+function clientBillingCfg(client){
+  const k=String(client||'').trim().toLowerCase(); if(!k) return null;
+  let best=null; RECORDS.forEach(x=>{ if(x.type==='clientbilling' && String(x.client||'').trim().toLowerCase()===k){ if(!best||(x.submittedAt||'')>(best.submittedAt||'')) best=x; } });
+  return best;
+}
+function billingInfo(){ let best=null; RECORDS.forEach(x=>{ if(x.type==='billinginfo'){ if(!best||(x.submittedAt||'')>(best.submittedAt||'')) best=x; } }); return best; }
+function invTab(which){
+  document.getElementById('invGen').hidden = which!=='gen';
+  document.getElementById('invSettings').hidden = which!=='settings';
+  document.querySelectorAll('#invSeg button').forEach(b=>b.classList.toggle('on', b.dataset.inv===which));
+  if(which==='settings') invLoadCfg();
+}
+function renderInvoicing(){
+  if(!invAllowed()){ const s=document.getElementById('tab-invoicing'); if(s) s.querySelectorAll('#invGen,#invSettings').forEach(e=>e.hidden=true); return; }
+  fillLists();
+  const f=document.getElementById('invFrom'), t=document.getElementById('invTo');
+  if(f&&!f.value){ const d=new Date(); const dow=d.getDay(); const monday=new Date(d); monday.setDate(d.getDate()-(dow===0?6:dow-1)); f.value=isoLocal(monday); }
+  if(t&&!t.value) t.value=todayLocal();
+  // load workspace wire/ACH details into the settings form
+  const bi=billingInfo()||{};
+  const setv=(id,v)=>{ const el=document.getElementById(id); if(el) el.value=v||''; };
+  setv('biName',bi.name); setv('biEmail',bi.email); setv('biBank',bi.bank); setv('biAcct',bi.acct); setv('biRouting',bi.routing); setv('biSwift',bi.swift); setv('biNotes',bi.notes);
+  invLoadCfg();
+  invPreview();
+}
+function isoLocal(d){ return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10); }
+function invThisWeek(){ const t=new Date(); const from=new Date(t); from.setDate(t.getDate()-6); document.getElementById('invFrom').value=isoLocal(from); document.getElementById('invTo').value=todayLocal(); invPreview(); }
+function invModeChanged(){ const mode=document.getElementById('invMode').value; document.querySelector('#invSettings .invFlat').hidden=mode!=='flat'; document.querySelector('#invSettings .invRep').hidden=mode!=='repcomp'; }
+function invLoadCfg(){
+  const client=document.getElementById('invCfgClient').value; const cfg=clientBillingCfg(client)||{};
+  document.getElementById('invMode').value=cfg.mode||'flat';
+  document.getElementById('invFlatRate').value=(cfg.flatRate!=null?cfg.flatRate:'');
+  document.getElementById('invCloserRate').value=(cfg.closerRate!=null?cfg.closerRate:'');
+  document.getElementById('invSetterRate').value=(cfg.setterRate!=null?cfg.setterRate:'');
+  document.getElementById('invOverrideRate').value=(cfg.overrideRate!=null?cfg.overrideRate:'');
+  invModeChanged();
+}
+async function saveClientBilling(){
+  if(!invAllowed()){ toast('Admins/directors only',true); return; }
+  const client=document.getElementById('invCfgClient').value;
+  if(!client){ toast('Pick a client first',true); return; }
+  const num=id=>{ const v=parseFloat(document.getElementById(id).value); return isNaN(v)?null:v; };
+  const rec={type:'clientbilling',client,mode:document.getElementById('invMode').value,flatRate:num('invFlatRate'),closerRate:num('invCloserRate'),setterRate:num('invSetterRate'),overrideRate:num('invOverrideRate'),by:(SESSION&&SESSION.name)||''};
+  try{ await addRecord(rec); toast('Saved billing rate for '+client); invPreview(); }
+  catch(e){ toast('Save failed: '+(e&&e.message||e),true); }
+}
+async function saveBillingInfo(){
+  if(!invAllowed()){ toast('Admins/directors only',true); return; }
+  const g=id=>document.getElementById(id).value.trim();
+  const rec={type:'billinginfo',name:g('biName'),email:g('biEmail'),bank:g('biBank'),acct:g('biAcct'),routing:g('biRouting'),swift:g('biSwift'),notes:g('biNotes'),by:(SESSION&&SESSION.name)||''};
+  try{ await addRecord(rec); toast('Payment details saved'); invPreview(); }
+  catch(e){ toast('Save failed: '+(e&&e.message||e),true); }
+}
+function invPreview(){
+  const out=document.getElementById('invoiceOut'); if(!out) return;
+  const client=(document.getElementById('invClient')||{}).value||'';
+  const from=(document.getElementById('invFrom')||{}).value||'';
+  const to=(document.getElementById('invTo')||{}).value||'';
+  if(!client){ out.innerHTML='<div class="panel" style="padding:20px"><p class="muted" style="margin:0">Pick a client and a billing period, then Generate invoice.</p></div>'; return; }
+  if(!from||!to||from>to){ out.innerHTML='<div class="panel" style="padding:20px"><p class="muted" style="margin:0">Set a valid billing period (from is on or before to).</p></div>'; return; }
+  out.innerHTML=genFounderInvoice(client,from,to);
+}
+function genFounderInvoice(client,from,to){
+  const ck=String(client).trim().toLowerCase();
+  const inPeriod=d=>{ d=String(d||'').slice(0,10); return d&&d>=from&&d<=to; };
+  // deals closed for this client in the period (the "Deals Included" table + revenue)
+  const deals=(RECORDS||[]).filter(x=>x.type==='deal' && String(x.client||'').trim().toLowerCase()===ck && inPeriod(x.date))
+    .sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+  // dedupe deals by id (append-only backend, latest-wins)
+  const seen={}, uniqDeals=[]; deals.forEach(d=>{ const k=String(d.id||''); if(k&&seen[k])return; if(k)seen[k]=1; uniqDeals.push(d); });
+  // stat cards via the shared aggregator over activity (deals + collapsed EODs + confirmed payments) for this client+period
+  const activity=activityRecords().filter(x=>String(x.client||'').trim().toLowerCase()===ck && inPeriod(x.date));
+  const s=agg(activity);
+  const totalRevenue=s.contractValue, dealsClosed=uniqDeals.length, cashCollected=s.cashCollected, showRate=s.showRate;
+  // amount due (hybrid) - % of cash collected in the period
+  const cfg=clientBillingCfg(client);
+  let pct=0, rateLabel='', mode=cfg&&cfg.mode||'flat';
+  if(cfg){
+    if(mode==='repcomp'){ pct=(cfg.closerRate||0)+(cfg.setterRate||0)+(cfg.overrideRate||0); rateLabel=`Closer ${cfg.closerRate||0}% + Setter ${cfg.setterRate||0}% + Override ${cfg.overrideRate||0}% = ${pct}% of cash collected`; }
+    else { pct=cfg.flatRate||0; rateLabel=`Flat ${pct}% of cash collected`; }
+  }
+  const amountDue=Math.round(cashCollected*pct)/100;
+  const noCfg=!cfg||!pct;
+  // invoice number: client initials + period end (deterministic per client+period)
+  const initials=(client.match(/[A-Za-z0-9]+/g)||[]).map(w=>w[0]).join('').toUpperCase().slice(0,4)||'INV';
+  const invNo=`INV-${initials}-${to.replace(/-/g,'')}`;
+  const bi=billingInfo();
+  const MAXROWS=8; const rows=uniqDeals.slice(0,MAXROWS); const moreN=uniqDeals.length-rows.length;
+  const dealRows = uniqDeals.length ? rows.map(d=>`<tr>
+      <td>${esc(usDate(d.date))}</td><td>${esc(d.rep||'')}</td><td>${esc(d.client||'')}</td><td>${esc(d.product||'-')}</td><td style="text-align:right;font-variant-numeric:tabular-nums">${money(d.contractValue||d.cashCollected||0)}</td>
+    </tr>`).join('') + (moreN>0?`<tr><td colspan="5" style="text-align:center;color:#8a93a6;font-style:italic;padding:10px">...and ${moreN} more deal${moreN>1?'s':''} in this period</td></tr>`:'')
+    : `<tr><td colspan="5" style="text-align:center;color:#8a93a6;padding:16px">No deals closed in this billing period.</td></tr>`;
+  const stat=(label,val)=>`<div style="flex:1;min-width:130px;background:#f4f6fa;border:1px solid #e3e8f0;border-radius:10px;padding:14px 16px">
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#6b7488;font-weight:700">${label}</div>
+      <div style="font-size:24px;font-weight:800;color:#1a2b4a;margin-top:4px;font-variant-numeric:tabular-nums">${val}</div></div>`;
+  const payBlock = bi && (bi.bank||bi.acct||bi.routing) ? `
+    <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 18px;font-size:13px;color:#2b3242">
+      ${bi.name?`<div style="color:#6b7488">Beneficiary</div><div style="font-weight:600">${esc(bi.name)}</div>`:''}
+      ${bi.bank?`<div style="color:#6b7488">Bank</div><div style="font-weight:600">${esc(bi.bank)}</div>`:''}
+      ${bi.acct?`<div style="color:#6b7488">Account #</div><div style="font-weight:600;font-variant-numeric:tabular-nums">${esc(bi.acct)}</div>`:''}
+      ${bi.routing?`<div style="color:#6b7488">Routing (ACH/wire)</div><div style="font-weight:600;font-variant-numeric:tabular-nums">${esc(bi.routing)}</div>`:''}
+      ${bi.swift?`<div style="color:#6b7488">SWIFT/BIC</div><div style="font-weight:600">${esc(bi.swift)}</div>`:''}
+      ${bi.notes?`<div style="color:#6b7488">Note</div><div>${esc(bi.notes)}</div>`:''}
+    </div>`
+    : `<p style="margin:0;font-size:13px;color:#b4632a">Add TSA's wire/ACH details under <b>Billing settings</b> so they appear here.</p>`;
+  return `<div id="invoiceDoc" style="background:#ffffff;color:#2b3242;max-width:820px;margin:0 auto;border-radius:14px;overflow:hidden;box-shadow:0 10px 40px rgba(20,30,60,.18);font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.5">
+    <div style="background:#1a2b4a;color:#fff;padding:26px 34px;display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px">
+      <div>
+        <div style="font-size:22px;font-weight:800;letter-spacing:.02em">THE SALES AGENCY</div>
+        <div style="font-size:12px;color:#c9a227;font-weight:700;letter-spacing:.16em;margin-top:2px">PERFORMANCE INVOICE</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:12px;color:#9fb0cc">Invoice</div>
+        <div style="font-size:15px;font-weight:700;font-variant-numeric:tabular-nums">${esc(invNo)}</div>
+        <div style="font-size:12px;color:#9fb0cc;margin-top:6px">Billing period</div>
+        <div style="font-size:13px;font-weight:600">${esc(usDate(from))} to ${esc(usDate(to))}</div>
+      </div>
+    </div>
+    <div style="padding:22px 34px 8px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px">
+      <div>
+        <div style="font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:#6b7488;font-weight:700">Billed to</div>
+        <div style="font-size:19px;font-weight:800;color:#1a2b4a">${esc(client)}</div>
+      </div>
+      <div style="text-align:right;background:#c9a227;color:#241c08;border-radius:12px;padding:12px 22px">
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;font-weight:800">Amount due</div>
+        <div style="font-size:30px;font-weight:900;font-variant-numeric:tabular-nums">${money(amountDue)}</div>
+      </div>
+    </div>
+    ${(rateLabel||noCfg)?`<div style="padding:0 34px 4px"><div style="font-size:12px;color:${noCfg?'#b4632a':'#6b7488'}">${noCfg?'No billing rate set for this client - set one under Billing settings to compute the amount due.':esc(rateLabel)}</div></div>`:''}
+    <div style="padding:16px 34px 4px">
+      <div style="font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:#6b7488;font-weight:700;margin-bottom:10px">Performance summary</div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap">
+        ${stat('Total revenue',money(totalRevenue))}
+        ${stat('Deals closed',dealsClosed)}
+        ${stat('Cash collected',money(cashCollected))}
+        ${stat('Show rate',Math.round(showRate*100)+'%')}
+      </div>
+    </div>
+    <div style="padding:20px 34px 4px">
+      <div style="font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:#6b7488;font-weight:700;margin-bottom:8px">Deals included</div>
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead><tr style="text-align:left;color:#6b7488;border-bottom:2px solid #e3e8f0">
+          <th style="padding:7px 8px;font-weight:700">Date</th><th style="padding:7px 8px;font-weight:700">Rep</th><th style="padding:7px 8px;font-weight:700">Client</th><th style="padding:7px 8px;font-weight:700">Product</th><th style="padding:7px 8px;font-weight:700;text-align:right">Amount</th>
+        </tr></thead>
+        <tbody style="color:#2b3242">${dealRows.replace(/<td>/g,'<td style="padding:8px;border-bottom:1px solid #eef1f6">').replace(/<td style="text-align:right/g,'<td style="padding:8px;border-bottom:1px solid #eef1f6;text-align:right')}</tbody>
+      </table>
+    </div>
+    <div style="padding:20px 34px;margin-top:8px">
+      <div style="background:#f4f6fa;border:1px solid #e3e8f0;border-radius:12px;padding:16px 18px">
+        <div style="font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:#1a2b4a;font-weight:800;margin-bottom:10px">Payment - wire / ACH</div>
+        ${payBlock}
+      </div>
+    </div>
+    <div style="background:#1a2b4a;color:#9fb0cc;padding:16px 34px;font-size:12px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px">
+      <span>Questions? ${esc((bi&&bi.email)||'billing@thesalesagency.com')}</span>
+      <span>The Sales Agency</span>
+    </div>
+  </div>`;
+}
+function invPrint(){
+  const doc=document.getElementById('invoiceDoc'); if(!doc){ toast('Generate an invoice first',true); return; }
+  const w=window.open('','_blank'); if(!w){ toast('Allow pop-ups to print',true); return; }
+  w.document.write(`<!doctype html><html><head><title>Invoice</title><meta charset="utf-8"><style>body{margin:0;padding:24px;background:#fff}@media print{body{padding:0}}</style></head><body>${doc.outerHTML}</body></html>`);
+  w.document.close(); w.focus(); setTimeout(()=>{ try{ w.print(); }catch(e){} }, 300);
 }
 
 /* ---------------- rep breakdown tab ---------------- */
