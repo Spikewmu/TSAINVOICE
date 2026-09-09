@@ -3014,7 +3014,7 @@ function genFounderInvoice(client,from,to){
   const bi=billingInfo();
   const MAXROWS=8; const rows=uniqDeals.slice(0,MAXROWS); const moreN=uniqDeals.length-rows.length;
   const dealRows = uniqDeals.length ? rows.map(d=>`<tr>
-      <td>${esc(usDate(d.date))}</td><td>${esc(d.rep||'')}</td><td>${esc(d.client||'')}</td><td>${esc(d.product||'-')}</td><td style="text-align:right;font-variant-numeric:tabular-nums">${money(d.contractValue||d.cashCollected||0)}</td>
+      <td>${esc(usDate(d.date))}</td><td>${esc(d.rep||'')}</td><td>${esc(d.lead||'-')}</td><td>${esc(d.product||'-')}</td><td style="text-align:right;font-variant-numeric:tabular-nums">${money(d.contractValue||d.cashCollected||0)}</td>
     </tr>`).join('') + (moreN>0?`<tr><td colspan="5" style="text-align:center;color:#8a93a6;font-style:italic;padding:10px">...and ${moreN} more deal${moreN>1?'s':''} in this period</td></tr>`:'')
     : `<tr><td colspan="5" style="text-align:center;color:#8a93a6;padding:16px">No deals closed in this billing period.</td></tr>`;
   const stat=(label,val)=>`<div style="flex:1;min-width:130px;background:#f4f6fa;border:1px solid #e3e8f0;border-radius:10px;padding:14px 16px">
@@ -3067,7 +3067,7 @@ function genFounderInvoice(client,from,to){
       <div style="font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:#6b7488;font-weight:700;margin-bottom:8px">Deals included</div>
       <table style="width:100%;border-collapse:collapse;font-size:13px">
         <thead><tr style="text-align:left;color:#6b7488;border-bottom:2px solid #e3e8f0">
-          <th style="padding:7px 8px;font-weight:700">Date</th><th style="padding:7px 8px;font-weight:700">Rep</th><th style="padding:7px 8px;font-weight:700">Client</th><th style="padding:7px 8px;font-weight:700">Product</th><th style="padding:7px 8px;font-weight:700;text-align:right">Amount</th>
+          <th style="padding:7px 8px;font-weight:700">Date</th><th style="padding:7px 8px;font-weight:700">Rep</th><th style="padding:7px 8px;font-weight:700">Lead</th><th style="padding:7px 8px;font-weight:700">Product</th><th style="padding:7px 8px;font-weight:700;text-align:right">Amount</th>
         </tr></thead>
         <tbody style="color:#2b3242">${dealRows.replace(/<td>/g,'<td style="padding:8px;border-bottom:1px solid #eef1f6">').replace(/<td style="text-align:right/g,'<td style="padding:8px;border-bottom:1px solid #eef1f6;text-align:right')}</tbody>
       </table>
