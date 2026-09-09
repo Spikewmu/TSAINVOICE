@@ -49,7 +49,7 @@ async function supa(path, opts) {
 async function getUser(username) {
   // case-insensitive exact match (ilike, no wildcards) so a login works regardless of typed case
   // and regardless of how the username was stored (some are lowercase like "ra-eez", some capitalized like "Keith")
-  const r = await supa(`users?username=ilike.${encodeURIComponent(username)}&select=username,name,role,pass_hash&limit=1`);
+  const r = await supa(`users?username=ilike.${encodeURIComponent(username)}&select=username,name,role,pass_hash,archived&limit=1`);
   if (!r.ok) return null;
   const rows = await r.json();
   return rows[0] || null;
@@ -109,6 +109,8 @@ export default async function handler(req, res) {
       }
 
       const existing = await getUser(username);
+      // archived accounts are deactivated: keep the account + all their data, but block sign-in
+      if (existing && existing.archived) return res.status(200).json({ ok: false });
       // migrated user with a real hash → verify locally, no Apps Script
       if (existing && existing.pass_hash) {
         if (existing.pass_hash === hashPass(password)) {
@@ -154,7 +156,7 @@ export default async function handler(req, res) {
 
     // ---------- LIST USERS (any logged-in user; drives the rep dropdowns) ----------
     if (action === 'listUsers') {
-      const r = await supa('users?select=username,name,role&order=name.asc');
+      const r = await supa('users?select=username,name,role,archived&order=name.asc');
       if (!r.ok) return res.status(200).json({ ok: false, error: 'read ' + r.status });
       const all = await r.json();
       const map = await wsMemberMap();
@@ -284,6 +286,25 @@ export default async function handler(req, res) {
       }
       await supa('users?username=eq.' + encodeURIComponent(username), { method: 'DELETE' });
       return res.status(200).json({ ok: true });
+    }
+
+    // ---------- ARCHIVE / UNARCHIVE USER (soft-deactivate: block sign-in, keep the account + all their data) ----------
+    if (action === 'archiveUser' || action === 'unarchiveUser') {
+      const username = String(body.username || '').trim();
+      if (!username) return res.status(200).json({ ok: false });
+      if (username === (process.env.MASTER_USER || 'tsaboss')) return res.status(200).json({ ok: false, error: 'The master account cannot be archived' });
+      if (!isPlatformAdmin) { // scope-limited actors may only archive within their ceiling, and only in their own workspace
+        const existing = await getUser(username);
+        if (existing) {
+          if (!MANAGE_CEILING.includes(existing.role)) return res.status(200).json({ ok: false, error: 'You cannot change this account' });
+          const m2 = await wsMemberMap();
+          if (wsOf(m2, username) !== wsOf(m2, session.username)) return res.status(200).json({ ok: false, error: 'You cannot change this account' });
+        }
+      }
+      const archived = action === 'archiveUser';
+      const r = await supa('users?username=eq.' + encodeURIComponent(username), { method: 'PATCH', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ archived }) });
+      if (!r.ok) return res.status(200).json({ ok: false, error: 'update ' + r.status });
+      return res.status(200).json({ ok: true, archived });
     }
 
     // ---------- IMPORT ROSTER FROM APPS SCRIPT (one-time, so dropdowns are complete before everyone logs in) ----------
