@@ -163,6 +163,26 @@ export default async function handler(req, res) {
       if (rec.type === 'postcall' || rec.type === 'deal') { try { const gcfg = await integrationFor(rec.ws, rec.client); if (gcfg && gcfg.ghlEnabled && gcfg.ghlApiKey) await ghlPush(gcfg, rec); } catch (e) { } } // push the disposition back to the client's GHL (paid/organic attribution loop)
       return res.status(200).json({ ok: true });
     }
+    // ---------- RESEND a record's Slack post (e.g. a closed deal whose channel wasn't connected at submit time) ----------
+    if (action === 'resendSlack') {
+      if (s && !['admin', 'director', 'manager'].includes(s.role)) return res.status(200).json({ ok: false, error: 'Managers/admins only' });
+      const rec = b.record || {};
+      if (!rec || !rec.type) return res.status(200).json({ ok: false, error: 'record required' });
+      rec.ws = callerWs; // only ever post to the caller's own workspace / its client channel
+      const cfg = await integrationFor(rec.ws, rec.client);
+      if (!cfg) return res.status(200).json({ ok: false, error: 'No integration is set up for ' + (rec.client || 'this client') + '.' });
+      // which channel would this event go to? if none, tell them to connect it first (mirrors eventToSlack/eodToSlack routing)
+      let dest = '';
+      if (rec.type === 'deal') dest = cfg.dealSlack;
+      else if (rec.type === 'postcall') dest = (rec.role === 'Setter' ? (cfg.postcallSetterSlack || cfg.postcallSlack) : (cfg.postcallCloserSlack || cfg.postcallSlack));
+      else if (rec.type === 'sod') dest = (rec.role === 'Setter' ? (cfg.sodSetterSlack || cfg.sodSlack) : (cfg.sodCloserSlack || cfg.sodSlack));
+      else if (rec.type === 'eod') dest = cfg.eodToSlack ? ((rec.role || 'Closer') === 'Setter' ? (cfg.eodSetterSlack || cfg.slackWebhook) : (cfg.eodCloserSlack || cfg.slackWebhook)) : '';
+      else if (rec.type === 'mgreod') dest = cfg.eodToSlack ? (cfg.eodMgrSlack || cfg.slackWebhook) : '';
+      else return res.status(200).json({ ok: false, error: 'This record type cannot be posted to Slack.' });
+      if (!dest) return res.status(200).json({ ok: false, error: 'No Slack channel is connected for this on ' + (rec.client || 'this client') + '. Connect it on Integrations, then resend.' });
+      if (rec.type === 'eod' || rec.type === 'mgreod') await eodToSlack(rec); else await eventToSlack(rec);
+      return res.status(200).json({ ok: true });
+    }
     if (action === 'accounts') {
       // platform owner only (a TSA admin) - list all client accounts + their seat usage
       if (callerWs !== DEFAULT_WS || (s && s.role !== 'admin')) return res.status(200).json({ ok: false, error: 'not-authorized' });

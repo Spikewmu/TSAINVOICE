@@ -2658,10 +2658,25 @@ function renderClients(recs){
 }
 function renderDeals(recs){
   const deals=recs.filter(x=>x.type==='deal').sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  const canResend=SESSION&&['admin','director','manager'].includes(SESSION.role); // re-post a deal to Slack (e.g. if the channel wasn't connected when it was logged)
   document.getElementById('dealTable').innerHTML=
-    `<thead><tr><th>Date</th><th>Client</th><th>Lead</th><th>Closer</th><th>Setter</th><th>Product</th><th class="num">Contract</th><th class="num">Cash</th><th class="num">Deposit</th><th>Rec</th></tr></thead><tbody>`+
-    (deals.length?deals.map(d=>`<tr><td>${esc(usDate(d.date))}</td><td>${esc(d.client)}</td><td>${esc(d.lead)}</td><td>${esc(d.rep)}</td><td>${esc(d.setter)}</td><td>${esc(d.product)}</td><td class="num">${money(d.contractValue)}</td><td class="num">${money(d.cashCollected)}</td><td class="num">${money(d.depositCollected)}</td><td>${d.fathom?`<a href="${esc(d.fathom)}" target="_blank" rel="noopener" class="linklike">▶ watch</a>`:'<span class="muted">-</span>'}</td></tr>`).join('')
-     :`<tr><td colspan="10" class="muted" style="padding:16px">No closed deals yet.</td></tr>`)+`</tbody>`;
+    `<thead><tr><th>Date</th><th>Client</th><th>Lead</th><th>Closer</th><th>Setter</th><th>Product</th><th class="num">Contract</th><th class="num">Cash</th><th class="num">Deposit</th><th>Rec</th>${canResend?'<th>Slack</th>':''}</tr></thead><tbody>`+
+    (deals.length?deals.map(d=>`<tr><td>${esc(usDate(d.date))}</td><td>${esc(d.client)}</td><td>${esc(d.lead)}</td><td>${esc(d.rep)}</td><td>${esc(d.setter)}</td><td>${esc(d.product)}</td><td class="num">${money(d.contractValue)}</td><td class="num">${money(d.cashCollected)}</td><td class="num">${money(d.depositCollected)}</td><td>${d.fathom?`<a href="${esc(d.fathom)}" target="_blank" rel="noopener" class="linklike">▶ watch</a>`:'<span class="muted">-</span>'}</td>${canResend?(d.id?`<td><button class="btn sm ghost" onclick="resendDealSlack('${esc(String(d.id))}')" title="Re-post this closed deal to the client's Slack channel">&#8599; Slack</button></td>`:'<td><span class="muted">-</span></td>'):''}</tr>`).join('')
+     :`<tr><td colspan="${canResend?11:10}" class="muted" style="padding:16px">No closed deals yet.</td></tr>`)+`</tbody>`;
+}
+// re-post a closed deal to the client's Slack channel (for deals logged before Slack was connected). Reuses the exact server-side formatting/routing.
+async function resendDealSlack(id){
+  const d=(RECORDS||[]).filter(x=>x.type==='deal'&&String(x.id||'')===String(id)).sort((a,b)=>(b.submittedAt||'').localeCompare(a.submittedAt||''))[0];
+  if(!d){ toast('Could not find that deal to resend',true); return; }
+  const btn=(typeof event!=='undefined'&&event&&event.target)?event.target:null;
+  if(btn){ btn.disabled=true; btn.textContent='Sending...'; }
+  try{
+    const hdr={'Content-Type':'application/json'}; if(SESSION&&SESSION.token) hdr['x-session-token']=SESSION.token; else if(SESSION&&SESSION.pw) hdr['x-admin-pass']=SESSION.pw;
+    const r=await fetch('/api/data?action=resendSlack',{method:'POST',headers:hdr,body:JSON.stringify({record:d})});
+    const j=await r.json();
+    toast((j&&j.ok)?('Posted to Slack'+(d.client?' - '+d.client:'')):((j&&j.error)||'Could not post to Slack'), !(j&&j.ok));
+  }catch(e){ toast('Could not post to Slack',true); }
+  if(btn){ btn.disabled=false; btn.innerHTML='&#8599; Slack'; }
 }
 
 /* ---------------- rep breakdown tab ---------------- */
