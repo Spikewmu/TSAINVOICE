@@ -211,6 +211,20 @@ export default async function handler(req, res) {
       if (rec.type === 'eod' || rec.type === 'mgreod') await eodToSlack(rec); else await eventToSlack(rec);
       return res.status(200).json({ ok: true });
     }
+    // ---------- PUSH one closed deal / post-call to the client's GHL on demand (admin only) ----------
+    // Manual push using the record's REAL data (note + source stamp). Works even when the auto-toggle is off,
+    // so it backfills closes logged before GHL was connected, and lets an admin re-push a specific record.
+    if (action === 'pushGhl') {
+      if (s && s.role !== 'admin') return res.status(200).json({ ok: false, error: 'Admins only' });
+      const rec = b.record || {};
+      if (!rec || !rec.type) return res.status(200).json({ ok: false, error: 'record required' });
+      if (rec.type !== 'deal' && rec.type !== 'postcall') return res.status(200).json({ ok: false, error: 'Only closed deals and post-calls can push to GHL.' });
+      rec.ws = callerWs; // only ever push within the caller's own workspace
+      const cfg = await integrationFor(rec.ws, rec.client);
+      if (!cfg || !cfg.ghlApiKey) return res.status(200).json({ ok: false, error: 'No GHL API key set for ' + (rec.client || 'this client') + ' - add it on Integrations first.' });
+      const out = await ghlPush(cfg, rec); // real note + real source, matched by the record's lead email
+      return res.status(200).json(out);
+    }
     if (action === 'accounts') {
       // platform owner only (a TSA admin) - list all client accounts + their seat usage
       if (callerWs !== DEFAULT_WS || (s && s.role !== 'admin')) return res.status(200).json({ ok: false, error: 'not-authorized' });

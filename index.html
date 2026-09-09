@@ -2768,16 +2768,16 @@ function renderClients(recs){
 }
 function renderDeals(recs){
   const deals=recs.filter(x=>x.type==='deal').sort((a,b)=>(b.date||'').localeCompare(a.date||''));
-  const canResend=SESSION&&['admin','director','manager'].includes(SESSION.role); // re-post a deal to Slack (e.g. if the channel wasn't connected when it was logged)
+  const canResend=SESSION&&SESSION.role==='admin'; // admin only: re-post a deal to Slack + push it to the client's GHL/CRM
   const row=d=>{
     const contract=d.contractValue||0, collected=dealCollected(d), pend=dealPending(d), bal=Math.max(0,contract-collected);
     const cashCell=`${money(collected)}${contract?`<div class="muted" style="font-size:11px">of ${money(contract)}${bal>0?' · bal '+money(bal):''}</div>`:''}${pend>0?`<div style="font-size:11px;color:var(--warn)">${money(pend)} pending</div>`:''}`;
     const nPay=paymentsForDeal(d.id).length, canMng=canManagePayments(d);
     const payBtn=d.id?`<button class="btn sm ghost" onclick="openPayments('${esc(String(d.id))}')" title="View, add, or confirm payments on this deal">${nPay?('&#9776; '+nPay):(canMng?'&#43; Add':'&#9776;')}</button>`:'<span class="muted">-</span>';
-    return `<tr><td>${esc(usDate(d.date))}</td><td>${esc(d.client)}</td><td>${esc(d.lead)}</td><td>${esc(d.rep)}</td><td>${esc(d.setter)}</td><td>${esc(d.product)}</td><td class="num">${money(contract)}</td><td class="num">${cashCell}</td><td class="num">${money(d.depositCollected)}</td><td>${d.fathom?`<a href="${esc(d.fathom)}" target="_blank" rel="noopener" class="linklike">▶ watch</a>`:'<span class="muted">-</span>'}</td><td>${payBtn}</td>${canResend?(d.id?`<td><button class="btn sm ghost" onclick="resendDealSlack('${esc(String(d.id))}')" title="Re-post this closed deal to the client's Slack channel">&#8599; Slack</button></td>`:'<td><span class="muted">-</span></td>'):''}</tr>`;
+    return `<tr><td>${esc(usDate(d.date))}</td><td>${esc(d.client)}</td><td>${esc(d.lead)}</td><td>${esc(d.rep)}</td><td>${esc(d.setter)}</td><td>${esc(d.product)}</td><td class="num">${money(contract)}</td><td class="num">${cashCell}</td><td class="num">${money(d.depositCollected)}</td><td>${d.fathom?`<a href="${esc(d.fathom)}" target="_blank" rel="noopener" class="linklike">▶ watch</a>`:'<span class="muted">-</span>'}</td><td>${payBtn}</td>${canResend?(d.id?`<td style="white-space:nowrap"><button class="btn sm ghost" onclick="resendDealSlack('${esc(String(d.id))}')" title="Re-post this closed deal to the client's Slack channel">&#8599; Slack</button> <button class="btn sm ghost" onclick="pushDealGhl('${esc(String(d.id))}')" title="Push this closed deal to the client's GHL/CRM (adds a note + stamps the lead source)">&#8599; CRM</button></td>`:'<td><span class="muted">-</span></td>'):''}</tr>`;
   };
   document.getElementById('dealTable').innerHTML=
-    `<thead><tr><th>Date</th><th>Client</th><th>Lead</th><th>Closer</th><th>Setter</th><th>Product</th><th class="num">Contract</th><th class="num">Collected</th><th class="num">Deposit</th><th>Rec</th><th>Pmts</th>${canResend?'<th>Slack</th>':''}</tr></thead><tbody>`+
+    `<thead><tr><th>Date</th><th>Client</th><th>Lead</th><th>Closer</th><th>Setter</th><th>Product</th><th class="num">Contract</th><th class="num">Collected</th><th class="num">Deposit</th><th>Rec</th><th>Pmts</th>${canResend?'<th>Push</th>':''}</tr></thead><tbody>`+
     (deals.length?deals.map(row).join('')
      :`<tr><td colspan="${canResend?12:11}" class="muted" style="padding:16px">No closed deals yet.</td></tr>`)+`</tbody>`;
 }
@@ -2794,6 +2794,22 @@ async function resendDealSlack(id){
     toast((j&&j.ok)?('Posted to Slack'+(d.client?' - '+d.client:'')):((j&&j.error)||'Could not post to Slack'), !(j&&j.ok));
   }catch(e){ toast('Could not post to Slack',true); }
   if(btn){ btn.disabled=false; btn.innerHTML='&#8599; Slack'; }
+}
+// admin only: push a closed deal to the client's GHL/CRM on demand (real note + source stamp, matched by lead email).
+// Works even when auto-push is off - used to backfill closes logged before GHL was connected, or re-push a specific deal.
+async function pushDealGhl(id){
+  const d=(RECORDS||[]).filter(x=>x.type==='deal'&&String(x.id||'')===String(id)).sort((a,b)=>(b.submittedAt||'').localeCompare(a.submittedAt||''))[0];
+  if(!d){ toast('Could not find that deal to push',true); return; }
+  if(!(d.leadEmail||d.email)){ toast('This deal has no lead email, so GHL can\'t match the contact. Add the email on the deal first.',true); return; }
+  const btn=(typeof event!=='undefined'&&event&&event.target)?event.target:null;
+  if(btn){ btn.disabled=true; btn.textContent='Pushing...'; }
+  try{
+    const hdr={'Content-Type':'application/json'}; if(SESSION&&SESSION.token) hdr['x-session-token']=SESSION.token; else if(SESSION&&SESSION.pw) hdr['x-admin-pass']=SESSION.pw;
+    const r=await fetch('/api/data?action=pushGhl',{method:'POST',headers:hdr,body:JSON.stringify({record:d})});
+    const j=await r.json();
+    toast((j&&j.ok)?('Pushed to GHL'+(d.client?' - '+d.client:'')+' (note + source on the contact)'):((j&&j.error)||'Could not push to GHL'), !(j&&j.ok));
+  }catch(e){ toast('Could not push to GHL',true); }
+  if(btn){ btn.disabled=false; btn.innerHTML='&#8599; CRM'; }
 }
 
 /* ---- expected payments (payment plan) captured at close -> auto-create Pending payments on the new deal ---- */
