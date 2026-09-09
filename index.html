@@ -1239,6 +1239,15 @@
   </div>
 </div>
 
+<div class="modal" id="payModal" hidden onclick="if(event.target===this)closePayments()">
+  <div class="modalcard" style="width:min(580px,95vw);max-height:90vh;overflow:auto">
+    <h3 style="margin:0 0 2px">Payments <span id="payWho" style="color:var(--gold)"></span></h3>
+    <p class="hint" id="paySub" style="margin:0 0 12px"></p>
+    <div id="payBody"></div>
+    <div class="row-actions" style="margin-top:14px"><button class="btn ghost sm" onclick="closePayments()">Close</button></div>
+  </div>
+</div>
+
 <div class="modal" id="mergeModal" hidden onclick="if(event.target===this)closeMerge()">
   <div class="modalcard" style="width:min(460px,95vw)">
     <h3 style="margin:0 0 2px">Merge <span id="mergeSrcName" style="color:var(--gold)"></span> into another account</h3>
@@ -2031,6 +2040,8 @@ function activityRecords(){
     } else if(x.type==='deal'||!x.type){ out.push(x); }
   });
   Object.values(latestEod).forEach(x=>out.push(x));
+  // confirmed deal-payments count as cash (dated the day collected), attributed to the deal's closer + setter
+  paymentsCollapsed().forEach(p=>{ if(p.status==='confirmed'){ out.push({type:'payment', role:'Closer', client:p.client, rep:p.rep, setter:p.setter||'', lead:p.lead||'', date:p.date, cashCollected:p.amount||0, contractValue:0, depositCollected:0, closedDeals:0}); } });
   return out;
 }
 // Option A (deals = source of truth for money): count cash/contract/deposit/closed-deals from DEAL records only,
@@ -2038,6 +2049,17 @@ function activityRecords(){
 // a deal AND its EOD would double-count the same sale. Every won call auto-creates a deal, so deals are complete.
 // (Activity fields - hours, dials, connects, no-shows, capacity, sets - are still counted from EODs as normal.)
 const countsMoney = x => x && x.type !== 'eod' && x.type !== 'mgreod';
+// ---- Deal payments: append additional payments to a closed deal AFTER it's logged ----
+// A payment is its own record keyed by a stable `pid`, so editing it (pending -> confirmed, or a fix)
+// re-submits the SAME pid and the latest submission wins. CONFIRMED payments add to cash - on the
+// dashboard, in setter/closer commission, and (later) invoicing - dated the day they were collected.
+// PENDING payments (e.g. a wire not yet cleared) show on the deal but never count until confirmed.
+// The deal's own close-day cash stays on the deal as payment #1; only ADDITIONAL payments append here.
+function paymentsCollapsed(){ const latest={}; RECORDS.forEach(x=>{ if(x.type!=='payment') return; const k=x.pid||x.id; const p=latest[k]; if(!p||(x.submittedAt||'')>(p.submittedAt||'')) latest[k]=x; }); return Object.values(latest).filter(x=>!x.deleted); }
+function paymentsForDeal(dealId){ return paymentsCollapsed().filter(x=>String(x.dealId||'')===String(dealId)).sort((a,b)=>(a.date||'').localeCompare(b.date||'')); }
+function dealCollected(deal){ return (deal.cashCollected||0) + paymentsForDeal(deal.id).filter(p=>p.status==='confirmed').reduce((s,p)=>s+(p.amount||0),0); }
+function dealPending(deal){ return paymentsForDeal(deal.id).filter(p=>p.status==='pending').reduce((s,p)=>s+(p.amount||0),0); }
+function canManagePayments(d){ if(!SESSION||!d) return false; if(['admin','director','manager'].includes(SESSION.role)) return true; if((SESSION.role==='closer'||SESSION.role==='setter') && String(SESSION.name||'').trim()===String(d.rep||'').trim()) return true; return false; }
 // Post-call corrections work the same way: collapse to the LATEST submission per rep+day+lead+callType
 // (append-only backend, so a re-submitted call supersedes the earlier one instead of duplicating).
 function collapsePostcall(list){
@@ -2472,7 +2494,7 @@ function renderBreakdownTables(recs, opts){
       o.connected+=x.connectedMeetings||0; o.noShows+=x.noShows||0; o.capacity+=x.callCapacity||0;
       if(x.role!=='Setter' && countsMoney(x)){ o.cash+=x.cashCollected||0; o.deals+=x.closedDeals||0; o.contract+=x.contractValue||0; } // cash/deals from DEALS only, not EODs (Option A)
     }
-    if(x.type==='deal'){
+    if(x.type==='deal'||x.type==='payment'){
       if(rep){ const o=b(closers,rep); if(x.date)o.days.add(x.date.slice(0,10)); o.cash+=x.cashCollected||0; o.deals+=x.closedDeals||0; o.contract+=x.contractValue||0; }
       if(setter){ const o=b(setters,setter); o.cash+=x.cashCollected||0; o.deals+=x.closedDeals||0; }
     }
@@ -2625,7 +2647,7 @@ function aggSetters(recs){
   const s={dials:0,connCalls:0,set:0,convos4:0,hours:0,cashSet:0};
   recs.forEach(x=>{
     if((x.type==='eod'||!x.type) && x.role==='Setter'){ s.dials+=x.newOutreach||0; s.connCalls+=x.connectedCalls||0; s.set+=x.callsSet||0; s.convos4+=x.convos4min||0; s.hours+=x.hoursDialing||0; }
-    if(x.type==='deal' && (x.setter||'').trim()){ s.cashSet+=x.cashCollected||0; }
+    if((x.type==='deal'||x.type==='payment') && (x.setter||'').trim()){ s.cashSet+=x.cashCollected||0; }
   });
   s.connRate=s.dials?s.connCalls/s.dials:0;
   s.bookRate=s.connCalls?s.set/s.connCalls:0;
@@ -2637,7 +2659,7 @@ function renderLeaderboard(recs){
   recs.forEach(x=>{
     const rep=(x.rep||'').trim(), setter=(x.setter||'').trim();
     if(rep){ const b=bucket(rep,x.role||'Closer'); if(countsMoney(x)){ b.cash+=x.cashCollected||0; b.deals+=x.closedDeals||0; } if(x.role!=='Setter') b.connected+=x.connectedMeetings||0; b.set+=x.callsSet||0; }
-    if(x.type==='deal'&&setter){ const s=bucket(setter,'Setter'); s.cash+=x.cashCollected||0; s.deals+=x.closedDeals||0; }
+    if((x.type==='deal'||x.type==='payment')&&setter){ const s=bucket(setter,'Setter'); s.cash+=x.cashCollected||0; s.deals+=x.closedDeals||0; }
   });
   const all=Object.values(byRep);
   const closers=all.filter(o=>o.role!=='Setter').map(o=>({...o,closeRate:o.connected?o.deals/o.connected:0,payout:o.cash*CFG.closerRate/100})).sort((a,b)=>b.cash-a.cash||b.deals-a.deals);
@@ -2664,10 +2686,17 @@ function renderClients(recs){
 function renderDeals(recs){
   const deals=recs.filter(x=>x.type==='deal').sort((a,b)=>(b.date||'').localeCompare(a.date||''));
   const canResend=SESSION&&['admin','director','manager'].includes(SESSION.role); // re-post a deal to Slack (e.g. if the channel wasn't connected when it was logged)
+  const row=d=>{
+    const contract=d.contractValue||0, collected=dealCollected(d), pend=dealPending(d), bal=Math.max(0,contract-collected);
+    const cashCell=`${money(collected)}${contract?`<div class="muted" style="font-size:11px">of ${money(contract)}${bal>0?' · bal '+money(bal):''}</div>`:''}${pend>0?`<div style="font-size:11px;color:var(--warn)">${money(pend)} pending</div>`:''}`;
+    const nPay=paymentsForDeal(d.id).length, canMng=canManagePayments(d);
+    const payBtn=d.id?`<button class="btn sm ghost" onclick="openPayments('${esc(String(d.id))}')" title="View, add, or confirm payments on this deal">${nPay?('&#9776; '+nPay):(canMng?'&#43; Add':'&#9776;')}</button>`:'<span class="muted">-</span>';
+    return `<tr><td>${esc(usDate(d.date))}</td><td>${esc(d.client)}</td><td>${esc(d.lead)}</td><td>${esc(d.rep)}</td><td>${esc(d.setter)}</td><td>${esc(d.product)}</td><td class="num">${money(contract)}</td><td class="num">${cashCell}</td><td class="num">${money(d.depositCollected)}</td><td>${d.fathom?`<a href="${esc(d.fathom)}" target="_blank" rel="noopener" class="linklike">▶ watch</a>`:'<span class="muted">-</span>'}</td><td>${payBtn}</td>${canResend?(d.id?`<td><button class="btn sm ghost" onclick="resendDealSlack('${esc(String(d.id))}')" title="Re-post this closed deal to the client's Slack channel">&#8599; Slack</button></td>`:'<td><span class="muted">-</span></td>'):''}</tr>`;
+  };
   document.getElementById('dealTable').innerHTML=
-    `<thead><tr><th>Date</th><th>Client</th><th>Lead</th><th>Closer</th><th>Setter</th><th>Product</th><th class="num">Contract</th><th class="num">Cash</th><th class="num">Deposit</th><th>Rec</th>${canResend?'<th>Slack</th>':''}</tr></thead><tbody>`+
-    (deals.length?deals.map(d=>`<tr><td>${esc(usDate(d.date))}</td><td>${esc(d.client)}</td><td>${esc(d.lead)}</td><td>${esc(d.rep)}</td><td>${esc(d.setter)}</td><td>${esc(d.product)}</td><td class="num">${money(d.contractValue)}</td><td class="num">${money(d.cashCollected)}</td><td class="num">${money(d.depositCollected)}</td><td>${d.fathom?`<a href="${esc(d.fathom)}" target="_blank" rel="noopener" class="linklike">▶ watch</a>`:'<span class="muted">-</span>'}</td>${canResend?(d.id?`<td><button class="btn sm ghost" onclick="resendDealSlack('${esc(String(d.id))}')" title="Re-post this closed deal to the client's Slack channel">&#8599; Slack</button></td>`:'<td><span class="muted">-</span></td>'):''}</tr>`).join('')
-     :`<tr><td colspan="${canResend?11:10}" class="muted" style="padding:16px">No closed deals yet.</td></tr>`)+`</tbody>`;
+    `<thead><tr><th>Date</th><th>Client</th><th>Lead</th><th>Closer</th><th>Setter</th><th>Product</th><th class="num">Contract</th><th class="num">Collected</th><th class="num">Deposit</th><th>Rec</th><th>Pmts</th>${canResend?'<th>Slack</th>':''}</tr></thead><tbody>`+
+    (deals.length?deals.map(row).join('')
+     :`<tr><td colspan="${canResend?12:11}" class="muted" style="padding:16px">No closed deals yet.</td></tr>`)+`</tbody>`;
 }
 // re-post a closed deal to the client's Slack channel (for deals logged before Slack was connected). Reuses the exact server-side formatting/routing.
 async function resendDealSlack(id){
@@ -2683,6 +2712,71 @@ async function resendDealSlack(id){
   }catch(e){ toast('Could not post to Slack',true); }
   if(btn){ btn.disabled=false; btn.innerHTML='&#8599; Slack'; }
 }
+
+/* ---------------- deal payments (append payments to a closed deal) ---------------- */
+let PAY_DEAL=null;
+function openPayments(dealId){
+  const d=(RECORDS||[]).filter(x=>x.type==='deal'&&String(x.id||'')===String(dealId)).sort((a,b)=>(b.submittedAt||'').localeCompare(a.submittedAt||''))[0];
+  if(!d){ toast('Could not find that deal',true); return; }
+  PAY_DEAL=d;
+  document.getElementById('payWho').textContent=d.lead||d.client||'';
+  document.getElementById('paySub').textContent=`${d.client||''}${d.product?' · '+d.product:''}${d.date?' · closed '+usDate(d.date):''}`;
+  renderPaymentsModal();
+  document.getElementById('payModal').hidden=false;
+}
+function closePayments(){ document.getElementById('payModal').hidden=true; PAY_DEAL=null; }
+function renderPaymentsModal(){
+  const d=PAY_DEAL; if(!d) return;
+  const pays=paymentsForDeal(d.id), contract=d.contractValue||0, collected=dealCollected(d), pend=dealPending(d), bal=Math.max(0,contract-collected), canMng=canManagePayments(d);
+  const pill=s=> s==='confirmed'?'<span class="chip" style="background:rgba(74,160,80,.15);color:#7bd487">confirmed</span>':'<span class="chip" style="background:rgba(212,175,90,.15);color:var(--gold)">pending</span>';
+  const stat=(lbl,val,col)=>`<div><div class="muted" style="font-size:11px">${lbl}</div><div style="font-size:17px${col?';color:'+col:''}">${money(val)}</div></div>`;
+  const summary=`<div style="display:flex;gap:18px;flex-wrap:wrap;margin:0 0 14px">${stat('Collected to date',collected,'#7bd487')}${stat('Contract',contract)}${stat('Balance',bal)}${pend>0?stat('Pending',pend,'var(--gold)'):''}</div>`;
+  let rows=`<tr><td>${esc(usDate(d.date))}</td><td class="num">${money(d.cashCollected)}</td><td class="muted">at close</td><td>${pill('confirmed')}</td><td></td></tr>`;
+  pays.forEach(p=>{
+    const pid=esc(p.pid||p.id);
+    const act=canMng?((p.status==='pending'?`<button class="btn sm gold" onclick="confirmPayment('${pid}')">Confirm</button>`:`<button class="btn sm ghost" onclick="revertPayment('${pid}')" title="Back to pending">Undo</button>`)+` <button class="btn sm ghost" onclick="removePayment('${pid}')" title="Remove this payment">&times;</button>`):'';
+    rows+=`<tr><td>${esc(usDate(p.date))}</td><td class="num">${money(p.amount)}</td><td>${esc(p.method||'')}${p.notes?`<div class="muted" style="font-size:11px">${esc(p.notes)}</div>`:''}</td><td>${pill(p.status)}</td><td>${act}</td></tr>`;
+  });
+  const table=`<table style="margin-bottom:14px"><thead><tr><th>Date</th><th class="num">Amount</th><th>Method</th><th>Status</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+  const form=canMng?`<div style="border:1px solid var(--border);border-radius:10px;padding:12px;background:var(--surface-2)">
+      <div style="font-weight:600;margin-bottom:8px;font-size:13px">Add a payment</div>
+      <div class="grid3" style="gap:8px">
+        <div class="field"><label>Amount ($)</label><input type="number" id="payAmt" min="0" step="0.01" placeholder="0.00"></div>
+        <div class="field"><label>Date collected</label><input type="date" id="payDate"></div>
+        <div class="field"><label>Method</label><select id="payMethod"><option>Wire</option><option>Card</option><option>ACH</option><option>Check</option><option>Other</option></select></div>
+      </div>
+      <div class="grid3" style="gap:8px;margin-top:8px">
+        <div class="field"><label>Status</label><select id="payStatus"><option value="confirmed">Confirmed (counts now)</option><option value="pending">Pending (not cleared yet)</option></select></div>
+        <div class="field" style="grid-column:span 2"><label>Notes</label><input type="text" id="payNotes" placeholder="optional"></div>
+      </div>
+      <div class="row-actions" style="margin-top:10px"><button class="btn gold sm" onclick="addPayment()">Add payment</button></div>
+      <p class="fieldhelp" style="margin-top:8px">Log a wire as <b>Pending</b> until it clears, then hit <b>Confirm</b> - it only counts toward cash + commission once confirmed.</p>
+    </div>`:`<p class="hint">Only the closer on this deal or a manager can add or confirm payments.</p>`;
+  document.getElementById('payBody').innerHTML=summary+table+form;
+  const dt=document.getElementById('payDate'); if(dt&&!dt.value) dt.value=todayCentral();
+}
+async function addPayment(){
+  const d=PAY_DEAL; if(!d) return;
+  const amt=parseFloat((document.getElementById('payAmt').value||'').trim());
+  if(!(amt>0)){ toast('Enter a payment amount',true); return; }
+  const rec={type:'payment', pid:uid(), dealId:d.id, client:d.client||'', rep:d.rep||'', setter:d.setter||'', lead:d.lead||'', product:d.product||'',
+    amount:amt, method:document.getElementById('payMethod').value||'Wire',
+    status:(document.getElementById('payStatus').value==='pending'?'pending':'confirmed'),
+    date:document.getElementById('payDate').value||todayCentral(), notes:(document.getElementById('payNotes').value||'').trim()};
+  await addRecord(rec);
+  toast(rec.status==='confirmed'?'Payment added':'Pending payment logged');
+  renderPaymentsModal(); if(!repMode()) renderDash();
+}
+async function setPaymentStatus(pid,status,del){
+  const p=paymentsCollapsed().find(x=>String(x.pid||x.id)===String(pid)); if(!p) return;
+  const rec={...p}; delete rec.id; delete rec.submittedAt; delete rec.submittedET; rec.pid=p.pid||p.id;
+  if(del) rec.deleted=true; else { rec.status=status; if(status==='confirmed'){ rec.confirmedBy=SESSION&&SESSION.name; rec.confirmedAt=new Date().toISOString(); } }
+  await addRecord(rec);
+  renderPaymentsModal(); if(!repMode()) renderDash();
+}
+function confirmPayment(pid){ setPaymentStatus(pid,'confirmed',false); toast('Payment confirmed'); }
+function revertPayment(pid){ setPaymentStatus(pid,'pending',false); }
+function removePayment(pid){ if(!confirm('Remove this payment? This cannot be undone.')) return; setPaymentStatus(pid,null,true); toast('Payment removed'); }
 
 /* ---------------- rep breakdown tab ---------------- */
 let REP_SEL=null, REP_SCOPE=null;
@@ -3938,8 +4032,8 @@ function renderReps(){
       o.connected+=x.connectedMeetings||0; o.noShows+=x.noShows||0; o.capacity+=x.callCapacity||0;
       if(x.role!=='Setter' && countsMoney(x)){ o.cash+=x.cashCollected||0; o.deals+=x.closedDeals||0; o.contract+=x.contractValue||0; } // cash/deals from DEALS only, not EODs (Option A)
     }
-    // closed deals: credit the closer (rep) and attribute cash to the setter who set it
-    if(x.type==='deal'){
+    // closed deals + confirmed payments: credit the closer (rep) and attribute cash to the setter who set it
+    if(x.type==='deal'||x.type==='payment'){
       if(rep){ const o=b(closers,rep); if(x.date)o.days.add(x.date.slice(0,10)); o.cash+=x.cashCollected||0; o.deals+=x.closedDeals||0; o.contract+=x.contractValue||0; }
       if(setter){ const o=b(setters,setter); o.cash+=x.cashCollected||0; o.deals+=x.closedDeals||0; }
     }
