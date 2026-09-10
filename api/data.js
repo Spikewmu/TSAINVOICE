@@ -55,13 +55,13 @@ async function eventToSlack(rec) {
       const L = (label, val) => (val !== undefined && val !== null && String(val).trim() !== '') ? `\n*${label}:* ${String(val).trim()}` : ''; // only show a line if it has a value
       const dp = String(rec.date || '').slice(0, 10).split('-'); const dateStr = dp.length === 3 ? (Number(dp[1]) + '-' + Number(dp[2]) + '-' + dp[0]) : ''; // 2026-09-07 -> 9-7-2026
       const setterLine = (rec.setter && String(rec.setter).trim()) ? `\n*Setter:* ${String(rec.setter).trim()}` : '\n*Setter:* self-booked';
-      const body = `🎉 *NEW CLOSED DEAL* · ${money(rec.cashCollected)} cash`
-        + (rec.client ? `\n*Account:* ${rec.client}` : '')
+      const body = `🎉 *NEW CLOSED DEAL*${rec.client ? '  ·  *' + rec.client + '*' : ''}`
+        + `\n${who} (Closer)`
         + L('Contact', rec.lead) + L('Email', rec.leadEmail) + L('Date', dateStr) + L('Offer', rec.product)
         + (rec.contractValue ? `\n*Contract value:* ${money(rec.contractValue)}` : '')
         + (rec.cashCollected ? `\n*Cash collected:* ${money(rec.cashCollected)}` : '')
         + (rec.depositCollected ? `\n*Deposit:* ${money(rec.depositCollected)}` : '')
-        + L('Source', rec.source) + `\n*Closer:* ${who}` + setterLine + L('Notes', rec.notes);
+        + L('Source', rec.source) + setterLine + L('Notes', rec.notes);
       await postChan(cfg.dealSlack, `New closed deal${rec.client ? ' · ' + rec.client : ''} · ${money(rec.cashCollected)} (${who})`,
         [{ type: 'section', text: { type: 'mrkdwn', text: body } }]);
     } else if (rec.type === 'postcall') {
@@ -72,7 +72,7 @@ async function eventToSlack(rec) {
       const won = /^Won/.test(outcome), isFollow = /(Follow-up booked|Callback scheduled|Rescheduled)/.test(outcome), isDq = /^Disqualified/.test(outcome);
       const fmtDate = d => { const p = String(d || '').slice(0, 10).split('-'); return p.length === 3 ? (Number(p[1]) + '-' + Number(p[2]) + '-' + p[0]) : ''; }; // 2026-09-11 -> 9-11-2026
       const fmtTime = t => { const m = /^(\d{1,2}):(\d{2})/.exec(String(t || '')); if (!m) return ''; let h = Number(m[1]); const ap = h >= 12 ? 'PM' : 'AM'; h = h % 12 || 12; return h + ':' + m[2] + ' ' + ap; }; // 14:30 -> 2:30 PM
-      let body = `📞 *Post-call checkout* · ${who}${rec.role ? ' (' + rec.role + ')' : ''}${rec.client ? ' · ' + rec.client : ''}`
+      let body = `📞 *Post-call checkout*${rec.client ? '  ·  *' + rec.client + '*' : ''}\n${who}${rec.role ? ' (' + rec.role + ')' : ''}`
         + L('Outcome', outcome) + L('Lead', rec.lead);
       if (won) {
         body += L('Offer', rec.product);
@@ -119,11 +119,12 @@ async function eodToSlack(rec) {
     if (!dest) return;
     const n = v => v || 0, who = rec.rep || rec.by || 'Someone';
     let line;
-    if (rec.type === 'mgreod') line = `Setters ${n(rec.settersWorking)} · Closers ${n(rec.closersWorking)} · ${n(rec.closerCalls)} calls · $${n(rec.cash).toLocaleString('en-US')} cash`;
-    else if ((rec.role || 'Closer') === 'Setter') line = `${n(rec.hoursDialing)}h · ${n(rec.newOutreach)} dials · ${n(rec.connectedCalls)} conn · ${n(rec.callsSet)} sets`;
-    else line = `${n(rec.hoursDialing)}h · ${n(rec.connectedMeetings)} calls · ${n(rec.closedDeals)} deals · $${n(rec.cashCollected).toLocaleString('en-US')} cash`;
+    if (rec.type === 'mgreod') line = `*Setters working:* ${n(rec.settersWorking)}\n*Closers working:* ${n(rec.closersWorking)}\n*Calls taken:* ${n(rec.closerCalls)}\n*Cash:* $${n(rec.cash).toLocaleString('en-US')}`;
+    else if ((rec.role || 'Closer') === 'Setter') line = `*Hours dialing:* ${n(rec.hoursDialing)}\n*Dials:* ${n(rec.newOutreach)}\n*Connected:* ${n(rec.connectedCalls)}\n*Sets:* ${n(rec.callsSet)}`;
+    else line = `*Hours dialing:* ${n(rec.hoursDialing)}\n*Calls taken:* ${n(rec.connectedMeetings)}\n*Deals:* ${n(rec.closedDeals)}\n*Cash:* $${n(rec.cashCollected).toLocaleString('en-US')}`;
+    const head = `📝 *End of Day*${rec.client ? '  ·  *' + rec.client + '*' : ''}\n${who}${rec.role ? ' (' + rec.role + ')' : rec.type === 'mgreod' ? ' (Manager)' : ''}`;
     const blocks = [
-      { type: 'section', text: { type: 'mrkdwn', text: `📝 *EOD · ${who}*${rec.role ? ' (' + rec.role + ')' : rec.type === 'mgreod' ? ' (Manager)' : ''}${rec.client ? ' · ' + rec.client : ''}\n${line}` } }
+      { type: 'section', text: { type: 'mrkdwn', text: `${head}\n${line}` } }
     ];
     if (rec.notes || rec.bottleneck) blocks.push({ type: 'context', elements: [{ type: 'mrkdwn', text: '“' + String(rec.notes || rec.bottleneck).slice(0, 200) + '”' }] });
     await fetch(chanDest(dest), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: `EOD from ${who}${rec.client ? ' · ' + rec.client : ''}`, blocks }) });
