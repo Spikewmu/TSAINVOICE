@@ -825,10 +825,10 @@
     <h2 class="section">Calendar</h2>
     <p class="hint">Every booked meeting across all your connected GHL clients, in one place - no logging into each account. Shows who the meeting is with and which rep's calendar it's on. Pulled live from GHL.</p>
     <div class="filters" style="align-items:flex-end;gap:10px">
-      <div class="field"><label>Week</label><div class="row-actions"><button class="btn ghost sm" onclick="calShift(-7)">&#9664;</button><button class="btn ghost sm" onclick="calShift(0)">Today</button><button class="btn ghost sm" onclick="calShift(7)">&#9654;</button></div></div>
+      <div class="field"><label>View</label><select id="calViewSel" onchange="calSetView(parseInt(this.value,10))"><option value="1">1 day</option><option value="2">2 days</option><option value="7">Week</option></select></div>
+      <div class="field"><label>&nbsp;</label><div class="row-actions"><button class="btn ghost sm" onclick="calShift(-1)">&#9664;</button><button class="btn ghost sm" onclick="calShift(0)">Today</button><button class="btn ghost sm" onclick="calShift(1)">&#9654;</button></div></div>
       <div class="field"><label>&nbsp;</label><b id="calRange" style="font-size:15px"></b></div>
-      <div class="field"><label>Client</label><select id="calClient" onchange="renderCalendarGrid()"><option value="">All clients</option></select></div>
-      <div class="field"><label>Calendar</label><select id="calType" onchange="calSaveType();renderCalendarGrid()"><option value="">All calendars</option></select></div>
+      <div class="field"><label>Client</label><select id="calClient" onchange="calOnClientChange()"><option value="">All clients</option></select></div>
       <div class="field"><label>Rep (calendar owner)</label><select id="calRep" onchange="calSaveRep();renderCalendarGrid()"><option value="">All reps</option></select></div>
       <div class="field"><label>&nbsp;</label><button class="btn ghost sm" onclick="renderCalendar(true)">Refresh</button></div>
       <span id="calMeta" class="tag" style="align-self:flex-end;margin-bottom:2px"></span>
@@ -2195,12 +2195,20 @@ function fillCallLogFilters(recs){
 }
 function callLogPill(o){ const good=/^(Won|Booked)/.test(o||''), bad=/^(Lost|No-show|No answer|Disqualified|Not interested|Wrong)/.test(o||''); return `<span class="pill ${good?'good':(bad?'warn':'')}">${esc(o||'-')}</span>`; }
 /* ---------------- Calendar (multi-client GHL meetings) ---------------- */
-let __calRef=null; // a Date within the currently shown week
+let __calRef=null, __calView=7; // __calView = number of day columns shown (1, 2, or 7)
+try{ const v=parseInt(localStorage.getItem('tsa_cal_view')||'',10); if([1,2,7].includes(v)) __calView=v; }catch(e){}
 function calMondayOf(d){ const x=new Date(d); const back=(x.getDay()+6)%7; x.setDate(x.getDate()-back); x.setHours(0,0,0,0); return x; }
 function calYmd(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
-function calShift(delta){ if(!__calRef||delta===0) __calRef=new Date(); if(delta) __calRef.setDate(__calRef.getDate()+delta); renderCalendar(); }
+function calViewStart(){ const ref=__calRef||new Date(); if((__calView||7)===7) return calMondayOf(ref); const d=new Date(ref); d.setHours(0,0,0,0); return d; }
+function calSetView(n){ __calView=n; try{ localStorage.setItem('tsa_cal_view',String(n)); }catch(e){} renderCalendar(); }
+function calShift(delta){ const step=(__calView||7); if(!__calRef||delta===0) __calRef=new Date(); if(delta) __calRef.setDate(__calRef.getDate()+(delta>0?step:-step)); renderCalendar(); }
 function calSaveType(){ try{ localStorage.setItem('tsa_cal_type', (document.getElementById('calType')||{}).value||''); }catch(e){} }
 function calSaveRep(){ try{ localStorage.setItem('tsa_cal_rep', (document.getElementById('calRep')||{}).value||''); }catch(e){} }
+// rep + calendar dropdowns are scoped to the selected client (so DHG won't list Prime's Billy, etc.)
+function calScopedEvents(){ const cf=(document.getElementById('calClient')||{}).value||''; return (window.__calEvents||[]).filter(e=>!cf||e.client===cf); }
+function calPopulateReps(){ const rsel=document.getElementById('calRep'); if(!rsel) return; let cur=rsel.value; if(!cur){ try{cur=localStorage.getItem('tsa_cal_rep')||'';}catch(e){} } const reps=[...new Set(calScopedEvents().map(e=>String(e.bookedWith||'').trim()).filter(n=>n && !/^[A-Za-z0-9]{15,}$/.test(n)))].sort(); rsel.innerHTML='<option value="">All reps</option>'+reps.map(n=>'<option>'+esc(n)+'</option>').join(''); rsel.value=reps.includes(cur)?cur:''; }
+function calPopulateCalendars(){ const tsel=document.getElementById('calType'); if(!tsel) return; let cur=tsel.value; if(!cur){ try{cur=localStorage.getItem('tsa_cal_type')||'';}catch(e){} } const cnames=[...new Set(calScopedEvents().map(e=>e.calendar).filter(Boolean))].sort(); tsel.innerHTML='<option value="">All calendars</option>'+cnames.map(n=>'<option>'+esc(n)+'</option>').join(''); tsel.value=cnames.includes(cur)?cur:''; }
+function calOnClientChange(){ calPopulateCalendars(); calPopulateReps(); renderCalendarGrid(); }
 function calRepLine(w){ w=String(w||'').trim(); return (w && !/^[A-Za-z0-9]{15,}$/.test(w)) ? 'with '+esc(w) : '<span style="opacity:.55">unassigned</span>'; }
 const CAL_COLORS=['#c9a227','#4a90d9','#2ea36b','#b0568c','#d9863a','#6a67c9','#3aa0a0','#c65b5b'];
 function calClientColor(name){ let h=0; const s=String(name||''); for(let i=0;i<s.length;i++) h=(h*31+s.charCodeAt(i))>>>0; return CAL_COLORS[h%CAL_COLORS.length]; }
@@ -2211,22 +2219,23 @@ function calTzLabel(){ try{ return new Date().toLocaleTimeString('en-US',{timeZo
 function calStatusBadge(s){ s=String(s||'').toLowerCase(); let bg='#3a4a63',txt=s||'booked'; if(/confirm|showed|attended/.test(s)) bg='#1f6b45'; else if(/no.?show|cancel|invalid|declin/.test(s)) bg='#7a2e2e'; else if(/book|new|schedul/.test(s)) bg='#2f4a7a'; return '<span style="font-size:10px;padding:1px 6px;border-radius:8px;background:'+bg+';color:#fff;text-transform:capitalize">'+esc(txt)+'</span>'; }
 async function renderCalendar(force){
   if(!__calRef) __calRef=new Date();
-  const mon=calMondayOf(__calRef), sun=new Date(mon); sun.setDate(sun.getDate()+6); const end=new Date(mon); end.setDate(end.getDate()+7);
-  const rangeEl=document.getElementById('calRange'); if(rangeEl) rangeEl.textContent=usDate(calYmd(mon))+'  -  '+usDate(calYmd(sun));
-  const grid=document.getElementById('calGrid'); const key=calYmd(mon);
+  const N=__calView||7; const start=calViewStart(); const endIncl=new Date(start); endIncl.setDate(endIncl.getDate()+N-1);
+  const vs=document.getElementById('calViewSel'); if(vs) vs.value=String(N);
+  const rangeEl=document.getElementById('calRange'); if(rangeEl) rangeEl.textContent=(N===1?usDate(calYmd(start)):(usDate(calYmd(start))+'  -  '+usDate(calYmd(endIncl))));
+  const grid=document.getElementById('calGrid');
+  const _ff=new Date(start); _ff.setDate(_ff.getDate()-1); const _ft=new Date(start); _ft.setDate(_ft.getDate()+N+1);
+  const key=calYmd(_ff)+':'+calYmd(_ft);
   if(force || window.__calWeekKey!==key || !window.__calEvents){
     if(grid) grid.innerHTML='<p class="hint">Loading meetings from GHL...</p>';
     try{
       const hdr={'Content-Type':'application/json'}; if(SESSION&&SESSION.token) hdr['x-session-token']=SESSION.token; else if(SESSION&&SESSION.pw) hdr['x-admin-pass']=SESSION.pw;
-      const _ff=new Date(mon); _ff.setDate(_ff.getDate()-1); const _ft=new Date(end); _ft.setDate(_ft.getDate()+1);
       const res=await fetch('/api/reactivation',{method:'POST',headers:hdr,body:JSON.stringify({action:'calendarEvents',from:calYmd(_ff),to:calYmd(_ft),force:!!force})});
       const j=await res.json();
       if(!j.ok){ if(grid) grid.innerHTML='<p class="hint">Could not load calendar: '+esc(j.error||'error')+'</p>'; return; }
       window.__calEvents=j.events||[]; window.__calWeekKey=key; window.__calSkipped=j.skipped||[];
       const sel=document.getElementById('calClient'); if(sel){ const cur=sel.value; const names=[...new Set(window.__calEvents.map(e=>e.client))].sort(); sel.innerHTML='<option value="">All clients</option>'+names.map(n=>'<option>'+esc(n)+'</option>').join(''); sel.value=cur; }
-      const tsel=document.getElementById('calType'); if(tsel){ let saved=''; try{ saved=localStorage.getItem('tsa_cal_type')||''; }catch(e){} const cur=tsel.value||saved; const cnames=[...new Set(window.__calEvents.map(e=>e.calendar).filter(Boolean))].sort(); tsel.innerHTML='<option value="">All calendars</option>'+cnames.map(n=>'<option>'+esc(n)+'</option>').join(''); if(cur&&cnames.includes(cur)) tsel.value=cur; }
-      const rsel=document.getElementById('calRep'); if(rsel){ let sv=''; try{ sv=localStorage.getItem('tsa_cal_rep')||''; }catch(e){} const cur=rsel.value||sv; const reps=[...new Set(window.__calEvents.map(e=>String(e.bookedWith||'').trim()).filter(n=>n && !/^[A-Za-z0-9]{15,}$/.test(n)))].sort(); rsel.innerHTML='<option value="">All reps</option>'+reps.map(n=>'<option>'+esc(n)+'</option>').join(''); if(cur&&reps.includes(cur)) rsel.value=cur; }
-      const meta=document.getElementById('calMeta'); if(meta){ let m=window.__calEvents.length+' meeting'+(window.__calEvents.length===1?'':'s')+' this week'; const tz=calTzLabel(); if(tz) m+=' · times in '+tz; const v1=[...new Set((window.__calSkipped||[]).map(s=>s.client))]; if(v1.length) m+=' · '+v1.length+' client'+(v1.length===1?'':'s')+' not yet connected'; meta.textContent=m; }
+      calPopulateCalendars(); calPopulateReps();
+      const meta=document.getElementById('calMeta'); if(meta){ const a=calYmd(start),b=calYmd(endIncl); const nm=(window.__calEvents||[]).filter(e=>{ const k=calLocalDate(e.start); return k>=a&&k<=b; }).length; let m=nm+' meeting'+(nm===1?'':'s'); const tz=calTzLabel(); if(tz) m+=' · times in '+tz; const v1=[...new Set((window.__calSkipped||[]).map(s=>s.client))]; if(v1.length) m+=' · '+v1.length+' client'+(v1.length===1?'':'s')+' not yet connected'; meta.textContent=m; }
     }catch(e){ if(grid) grid.innerHTML='<p class="hint">Calendar error: '+esc(String(e))+'</p>'; return; }
   }
   renderCalendarGrid();
@@ -2249,35 +2258,38 @@ function calDetail(idx){ const e=(window.__calRendered||[])[idx]; if(!e) return;
 }
 function renderCalendarGrid(){
   const grid=document.getElementById('calGrid'); if(!grid) return;
-  const mon=calMondayOf(__calRef||new Date());
+  const N=__calView||7; const start=calViewStart();
   const cf=(document.getElementById('calClient')||{}).value||'';
   const tf=(document.getElementById('calType')||{}).value||'';
   const rf=(document.getElementById('calRep')||{}).value||'';
-  const all=(window.__calEvents||[]).filter(e=>(!cf||e.client===cf)&&(!tf||e.calendar===tf)&&(!rf||String(e.bookedWith||'').trim()===rf));
+  const flt=(window.__calEvents||[]).filter(e=>(!cf||e.client===cf)&&(!tf||e.calendar===tf)&&(!rf||String(e.bookedWith||'').trim()===rf));
+  const dayKeys=[]; for(let i=0;i<N;i++){ const d=new Date(start); d.setDate(d.getDate()+i); dayKeys.push(calYmd(d)); }
   const pm=iso=>{ const d=new Date(iso); return isNaN(d)?null:(d.getHours()*60+d.getMinutes()); };
-  // hour window: default 8a-6p, expand to fit events
-  let minM=8*60, maxM=18*60;
-  all.forEach(e=>{ const s=pm(e.start), en=pm(e.end); if(s!=null) minM=Math.min(minM,s); if(en!=null) maxM=Math.max(maxM,en); else if(s!=null) maxM=Math.max(maxM,s+30); });
-  minM=Math.floor(minM/60)*60; maxM=Math.ceil(maxM/60)*60; if(maxM<=minM) maxM=minM+60;
+  const durMin=e=>{ const a=new Date(e.start), b=new Date(e.end); if(isNaN(a)||isNaN(b)) return 30; const m=(b-a)/60000; return (m>0&&m<=24*60)?m:30; };
+  // visible events with start/end MINUTES from midnight (end clamped to the day so a meeting never overflows the grid)
+  const vis=flt.filter(e=>dayKeys.includes(calLocalDate(e.start))).map(e=>{ const s=pm(e.start); const st=(s!=null?s:8*60); let en=st+durMin(e); if(en>24*60) en=24*60; return {e,day:calLocalDate(e.start),s:st,en:en}; });
+  let minM=8*60, maxM=18*60; vis.forEach(v=>{ minM=Math.min(minM,v.s); maxM=Math.max(maxM,v.en); });
+  minM=Math.max(0,Math.floor(minM/60)*60); maxM=Math.min(24*60,Math.ceil(maxM/60)*60); if(maxM<=minM) maxM=minM+60;
   const PXH=48, ppm=PXH/60, totalH=(maxM-minM)*ppm, headH=28, BG='var(--bg,#0f1522)';
   const BAND='repeating-linear-gradient(to bottom, transparent 0, transparent '+PXH+'px, rgba(255,255,255,.05) '+PXH+'px, rgba(255,255,255,.05) '+(2*PXH)+'px)';
-  const todayKey=calYmd(new Date()), DOW=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const todayKey=calYmd(new Date()), DOW=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   let hourLabels=''; for(let h=minM; h<maxM; h+=60){ const hr=h/60; hourLabels+='<div style="height:'+PXH+'px;font-size:10px;color:var(--muted,#8a94a6);text-align:right;padding-right:6px;line-height:1;transform:translateY(-6px)">'+(((hr%12)||12)+(hr<12?' AM':' PM'))+'</div>'; }
-  window.__calRendered=[]; let colsHtml='';
-  for(let i=0;i<7;i++){ const d=new Date(mon); d.setDate(d.getDate()+i); const key=calYmd(d); const isToday=key===todayKey;
-    const list=all.filter(e=>calLocalDate(e.start)===key).map(e=>{ const s=pm(e.start), en=pm(e.end); return {e,s:(s!=null?s:minM),en:(en!=null?en:(s!=null?s+30:minM+30))}; }).sort((a,b)=>a.s-b.s);
+  window.__calRendered=[]; let colsHtml=''; const baseMin=(N===1?360:N===2?230:124);
+  for(let i=0;i<N;i++){ const d=new Date(start); d.setDate(d.getDate()+i); const key=dayKeys[i]; const isToday=key===todayKey;
+    const list=vis.filter(v=>v.day===key).sort((a,b)=>a.s-b.s);
     const laneEnd=[]; list.forEach(it=>{ let lane=0; while(lane<laneEnd.length && it.s<laneEnd[lane]) lane++; it.lane=lane; laneEnd[lane]=it.en; });
     const lanes=Math.max(1,laneEnd.length);
     let inner=''; for(let h=minM; h<=maxM; h+=60){ inner+='<div style="position:absolute;left:0;right:0;top:'+((h-minM)*ppm)+'px;border-top:1px solid var(--line,#2a3348);opacity:.3"></div>'; }
     list.forEach(it=>{ const e=it.e, top=(it.s-minM)*ppm, hh=Math.max(20,(it.en-it.s)*ppm-1), w=100/lanes, left=it.lane*w, col=calClientColor(e.client);
       const bw=String(e.bookedWith||'').trim(); const rep=(bw && !/^[A-Za-z0-9]{15,}$/.test(bw))?bw:'unassigned'; const ci=window.__calRendered.push(e)-1;
-      inner+='<div onclick="calDetail('+ci+')" title="Click for details" style="cursor:pointer;position:absolute;top:'+top+'px;height:'+hh+'px;left:calc('+left+'% + 1px);width:calc('+w+'% - 3px);background:'+calStatusBg(e.status)+';border-left:3px solid '+col+';border-radius:4px;padding:2px 5px;overflow:hidden;box-sizing:border-box;font-size:10px;line-height:1.15">'
+      inner+='<div onclick="calDetail('+ci+')" title="Click for details" style="cursor:pointer;position:absolute;top:'+top+'px;height:'+hh+'px;left:calc('+left+'% + 1px);width:calc('+w+'% - 3px);background:'+calStatusBg(e.status)+';border-left:3px solid '+col+';border-radius:4px;padding:2px 5px;overflow:hidden;box-sizing:border-box;font-size:'+(N<=2?11:10)+'px;line-height:1.2">'
         +'<div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(e.lead||e.title||'')+'</div>'
         +(hh>28?'<div style="opacity:.72;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(rep)+'</div>':'')
+        +(hh>46&&N<=2?'<div style="opacity:.6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:10px">'+esc(e.client||'')+'</div>':'')
         +'</div>';
     });
-    colsHtml+='<div style="flex:1;min-width:'+(lanes>1?(lanes*66):124)+'px;border-left:1px solid var(--line,#2a3348)">'
-      +'<div style="height:'+headH+'px;box-sizing:border-box;font-weight:600;font-size:12px;padding:6px;color:'+(isToday?'var(--gold,#c9a227)':'inherit')+';border-bottom:2px solid '+(isToday?'var(--gold,#c9a227)':'var(--line,#2a3348)')+';position:sticky;top:0;background:'+BG+';z-index:2">'+DOW[i]+' '+d.getDate()+(isToday?' · Today':'')+'</div>'
+    colsHtml+='<div style="flex:1;min-width:'+Math.max(baseMin,lanes*72)+'px;border-left:1px solid var(--line,#2a3348)">'
+      +'<div style="height:'+headH+'px;box-sizing:border-box;font-weight:600;font-size:12px;padding:6px;color:'+(isToday?'var(--gold,#c9a227)':'inherit')+';border-bottom:2px solid '+(isToday?'var(--gold,#c9a227)':'var(--line,#2a3348)')+';position:sticky;top:0;background:'+BG+';z-index:2">'+DOW[d.getDay()]+' '+(d.getMonth()+1)+'/'+d.getDate()+(isToday?' · Today':'')+'</div>'
       +'<div style="position:relative;height:'+totalH+'px;background:'+BAND+'">'+inner+'</div></div>';
   }
   grid.innerHTML='<div style="display:flex;overflow:auto;max-height:72vh;border:1px solid var(--line,#2a3348);border-radius:8px">'
