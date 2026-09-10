@@ -45,8 +45,8 @@ async function pullCalV2(cfg, fromMs, toMs) {
   const clientName = cfg.client || cfg.key || loc;
   // users + calendars in parallel
   const [usr, cal] = await Promise.all([
-    jfetch(base + '/users/?locationId=' + encodeURIComponent(loc), { headers: H }),
-    jfetch(base + '/calendars/?locationId=' + encodeURIComponent(loc), { headers: H })
+    jretry(base + '/users/?locationId=' + encodeURIComponent(loc), { headers: H }),
+    jretry(base + '/calendars/?locationId=' + encodeURIComponent(loc), { headers: H })
   ]);
   const usrMap = {}; ((usr.j && usr.j.users) || []).forEach(u => { usrMap[u.id] = u.name || ((u.firstName || '') + ' ' + (u.lastName || '')).trim() || u.email; });
   const cals = ((cal.j && cal.j.calendars) || []).slice(0, 40);
@@ -58,7 +58,7 @@ async function pullCalV2(cfg, fromMs, toMs) {
   const events = [];
   evLists.forEach(({ c, ev }) => {
     ((ev.j && ev.j.events) || []).forEach(e => {
-      events.push({ client: clientName, calendar: c.name, title: e.title, lead: e.title, status: e.appointmentStatus || e.status, start: e.startTime, end: e.endTime, bookedWith: usrMap[e.assignedUserId] || e.assignedUserId || '', contactId: e.contactId });
+      events.push({ client: clientName, calendar: c.name, title: e.title, lead: e.title, status: e.appointmentStatus || e.status, start: e.startTime, end: e.endTime, bookedWith: usrMap[e.assignedUserId] || '', contactId: e.contactId });
     });
   });
   return events;
@@ -74,6 +74,12 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 async function jfetch(url, opts) {
   const r = await fetch(url, opts); const t = await r.text(); let j = null; try { j = JSON.parse(t); } catch (e) {}
   return { ok: r.ok, status: r.status, j, t };
+}
+// retry a GET a few times (handles GHL 429 rate-limits under parallel bursts)
+async function jretry(url, opts, tries) {
+  tries = tries || 3; let r;
+  for (let i = 0; i < tries; i++) { r = await jfetch(url, opts); if (r.ok) return r; await sleep(250 * (i + 1)); }
+  return r;
 }
 const dayOf = s => String(s || '').slice(0, 10); // ISO date portion
 

@@ -829,6 +829,7 @@
       <div class="field"><label>&nbsp;</label><b id="calRange" style="font-size:15px"></b></div>
       <div class="field"><label>Client</label><select id="calClient" onchange="renderCalendarGrid()"><option value="">All clients</option></select></div>
       <div class="field"><label>Calendar</label><select id="calType" onchange="calSaveType();renderCalendarGrid()"><option value="">All calendars</option></select></div>
+      <div class="field"><label>Rep (calendar owner)</label><select id="calRep" onchange="calSaveRep();renderCalendarGrid()"><option value="">All reps</option></select></div>
       <div class="field"><label>&nbsp;</label><button class="btn ghost sm" onclick="renderCalendar(true)">Refresh</button></div>
       <span id="calMeta" class="tag" style="align-self:flex-end;margin-bottom:2px"></span>
     </div>
@@ -2196,6 +2197,8 @@ function calMondayOf(d){ const x=new Date(d); const back=(x.getDay()+6)%7; x.set
 function calYmd(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function calShift(delta){ if(!__calRef||delta===0) __calRef=new Date(); if(delta) __calRef.setDate(__calRef.getDate()+delta); renderCalendar(); }
 function calSaveType(){ try{ localStorage.setItem('tsa_cal_type', (document.getElementById('calType')||{}).value||''); }catch(e){} }
+function calSaveRep(){ try{ localStorage.setItem('tsa_cal_rep', (document.getElementById('calRep')||{}).value||''); }catch(e){} }
+function calRepLine(w){ w=String(w||'').trim(); return (w && !/^[A-Za-z0-9]{15,}$/.test(w)) ? 'with '+esc(w) : '<span style="opacity:.55">unassigned</span>'; }
 const CAL_COLORS=['#c9a227','#4a90d9','#2ea36b','#b0568c','#d9863a','#6a67c9','#3aa0a0','#c65b5b'];
 function calClientColor(name){ let h=0; const s=String(name||''); for(let i=0;i<s.length;i++) h=(h*31+s.charCodeAt(i))>>>0; return CAL_COLORS[h%CAL_COLORS.length]; }
 function calFmtT(iso){ const m=String(iso).match(/T(\d\d):(\d\d)/); if(!m) return ''; let h=+m[1]; return ((h%12)||12)+':'+m[2]+' '+(h<12?'AM':'PM'); }
@@ -2215,6 +2218,7 @@ async function renderCalendar(force){
       window.__calEvents=j.events||[]; window.__calWeekKey=key; window.__calSkipped=j.skipped||[];
       const sel=document.getElementById('calClient'); if(sel){ const cur=sel.value; const names=[...new Set(window.__calEvents.map(e=>e.client))].sort(); sel.innerHTML='<option value="">All clients</option>'+names.map(n=>'<option>'+esc(n)+'</option>').join(''); sel.value=cur; }
       const tsel=document.getElementById('calType'); if(tsel){ let saved=''; try{ saved=localStorage.getItem('tsa_cal_type')||''; }catch(e){} const cur=tsel.value||saved; const cnames=[...new Set(window.__calEvents.map(e=>e.calendar).filter(Boolean))].sort(); tsel.innerHTML='<option value="">All calendars</option>'+cnames.map(n=>'<option>'+esc(n)+'</option>').join(''); if(cur&&cnames.includes(cur)) tsel.value=cur; }
+      const rsel=document.getElementById('calRep'); if(rsel){ let sv=''; try{ sv=localStorage.getItem('tsa_cal_rep')||''; }catch(e){} const cur=rsel.value||sv; const reps=[...new Set(window.__calEvents.map(e=>String(e.bookedWith||'').trim()).filter(n=>n && !/^[A-Za-z0-9]{15,}$/.test(n)))].sort(); rsel.innerHTML='<option value="">All reps</option>'+reps.map(n=>'<option>'+esc(n)+'</option>').join(''); if(cur&&reps.includes(cur)) rsel.value=cur; }
       const meta=document.getElementById('calMeta'); if(meta){ let m=window.__calEvents.length+' meeting'+(window.__calEvents.length===1?'':'s')+' this week'; const v1=[...new Set((window.__calSkipped||[]).map(s=>s.client))]; if(v1.length) m+=' · '+v1.length+' client'+(v1.length===1?'':'s')+' not yet connected'; meta.textContent=m; }
     }catch(e){ if(grid) grid.innerHTML='<p class="hint">Calendar error: '+esc(String(e))+'</p>'; return; }
   }
@@ -2225,7 +2229,8 @@ function renderCalendarGrid(){
   const mon=calMondayOf(__calRef||new Date());
   const cf=(document.getElementById('calClient')||{}).value||'';
   const tf=(document.getElementById('calType')||{}).value||'';
-  const evs=(window.__calEvents||[]).filter(e=>(!cf||e.client===cf)&&(!tf||e.calendar===tf));
+  const rf=(document.getElementById('calRep')||{}).value||'';
+  const evs=(window.__calEvents||[]).filter(e=>(!cf||e.client===cf)&&(!tf||e.calendar===tf)&&(!rf||String(e.bookedWith||'').trim()===rf));
   const byDay={}; evs.forEach(e=>{ const d=String(e.start).slice(0,10); (byDay[d]=byDay[d]||[]).push(e); });
   const DOW=['Mon','Tue','Wed','Thu','Fri','Sat','Sun']; const todayKey=calYmd(new Date());
   let cols='';
@@ -2235,7 +2240,7 @@ function renderCalendarGrid(){
       return '<div style="border-left:3px solid '+col+';background:var(--card2,#1a2030);border-radius:6px;padding:6px 8px;margin-bottom:6px">'
         +'<div style="font-size:11px;color:var(--muted,#8a94a6)">'+esc(calFmtT(e.start))+(e.end?' - '+esc(calFmtT(e.end)):'')+'</div>'
         +'<div style="font-weight:600;font-size:13px;line-height:1.2">'+esc(e.lead||e.title||'(no name)')+'</div>'
-        +'<div style="font-size:11px;color:var(--muted,#8a94a6)">with '+esc(e.bookedWith||'-')+'</div>'
+        +'<div style="font-size:11px;color:var(--muted,#8a94a6)">'+calRepLine(e.bookedWith)+'</div>'
         +'<div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;gap:4px"><span style="font-size:10px;color:'+col+';font-weight:600">'+esc(e.client)+'</span>'+calStatusBadge(e.status)+'</div>'
         +'</div>'; }).join('') || '<div style="font-size:11px;opacity:.35;padding:4px 0">No meetings</div>';
     cols+='<div style="flex:1;min-width:158px"><div style="font-weight:600;font-size:12px;padding:4px 2px;border-bottom:2px solid '+(isToday?'var(--gold,#c9a227)':'var(--line,#2a3348)')+';margin-bottom:6px;color:'+(isToday?'var(--gold,#c9a227)':'inherit')+'">'+DOW[i]+' '+d.getDate()+(isToday?' · Today':'')+'</div>'+cards+'</div>';
