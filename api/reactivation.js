@@ -39,24 +39,28 @@ async function cfgAll() {
   rows.forEach(x => { const d = x.data; const loc = d && String(d.ghlLocationId || '').trim(); if (d && d.ghlApiKey && loc) byLoc[loc] = d; });
   return Object.values(byLoc);
 }
-// pull calendar events for one v2 client in [fromMs,toMs]; returns normalized events
+// pull calendar events for one v2 client in [fromMs,toMs]; returns normalized events (parallelized for speed)
 async function pullCalV2(cfg, fromMs, toMs) {
   const { loc, base, H } = ghlCtx(cfg);
   const clientName = cfg.client || cfg.key || loc;
-  const events = [];
-  // user map (assigned rep names)
-  const usr = await jfetch(base + '/users/?locationId=' + encodeURIComponent(loc), { headers: H });
+  // users + calendars in parallel
+  const [usr, cal] = await Promise.all([
+    jfetch(base + '/users/?locationId=' + encodeURIComponent(loc), { headers: H }),
+    jfetch(base + '/calendars/?locationId=' + encodeURIComponent(loc), { headers: H })
+  ]);
   const usrMap = {}; ((usr.j && usr.j.users) || []).forEach(u => { usrMap[u.id] = u.name || ((u.firstName || '') + ' ' + (u.lastName || '')).trim() || u.email; });
-  const cal = await jfetch(base + '/calendars/?locationId=' + encodeURIComponent(loc), { headers: H });
-  const cals = ((cal.j && cal.j.calendars) || []).slice(0, 25);
-  for (const c of cals) {
+  const cals = ((cal.j && cal.j.calendars) || []).slice(0, 40);
+  // fetch every calendar's events in parallel
+  const evLists = await Promise.all(cals.map(c => {
     const url = base + '/calendars/events?locationId=' + encodeURIComponent(loc) + '&calendarId=' + encodeURIComponent(c.id) + '&startTime=' + fromMs + '&endTime=' + toMs;
-    const ev = await jfetch(url, { headers: H });
+    return jfetch(url, { headers: H }).then(ev => ({ c, ev })).catch(() => ({ c, ev: { j: {} } }));
+  }));
+  const events = [];
+  evLists.forEach(({ c, ev }) => {
     ((ev.j && ev.j.events) || []).forEach(e => {
       events.push({ client: clientName, calendar: c.name, title: e.title, lead: e.title, status: e.appointmentStatus || e.status, start: e.startTime, end: e.endTime, bookedWith: usrMap[e.assignedUserId] || e.assignedUserId || '', contactId: e.contactId });
     });
-    await sleep(60);
-  }
+  });
   return events;
 }
 function ghlCtx(cfg) {
@@ -132,13 +136,14 @@ export default async function handler(req, res) {
       const fromMs = new Date(from).getTime(), toMs = new Date(to).getTime();
       const cfgs = await cfgAll();
       const all = []; const clients = []; const skipped = [];
-      for (const cfg of cfgs) {
+      // pull all clients in parallel
+      await Promise.all(cfgs.map(async cfg => {
         const v2 = /^pit-/i.test(String(cfg.ghlApiKey || ''));
         const label = cfg.client || cfg.key;
-        if (!v2) { skipped.push({ client: label, reason: 'v1 (not yet supported)' }); continue; }
+        if (!v2) { skipped.push({ client: label, reason: 'v1 (not yet supported)' }); return; }
         try { const evs = await pullCalV2(cfg, fromMs, toMs); all.push(...evs); clients.push({ client: label, count: evs.length }); }
         catch (e) { skipped.push({ client: label, reason: String((e && e.message) || e).slice(0, 120) }); }
-      }
+      }));
       all.sort((a, b2) => String(a.start).localeCompare(String(b2.start)));
       return res.status(200).json({ ok: true, from, to, clients, skipped, count: all.length, events: all });
     } catch (e) { return res.status(200).json({ ok: false, error: String((e && e.message) || e) }); }
