@@ -164,6 +164,24 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, processed: results.length, done, results });
     }
 
+    if (action === 'addtags') {
+      const items = Array.isArray(b.items) ? b.items : null; // [{id}]
+      const tags = (b.tags || []).map(t => String(t).trim()).filter(Boolean);
+      if (!items || !items.length) return res.status(200).json({ ok: false, error: 'items[] required' });
+      if (!tags.length) return res.status(200).json({ ok: false, error: 'tags[] required' });
+      if (items.length > 50) return res.status(200).json({ ok: false, error: 'max 50 items per batch' });
+      const results = [];
+      for (const it of items) {
+        const id = String(it.id || '').trim(); if (!id) { results.push({ id: '', ok: false }); continue; }
+        try {
+          const r = await jfetch(base + '/contacts/' + id + '/tags', { method: 'POST', headers: H, body: JSON.stringify({ tags }) });
+          results.push({ id, ok: r.ok, status: r.ok ? undefined : r.status });
+        } catch (e) { results.push({ id, ok: false, error: String((e && e.message) || e) }); }
+        await sleep(80);
+      }
+      return res.status(200).json({ ok: true, processed: results.length, done: results.filter(r => r.ok).length, results });
+    }
+
     return res.status(200).json({ ok: false, error: 'unknown action' });
   } catch (e) {
     return res.status(200).json({ ok: false, error: String((e && e.message) || e) });
