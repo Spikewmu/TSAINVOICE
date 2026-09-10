@@ -2204,7 +2204,10 @@ function calSaveRep(){ try{ localStorage.setItem('tsa_cal_rep', (document.getEle
 function calRepLine(w){ w=String(w||'').trim(); return (w && !/^[A-Za-z0-9]{15,}$/.test(w)) ? 'with '+esc(w) : '<span style="opacity:.55">unassigned</span>'; }
 const CAL_COLORS=['#c9a227','#4a90d9','#2ea36b','#b0568c','#d9863a','#6a67c9','#3aa0a0','#c65b5b'];
 function calClientColor(name){ let h=0; const s=String(name||''); for(let i=0;i<s.length;i++) h=(h*31+s.charCodeAt(i))>>>0; return CAL_COLORS[h%CAL_COLORS.length]; }
-function calFmtT(iso){ const m=String(iso).match(/T(\d\d):(\d\d)/); if(!m) return ''; let h=+m[1]; return ((h%12)||12)+':'+m[2]+' '+(h<12?'AM':'PM'); }
+// Times are shown in the VIEWER's browser timezone (Robb sees CT, Steve sees ET) - parse the absolute instant, format local.
+function calFmtT(iso){ const d=new Date(iso); if(isNaN(d)) return ''; let h=d.getHours(); const mm=String(d.getMinutes()).padStart(2,'0'); return ((h%12)||12)+':'+mm+' '+(h<12?'AM':'PM'); }
+function calLocalDate(iso){ const d=new Date(iso); if(isNaN(d)) return ''; return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function calTzLabel(){ try{ return new Date().toLocaleTimeString('en-US',{timeZoneName:'short'}).split(' ').pop()||''; }catch(e){ return ''; } }
 function calStatusBadge(s){ s=String(s||'').toLowerCase(); let bg='#3a4a63',txt=s||'booked'; if(/confirm|showed|attended/.test(s)) bg='#1f6b45'; else if(/no.?show|cancel|invalid|declin/.test(s)) bg='#7a2e2e'; else if(/book|new|schedul/.test(s)) bg='#2f4a7a'; return '<span style="font-size:10px;padding:1px 6px;border-radius:8px;background:'+bg+';color:#fff;text-transform:capitalize">'+esc(txt)+'</span>'; }
 async function renderCalendar(force){
   if(!__calRef) __calRef=new Date();
@@ -2215,14 +2218,15 @@ async function renderCalendar(force){
     if(grid) grid.innerHTML='<p class="hint">Loading meetings from GHL...</p>';
     try{
       const hdr={'Content-Type':'application/json'}; if(SESSION&&SESSION.token) hdr['x-session-token']=SESSION.token; else if(SESSION&&SESSION.pw) hdr['x-admin-pass']=SESSION.pw;
-      const res=await fetch('/api/reactivation',{method:'POST',headers:hdr,body:JSON.stringify({action:'calendarEvents',from:calYmd(mon),to:calYmd(end),force:!!force})});
+      const _ff=new Date(mon); _ff.setDate(_ff.getDate()-1); const _ft=new Date(end); _ft.setDate(_ft.getDate()+1);
+      const res=await fetch('/api/reactivation',{method:'POST',headers:hdr,body:JSON.stringify({action:'calendarEvents',from:calYmd(_ff),to:calYmd(_ft),force:!!force})});
       const j=await res.json();
       if(!j.ok){ if(grid) grid.innerHTML='<p class="hint">Could not load calendar: '+esc(j.error||'error')+'</p>'; return; }
       window.__calEvents=j.events||[]; window.__calWeekKey=key; window.__calSkipped=j.skipped||[];
       const sel=document.getElementById('calClient'); if(sel){ const cur=sel.value; const names=[...new Set(window.__calEvents.map(e=>e.client))].sort(); sel.innerHTML='<option value="">All clients</option>'+names.map(n=>'<option>'+esc(n)+'</option>').join(''); sel.value=cur; }
       const tsel=document.getElementById('calType'); if(tsel){ let saved=''; try{ saved=localStorage.getItem('tsa_cal_type')||''; }catch(e){} const cur=tsel.value||saved; const cnames=[...new Set(window.__calEvents.map(e=>e.calendar).filter(Boolean))].sort(); tsel.innerHTML='<option value="">All calendars</option>'+cnames.map(n=>'<option>'+esc(n)+'</option>').join(''); if(cur&&cnames.includes(cur)) tsel.value=cur; }
       const rsel=document.getElementById('calRep'); if(rsel){ let sv=''; try{ sv=localStorage.getItem('tsa_cal_rep')||''; }catch(e){} const cur=rsel.value||sv; const reps=[...new Set(window.__calEvents.map(e=>String(e.bookedWith||'').trim()).filter(n=>n && !/^[A-Za-z0-9]{15,}$/.test(n)))].sort(); rsel.innerHTML='<option value="">All reps</option>'+reps.map(n=>'<option>'+esc(n)+'</option>').join(''); if(cur&&reps.includes(cur)) rsel.value=cur; }
-      const meta=document.getElementById('calMeta'); if(meta){ let m=window.__calEvents.length+' meeting'+(window.__calEvents.length===1?'':'s')+' this week'; const v1=[...new Set((window.__calSkipped||[]).map(s=>s.client))]; if(v1.length) m+=' · '+v1.length+' client'+(v1.length===1?'':'s')+' not yet connected'; meta.textContent=m; }
+      const meta=document.getElementById('calMeta'); if(meta){ let m=window.__calEvents.length+' meeting'+(window.__calEvents.length===1?'':'s')+' this week'; const tz=calTzLabel(); if(tz) m+=' · times in '+tz; const v1=[...new Set((window.__calSkipped||[]).map(s=>s.client))]; if(v1.length) m+=' · '+v1.length+' client'+(v1.length===1?'':'s')+' not yet connected'; meta.textContent=m; }
     }catch(e){ if(grid) grid.innerHTML='<p class="hint">Calendar error: '+esc(String(e))+'</p>'; return; }
   }
   renderCalendarGrid();
@@ -2235,7 +2239,7 @@ function calDetail(idx){ const e=(window.__calRendered||[])[idx]; if(!e) return;
       +'<div style="font-weight:700;font-size:17px;line-height:1.25">'+esc(e.lead||e.title||'(no name)')+'</div>'
       +'<button class="btn ghost sm" onclick="calDetailClose()" style="flex:none">&#10005;</button></div>'
     +'<div style="margin-top:12px;display:grid;grid-template-columns:auto 1fr;gap:8px 14px;font-size:13px">'
-      +'<span class="muted">When</span><span>'+esc(usDate(String(e.start).slice(0,10)))+' &middot; '+esc(calFmtT(e.start))+(e.end?' - '+esc(calFmtT(e.end)):'')+'</span>'
+      +'<span class="muted">When</span><span>'+esc(usDate(calLocalDate(e.start)))+' &middot; '+esc(calFmtT(e.start))+(e.end?' - '+esc(calFmtT(e.end)):'')+' <span class="muted">'+esc(calTzLabel())+'</span></span>'
       +'<span class="muted">Rep (calendar)</span><span>'+esc(rep)+'</span>'
       +'<span class="muted">Client</span><span>'+esc(e.client||'')+'</span>'
       +'<span class="muted">Calendar</span><span>'+esc(e.calendar||'')+'</span>'
@@ -2250,7 +2254,7 @@ function renderCalendarGrid(){
   const tf=(document.getElementById('calType')||{}).value||'';
   const rf=(document.getElementById('calRep')||{}).value||'';
   const all=(window.__calEvents||[]).filter(e=>(!cf||e.client===cf)&&(!tf||e.calendar===tf)&&(!rf||String(e.bookedWith||'').trim()===rf));
-  const pm=iso=>{ const m=String(iso).match(/T(\d\d):(\d\d)/); return m?((+m[1])*60+(+m[2])):null; };
+  const pm=iso=>{ const d=new Date(iso); return isNaN(d)?null:(d.getHours()*60+d.getMinutes()); };
   // hour window: default 8a-6p, expand to fit events
   let minM=8*60, maxM=18*60;
   all.forEach(e=>{ const s=pm(e.start), en=pm(e.end); if(s!=null) minM=Math.min(minM,s); if(en!=null) maxM=Math.max(maxM,en); else if(s!=null) maxM=Math.max(maxM,s+30); });
@@ -2261,7 +2265,7 @@ function renderCalendarGrid(){
   let hourLabels=''; for(let h=minM; h<maxM; h+=60){ const hr=h/60; hourLabels+='<div style="height:'+PXH+'px;font-size:10px;color:var(--muted,#8a94a6);text-align:right;padding-right:6px;line-height:1;transform:translateY(-6px)">'+(((hr%12)||12)+(hr<12?' AM':' PM'))+'</div>'; }
   window.__calRendered=[]; let colsHtml='';
   for(let i=0;i<7;i++){ const d=new Date(mon); d.setDate(d.getDate()+i); const key=calYmd(d); const isToday=key===todayKey;
-    const list=all.filter(e=>String(e.start).slice(0,10)===key).map(e=>{ const s=pm(e.start), en=pm(e.end); return {e,s:(s!=null?s:minM),en:(en!=null?en:(s!=null?s+30:minM+30))}; }).sort((a,b)=>a.s-b.s);
+    const list=all.filter(e=>calLocalDate(e.start)===key).map(e=>{ const s=pm(e.start), en=pm(e.end); return {e,s:(s!=null?s:minM),en:(en!=null?en:(s!=null?s+30:minM+30))}; }).sort((a,b)=>a.s-b.s);
     const laneEnd=[]; list.forEach(it=>{ let lane=0; while(lane<laneEnd.length && it.s<laneEnd[lane]) lane++; it.lane=lane; laneEnd[lane]=it.en; });
     const lanes=Math.max(1,laneEnd.length);
     let inner=''; for(let h=minM; h<=maxM; h+=60){ inner+='<div style="position:absolute;left:0;right:0;top:'+((h-minM)*ppm)+'px;border-top:1px solid var(--line,#2a3348);opacity:.3"></div>'; }
@@ -2322,7 +2326,7 @@ async function enrichCallLogAppointments(){
     const map=window.__clApptMap||{};
     document.querySelectorAll('#callLogTable .clappt').forEach(sp=>{
       const k=(sp.getAttribute('data-client')||'')+'|'+(sp.getAttribute('data-lead')||'');
-      const e=map[k]; if(e) sp.innerHTML='&rarr; '+esc(e.bookedWith||'rep')+' &middot; '+esc(usDate(String(e.start).slice(0,10)))+' '+esc(calFmtT(e.start));
+      const e=map[k]; if(e) sp.innerHTML='&rarr; '+esc(e.bookedWith||'rep')+' &middot; '+esc(usDate(calLocalDate(e.start)))+' '+esc(calFmtT(e.start));
     });
   }catch(e){}
 }
