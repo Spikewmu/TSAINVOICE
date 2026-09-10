@@ -34,9 +34,10 @@ async function cfgForLocation(locationId) {
 async function cfgAll() {
   const r = await supa(`records?select=data&type=eq.integration&order=submitted_at.asc&limit=100000`);
   if (!r || !r.ok) return [];
-  const rows = await r.json(); const out = [];
-  rows.forEach(x => { const d = x.data; if (d && d.ghlApiKey && String(d.ghlLocationId || '').trim()) out.push(d); });
-  return out;
+  const rows = await r.json(); const byLoc = {};
+  // rows are submitted_at ASC, so the last write per location is the newest (latest-wins) - drops stale duplicate integration records
+  rows.forEach(x => { const d = x.data; const loc = d && String(d.ghlLocationId || '').trim(); if (d && d.ghlApiKey && loc) byLoc[loc] = d; });
+  return Object.values(byLoc);
 }
 // pull calendar events for one v2 client in [fromMs,toMs]; returns normalized events
 async function pullCalV2(cfg, fromMs, toMs) {
