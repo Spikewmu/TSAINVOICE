@@ -2253,11 +2253,34 @@ function renderCallLog(){
     const fu=x.followUpDate?` <span class="muted" style="font-size:11px">&rarr; ${esc(usDate(x.followUpDate))}${x.followUpTime?' '+esc(fmt12(x.followUpTime)):''}</span>`:'';
     const watch=x.fathom?`<a class="linklike" href="${esc(x.fathom)}" target="_blank" rel="noopener">Watch</a>`:'<span class="muted">-</span>';
     const hasNote=!!(x.notes&&x.notes.trim());
-    const main=`<tr class="${hasNote?'clmain':''}"><td>${esc(usDate(x.date))}</td><td>${esc(x.client||'')}</td><td>${esc(type)}</td><td>${esc(x.rep||'')}</td><td>${esc(x.lead||'')}${x.leadEmail?'<br><span class="muted" style="font-size:11px">'+esc(x.leadEmail)+'</span>':''}</td><td>${esc(x.source||'')}</td><td>${callLogPill(x.outcome)}${fu}${dq}</td><td>${watch}</td></tr>`;
+    const main=`<tr class="${hasNote?'clmain':''}"><td>${esc(usDate(x.date))}</td><td>${esc(x.client||'')}</td><td>${esc(type)}</td><td>${esc(x.rep||'')}</td><td>${esc(x.lead||'')}${x.leadEmail?'<br><span class="muted" style="font-size:11px">'+esc(x.leadEmail)+'</span>':''}</td><td>${esc(x.source||'')}</td><td>${callLogPill(x.outcome)}${fu}${dq}${(/book|set|callback|schedul/i.test(String(x.outcome||''))&&(x.lead||'').trim())?`<div class="clappt" data-client="${esc(x.client||'')}" data-lead="${esc((x.lead||'').trim().toLowerCase())}" style="font-size:11px;color:var(--gold,#c9a227);margin-top:3px"></div>`:''}</td><td>${watch}</td></tr>`;
     const note=hasNote?`<tr class="clnoterow"><td colspan="8"><span class="cllabel">Notes</span>${esc(x.notes)}</td></tr>`:'';
     return main+note;
   }).join(''):`<tr><td colspan="8" class="muted" style="padding:16px">No calls logged in this range.</td></tr>`;
   document.getElementById('callLogTable').innerHTML=head+body+`</tbody>`;
+  enrichCallLogAppointments();
+}
+// Fill each booked/set Call Log row with the real GHL appointment (which rep's calendar + when), matched by client + lead name.
+async function enrichCallLogAppointments(){
+  try{
+    if(!document.querySelector('#callLogTable .clappt')) return;
+    const gv=id=>{ const e=document.getElementById(id); return e?e.value:''; };
+    const fromD=new Date((gv('clFrom').slice(0,10))||todayLocal()); fromD.setDate(fromD.getDate()-7);
+    const toD=new Date(); toD.setDate(toD.getDate()+60);
+    const fromS=calYmd(fromD), toS=calYmd(toD), key=fromS+'|'+toS;
+    if(window.__clApptKey!==key || !window.__clApptMap){
+      const hdr={'Content-Type':'application/json'}; if(SESSION&&SESSION.token) hdr['x-session-token']=SESSION.token; else if(SESSION&&SESSION.pw) hdr['x-admin-pass']=SESSION.pw;
+      const res=await fetch('/api/reactivation',{method:'POST',headers:hdr,body:JSON.stringify({action:'calendarEvents',from:fromS,to:toS})});
+      const j=await res.json(); if(!j||!j.ok) return;
+      const map={}; (j.events||[]).forEach(e=>{ const k=String(e.client||'')+'|'+String(e.lead||e.title||'').trim().toLowerCase(); const cur=map[k]; if(!cur||String(e.start)<String(cur.start)) map[k]=e; });
+      window.__clApptMap=map; window.__clApptKey=key;
+    }
+    const map=window.__clApptMap||{};
+    document.querySelectorAll('#callLogTable .clappt').forEach(sp=>{
+      const k=(sp.getAttribute('data-client')||'')+'|'+(sp.getAttribute('data-lead')||'');
+      const e=map[k]; if(e) sp.innerHTML='&rarr; '+esc(e.bookedWith||'rep')+' &middot; '+esc(usDate(String(e.start).slice(0,10)))+' '+esc(calFmtT(e.start));
+    });
+  }catch(e){}
 }
 /* ---------------- webinar ---------------- */
 async function submitWebinar(e){ e.preventDefault(); const btn=e.target.querySelector('[type=submit]'); if(btn&&btn.disabled) return; btnBusy(btn,true); let ok=false;
