@@ -2546,7 +2546,7 @@ function dashScopeClients(){
 }
 function filtered(){ const m=document.getElementById('fMonth').value,c=document.getElementById('fClient').value,r=document.getElementById('fRole').value,sc=dashScopeClients(); return activityRecords().filter(x=>(!m||monthKey(x.date)===m)&&(!c||x.client===c)&&(!r||x.role===r)&&(!sc||sc.includes(x.client))); }
 function buildFilterOptions(){
-  const months=[...new Set(RECORDS.map(x=>monthKey(x.date)).filter(Boolean))].sort().reverse();
+  const months=[...new Set(RECORDS.map(x=>monthKey(x.date)).filter(Boolean))].filter(mk=>mk<=thisMonth()).sort().reverse(); // no future months (e.g. an expected payment dated next month)
   const fm=document.getElementById('fMonth'),cur=fm.value,first=fm.options.length===0;
   fm.innerHTML='<option value="">All months</option>'+months.map(m=>`<option value="${m}">${usMonth(m)}</option>`).join('');
   if(cur)fm.value=cur; else if(first&&months[0])fm.value=months[0]; // default to latest month only on first build; keep an explicit "All months" choice
@@ -4467,7 +4467,7 @@ function daysInMonth(ym){ const p=(ym||'').split('-'),y=+p[0],m=+p[1]; if(!y||!m
 function renderDailyEntry(){
   const rep=document.getElementById('deRep'),cl=document.getElementById('deClient'),mo=document.getElementById('deMonth'); if(!rep||!cl||!mo) return;
   cl.innerHTML=clientNames().map(c=>`<option>${esc(c)}</option>`).join('');
-  const months=[...new Set(RECORDS.map(x=>monthKey(x.date)).filter(Boolean))].sort().reverse(); if(!months.includes(thisMonth())) months.unshift(thisMonth());
+  const months=[...new Set(RECORDS.map(x=>monthKey(x.date)).filter(Boolean))].filter(mk=>mk<=thisMonth()).sort().reverse(); if(!months.includes(thisMonth())) months.unshift(thisMonth());
   mo.innerHTML=months.map(m=>`<option value="${m}">${usMonth(m)}</option>`).join('');
   deSetRole(deRole());
 }
