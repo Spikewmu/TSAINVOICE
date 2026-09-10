@@ -2931,7 +2931,7 @@ function renderMyDeals(){
     .sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.submittedAt||'').localeCompare(a.submittedAt||''))
     .forEach(d=>{ const k=String(d.id||''); if(k&&!seen[k]){ seen[k]=1; uniq.push(d); } });
   if(!uniq.length){ wrap.innerHTML=`<div class="panel" style="padding:20px"><p class="muted" style="margin:0">${oversight?'No closed deals yet.':'You have no closed deals yet. When you close one it shows here, so you can log wires and later payments against it.'}</p></div>`; return; }
-  wrap.innerHTML=`<div class="cards" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px">`+uniq.map(d=>{
+  wrap.innerHTML=`<div class="cards" style="grid-template-columns:repeat(auto-fill,minmax(250px,290px));gap:10px">`+uniq.map(d=>{
     const contract=d.contractValue||0, collected=dealCollected(d), pend=dealPending(d), bal=Math.max(0,contract-collected);
     const paid=contract>0&&collected>=contract;
     const badge=paid?'<span class="chip" style="background:rgba(74,160,80,.15);color:#7bd487">paid in full</span>':(pend>0?`<span class="chip" style="background:rgba(212,175,90,.15);color:var(--gold)">${money(pend)} pending</span>`:(bal>0?`<span class="chip" style="background:rgba(212,175,90,.12);color:var(--gold)">bal ${money(bal)}</span>`:''));
