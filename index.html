@@ -2224,28 +2224,43 @@ async function renderCalendar(force){
   }
   renderCalendarGrid();
 }
+function calStatusBg(s){ s=String(s||'').toLowerCase(); if(/confirm|showed|attended/.test(s)) return 'rgba(31,107,69,.22)'; if(/no.?show|cancel|declin|invalid/.test(s)) return 'rgba(122,46,46,.25)'; return 'var(--card2,#1a2030)'; }
 function renderCalendarGrid(){
   const grid=document.getElementById('calGrid'); if(!grid) return;
   const mon=calMondayOf(__calRef||new Date());
   const cf=(document.getElementById('calClient')||{}).value||'';
   const tf=(document.getElementById('calType')||{}).value||'';
   const rf=(document.getElementById('calRep')||{}).value||'';
-  const evs=(window.__calEvents||[]).filter(e=>(!cf||e.client===cf)&&(!tf||e.calendar===tf)&&(!rf||String(e.bookedWith||'').trim()===rf));
-  const byDay={}; evs.forEach(e=>{ const d=String(e.start).slice(0,10); (byDay[d]=byDay[d]||[]).push(e); });
-  const DOW=['Mon','Tue','Wed','Thu','Fri','Sat','Sun']; const todayKey=calYmd(new Date());
-  let cols='';
+  const all=(window.__calEvents||[]).filter(e=>(!cf||e.client===cf)&&(!tf||e.calendar===tf)&&(!rf||String(e.bookedWith||'').trim()===rf));
+  const pm=iso=>{ const m=String(iso).match(/T(\d\d):(\d\d)/); return m?((+m[1])*60+(+m[2])):null; };
+  // hour window: default 8a-6p, expand to fit events
+  let minM=8*60, maxM=18*60;
+  all.forEach(e=>{ const s=pm(e.start), en=pm(e.end); if(s!=null) minM=Math.min(minM,s); if(en!=null) maxM=Math.max(maxM,en); else if(s!=null) maxM=Math.max(maxM,s+30); });
+  minM=Math.floor(minM/60)*60; maxM=Math.ceil(maxM/60)*60; if(maxM<=minM) maxM=minM+60;
+  const PXH=48, ppm=PXH/60, totalH=(maxM-minM)*ppm, headH=28, BG='var(--bg,#0f1522)';
+  const todayKey=calYmd(new Date()), DOW=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  let hourLabels=''; for(let h=minM; h<maxM; h+=60){ const hr=h/60; hourLabels+='<div style="height:'+PXH+'px;font-size:10px;color:var(--muted,#8a94a6);text-align:right;padding-right:6px;line-height:1;transform:translateY(-6px)">'+(((hr%12)||12)+(hr<12?' AM':' PM'))+'</div>'; }
+  let colsHtml='';
   for(let i=0;i<7;i++){ const d=new Date(mon); d.setDate(d.getDate()+i); const key=calYmd(d); const isToday=key===todayKey;
-    const list=(byDay[key]||[]).sort((a,b)=>String(a.start).localeCompare(String(b.start)));
-    const cards=list.map(e=>{ const col=calClientColor(e.client);
-      return '<div style="border-left:3px solid '+col+';background:var(--card2,#1a2030);border-radius:6px;padding:6px 8px;margin-bottom:6px">'
-        +'<div style="font-size:11px;color:var(--muted,#8a94a6)">'+esc(calFmtT(e.start))+(e.end?' - '+esc(calFmtT(e.end)):'')+'</div>'
-        +'<div style="font-weight:600;font-size:13px;line-height:1.2">'+esc(e.lead||e.title||'(no name)')+'</div>'
-        +'<div style="font-size:11px;color:var(--muted,#8a94a6)">'+calRepLine(e.bookedWith)+'</div>'
-        +'<div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;gap:4px"><span style="font-size:10px;color:'+col+';font-weight:600">'+esc(e.client)+'</span>'+calStatusBadge(e.status)+'</div>'
-        +'</div>'; }).join('') || '<div style="font-size:11px;opacity:.35;padding:4px 0">No meetings</div>';
-    cols+='<div style="flex:1;min-width:158px"><div style="font-weight:600;font-size:12px;padding:4px 2px;border-bottom:2px solid '+(isToday?'var(--gold,#c9a227)':'var(--line,#2a3348)')+';margin-bottom:6px;color:'+(isToday?'var(--gold,#c9a227)':'inherit')+'">'+DOW[i]+' '+d.getDate()+(isToday?' · Today':'')+'</div>'+cards+'</div>';
+    const list=all.filter(e=>String(e.start).slice(0,10)===key).map(e=>{ const s=pm(e.start), en=pm(e.end); return {e,s:(s!=null?s:minM),en:(en!=null?en:(s!=null?s+30:minM+30))}; }).sort((a,b)=>a.s-b.s);
+    const laneEnd=[]; list.forEach(it=>{ let lane=0; while(lane<laneEnd.length && it.s<laneEnd[lane]) lane++; it.lane=lane; laneEnd[lane]=it.en; });
+    const lanes=Math.max(1,laneEnd.length);
+    let inner=''; for(let h=minM; h<=maxM; h+=60){ inner+='<div style="position:absolute;left:0;right:0;top:'+((h-minM)*ppm)+'px;border-top:1px solid var(--line,#2a3348);opacity:.3"></div>'; }
+    list.forEach(it=>{ const e=it.e, top=(it.s-minM)*ppm, hh=Math.max(20,(it.en-it.s)*ppm-1), w=100/lanes, left=it.lane*w, col=calClientColor(e.client);
+      const bw=String(e.bookedWith||'').trim(); const rep=(bw && !/^[A-Za-z0-9]{15,}$/.test(bw))?bw:'unassigned';
+      inner+='<div title="'+esc(calFmtT(e.start)+(e.end?'-'+calFmtT(e.end):'')+'  '+(e.lead||e.title||'')+'  ·  '+rep+'  ·  '+e.client+'  ·  '+(e.status||''))+'" style="position:absolute;top:'+top+'px;height:'+hh+'px;left:calc('+left+'% + 1px);width:calc('+w+'% - 3px);background:'+calStatusBg(e.status)+';border-left:3px solid '+col+';border-radius:4px;padding:2px 5px;overflow:hidden;box-sizing:border-box;font-size:10px;line-height:1.15">'
+        +'<div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(calFmtT(e.start))+' '+esc(e.lead||e.title||'')+'</div>'
+        +(hh>32?'<div style="opacity:.72;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(rep)+'</div>':'')
+        +'</div>';
+    });
+    colsHtml+='<div style="flex:1;min-width:'+(lanes>1?(lanes*66):124)+'px;border-left:1px solid var(--line,#2a3348)">'
+      +'<div style="height:'+headH+'px;box-sizing:border-box;font-weight:600;font-size:12px;padding:6px;color:'+(isToday?'var(--gold,#c9a227)':'inherit')+';border-bottom:2px solid '+(isToday?'var(--gold,#c9a227)':'var(--line,#2a3348)')+';position:sticky;top:0;background:'+BG+';z-index:2">'+DOW[i]+' '+d.getDate()+(isToday?' · Today':'')+'</div>'
+      +'<div style="position:relative;height:'+totalH+'px">'+inner+'</div></div>';
   }
-  grid.innerHTML='<div style="display:flex;gap:8px;overflow-x:auto;padding-bottom:6px">'+cols+'</div>';
+  grid.innerHTML='<div style="display:flex;overflow:auto;max-height:72vh;border:1px solid var(--line,#2a3348);border-radius:8px">'
+    +'<div style="width:48px;flex:none;position:sticky;left:0;background:'+BG+';z-index:3">'
+      +'<div style="height:'+headH+'px;position:sticky;top:0;background:'+BG+';z-index:4;border-bottom:2px solid var(--line,#2a3348)"></div>'+hourLabels
+    +'</div>'+colsHtml+'</div>';
 }
 
 function renderCallLog(){
