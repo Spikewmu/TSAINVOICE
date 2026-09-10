@@ -31,6 +31,33 @@ async function cfgForLocation(locationId) {
   rows.forEach(x => { const d = x.data; if (d && String(d.ghlLocationId || '').trim() === String(locationId).trim() && d.ghlApiKey) found = d; });
   return found;
 }
+async function cfgAll() {
+  const r = await supa(`records?select=data&type=eq.integration&order=submitted_at.asc&limit=100000`);
+  if (!r || !r.ok) return [];
+  const rows = await r.json(); const out = [];
+  rows.forEach(x => { const d = x.data; if (d && d.ghlApiKey && String(d.ghlLocationId || '').trim()) out.push(d); });
+  return out;
+}
+// pull calendar events for one v2 client in [fromMs,toMs]; returns normalized events
+async function pullCalV2(cfg, fromMs, toMs) {
+  const { loc, base, H } = ghlCtx(cfg);
+  const clientName = cfg.client || cfg.key || loc;
+  const events = [];
+  // user map (assigned rep names)
+  const usr = await jfetch(base + '/users/?locationId=' + encodeURIComponent(loc), { headers: H });
+  const usrMap = {}; ((usr.j && usr.j.users) || []).forEach(u => { usrMap[u.id] = u.name || ((u.firstName || '') + ' ' + (u.lastName || '')).trim() || u.email; });
+  const cal = await jfetch(base + '/calendars/?locationId=' + encodeURIComponent(loc), { headers: H });
+  const cals = ((cal.j && cal.j.calendars) || []).slice(0, 25);
+  for (const c of cals) {
+    const url = base + '/calendars/events?locationId=' + encodeURIComponent(loc) + '&calendarId=' + encodeURIComponent(c.id) + '&startTime=' + fromMs + '&endTime=' + toMs;
+    const ev = await jfetch(url, { headers: H });
+    ((ev.j && ev.j.events) || []).forEach(e => {
+      events.push({ client: clientName, calendar: c.name, title: e.title, lead: e.title, status: e.appointmentStatus || e.status, start: e.startTime, end: e.endTime, bookedWith: usrMap[e.assignedUserId] || e.assignedUserId || '', contactId: e.contactId });
+    });
+    await sleep(60);
+  }
+  return events;
+}
 function ghlCtx(cfg) {
   const key = String(cfg.ghlApiKey || ''), v2 = /^pit-/i.test(key), loc = String(cfg.ghlLocationId || '').trim();
   const base = v2 ? 'https://services.leadconnectorhq.com' : 'https://rest.gohighlevel.com/v1';
@@ -95,6 +122,27 @@ export default async function handler(req, res) {
   if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) return res.status(200).json({ ok: false, error: 'not-provisioned' });
 
   const action = q.action || b.action || 'dryrun';
+
+  // multi-client calendar aggregator (no single locationId)
+  if (action === 'calendarEvents') {
+    try {
+      const from = b.from || q.from, to = b.to || q.to;
+      if (!from || !to) return res.status(200).json({ ok: false, error: 'from and to (ISO dates) required' });
+      const fromMs = new Date(from).getTime(), toMs = new Date(to).getTime();
+      const cfgs = await cfgAll();
+      const all = []; const clients = []; const skipped = [];
+      for (const cfg of cfgs) {
+        const v2 = /^pit-/i.test(String(cfg.ghlApiKey || ''));
+        const label = cfg.client || cfg.key;
+        if (!v2) { skipped.push({ client: label, reason: 'v1 (not yet supported)' }); continue; }
+        try { const evs = await pullCalV2(cfg, fromMs, toMs); all.push(...evs); clients.push({ client: label, count: evs.length }); }
+        catch (e) { skipped.push({ client: label, reason: String((e && e.message) || e).slice(0, 120) }); }
+      }
+      all.sort((a, b2) => String(a.start).localeCompare(String(b2.start)));
+      return res.status(200).json({ ok: true, from, to, clients, skipped, count: all.length, events: all });
+    } catch (e) { return res.status(200).json({ ok: false, error: String((e && e.message) || e) }); }
+  }
+
   const locationId = String(b.locationId || q.locationId || '').trim();
   if (!locationId) return res.status(200).json({ ok: false, error: 'locationId required' });
   const cfg = await cfgForLocation(locationId);
