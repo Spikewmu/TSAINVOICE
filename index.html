@@ -2212,7 +2212,7 @@ async function renderCalendar(force){
     if(grid) grid.innerHTML='<p class="hint">Loading meetings from GHL...</p>';
     try{
       const hdr={'Content-Type':'application/json'}; if(SESSION&&SESSION.token) hdr['x-session-token']=SESSION.token; else if(SESSION&&SESSION.pw) hdr['x-admin-pass']=SESSION.pw;
-      const res=await fetch('/api/reactivation',{method:'POST',headers:hdr,body:JSON.stringify({action:'calendarEvents',from:calYmd(mon),to:calYmd(end)})});
+      const res=await fetch('/api/reactivation',{method:'POST',headers:hdr,body:JSON.stringify({action:'calendarEvents',from:calYmd(mon),to:calYmd(end),force:!!force})});
       const j=await res.json();
       if(!j.ok){ if(grid) grid.innerHTML='<p class="hint">Could not load calendar: '+esc(j.error||'error')+'</p>'; return; }
       window.__calEvents=j.events||[]; window.__calWeekKey=key; window.__calSkipped=j.skipped||[];

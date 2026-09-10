@@ -147,14 +147,14 @@ export default async function handler(req, res) {
       }
       const cfgs = await cfgAll();
       const all = []; const clients = []; const skipped = [];
-      // pull all clients in parallel
-      await Promise.all(cfgs.map(async cfg => {
+      // process clients sequentially (each parallelizes internally) so GHL rate-limits never drop rep lookups
+      for (const cfg of cfgs) {
         const v2 = /^pit-/i.test(String(cfg.ghlApiKey || ''));
         const label = cfg.client || cfg.key;
-        if (!v2) { skipped.push({ client: label, reason: 'v1 (not yet supported)' }); return; }
+        if (!v2) { skipped.push({ client: label, reason: 'v1 (not yet supported)' }); continue; }
         try { const evs = await pullCalV2(cfg, fromMs, toMs); all.push(...evs); clients.push({ client: label, count: evs.length }); }
         catch (e) { skipped.push({ client: label, reason: String((e && e.message) || e).slice(0, 120) }); }
-      }));
+      }
       all.sort((a, b2) => String(a.start).localeCompare(String(b2.start)));
       const payload = { ok: true, from, to, clients, skipped, count: all.length, events: all };
       try { await supa('records', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ rid: (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())), type: 'calcache', submitted_at: new Date().toISOString(), data: { k: cacheKey, at: Date.now(), payload } }) }); } catch (e) {}
