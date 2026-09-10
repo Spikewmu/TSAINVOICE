@@ -164,6 +164,46 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, processed: results.length, done, results });
     }
 
+    if (action === 'send') {
+      const items = Array.isArray(b.items) ? b.items : null; // [{id, firstName}]
+      const template = String(b.template || '');
+      const fromNumber = String(b.fromNumber || '').trim();
+      const sentTag = String(b.sentTag || 'tsa - dbr sent').trim();
+      const pace = Math.max(0, Number(b.pace || 300));
+      if (!items || !items.length) return res.status(200).json({ ok: false, error: 'items[] required' });
+      if (!template) return res.status(200).json({ ok: false, error: 'template required' });
+      if (items.length > 60) return res.status(200).json({ ok: false, error: 'max 60 items per batch' });
+      const results = [];
+      for (const it of items) {
+        const id = String(it.id || '').trim(); if (!id) { results.push({ id: '', ok: false }); continue; }
+        const fn = (String(it.firstName || '').trim().split(/\s+/)[0]) || 'there';
+        const msg = template.split('{{first_name}}').join(fn);
+        const body = { type: 'SMS', contactId: id, message: msg };
+        if (fromNumber) body.fromNumber = fromNumber;
+        try {
+          const r = await jfetch(base + '/conversations/messages', { method: 'POST', headers: H, body: JSON.stringify(body) });
+          const rr = { id, ok: r.ok };
+          if (!r.ok) { rr.status = r.status; rr.err = String(r.t).slice(0, 200); }
+          else { rr.messageId = r.j && (r.j.messageId || r.j.id); if (sentTag) await jfetch(base + '/contacts/' + id + '/tags', { method: 'POST', headers: H, body: JSON.stringify({ tags: [sentTag] }) }).catch(() => {}); }
+          results.push(rr);
+        } catch (e) { results.push({ id, ok: false, err: String((e && e.message) || e) }); }
+        await sleep(pace);
+      }
+      return res.status(200).json({ ok: true, processed: results.length, sent: results.filter(r => r.ok).length, results });
+    }
+
+    if (action === 'readmsgs') {
+      const contactId = String(b.contactId || '').trim();
+      if (!contactId) return res.status(200).json({ ok: false, error: 'contactId required' });
+      const s1 = await jfetch(base + '/conversations/search?locationId=' + encodeURIComponent(loc) + '&contactId=' + encodeURIComponent(contactId), { headers: H });
+      const conv = (s1.j && s1.j.conversations && s1.j.conversations[0]) || null;
+      if (!conv) return res.status(200).json({ ok: true, none: true, raw: String(s1.t).slice(0, 300) });
+      const m = await jfetch(base + '/conversations/' + conv.id + '/messages', { headers: H });
+      let msgs = (m.j && m.j.messages && m.j.messages.messages) || (m.j && m.j.messages) || [];
+      if (!Array.isArray(msgs)) msgs = [];
+      return res.status(200).json({ ok: true, conversationId: conv.id, msgs: msgs.slice(0, 6).map(x => ({ dir: x.direction, type: x.messageType || x.type, status: x.status, body: x.body })) , raw: msgs.length ? undefined : String(m.t).slice(0, 400) });
+    }
+
     if (action === 'addtags') {
       const items = Array.isArray(b.items) ? b.items : null; // [{id}]
       const tags = (b.tags || []).map(t => String(t).trim()).filter(Boolean);
