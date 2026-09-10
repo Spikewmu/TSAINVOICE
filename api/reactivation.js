@@ -134,6 +134,14 @@ export default async function handler(req, res) {
       const from = b.from || q.from, to = b.to || q.to;
       if (!from || !to) return res.status(200).json({ ok: false, error: 'from and to (ISO dates) required' });
       const fromMs = new Date(from).getTime(), toMs = new Date(to).getTime();
+      const cacheKey = 'cal:' + from + ':' + to;
+      const force = !!(b.force || q.force);
+      if (!force) { // serve a fresh (<15 min) cached result so repeat loads are instant
+        try {
+          const cr = await supa('records?select=data&type=eq.calcache&data->>k=eq.' + encodeURIComponent(cacheKey) + '&order=submitted_at.desc&limit=1');
+          if (cr && cr.ok) { const rows = await cr.json(); const c = rows[0] && rows[0].data; if (c && c.payload && (Date.now() - (c.at || 0)) < 15 * 60 * 1000) return res.status(200).json({ ...c.payload, cached: true }); }
+        } catch (e) {}
+      }
       const cfgs = await cfgAll();
       const all = []; const clients = []; const skipped = [];
       // pull all clients in parallel
@@ -145,7 +153,9 @@ export default async function handler(req, res) {
         catch (e) { skipped.push({ client: label, reason: String((e && e.message) || e).slice(0, 120) }); }
       }));
       all.sort((a, b2) => String(a.start).localeCompare(String(b2.start)));
-      return res.status(200).json({ ok: true, from, to, clients, skipped, count: all.length, events: all });
+      const payload = { ok: true, from, to, clients, skipped, count: all.length, events: all };
+      try { await supa('records', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ rid: (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())), type: 'calcache', submitted_at: new Date().toISOString(), data: { k: cacheKey, at: Date.now(), payload } }) }); } catch (e) {}
+      return res.status(200).json(payload);
     } catch (e) { return res.status(200).json({ ok: false, error: String((e && e.message) || e) }); }
   }
 
