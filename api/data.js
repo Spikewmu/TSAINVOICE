@@ -101,8 +101,8 @@ async function eventToSlack(rec) {
           + row('Projected to close today', rec.sodProjClose) + row('In blood today', rec.sodBloodToday)
           + row('Projected to collect this week', rec.sodProjCollectWk) + row('In blood to collect this week', rec.sodBloodCollectWk);
       }
-      const head = `📅 *Start-of-day projection* · ${who}${rec.role ? ' (' + rec.role + ')' : ''}${rec.client ? ' · ' + rec.client : ''}`;
-      await postChan(dest, `Start-of-day projection · ${who}${rec.client ? ' · ' + rec.client : ''}`,
+      const head = `📅 *Start of Day*${rec.client ? '  ·  *' + rec.client + '*' : ''}\n${who}${rec.role ? ' (' + rec.role + ')' : ''}`;
+      await postChan(dest, `Start of Day · ${rec.client ? rec.client + ' · ' : ''}${who}`,
         [{ type: 'section', text: { type: 'mrkdwn', text: head + '\n' + lines } }].concat(rec.notes ? [{ type: 'context', elements: [{ type: 'mrkdwn', text: '"' + String(rec.notes).slice(0, 200) + '"' }] }] : []));
     }
   } catch (e) { }
