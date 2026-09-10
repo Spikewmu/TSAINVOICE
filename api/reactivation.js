@@ -164,6 +164,30 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, processed: results.length, done, results });
     }
 
+    if (action === 'appointments') {
+      // Pull a contact's appointments with resolved calendar + assigned-user names.
+      const contactId = String(b.contactId || '').trim();
+      const email = String(b.email || '').trim();
+      let cid = contactId;
+      if (!cid && email) {
+        const s = await jfetch(base + '/contacts/?locationId=' + encodeURIComponent(loc) + '&query=' + encodeURIComponent(email), { headers: H });
+        const arr = (s.j && s.j.contacts) || [];
+        const c = arr.find(x => x && String(x.email || '').toLowerCase() === email.toLowerCase()) || arr[0];
+        cid = c && c.id;
+      }
+      if (!cid) return res.status(200).json({ ok: false, error: 'contactId or matchable email required' });
+      const ap = await jfetch(base + '/contacts/' + cid + '/appointments', { headers: H });
+      let events = (ap.j && (ap.j.events || ap.j.appointments)) || [];
+      if (!Array.isArray(events)) events = [];
+      // build calendar + user name maps
+      const cal = await jfetch(base + '/calendars/?locationId=' + encodeURIComponent(loc), { headers: H });
+      const calMap = {}; ((cal.j && cal.j.calendars) || []).forEach(c => { calMap[c.id] = c.name; });
+      const usr = await jfetch(base + '/users/?locationId=' + encodeURIComponent(loc), { headers: H });
+      const usrMap = {}; ((usr.j && usr.j.users) || []).forEach(u => { usrMap[u.id] = u.name || ((u.firstName || '') + ' ' + (u.lastName || '')).trim() || u.email; });
+      const out = events.map(e => ({ id: e.id, title: e.title, status: e.appointmentStatus || e.status, start: e.startTime, end: e.endTime, calendar: calMap[e.calendarId] || e.calendarId, bookedWith: usrMap[e.assignedUserId] || e.assignedUserId }));
+      return res.status(200).json({ ok: true, contactId: cid, count: out.length, appointments: out, rawSample: out.length ? undefined : String(ap.t).slice(0, 400) });
+    }
+
     if (action === 'sweepreplies') {
       // For each sent contact: if they replied -> move opp to Positive Response + tag; if opted out (DND) -> Not Interested + tag.
       const items = Array.isArray(b.items) ? b.items : null; // [{id}]
