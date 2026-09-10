@@ -2931,23 +2931,25 @@ function renderMyDeals(){
     .sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.submittedAt||'').localeCompare(a.submittedAt||''))
     .forEach(d=>{ const k=String(d.id||''); if(k&&!seen[k]){ seen[k]=1; uniq.push(d); } });
   if(!uniq.length){ wrap.innerHTML=`<div class="panel" style="padding:20px"><p class="muted" style="margin:0">${oversight?'No closed deals yet.':'You have no closed deals yet. When you close one it shows here, so you can log wires and later payments against it.'}</p></div>`; return; }
-  wrap.innerHTML=`<div class="cards" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">`+uniq.map(d=>{
+  wrap.innerHTML=`<div class="cards" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px">`+uniq.map(d=>{
     const contract=d.contractValue||0, collected=dealCollected(d), pend=dealPending(d), bal=Math.max(0,contract-collected);
     const paid=contract>0&&collected>=contract;
     const badge=paid?'<span class="chip" style="background:rgba(74,160,80,.15);color:#7bd487">paid in full</span>':(pend>0?`<span class="chip" style="background:rgba(212,175,90,.15);color:var(--gold)">${money(pend)} pending</span>`:(bal>0?`<span class="chip" style="background:rgba(212,175,90,.12);color:var(--gold)">bal ${money(bal)}</span>`:''));
     const barPct=contract>0?Math.min(100,Math.round(collected/contract*100)):0;
     const who=oversight&&String(d.rep||'').trim()!==me?`<div class="muted" style="font-size:11px;margin-top:2px">closer: ${esc(d.rep||'')}</div>`:'';
-    return `<div class="panel" style="margin:0;padding:16px 16px 14px">
-      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><div style="font-weight:600;font-size:15px">${esc(d.lead||'(no name)')}</div>${badge}</div>
-      <div class="muted" style="font-size:12px;margin:2px 0 12px">${esc(d.client||'')}${d.product?' · '+esc(d.product):''} · ${esc(usDate(d.date))}</div>
-      <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:10px">
-        <div><div class="muted" style="font-size:11px">Collected</div><div style="font-size:17px;color:#7bd487">${money(collected)}</div></div>
-        <div><div class="muted" style="font-size:11px">Contract</div><div style="font-size:17px">${money(contract)}</div></div>
-        <div><div class="muted" style="font-size:11px">Balance</div><div style="font-size:17px">${money(bal)}</div></div>
+    const np=nextExpectedPayment(d);
+    const nextLine = np ? `<div style="font-size:11px;margin:0 0 8px;color:var(--gold)">&#9203; Next: ${money(np.amount||0)}${np.method?' '+esc(np.method):''} ${np.date?esc(usDate(np.date)):'<span class="muted">(no date)</span>'}</div>` : '';
+    return `<div class="panel" style="margin:0;padding:11px 13px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:6px"><div style="font-weight:600;font-size:13px">${esc(d.lead||'(no name)')}</div>${badge}</div>
+      <div class="muted" style="font-size:10.5px;margin:1px 0 8px">${esc(d.client||'')}${d.product?' · '+esc(d.product):''} · ${esc(usDate(d.date))}</div>
+      <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:7px;font-variant-numeric:tabular-nums">
+        <div><div class="muted" style="font-size:9.5px;text-transform:uppercase;letter-spacing:.03em">Collected</div><div style="font-size:14px;color:#7bd487;font-weight:600">${money(collected)}</div></div>
+        <div><div class="muted" style="font-size:9.5px;text-transform:uppercase;letter-spacing:.03em">Contract</div><div style="font-size:14px">${money(contract)}</div></div>
+        <div><div class="muted" style="font-size:9.5px;text-transform:uppercase;letter-spacing:.03em">Balance</div><div style="font-size:14px">${money(bal)}</div></div>
       </div>
-      <div class="bar" style="margin-bottom:12px"><i style="width:${barPct}%"></i></div>
-      ${(()=>{ const np=nextExpectedPayment(d); if(!np) return ''; return `<div style="font-size:12px;margin:0 0 10px;color:var(--gold)">&#9203; Next payment: ${money(np.amount||0)}${np.method?' ('+esc(np.method)+')':''} ${np.date?'expected '+esc(usDate(np.date)):'<span class="muted">(no date set)</span>'}</div>`; })()}
-      <button class="btn gold sm" onclick="openPayments('${esc(String(d.id))}')">Manage payments</button>${who}
+      <div class="bar" style="height:5px;margin-bottom:8px"><i style="width:${barPct}%"></i></div>
+      ${nextLine}
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><button class="btn gold sm" onclick="openPayments('${esc(String(d.id))}')">Manage payments</button>${who}</div>
     </div>`;
   }).join('')+`</div>`;
 }
