@@ -4,6 +4,7 @@
 //   pipeline/stage. Reuses a client's already-stored GHL Private Integration Token (never exposed).
 //   v2 (pit-) tokens only. Admin-only (session token or admin pass), super-admin (tsa ws) required.
 import crypto from 'crypto';
+export const config = { maxDuration: 60 };
 const DEFAULT_WS = 'tsa';
 
 function verifySession(token) {
@@ -129,7 +130,8 @@ export default async function handler(req, res) {
       const source = String(b.source || 'Snoop Reactivation').trim();
       if (!items || !items.length) return res.status(200).json({ ok: false, error: 'items[] required' });
       if (!targetPipelineId || !targetStageId) return res.status(200).json({ ok: false, error: 'targetPipelineId and targetStageId required' });
-      if (items.length > 30) return res.status(200).json({ ok: false, error: 'max 30 items per batch (serverless timeout)' });
+      if (items.length > 50) return res.status(200).json({ ok: false, error: 'max 50 items per batch (serverless timeout)' });
+      const skipDupCheck = !!b.skipDupCheck; // first run: no prior target opps exist, skip the extra GET
       const results = [];
       for (const it of items) {
         const id = String(it.id || '').trim(); if (!id) { results.push({ id: '', ok: false, error: 'no id' }); continue; }
@@ -139,9 +141,12 @@ export default async function handler(req, res) {
           const tagR = await jfetch(base + '/contacts/' + id + '/tags', { method: 'POST', headers: H, body: JSON.stringify({ tags: [tag] }) });
           r.tagged = tagR.ok; if (!tagR.ok) r.tagErr = tagR.status;
           // 2) idempotency: skip opp if one already exists for this contact in the target pipeline
-          const exU = base + '/opportunities/search?location_id=' + encodeURIComponent(loc) + '&pipeline_id=' + encodeURIComponent(targetPipelineId) + '&contact_id=' + encodeURIComponent(id) + '&limit=1';
-          const ex = await jfetch(exU, { headers: H });
-          const already = ex.ok && ((ex.j && ex.j.opportunities) || []).length > 0;
+          let already = false;
+          if (!skipDupCheck) {
+            const exU = base + '/opportunities/search?location_id=' + encodeURIComponent(loc) + '&pipeline_id=' + encodeURIComponent(targetPipelineId) + '&contact_id=' + encodeURIComponent(id) + '&limit=1';
+            const ex = await jfetch(exU, { headers: H });
+            already = ex.ok && ((ex.j && ex.j.opportunities) || []).length > 0;
+          }
           if (already) { r.oppSkipped = true; }
           else {
             const body = { pipelineId: targetPipelineId, locationId: loc, contactId: id, pipelineStageId: targetStageId, status: 'open', name: (it.name || 'Reactivation'), source };
