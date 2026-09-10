@@ -164,6 +164,49 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, processed: results.length, done, results });
     }
 
+    if (action === 'sweepreplies') {
+      // For each sent contact: if they replied -> move opp to Positive Response + tag; if opted out (DND) -> Not Interested + tag.
+      const items = Array.isArray(b.items) ? b.items : null; // [{id}]
+      const targetPipelineId = String(b.targetPipelineId || '').trim();
+      const posStageId = String(b.posStageId || '').trim();
+      const notIntStageId = String(b.notIntStageId || '').trim();
+      const debug = !!b.debug;
+      if (!items || !items.length) return res.status(200).json({ ok: false, error: 'items[] required' });
+      if (!targetPipelineId || !posStageId) return res.status(200).json({ ok: false, error: 'targetPipelineId + posStageId required' });
+      if (items.length > 40) return res.status(200).json({ ok: false, error: 'max 40 items per batch' });
+      const results = []; let dbg = null;
+      for (const it of items) {
+        const id = String(it.id || '').trim(); if (!id) { results.push({ id: '', ok: false }); continue; }
+        const r = { id };
+        try {
+          const c = await jfetch(base + '/contacts/' + id, { headers: H });
+          const contact = (c.j && c.j.contact) || {};
+          const dndSms = contact.dnd === true || (contact.dndSettings && contact.dndSettings.SMS && /active|perm/i.test(String(contact.dndSettings.SMS.status || '')));
+          const cs = await jfetch(base + '/conversations/search?locationId=' + encodeURIComponent(loc) + '&contactId=' + encodeURIComponent(id) + '&limit=1', { headers: H });
+          const conv = (cs.j && cs.j.conversations && cs.j.conversations[0]) || null;
+          if (debug && !dbg && conv) dbg = { convKeys: Object.keys(conv), conv };
+          const lastDir = conv && String(conv.lastMessageDirection || conv.direction || '').toLowerCase();
+          const replied = !!conv && (String(lastDir).includes('inbound') || Number(conv.unreadCount || 0) > 0);
+          r.dnd = !!dndSms; r.replied = replied;
+          let move = null, tag = null;
+          if (dndSms) { move = notIntStageId; tag = 'tsa - optout'; }
+          else if (replied) { move = posStageId; tag = 'tsa - replied'; }
+          if (move) {
+            const os = await jfetch(base + '/opportunities/search?location_id=' + encodeURIComponent(loc) + '&pipeline_id=' + encodeURIComponent(targetPipelineId) + '&contact_id=' + encodeURIComponent(id) + '&limit=1', { headers: H });
+            const opp = (os.j && os.j.opportunities && os.j.opportunities[0]) || null;
+            if (opp && opp.id) { const up = await jfetch(base + '/opportunities/' + opp.id, { method: 'PUT', headers: H, body: JSON.stringify({ pipelineStageId: move }) }); r.moved = up.ok; if (!up.ok) r.moveErr = up.status; }
+            else r.moved = false;
+            if (tag) await jfetch(base + '/contacts/' + id + '/tags', { method: 'POST', headers: H, body: JSON.stringify({ tags: [tag] }) }).catch(() => {});
+            r.routedTo = tag;
+          }
+          r.ok = true;
+        } catch (e) { r.ok = false; r.err = String((e && e.message) || e); }
+        results.push(r);
+        await sleep(90);
+      }
+      return res.status(200).json({ ok: true, processed: results.length, replied: results.filter(r => r.replied).length, optout: results.filter(r => r.dnd).length, moved: results.filter(r => r.moved).length, results: debug ? results : undefined, dbg });
+    }
+
     if (action === 'send') {
       const items = Array.isArray(b.items) ? b.items : null; // [{id, firstName}]
       const template = String(b.template || '');
