@@ -2146,6 +2146,8 @@ function paymentsCollapsed(){ const latest={}; RECORDS.forEach(x=>{ if(x.type!==
 function paymentsForDeal(dealId){ return paymentsCollapsed().filter(x=>String(x.dealId||'')===String(dealId)).sort((a,b)=>(a.date||'').localeCompare(b.date||'')); }
 function dealCollected(deal){ return (deal.cashCollected||0) + paymentsForDeal(deal.id).filter(p=>p.status==='confirmed').reduce((s,p)=>s+(p.amount||0),0); }
 function dealPending(deal){ return paymentsForDeal(deal.id).filter(p=>p.status==='pending').reduce((s,p)=>s+(p.amount||0),0); }
+// the soonest still-pending payment on a deal (what/when the next money is expected), dated ones first
+function nextExpectedPayment(deal){ const p=paymentsForDeal(deal.id).filter(x=>x.status==='pending'); if(!p.length) return null; const dated=p.filter(x=>x.date).sort((a,b)=>String(a.date).localeCompare(String(b.date))); return dated[0]||p[0]; }
 function canManagePayments(d){ if(!SESSION||!d) return false; if(['admin','director','manager'].includes(SESSION.role)) return true; if((SESSION.role==='closer'||SESSION.role==='setter') && String(SESSION.name||'').trim()===String(d.rep||'').trim()) return true; return false; }
 // Post-call corrections work the same way: collapse to the LATEST submission per rep+day+lead+callType
 // (append-only backend, so a re-submitted call supersedes the earlier one instead of duplicating).
@@ -2944,6 +2946,7 @@ function renderMyDeals(){
         <div><div class="muted" style="font-size:11px">Balance</div><div style="font-size:17px">${money(bal)}</div></div>
       </div>
       <div class="bar" style="margin-bottom:12px"><i style="width:${barPct}%"></i></div>
+      ${(()=>{ const np=nextExpectedPayment(d); if(!np) return ''; return `<div style="font-size:12px;margin:0 0 10px;color:var(--gold)">&#9203; Next payment: ${money(np.amount||0)}${np.method?' ('+esc(np.method)+')':''} ${np.date?'expected '+esc(usDate(np.date)):'<span class="muted">(no date set)</span>'}</div>`; })()}
       <button class="btn gold sm" onclick="openPayments('${esc(String(d.id))}')">Manage payments</button>${who}
     </div>`;
   }).join('')+`</div>`;
