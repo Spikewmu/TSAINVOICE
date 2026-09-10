@@ -362,6 +362,7 @@
       <button data-tab="reps">Rep Breakdown</button>
       <button data-tab="mgreod">Manager EOD</button>
       <button data-tab="calllog">Call Log</button>
+      <button data-tab="calendar">Calendar</button>
       <button data-tab="adminreport">Admin Report</button>
     </div>
   </div>
@@ -817,6 +818,20 @@
       <button class="btn ghost sm" style="align-self:flex-end" onclick="renderAdminReport()">Refresh</button>
     </div>
     <div id="arBody"></div>
+  </section>
+
+  <!-- ===== CALENDAR (multi-client meetings from GHL) ===== -->
+  <section id="tab-calendar" hidden>
+    <h2 class="section">Calendar</h2>
+    <p class="hint">Every booked meeting across all your connected GHL clients, in one place - no logging into each account. Shows who the meeting is with and which rep's calendar it's on. Pulled live from GHL.</p>
+    <div class="filters" style="align-items:flex-end;gap:10px">
+      <div class="field"><label>Week</label><div class="row-actions"><button class="btn ghost sm" onclick="calShift(-7)">&#9664;</button><button class="btn ghost sm" onclick="calShift(0)">Today</button><button class="btn ghost sm" onclick="calShift(7)">&#9654;</button></div></div>
+      <div class="field"><label>&nbsp;</label><b id="calRange" style="font-size:15px"></b></div>
+      <div class="field"><label>Client</label><select id="calClient" onchange="renderCalendarGrid()"><option value="">All clients</option></select></div>
+      <div class="field"><label>&nbsp;</label><button class="btn ghost sm" onclick="renderCalendar(true)">Refresh</button></div>
+      <span id="calMeta" class="tag" style="align-self:flex-end;margin-bottom:2px"></span>
+    </div>
+    <div id="calGrid" style="margin-top:8px"></div>
   </section>
 
   <!-- ===== RECRUITING ===== -->
@@ -1731,7 +1746,7 @@ function startApp(){
 // base tabs a login TIER can see; per-account responsibilities add to this in applyNavAccess()
 function baseAllow(role){
   return ({
-    admin:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','postcall','sod','eod','training','mgreod','webinar','calllog','adminreport','recruiting','messages','invoicing','data','users','integrations','settings'],
+    admin:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','postcall','sod','eod','training','mgreod','webinar','calllog','calendar','adminreport','recruiting','messages','invoicing','data','users','integrations','settings'],
     director:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','recruiting','messages','adminreport'],
     manager:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','recruiting','messages'],
     founder:['dash'],
@@ -1828,9 +1843,9 @@ function showTab(t){
   document.querySelectorAll('#tabs button[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
   document.querySelectorAll('#tabs .navgroup').forEach(g=>{ if(g.querySelector('button[data-tab="'+t+'"]')) g.classList.remove('collapsed'); }); // reveal the active tab's group
 
-  ['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','sod','eod','training','mgreod','webinar','calllog','adminreport','recruiting','messages','invoicing','data','users','integrations','settings'].forEach(x=>{ const el=document.getElementById('tab-'+x); if(el) el.hidden = (x!==t); });
+  ['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','sod','eod','training','mgreod','webinar','calllog','calendar','adminreport','recruiting','messages','invoicing','data','users','integrations','settings'].forEach(x=>{ const el=document.getElementById('tab-'+x); if(el) el.hidden = (x!==t); });
   // stale-while-revalidate: render instantly from the cached records, then refresh in the background
-  const render={dash:renderDash, mydeals:renderMyDeals, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, promises:renderPromisesTab, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, webinar:renderWebinars, calllog:renderCallLog, adminreport:renderAdminReport, recruiting:renderRecruiting, messages:renderMessages, training:renderTraining, invoicing:renderInvoicing, data:renderAll}[t];
+  const render={dash:renderDash, mydeals:renderMyDeals, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, promises:renderPromisesTab, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, webinar:renderWebinars, calllog:renderCallLog, calendar:renderCalendar, adminreport:renderAdminReport, recruiting:renderRecruiting, messages:renderMessages, training:renderTraining, invoicing:renderInvoicing, data:renderAll}[t];
   if(render){ render(); syncRecords().then(()=>{ if(currentTab()===t) render(); updateNavBadges(); renderReminders(); }); }
   updateNavBadges();
   if(t==='data'){ renderDailyEntry(); }
@@ -2174,6 +2189,56 @@ function fillCallLogFilters(recs){
   const oc=document.getElementById('clOutcome'); if(oc){ const cur=oc.value, outs=[...new Set([...PC_OUTCOMES.Closer,...PC_OUTCOMES.Setter])]; oc.innerHTML='<option value="">All outcomes</option>'+outs.map(o=>`<option>${esc(o)}</option>`).join(''); if(cur)oc.value=cur; }
 }
 function callLogPill(o){ const good=/^(Won|Booked)/.test(o||''), bad=/^(Lost|No-show|No answer|Disqualified|Not interested|Wrong)/.test(o||''); return `<span class="pill ${good?'good':(bad?'warn':'')}">${esc(o||'-')}</span>`; }
+/* ---------------- Calendar (multi-client GHL meetings) ---------------- */
+let __calRef=null; // a Date within the currently shown week
+function calMondayOf(d){ const x=new Date(d); const back=(x.getDay()+6)%7; x.setDate(x.getDate()-back); x.setHours(0,0,0,0); return x; }
+function calYmd(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function calShift(delta){ if(!__calRef||delta===0) __calRef=new Date(); if(delta) __calRef.setDate(__calRef.getDate()+delta); renderCalendar(true); }
+const CAL_COLORS=['#c9a227','#4a90d9','#2ea36b','#b0568c','#d9863a','#6a67c9','#3aa0a0','#c65b5b'];
+function calClientColor(name){ let h=0; const s=String(name||''); for(let i=0;i<s.length;i++) h=(h*31+s.charCodeAt(i))>>>0; return CAL_COLORS[h%CAL_COLORS.length]; }
+function calFmtT(iso){ const m=String(iso).match(/T(\d\d):(\d\d)/); if(!m) return ''; let h=+m[1]; return ((h%12)||12)+':'+m[2]+' '+(h<12?'AM':'PM'); }
+function calStatusBadge(s){ s=String(s||'').toLowerCase(); let bg='#3a4a63',txt=s||'booked'; if(/confirm|showed|attended/.test(s)) bg='#1f6b45'; else if(/no.?show|cancel|invalid|declin/.test(s)) bg='#7a2e2e'; else if(/book|new|schedul/.test(s)) bg='#2f4a7a'; return '<span style="font-size:10px;padding:1px 6px;border-radius:8px;background:'+bg+';color:#fff;text-transform:capitalize">'+esc(txt)+'</span>'; }
+async function renderCalendar(force){
+  if(!__calRef) __calRef=new Date();
+  const mon=calMondayOf(__calRef), sun=new Date(mon); sun.setDate(sun.getDate()+6); const end=new Date(mon); end.setDate(end.getDate()+7);
+  const rangeEl=document.getElementById('calRange'); if(rangeEl) rangeEl.textContent=usDate(calYmd(mon))+'  -  '+usDate(calYmd(sun));
+  const grid=document.getElementById('calGrid'); const key=calYmd(mon);
+  if(force || window.__calWeekKey!==key || !window.__calEvents){
+    if(grid) grid.innerHTML='<p class="hint">Loading meetings from GHL...</p>';
+    try{
+      const hdr={'Content-Type':'application/json'}; if(SESSION&&SESSION.token) hdr['x-session-token']=SESSION.token; else if(SESSION&&SESSION.pw) hdr['x-admin-pass']=SESSION.pw;
+      const res=await fetch('/api/reactivation',{method:'POST',headers:hdr,body:JSON.stringify({action:'calendarEvents',from:calYmd(mon),to:calYmd(end)})});
+      const j=await res.json();
+      if(!j.ok){ if(grid) grid.innerHTML='<p class="hint">Could not load calendar: '+esc(j.error||'error')+'</p>'; return; }
+      window.__calEvents=j.events||[]; window.__calWeekKey=key; window.__calSkipped=j.skipped||[];
+      const sel=document.getElementById('calClient'); if(sel){ const cur=sel.value; const names=[...new Set(window.__calEvents.map(e=>e.client))].sort(); sel.innerHTML='<option value="">All clients</option>'+names.map(n=>'<option>'+esc(n)+'</option>').join(''); sel.value=cur; }
+      const meta=document.getElementById('calMeta'); if(meta){ let m=window.__calEvents.length+' meeting'+(window.__calEvents.length===1?'':'s')+' this week'; const v1=[...new Set((window.__calSkipped||[]).map(s=>s.client))]; if(v1.length) m+=' · '+v1.length+' client'+(v1.length===1?'':'s')+' not yet connected'; meta.textContent=m; }
+    }catch(e){ if(grid) grid.innerHTML='<p class="hint">Calendar error: '+esc(String(e))+'</p>'; return; }
+  }
+  renderCalendarGrid();
+}
+function renderCalendarGrid(){
+  const grid=document.getElementById('calGrid'); if(!grid) return;
+  const mon=calMondayOf(__calRef||new Date());
+  const cf=(document.getElementById('calClient')||{}).value||'';
+  const evs=(window.__calEvents||[]).filter(e=>!cf||e.client===cf);
+  const byDay={}; evs.forEach(e=>{ const d=String(e.start).slice(0,10); (byDay[d]=byDay[d]||[]).push(e); });
+  const DOW=['Mon','Tue','Wed','Thu','Fri','Sat','Sun']; const todayKey=calYmd(new Date());
+  let cols='';
+  for(let i=0;i<7;i++){ const d=new Date(mon); d.setDate(d.getDate()+i); const key=calYmd(d); const isToday=key===todayKey;
+    const list=(byDay[key]||[]).sort((a,b)=>String(a.start).localeCompare(String(b.start)));
+    const cards=list.map(e=>{ const col=calClientColor(e.client);
+      return '<div style="border-left:3px solid '+col+';background:var(--card2,#1a2030);border-radius:6px;padding:6px 8px;margin-bottom:6px">'
+        +'<div style="font-size:11px;color:var(--muted,#8a94a6)">'+esc(calFmtT(e.start))+(e.end?' - '+esc(calFmtT(e.end)):'')+'</div>'
+        +'<div style="font-weight:600;font-size:13px;line-height:1.2">'+esc(e.lead||e.title||'(no name)')+'</div>'
+        +'<div style="font-size:11px;color:var(--muted,#8a94a6)">with '+esc(e.bookedWith||'-')+'</div>'
+        +'<div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;gap:4px"><span style="font-size:10px;color:'+col+';font-weight:600">'+esc(e.client)+'</span>'+calStatusBadge(e.status)+'</div>'
+        +'</div>'; }).join('') || '<div style="font-size:11px;opacity:.35;padding:4px 0">No meetings</div>';
+    cols+='<div style="flex:1;min-width:158px"><div style="font-weight:600;font-size:12px;padding:4px 2px;border-bottom:2px solid '+(isToday?'var(--gold,#c9a227)':'var(--line,#2a3348)')+';margin-bottom:6px;color:'+(isToday?'var(--gold,#c9a227)':'inherit')+'">'+DOW[i]+' '+d.getDate()+(isToday?' · Today':'')+'</div>'+cards+'</div>';
+  }
+  grid.innerHTML='<div style="display:flex;gap:8px;overflow-x:auto;padding-bottom:6px">'+cols+'</div>';
+}
+
 function renderCallLog(){
   const recs=collapsePostcall(RECORDS); fillCallLogFilters(recs);
   const gv=id=>{ const e=document.getElementById(id); return e?e.value:''; };
