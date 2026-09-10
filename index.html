@@ -2281,12 +2281,14 @@ function renderCalendarGrid(){
     const lanes=Math.max(1,laneEnd.length);
     let inner=''; for(let h=minM; h<=maxM; h+=60){ inner+='<div style="position:absolute;left:0;right:0;top:'+((h-minM)*ppm)+'px;border-top:1px solid var(--line,#2a3348);opacity:.3"></div>'; }
     list.forEach(it=>{ const e=it.e, top=(it.s-minM)*ppm, hh=Math.max(20,(it.en-it.s)*ppm-1), w=100/lanes, left=it.lane*w, col=calClientColor(e.client);
-      const bw=String(e.bookedWith||'').trim(); const rep=(bw && !/^[A-Za-z0-9]{15,}$/.test(bw))?bw:'unassigned'; const ci=window.__calRendered.push(e)-1;
-      inner+='<div onclick="calDetail('+ci+')" title="Click for details" style="cursor:pointer;position:absolute;top:'+top+'px;height:'+hh+'px;left:calc('+left+'% + 1px);width:calc('+w+'% - 3px);background:'+calStatusBg(e.status)+';border-left:3px solid '+col+';border-radius:4px;padding:2px 5px;overflow:hidden;box-sizing:border-box;font-size:'+(N<=2?11:10)+'px;line-height:1.2">'
-        +'<div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(e.lead||e.title||'')+'</div>'
-        +(hh>28?'<div style="opacity:.72;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(rep)+'</div>':'')
-        +(hh>46&&N<=2?'<div style="opacity:.6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:10px">'+esc(e.client||'')+'</div>':'')
-        +'</div>';
+      const bw=String(e.bookedWith||'').trim(); const rep=(bw && !/^[A-Za-z0-9]{15,}$/.test(bw))?bw:''; const co=String(e.client||'').trim(); const lead=String(e.lead||e.title||''); const ci=window.__calRendered.push(e)-1;
+      const full=lead+(rep?(' × '+rep):'')+(co?(' - '+co):'');
+      inner+='<div onclick="calDetail('+ci+')" title="'+esc(full)+'" style="cursor:pointer;position:absolute;top:'+top+'px;height:'+hh+'px;left:calc('+left+'% + 1px);width:calc('+w+'% - 3px);background:'+calStatusBg(e.status)+';border-left:3px solid '+col+';border-radius:4px;padding:2px 5px;overflow:hidden;box-sizing:border-box;font-size:'+(N<=2?11:10)+'px;line-height:1.2">'
+        +'<div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'
+          +'<span style="font-weight:600">'+esc(lead)+'</span>'
+          +(rep?'<span style="opacity:.78"> × '+esc(rep)+'</span>':'<span style="opacity:.5"> × unassigned</span>')
+          +(co?'<span style="opacity:.55"> - '+esc(co)+'</span>':'')
+        +'</div></div>';
     });
     colsHtml+='<div style="flex:1;min-width:'+Math.max(baseMin,lanes*72)+'px;border-left:1px solid var(--line,#2a3348)">'
       +'<div style="height:'+headH+'px;box-sizing:border-box;font-weight:600;font-size:12px;padding:6px;color:'+(isToday?'var(--gold,#c9a227)':'inherit')+';border-bottom:2px solid '+(isToday?'var(--gold,#c9a227)':'var(--line,#2a3348)')+';position:sticky;top:0;background:'+BG+';z-index:2">'+DOW[d.getDay()]+' '+(d.getMonth()+1)+'/'+d.getDate()+(isToday?' · Today':'')+'</div>'
