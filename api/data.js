@@ -76,7 +76,7 @@ async function eventToSlack(rec) {
         + L('Outcome', outcome) + L('Lead', rec.lead);
       if (won) {
         body += L('Offer', rec.product);
-        if (rec.cashCollected) body += `\n*Cash collected:* ${money(rec.cashCollected)}` + (rec.contractValue ? ` · *Contract:* ${money(rec.contractValue)}` : '');
+        if (rec.cashCollected) body += `\n*Cash collected:* ${money(rec.cashCollected)}` + (rec.contractValue ? `\n*Contract:* ${money(rec.contractValue)}` : '');
         else if (rec.contractValue) body += `\n*Contract:* ${money(rec.contractValue)}`;
       }
       if (isFollow) { const fd = fmtDate(rec.followUpDate), ft = fmtTime(rec.followUpTime); if (fd || ft) body += `\n*Follow-up:* ${fd}${ft ? ' at ' + ft : ''}`; }
@@ -94,10 +94,10 @@ async function eventToSlack(rec) {
       const n = v => v || 0;
       let lines;
       if (rec.role === 'Setter') {
-        lines = `*Calls today:* ${n(rec.sodCallsToday)}  ·  *Confirmed:* ${n(rec.sodConfirmed)}  ·  *Watched VSL:* ${n(rec.sodWatchedVsl)}\n*Set commitment today:* ${n(rec.sodSetTotal)}  (same-day ${n(rec.sodSameDay)} · 24h ${n(rec.sod24)} · 48h ${n(rec.sod48)} · 72h ${n(rec.sod72)})`;
+        lines = `*Calls today:* ${n(rec.sodCallsToday)}\n*Confirmed:* ${n(rec.sodConfirmed)}\n*Watched VSL:* ${n(rec.sodWatchedVsl)}\n*Set commitment today:* ${n(rec.sodSetTotal)}  (same-day ${n(rec.sodSameDay)} · 24h ${n(rec.sod24)} · 48h ${n(rec.sod48)} · 72h ${n(rec.sod72)})`;
       } else {
         const row = (lbl, v) => (v && String(v).trim()) ? `\n*${lbl}:* ${String(v).trim()}` : '';
-        lines = `*Calls today:* ${n(rec.sodCallsToday)}  ·  *Confirmed:* ${n(rec.sodConfirmed)}`
+        lines = `*Calls today:* ${n(rec.sodCallsToday)}\n*Confirmed:* ${n(rec.sodConfirmed)}`
           + row('Projected to close today', rec.sodProjClose) + row('In blood today', rec.sodBloodToday)
           + row('Projected to collect this week', rec.sodProjCollectWk) + row('In blood to collect this week', rec.sodBloodCollectWk);
       }
