@@ -39,29 +39,26 @@ async function cfgAll() {
   rows.forEach(x => { const d = x.data; const loc = d && String(d.ghlLocationId || '').trim(); if (d && d.ghlApiKey && loc) byLoc[loc] = d; });
   return Object.values(byLoc);
 }
-// pull calendar events for one v2 client in [fromMs,toMs]; returns normalized events (parallelized for speed)
+// pull calendar events for one v2 client in [fromMs,toMs]; returns normalized events
 async function pullCalV2(cfg, fromMs, toMs) {
   const { loc, base, H } = ghlCtx(cfg);
   const clientName = cfg.client || cfg.key || loc;
-  // users + calendars in parallel
-  const [usr, cal] = await Promise.all([
-    jretry(base + '/users/?locationId=' + encodeURIComponent(loc), { headers: H }),
-    jretry(base + '/calendars/?locationId=' + encodeURIComponent(loc), { headers: H })
-  ]);
-  const usrMap = {}; ((usr.j && usr.j.users) || []).forEach(u => { usrMap[u.id] = u.name || ((u.firstName || '') + ' ' + (u.lastName || '')).trim() || u.email; });
+  const cal = await jretry(base + '/calendars/?locationId=' + encodeURIComponent(loc), { headers: H });
   const cals = ((cal.j && cal.j.calendars) || []).slice(0, 40);
   // fetch every calendar's events in parallel
   const evLists = await Promise.all(cals.map(c => {
     const url = base + '/calendars/events?locationId=' + encodeURIComponent(loc) + '&calendarId=' + encodeURIComponent(c.id) + '&startTime=' + fromMs + '&endTime=' + toMs;
     return jfetch(url, { headers: H }).then(ev => ({ c, ev })).catch(() => ({ c, ev: { j: {} } }));
   }));
-  const events = [];
-  evLists.forEach(({ c, ev }) => {
-    ((ev.j && ev.j.events) || []).forEach(e => {
-      events.push({ client: clientName, calendar: c.name, title: e.title, lead: e.title, status: e.appointmentStatus || e.status, start: e.startTime, end: e.endTime, bookedWith: usrMap[e.assignedUserId] || '', contactId: e.contactId });
-    });
-  });
-  return events;
+  const raw = []; const uids = new Set();
+  evLists.forEach(({ c, ev }) => { ((ev.j && ev.j.events) || []).forEach(e => { raw.push({ c, e }); if (e.assignedUserId) uids.add(e.assignedUserId); }); });
+  // resolve rep names: location list first, then per-id for any stragglers (reliable under rate-limits)
+  const usrMap = {};
+  const list = await jretry(base + '/users/?locationId=' + encodeURIComponent(loc), { headers: H });
+  ((list.j && list.j.users) || []).forEach(u => { usrMap[u.id] = u.name || ((u.firstName || '') + ' ' + (u.lastName || '')).trim() || u.email; });
+  const missing = [...uids].filter(id => !usrMap[id]);
+  await Promise.all(missing.map(id => jretry(base + '/users/' + encodeURIComponent(id), { headers: H }).then(u => { const d = (u.j && (u.j.user || u.j)) || {}; usrMap[id] = d.name || ((d.firstName || '') + ' ' + (d.lastName || '')).trim() || d.email || ''; }).catch(() => {})));
+  return raw.map(({ c, e }) => ({ client: clientName, calendar: c.name, title: e.title, lead: e.title, status: e.appointmentStatus || e.status, start: e.startTime, end: e.endTime, bookedWith: usrMap[e.assignedUserId] || '', contactId: e.contactId }));
 }
 function ghlCtx(cfg) {
   const key = String(cfg.ghlApiKey || ''), v2 = /^pit-/i.test(key), loc = String(cfg.ghlLocationId || '').trim();
