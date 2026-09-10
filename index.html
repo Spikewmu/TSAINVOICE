@@ -2650,6 +2650,8 @@ function renderDash(){
   renderBreakdownTables(recs, {setterEl:'dashSetterTable', closerEl:'dashCloserTable', rm:(SESSION&&(SESSION.role==='founder'||repMode())), clickable:false});
   renderClients(recs); renderDeals(recs);
 }
+// a rep counts as "left / churned" if they have a termination date OR their login was archived (deactivated)
+function repLeft(u){ const m=repMetaFor(u&&u.username); return !!((m&&m.endDate)||(u&&u.archived)); }
 // Team retention + AOV per team member (value per hire before they leave), segmented setter/closer.
 // All-time + client-scoped on purpose: retention and value-per-hire are lifetime metrics, not a monthly slice.
 function renderTeamValue(){
@@ -2664,7 +2666,7 @@ function renderTeamValue(){
   const scoped = activityRecords().filter(x=> !scopeClients || scopeClients.includes(x.client)); // client scope, ALL-TIME (ignore month filter)
   const closerCash = agg(scoped).cashCollected;   // closer-credited cash
   const setterCash = aggSetters(scoped).cashSet;  // setter-credited cash
-  const stat = (reps, cash) => { const total=reps.length, left=reps.filter(u=>{const m=repMetaFor(u.username);return m&&m.endDate;}).length, active=total-left;
+  const stat = (reps, cash) => { const total=reps.length, left=reps.filter(repLeft).length, active=total-left;
     return { total, active, retention: total?active/total:0, aov: total?cash/total:0 }; };
   const S=stat(setters,setterCash), C=stat(closers,closerCash);
   TV_REPS={setter:setters, closer:closers}; // stash in-scope reps for the drill-down
@@ -2692,8 +2694,8 @@ function teamValueRoster(role){
   const reps=(TV_REPS&&TV_REPS[role])||[];
   if(!reps.length) return `<div class="muted" style="font-size:12px;padding:6px 2px">No ${role}s in scope.</div>`;
   const row=u=>{
-    const m=repMetaFor(u.username), churned=!!(m&&m.endDate);
-    const bits=[]; if(m&&m.startDate) bits.push('hired '+usDate(m.startDate)); if(churned) bits.push('left '+usDate(m.endDate)); if(m&&m.mgr) bits.push('mgr '+esc(m.mgr));
+    const m=repMetaFor(u.username), churned=repLeft(u);
+    const bits=[]; if(m&&m.startDate) bits.push('hired '+usDate(m.startDate)); if(m&&m.endDate) bits.push('left '+usDate(m.endDate)); else if(u.archived) bits.push('archived'); if(m&&m.mgr) bits.push('mgr '+esc(m.mgr));
     const accts=teamsFor(u.username);
     const acctHtml=accts.length?accts.map(t=>`<span class="teamtag">${esc(t)}</span>`).join(''):'<span class="muted" style="font-size:11px">no account</span>';
     const badge=churned
@@ -2704,8 +2706,8 @@ function teamValueRoster(role){
       <span style="margin-left:auto;text-align:right">${acctHtml}</span>
       ${bits.length?`<div class="muted" style="font-size:11px;flex-basis:100%">${bits.join(' &middot; ')}</div>`:''}</div>`;
   };
-  const active=reps.filter(u=>{const m=repMetaFor(u.username);return !(m&&m.endDate);});
-  const churned=reps.filter(u=>{const m=repMetaFor(u.username);return (m&&m.endDate);});
+  const active=reps.filter(u=>!repLeft(u));
+  const churned=reps.filter(repLeft);
   return `<div style="border:1px solid var(--border);border-radius:8px;padding:2px 10px 8px;background:var(--glass)">`+
     active.map(row).join('')+
     (churned.length?`<div class="muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.03em;margin-top:8px;padding:2px">Churned (${churned.length})</div>`+churned.map(row).join(''):'')+
@@ -3384,7 +3386,7 @@ function churnPanelHTML(){
   const reps=(USERS_CACHE||[]).filter(u=>['setter','closer'].includes(u.role));
   const rows=clientNames().map(c=>{
     const team=reps.filter(u=>teamsFor(u.username).includes(c));
-    const left=team.filter(u=>{const m=repMetaFor(u.username);return m&&m.endDate;});
+    const left=team.filter(repLeft);
     return {c,total:team.length,left:left.length,rate:team.length?left.length/team.length:0};
   }).filter(r=>r.total>0).sort((a,b)=>b.rate-a.rate||b.total-a.total);
   const body=rows.length?rows.map(r=>`<tr><td>${esc(r.c)}</td><td class="num">${r.total}</td><td class="num" style="${r.left?'color:var(--bad);font-weight:700':''}">${r.left}</td><td class="num">${pct(r.rate)}</td></tr>`).join('')
