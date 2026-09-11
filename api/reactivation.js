@@ -219,6 +219,61 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, sampled: out.length, withOutboundCall, messageTypeHistogram: typeHist, contacts: out });
     }
 
+    // Speed to lead: for leads created in [fromDate,toDate], find each lead's FIRST OUTBOUND CALL and the gap from
+    // when the lead came in. Bounded (cap) + batched + 15-min cached so it fits the serverless budget + GHL rate limits.
+    if (action === 'speedToLead') {
+      const fromDay = dayOf(b.fromDate || q.fromDate || ''), toDay = dayOf(b.toDate || q.toDate || '');
+      const target = Math.max(1, parseInt(b.targetMin || q.targetMin || 5, 10) || 5);
+      const cap = Math.min(Math.max(10, parseInt(b.cap || q.cap || 60, 10) || 60), 150);
+      const force = !!(b.force || q.force);
+      const cacheKey = 'spl:' + loc + ':' + fromDay + ':' + toDay + ':' + target;
+      if (!force) {
+        try { const cr = await supa('records?select=data&type=eq.splcache&data->>k=eq.' + encodeURIComponent(cacheKey) + '&order=submitted_at.desc&limit=1');
+          if (cr && cr.ok) { const rows = await cr.json(); const c = rows[0] && rows[0].data; if (c && c.payload && (Date.now() - (c.at || 0)) < 15 * 60 * 1000) return res.status(200).json({ ...c.payload, cached: true }); } } catch (e) {}
+      }
+      // 1) leads created in the window (v2 contacts paginate newest-first; stop once we page past the window or hit the cap)
+      const leads = []; let startAfter = null, startAfterId = null, pages = 0, passedWindow = false;
+      while (pages++ < 25 && leads.length < cap && !passedWindow) {
+        let url = base + '/contacts/?locationId=' + encodeURIComponent(loc) + '&limit=100';
+        if (startAfterId) url += '&startAfterId=' + encodeURIComponent(startAfterId) + '&startAfter=' + encodeURIComponent(startAfter);
+        const { ok, j } = await jretry(url, { headers: H }); if (!ok) break;
+        const arr = (j && j.contacts) || []; if (!arr.length) break;
+        for (const c of arr) { const created = c.dateAdded || c.createdAt || '', cd = dayOf(created);
+          if (fromDay && cd < fromDay) { passedWindow = true; continue; }
+          if (toDay && cd > toDay) continue;
+          leads.push({ id: c.id, name: c.contactName || ((c.firstName || '') + ' ' + (c.lastName || '')).trim() || c.id, created }); if (leads.length >= cap) break; }
+        const meta = (j && j.meta) || {}; startAfter = meta.startAfter; startAfterId = meta.startAfterId; if (!startAfterId) break; await sleep(120);
+      }
+      // 2) first outbound call per lead (batched to respect rate limits)
+      const typeHist = {}, usrIds = new Set();
+      async function firstCall(ld) {
+        const conv = await jretry(base + '/conversations/search?locationId=' + encodeURIComponent(loc) + '&contactId=' + encodeURIComponent(ld.id), { headers: H });
+        const convs = (conv.j && conv.j.conversations) || []; let best = null, bestUser = '';
+        for (const cv of convs.slice(0, 2)) {
+          const msgr = await jretry(base + '/conversations/' + encodeURIComponent(cv.id) + '/messages?limit=100', { headers: H });
+          const mm = (msgr.j && msgr.j.messages && (msgr.j.messages.messages || msgr.j.messages)) || [];
+          (Array.isArray(mm) ? mm : []).forEach(m => { const mt = String(m.messageType || m.type || ''); typeHist[mt] = (typeHist[mt] || 0) + 1;
+            if (/call/i.test(mt) && /out/i.test(String(m.direction || ''))) { const at = m.dateAdded || m.dateUpdated; if (at && (!best || new Date(at) < new Date(best))) { best = at; bestUser = m.userId || ''; } } });
+        }
+        let gap = null; if (best && ld.created) { const g = (new Date(best) - new Date(ld.created)) / 60000; if (isFinite(g) && g >= 0) gap = Math.round(g * 10) / 10; }
+        if (bestUser) usrIds.add(bestUser);
+        return { ...ld, firstCall: best || '', gapMin: gap, userId: bestUser };
+      }
+      const results = []; for (let i = 0; i < leads.length; i += 5) { const r = await Promise.all(leads.slice(i, i + 5).map(firstCall)); results.push(...r); }
+      // 3) rep names + aggregate
+      const usrMap = {}; if (usrIds.size) { const ul = await jretry(base + '/users/?locationId=' + encodeURIComponent(loc), { headers: H }); ((ul.j && ul.j.users) || []).forEach(u => { usrMap[u.id] = u.name || ((u.firstName || '') + ' ' + (u.lastName || '')).trim() || u.email; }); }
+      results.forEach(r => { r.rep = usrMap[r.userId] || ''; });
+      const called = results.filter(r => r.gapMin != null), gaps = called.map(r => r.gapMin).sort((a, c) => a - c);
+      const avg = gaps.length ? Math.round(gaps.reduce((s, x) => s + x, 0) / gaps.length * 10) / 10 : null;
+      const median = gaps.length ? gaps[Math.floor(gaps.length / 2)] : null;
+      const within = n => gaps.length ? Math.round(gaps.filter(g => g <= n).length / gaps.length * 100) : 0;
+      const byRepMap = {}; called.forEach(r => { const k = r.rep || '(unknown)'; (byRepMap[k] = byRepMap[k] || { rep: k, n: 0, sum: 0 }).n++; byRepMap[k].sum += r.gapMin; });
+      const byRep = Object.values(byRepMap).map(x => ({ rep: x.rep, count: x.n, avgMin: Math.round(x.sum / x.n * 10) / 10 })).sort((a, c) => a.avgMin - c.avgMin);
+      const payload = { ok: true, window: { fromDay, toDay }, target, totalLeads: results.length, called: called.length, uncalled: results.length - called.length, avgMin: avg, medianMin: median, within: { [target]: within(target), 30: within(30), 60: within(60) }, byRep, leads: results.sort((a, c) => (c.gapMin == null ? -1 : c.gapMin) - (a.gapMin == null ? -1 : a.gapMin)).slice(0, 200), diag: { messageTypeHistogram: typeHist } };
+      try { await supa('records', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ rid: (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())), type: 'splcache', submitted_at: new Date().toISOString(), data: { k: cacheKey, at: Date.now(), payload } }) }); } catch (e) {}
+      return res.status(200).json(payload);
+    }
+
     if (action === 'execute') {
       const items = Array.isArray(b.items) ? b.items : null; // [{id,name}]
       const targetPipelineId = String(b.targetPipelineId || '').trim();
