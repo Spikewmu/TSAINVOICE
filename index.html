@@ -1107,8 +1107,10 @@
     <h2 class="section">Client Overview</h2>
     <p class="hint">Every client at a glance: status, manager, existing monthly, cash collected this month, and the next step. Add or update a client below.</p>
     <div class="cards" id="clientKpis"></div>
-    <div class="panel"><h3>Clients</h3><div class="tablewrap"><table id="overviewTable"></table></div></div>
-    <div class="panel" id="clientEditPanel"><h3>Add or update a client</h3>
+    <div class="panel"><h3>Clients <button class="btn gold sm" id="clientAddBtn" style="float:right" onclick="openClientModal()">+ Add client</button></h3><div class="tablewrap"><table id="overviewTable"></table></div></div>
+    <div class="modal" id="clientModal" hidden onclick="if(event.target===this)clientModalClose()">
+     <div class="modalcard" style="width:min(680px,96vw);max-height:92vh;overflow:auto">
+      <h3 id="clientModalTitle" style="margin:0 0 12px">Add or update a client</h3>
       <form class="grid" id="clientForm" onsubmit="saveClient(event)" style="box-shadow:none;border:none">
         <div class="field"><label>Client name *</label><input name="name" required placeholder="Prime (Billy)"></div>
         <div class="field"><label>Status *</label><select name="status" required><option>Active</option><option>Onboarding</option><option>Prospect</option><option>Inactive</option><option>Dropped</option></select></div>
@@ -1124,8 +1126,9 @@
           <div class="row-actions"><input id="clientProductAdd" placeholder="Add an offer" onkeydown="if(event.key==='Enter'){event.preventDefault();addClientProduct();}"><button type="button" class="btn sm" onclick="addClientProduct()">Add</button></div>
           <span class="fieldhelp">This client's offers - the × removes one. These become the Product choices when logging a deal for this client.</span></div>
         <div class="field full"><label>Next step</label><input name="nextStep" placeholder="Dial no-shows; fix deliverability"></div>
-        <div class="full row-actions"><button class="btn gold" type="submit">Save client</button><span class="tag">Re-saving the same name updates it.</span></div>
+        <div class="full row-actions"><button class="btn gold" type="submit">Save client</button><button type="button" class="btn ghost" onclick="clientModalClose()">Cancel</button><span class="tag">Re-saving the same name updates it.</span></div>
       </form>
+     </div>
     </div>
   </section>
 
@@ -5489,9 +5492,21 @@ async function deleteClient(name){
   if(Array.isArray(CFG.clients) && CFG.clients.some(c=>String(c).toLowerCase()===String(name).toLowerCase())){ CFG.clients=CFG.clients.filter(c=>String(c).toLowerCase()!==String(name).toLowerCase()); save(LS.cfg,CFG); }
   toast('Removed '+((cur&&cur.name)||name)); fillLists(); renderClientOverview();
 }
+function clientModalShow(){ const m=document.getElementById('clientModal'); if(m){ m.hidden=false; const c=m.querySelector('.modalcard'); if(c) c.scrollTop=0; } }
+function clientModalClose(){ const m=document.getElementById('clientModal'); if(m) m.hidden=true; }
+function openClientModal(){
+  if(!(SESSION && SESSION.role==='admin')){ toast('Only admins can add or edit clients',true); return; }
+  const f=document.getElementById('clientForm'); if(f) f.reset();
+  const t=document.getElementById('clientModalTitle'); if(t) t.textContent='Add a client';
+  fillMgrSelects(); setClientProducts(CFG.products||[]); // new client starts with the global offer list to trim
+  clientModalShow();
+  const nm=f&&f.querySelector('[name="name"]'); if(nm) setTimeout(()=>nm.focus(),50);
+}
 function editClient(name){
+  if(!(SESSION && SESSION.role==='admin')){ toast('Only admins can add or edit clients',true); return; }
   const c=latestClients().find(x=>String(x.name).toLowerCase()===String(name).toLowerCase())||{name:name};
   const f=document.getElementById('clientForm'), g=n=>f.querySelector('[name="'+n+'"]');
+  const t=document.getElementById('clientModalTitle'); if(t) t.textContent='Edit '+(c.name||name);
   g('name').value=c.name||''; g('status').value=c.status||'Active';
   g('monthly').value=c.monthly||''; g('monthlyGoal').value=c.monthlyGoal||''; g('nextStep').value=c.nextStep||'';
   fillMgrSelects();
@@ -5499,14 +5514,14 @@ function editClient(name){
   // pre-fill with all global products if this client has none yet, so you can trim
   const prods=(c.products&&String(c.products).trim())?String(c.products).split(',').map(s=>s.trim()).filter(Boolean):(CFG.products||[]);
   setClientProducts(prods);
-  f.scrollIntoView({behavior:'smooth',block:'center'});
+  clientModalShow();
 }
 async function saveClient(e){
   e.preventDefault();
   const o=formObj(e.target); o.type='client'; o.monthly=parseFloat(o.monthly)||0; o.monthlyGoal=parseFloat(o.monthlyGoal)||0;
   o.products=CLIENT_PRODUCTS.join(', ');
   await addRecord(o);
-  e.target.reset(); setClientProducts(CFG.products||[]); toast('Client saved'); fillLists(); renderClientOverview();
+  e.target.reset(); setClientProducts(CFG.products||[]); clientModalClose(); toast('Client saved'); fillLists(); renderClientOverview();
 }
 // people selectable as account managers = real user accounts that can manage (admin / manager / webinar team).
 // Using actual accounts (not typed names) so the assignment always maps to a real login for scoping.
@@ -5520,7 +5535,7 @@ function mgrCellHTML(c){ const rows=[c.webinarMgr&&('Web: '+c.webinarMgr), c.set
 function renderClientOverview(){
   const scope=dashScopeClients();
   const canEditClients = !!(SESSION && SESSION.role==='admin'); // only Super/Account Admins add or edit clients; managers view only
-  const ep=document.getElementById('clientEditPanel'); if(ep) ep.style.display=canEditClients?'':'none';
+  const addBtn=document.getElementById('clientAddBtn'); if(addBtn) addBtn.hidden=!canEditClients;
   const cs=latestClients().filter(c=>!scope||scope.includes(c.name));
   if(!(USERS_CACHE&&USERS_CACHE.length)) loadUsers().then(fillMgrSelects); else fillMgrSelects();
   const active=cs.filter(c=>c.status==='Active').length;
@@ -5542,7 +5557,7 @@ function renderClientOverview(){
       const offerCell=(c.products&&offers.length)?offers.map(p=>`<span class="teamtag">${esc(p)}</span>`).join(''):'<span class="muted">global default</span>';
       return `<tr><td><b>${esc(c.name)}</b> ${canEditClients?`<button class="btn sm ghost" onclick="editClient('${esc(c.name).replace(/'/g,"\\'")}')">Edit</button> <button class="btn sm ghost" onclick="mergeClientStart('${esc(c.name).replace(/'/g,"\\'")}')">Merge</button> <button class="btn sm ghost" style="color:var(--warn);border-color:var(--warn)" onclick="deleteClient('${esc(c.name).replace(/'/g,"\\'")}')">Remove</button>`:''}</td><td><span class="pill ${pc(c.status)}">${esc(c.status)}</span></td><td style="font-size:12px;line-height:1.5">${mgrCellHTML(c)}</td><td>${esc(c.serviceLine)}</td><td>${offerCell}</td><td class="num">${c.monthlyGoal?money(c.monthlyGoal):'<span class="muted">-</span>'}</td><td class="num">${money(c.monthly)}</td><td class="num">${money(cashThisMonth(c.name))}</td><td>${esc(c.nextStep)}</td></tr>`;
     }).join('')
-     :`<tr><td colspan="8" class="muted" style="padding:16px">No clients yet. Add one below.</td></tr>`)+`</tbody>`;
+     :`<tr><td colspan="8" class="muted" style="padding:16px">No clients yet. Use <b>+ Add client</b> above.</td></tr>`)+`</tbody>`;
   // fresh "add client" form defaults to all global offers (ready to trim)
   if(!document.querySelector('#clientForm [name="name"]').value) setClientProducts(CFG.products||[]);
 }
