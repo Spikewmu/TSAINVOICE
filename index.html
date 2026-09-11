@@ -191,7 +191,8 @@
   .reminderpill:hover{filter:brightness(1.06)}
   .reminderpill .rgo{opacity:.7;font-weight:700}
   @keyframes remindpulse{0%,100%{box-shadow:0 2px 10px rgba(212,175,55,.30)}50%{box-shadow:0 2px 18px rgba(212,175,55,.65)}}
-  @media (max-width:640px){ .reminderpill{font-size:12px;padding:6px 11px} .reminderpill .rlabel-long{display:none} }
+  /* mobile: the reminder drops to its own full-width, clearly-labelled bar under the header (was a tiny unlabelled icon that got missed) */
+  @media (max-width:640px){ .reminderpill{font-size:13px;padding:10px 14px;width:100%;order:99;justify-content:center;box-sizing:border-box} .reminderpill .rlabel-long{display:inline} }
   select.rolesel{font:inherit;font-size:12px;font-weight:600;padding:4px 8px;border-radius:6px;background:var(--surface-2);color:var(--ink);border:1px solid var(--border);cursor:pointer}
   .stars{color:var(--gold);letter-spacing:1px;white-space:nowrap}
   .recreason{color:var(--good);font-size:12px;margin-top:3px}
