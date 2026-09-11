@@ -3246,14 +3246,15 @@ async function splLoad(force){
   try{
     const res=await splApi({action:'speedToLead', locationId:loc, fromDate:from, toDate:to, targetMin:target, tzOffset:new Date().getTimezoneOffset(), force:!!force});
     if(!res||!res.ok){ if(k) k.innerHTML=''; if(meta) meta.textContent=(res&&res.error)||'Failed'; toast('Speed to lead failed'+(res&&res.error?': '+res.error:''),true); return; }
-    splRender(res); if(meta) meta.textContent=`${res.totalLeads} leads · ${res.called} called${res.cached?' · cached':''}`;
+    __splLoc=loc; splRender(res); if(meta) meta.textContent=`${res.totalLeads} leads · ${res.called} called${res.cached?' · cached':''}`;
   }catch(e){ if(meta) meta.textContent='Error'; toast('Speed to lead error',true); }
   finally{ if(btn){ btn.disabled=false; btn.textContent='Load'; } }
 }
 function splFmtMin(m){ if(m==null) return '-'; if(m<60) return m+' min'; const h=Math.floor(m/60), r=Math.round(m%60); return h+'h'+(r?' '+r+'m':''); }
 function splSpinner(){ return `<div style="grid-column:1/-1;display:flex;align-items:center;gap:16px;padding:22px 8px"><div class="dialspin"></div><div style="font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;color:var(--muted);line-height:1.5"><b style="color:var(--gold);letter-spacing:.08em">DIALING GHL</b><span class="dialdots"></span><br><span style="font-size:11px">handshake in progress &middot; pulling first-call times</span></div></div>`; }
 function splTs(iso){ if(!iso) return ''; const dt=new Date(iso); if(isNaN(dt)) return String(iso).slice(0,16); return (dt.getMonth()+1)+'/'+dt.getDate()+' '+dt.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}); }
-let __splLast=null;
+let __splLast=null, __splLoc='';
+function splGhlLink(id){ return (id&&__splLoc)?('https://app.gohighlevel.com/v2/location/'+encodeURIComponent(__splLoc)+'/contacts/detail/'+encodeURIComponent(id)):''; }
 function splRender(d){
   __splLast=d; __splRepFilter=''; // fresh data clears any rep drill-down
   const k=document.getElementById('splKpis');
@@ -3296,7 +3297,7 @@ function splRenderLeads(){
   rows=rows.slice(0,60);
   const gap=r=> r.gapMin==null?'<span style="color:var(--warn)">-</span>':`<span style="color:${r.gapMin<=target?'var(--good)':'inherit'};font-weight:${r.gapMin<=target?'600':'400'}">${splFmtMin(r.gapMin)}</span>`;
   lt.innerHTML=`<thead><tr><th>Lead</th><th>Came in</th><th>1st call</th><th class="num">Gap</th><th>Rep</th></tr></thead><tbody>`
-    +(rows.length?rows.map(r=>`<tr><td>${esc(r.name)}</td><td style="white-space:nowrap;font-size:12px">${esc(splTs(r.created))}</td><td style="white-space:nowrap;font-size:12px">${r.firstCall?esc(splTs(r.firstCall)):'<span style="color:var(--warn)">none</span>'}</td><td class="num">${gap(r)}</td><td>${esc(r.rep||'')}</td></tr>`).join(''):`<tr><td colspan="5" class="muted" style="padding:14px">${__splRepFilter?('No leads for '+esc(__splRepFilter)+' in this view.'):(view==='within'?('No leads called within '+target+' min in this window.'):(view==='uncalled'?'Every lead in this window got a call.':'No leads in this window.'))}</td></tr>`)+`</tbody>`;
+    +(rows.length?rows.map(r=>`<tr><td>${splGhlLink(r.id)?`<a href="${splGhlLink(r.id)}" target="_blank" rel="noopener" class="linklike" title="Open in GHL">${esc(r.name)}</a>`:esc(r.name)}</td><td style="white-space:nowrap;font-size:12px">${esc(splTs(r.created))}</td><td style="white-space:nowrap;font-size:12px">${r.firstCall?esc(splTs(r.firstCall)):'<span style="color:var(--warn)">none</span>'}</td><td class="num">${gap(r)}</td><td>${esc(r.rep||'')}</td></tr>`).join(''):`<tr><td colspan="5" class="muted" style="padding:14px">${__splRepFilter?('No leads for '+esc(__splRepFilter)+' in this view.'):(view==='within'?('No leads called within '+target+' min in this window.'):(view==='uncalled'?'Every lead in this window got a call.':'No leads in this window.'))}</td></tr>`)+`</tbody>`;
 }
 // share of logged calls that were wrong/bad numbers, scoped to the dashboard's date range + client + role scope
 function badNumberPct(){
@@ -5168,8 +5169,8 @@ function userRowHTML(u, isAdmin){
   const actions = u.master ? '<span class="tag">master, set in Settings</span>'
     : (canManage
         ? (u.archived
-            ? `${editBtn} <button class="btn sm ghost" style="color:var(--good);border-color:var(--good)" onclick="archiveUser('${esc(u.username)}',false)">Un-archive</button> <button class="btn sm ghost" style="color:var(--warn);border-color:var(--warn)" onclick="delUser('${esc(u.username)}')">Remove</button>`
-            : `${editBtn} <button class="btn sm ghost" onclick="resetPassword('${esc(u.username)}')">Reset password</button> <button class="btn sm ghost" onclick="archiveUser('${esc(u.username)}',true)" title="Deactivate their login + hide them, but keep all their data. Reversible.">Archive</button> <button class="btn sm ghost" style="color:var(--warn);border-color:var(--warn)" onclick="delUser('${esc(u.username)}')">Remove</button>`)
+            ? `${editBtn} <button class="btn sm ghost" style="color:var(--good);border-color:var(--good)" onclick="archiveUser('${esc(u.username)}',false)">Reactivate</button>`
+            : `${editBtn} <button class="btn sm ghost" onclick="resetPassword('${esc(u.username)}')">Reset password</button> <button class="btn sm ghost" style="color:var(--warn);border-color:var(--warn)" onclick="archiveUser('${esc(u.username)}',true)" title="Deactivate their login + hide them, but keep all their data. Reversible.">Offboard</button>`)
         : '');
   const myRoles = u.master?['admin']:rolesFor(u.username);
   const chips = (myRoles.length?myRoles:['closer']).map(r=>`<span class="pill">${esc(roleLabel(r))}</span>`).join(' ');
@@ -5292,7 +5293,7 @@ function renderUsersGrouped(){
     if(archived.length){
       any=true;
       const gid='archived', collapsed=!USER_GROUP_OPEN[gid] && !qn && !team;
-      archHtml=`<div class="ugroup${collapsed?' collapsed':''}" id="ug_${gid}" style="margin-bottom:20px"><h4 class="csec" style="margin:0 0 3px;display:flex;align-items:center;gap:8px" onclick="toggleUserGroup('${gid}')"><span class="chev">&#9662;</span>Archived <span class="tag">${archived.length}</span></h4><p class="muted" style="margin:0 0 8px;font-size:12px">Deactivated logins - hidden from the active roster + pickers, but all their data is kept. Un-archive to restore.</p>`
+      archHtml=`<div class="ugroup${collapsed?' collapsed':''}" id="ug_${gid}" style="margin-bottom:20px"><h4 class="csec" style="margin:0 0 3px;display:flex;align-items:center;gap:8px" onclick="toggleUserGroup('${gid}')"><span class="chev">&#9662;</span>Offboarded <span class="tag">${archived.length}</span></h4><p class="muted" style="margin:0 0 8px;font-size:12px">Deactivated logins - hidden from the active roster + pickers, but all their data is kept. Reactivate to restore.</p>`
         +head+archived.map(u=>userRowHTML(u,isAdmin)).join('')+'</tbody></table></div></div>';
     }
   }
@@ -5657,15 +5658,15 @@ async function importUsers(){
 }
 // soft-deactivate (archive) or restore (un-archive) a user: blocks their login + hides them, but keeps all their data. Reversible.
 async function archiveUser(username, archive){
-  if(!canManageUser(username)){ toast('You can only archive Sales Managers and below',true); return; }
+  if(!canManageUser(username)){ toast('You can only offboard Sales Managers and below',true); return; }
   const act=archive?'archiveUser':'unarchiveUser';
   if(!confirm(archive
-      ? 'Archive '+username+'?\n\nThey will be signed out and can no longer log in, and drop off the active roster + all pickers. All their reports, deals and history stay. You can un-archive them anytime.'
-      : 'Un-archive '+username+'?\n\nRestores their login and puts them back on the active roster.')) return;
+      ? 'Offboard '+username+'?\n\nThey will be signed out and can no longer log in, and drop off the active roster + all pickers. All their reports, deals and history stay. You can reactivate them anytime.'
+      : 'Reactivate '+username+'?\n\nRestores their login and puts them back on the active roster.')) return;
   if(SESSION && SESSION.token){ const res=await authApi({action:act, token:SESSION.token, username}); if(!res||!res.ok){ toast((res&&res.error)||'Could not update',true); return; } }
   else if(CFG.endpoint){ const res=await api({action:act, ...authFields(), username}); if(!res||!res.ok){ toast('Could not update',true); return; } }
   else { LOCAL_USERS=LOCAL_USERS.map(x=>x.username===username?{...x,archived:archive}:x); save(LS.users,LOCAL_USERS); }
-  toast(archive?'Archived - login deactivated':'Un-archived - login restored'); renderUsers();
+  toast(archive?'Offboarded - login deactivated':'Reactivated - login restored'); renderUsers();
 }
 async function delUser(username){
   if(!canManageUser(username)){ toast('You can only remove Sales Managers and below',true); return; }
