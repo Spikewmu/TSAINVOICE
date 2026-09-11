@@ -150,6 +150,9 @@
   @media(max-width:720px){ .grid3{grid-template-columns:repeat(2,minmax(0,1fr))} }
   @media(max-width:480px){ .grid3{grid-template-columns:1fr} }
   .mgrsec h3{display:flex;align-items:center;gap:2px}
+  input.mgrauto{background:var(--gold-soft);border-color:var(--gold)}
+  .uesec{border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:12px}
+  .uehead{font-weight:700;font-size:13px;letter-spacing:.02em;margin-bottom:8px;color:var(--gold)}
   .mgrnum{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:var(--gold-soft);color:var(--gold);font-size:12px;font-weight:700;margin-right:8px}
   .navbadge{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;margin-left:8px;border-radius:9px;background:var(--bad,#c0392b);color:#fff;font-size:11px;font-weight:700;vertical-align:middle;box-shadow:0 0 0 2px rgba(192,57,43,.25)}
   .notifwrap{position:relative;display:inline-block}
@@ -1021,14 +1024,16 @@
     <div class="panel" id="usersOnboardPanel" hidden><h3>Rep onboarding <span style="font-weight:400;color:var(--muted);font-size:12px">- new setters/closers being set up. Work down each step so no one stalls.</span></h3><div style="padding:6px 2px" id="usersOnboard"></div></div>
     <div class="panel" id="secUsersAdd">
       <h3 class="csec" onclick="integToggleSec('secUsersAdd')"><span class="chev">&#9662;</span>Add a user</h3>
-      <p class="hint" style="margin:-4px 0 10px">Create a new login here. To change someone who already exists, use the controls on their row below - <b>Access</b> dropdown for role, <b>Edit</b> for teams, <b>Hire / dates</b> for dates, <b>Reset password</b> to set a new password.</p>
+      <p class="hint" style="margin:-4px 0 10px">Create a new login here. Fill everything - manager, hire date and account are captured up front so nothing is missed. To change someone who already exists, hit <b>Edit</b> on their row below (one window for roles, offers, manager, dates and responsibilities).</p>
       <form class="grid" id="userForm" onsubmit="saveUser(event)" style="box-shadow:none;border:none">
-        <div class="field"><label>Full name *</label><input name="name" required placeholder="Bree Smith"></div>
-        <div class="field"><label>Username *</label><input name="username" required placeholder="bree" autocomplete="off"></div>
-        <div class="field"><label>Role *</label><select name="role" required><option value="closer">Closer</option><option value="setter">Setter</option><option value="admin">Admin</option></select></div>
+        <div class="field"><label>Full name *</label><input name="name" required placeholder="Bree Smith" oninput="suggestUsername()"></div>
+        <div class="field"><label>Username *</label><input name="username" required placeholder="smithb" autocomplete="off" oninput="this.dataset.touched='1'"><span class="fieldhelp">Format: last name + first initial. <b>John Smith &rarr; smithj</b>. Auto-fills from the name; edit if you like.</span></div>
+        <div class="field"><label>Role *</label><select name="role" required><option value="closer">Closer</option><option value="setter">Setter</option><option value="admin">Admin</option></select><span class="fieldhelp">Start with one role, then Edit their row to stack more.</span></div>
         <div class="field"><label>Password *</label><input name="password" type="text" required placeholder="set a password"></div>
-        <div class="field full"><label>Teams / accounts (assign one or more)</label><div id="newUserTeams" class="teamboxes"></div></div>
-        <div class="full row-actions"><button class="btn gold" type="submit">Save user</button><span class="tag">Creating a new login. Existing users: change them on their row below (no need to re-enter a password).</span></div>
+        <div class="field"><label>Reporting manager *</label><select name="mgr" id="newUserMgr" required></select><span class="fieldhelp">Who they report to and who approves their time off.</span></div>
+        <div class="field"><label>Hire date *</label><input name="startDate" type="date" required><span class="fieldhelp">Keeps pre-hire days from counting as missed reports; drives retention lifespan.</span></div>
+        <div class="field full"><label>Teams / accounts (assign one or more) *</label><div id="newUserTeams" class="teamboxes"></div></div>
+        <div class="full row-actions"><button class="btn gold" type="submit">Save user</button><span class="tag">Creating a new login. Existing users: change them with Edit on their row below (no need to re-enter a password).</span></div>
       </form>
     </div>
     <div class="panel" id="reassignPanel" style="display:none"><h3 class="csec" onclick="integToggleSec('reassignPanel')"><span class="chev">&#9662;</span>Reassign a departed staffer</h3>
@@ -1383,6 +1388,50 @@
     </div>
     <div id="rolesErr" class="fieldhelp" style="color:var(--warn);margin-top:8px" hidden></div>
     <div class="row-actions" style="margin-top:14px"><button class="btn gold sm" onclick="rolesEditSave()">Save roles</button><button class="btn ghost sm" onclick="rolesEditClose()">Cancel</button></div>
+  </div>
+</div>
+
+<!-- Unified "Edit user" modal: roles, offers, manager + dates, responsibilities - all in one place -->
+<div class="modal" id="userModal" hidden onclick="if(event.target===this)userEditClose()">
+  <div class="modalcard" style="width:min(680px,96vw);max-height:92vh;overflow:auto">
+    <h3 style="margin:0 0 2px">Edit <span id="ueWho" style="color:var(--gold)"></span></h3>
+    <p class="hint" style="margin:0 0 12px">Everything for this person in one place. Change what you need, then Save once.</p>
+
+    <div class="uesec"><div class="uehead">Identity</div>
+      <div class="filters" style="margin:0;align-items:flex-start">
+        <div class="field"><label>Full name</label><input id="ueName"></div>
+        <div class="field"><label>Username</label><input id="ueUser" disabled style="opacity:.7"><span class="fieldhelp">The login name - fixed after creation.</span></div>
+      </div>
+    </div>
+
+    <div class="uesec"><div class="uehead">Access / roles</div>
+      <p class="hint" style="margin:0 0 8px">Access is the combination of everything checked. Turning on a manager role reveals Responsibilities below.</p>
+      <div id="ueRoles" style="display:flex;flex-wrap:wrap;gap:10px 18px"></div>
+    </div>
+
+    <div class="uesec"><div class="uehead">Offers / accounts</div>
+      <p class="hint" style="margin:0 0 8px">Every account this person works.</p>
+      <div id="ueTeams" class="teamboxes"></div>
+    </div>
+
+    <div class="uesec"><div class="uehead">Manager &amp; dates</div>
+      <div class="filters" style="margin:0;align-items:flex-start">
+        <div class="field"><label>Reporting manager</label><select id="ueMgr"></select><span class="fieldhelp">Approves this person's time off.</span></div>
+        <div class="field"><label>Hire date</label><input type="date" id="ueStart"></div>
+        <div class="field"><label>Termination date</label><input type="date" id="ueEnd" onchange="ueReasonToggle()"><span class="fieldhelp">Leave blank if still active.</span></div>
+      </div>
+      <div class="field" id="ueReasonWrap" hidden style="margin-top:10px"><label>Offboard reason</label><select id="ueReason"></select><span class="fieldhelp">Why they left - feeds the retention breakdown.</span></div>
+      <div class="field" style="margin-top:10px"><label>Scheduled day(s) off <span class="muted" style="font-weight:400">- recurring weekly, never counts as a missed report</span></label>
+        <div id="ueDaysOff" class="teamboxes" style="margin-top:6px"></div></div>
+    </div>
+
+    <div class="uesec" id="ueRespWrap" hidden><div class="uehead">Responsibilities <span class="muted" style="font-weight:400;font-size:12px">- what this manager runs per account</span></div>
+      <p class="hint" style="margin:0 0 8px">Toggle the function(s) they run for each account (unlocks the matching manager tabs). One person per function per account - turning one on reassigns it from whoever holds it (shown in grey).</p>
+      <div id="ueRespTable"></div>
+    </div>
+
+    <div id="ueErr" class="fieldhelp" style="color:var(--warn);margin-top:8px" hidden></div>
+    <div class="row-actions" style="margin-top:14px"><button class="btn gold" onclick="userEditSave()">Save changes</button><button class="btn ghost" onclick="userEditClose()">Cancel</button></div>
   </div>
 </div>
 
@@ -2363,21 +2412,63 @@ function mgrEodClients(){
 const MGR_SET_FIELDS=[['settersWorking','Setters working today','1'],['setterHours','Total hours','0.1'],['setterDials','Total inputs (dials)','1'],['setterSets','Total sets','1'],['setterEods','Setter EOD checkouts','1']];
 const MGR_CLO_FIELDS=[['closersWorking','Closers working today','1'],['closerCalls','Calls taken','1'],['showRate','Show rate (%)','1'],['closeRate','Close rate (%)','1'],['cash','Cash collected ($)','0.01'],['closerEods','Closer EOD checkouts','1']];
 const MGR_NUM_FIELDS=[...MGR_SET_FIELDS,...MGR_CLO_FIELDS].map(f=>f[0]);
+// T-462: derive a manager-EOD suggestion for one account+day straight from the team's submitted EODs + closed deals,
+// so the manager doesn't retype numbers the reps already entered. Every value stays editable after prefill.
+function mgrEodSuggest(client, date){
+  const d=(date||'').slice(0,10);
+  const recs=activityRecords().filter(x=>x.client===client && (x.date||'').slice(0,10)===d);
+  const setterEods=recs.filter(x=>x.type==='eod' && x.role==='Setter');
+  const closerEods=recs.filter(x=>x.type==='eod' && x.role!=='Setter');
+  const setters=new Set(setterEods.map(x=>(x.rep||'').trim().toLowerCase()).filter(Boolean));
+  const closers=new Set(closerEods.map(x=>(x.rep||'').trim().toLowerCase()).filter(Boolean));
+  const sum=(arr,f)=>arr.reduce((s,x)=>s+(+x[f]||0),0);
+  const connMeet=sum(closerEods,'connectedMeetings'), noShows=sum(closerEods,'noShows');
+  const moneyRecs=recs.filter(countsMoney), cash=sum(moneyRecs,'cashCollected');
+  const deals=moneyRecs.filter(x=>x.type==='deal').length;
+  return {
+    settersWorking:setters.size, setterHours:Math.round(sum(setterEods,'hoursDialing')*10)/10,
+    setterDials:sum(setterEods,'newOutreach'), setterSets:sum(setterEods,'callsSet'), setterEods:setterEods.length,
+    closersWorking:closers.size, closerCalls:connMeet,
+    showRate:(connMeet+noShows)?Math.round(connMeet/(connMeet+noShows)*100):0,
+    closeRate:connMeet?Math.round(deals/connMeet*100):0,
+    cash:Math.round(cash*100)/100, closerEods:closerEods.length,
+    _s:setterEods.length, _c:closerEods.length, _n:setterEods.length+closerEods.length
+  };
+}
+// overwrite one account's inputs with the team-derived numbers (the "Refresh from team" button)
+function mgrEodFill(acct){
+  const date=((document.getElementById('mgrEodDate')||{}).value||todayLocal()).slice(0,10);
+  const sug=mgrEodSuggest(acct,date);
+  document.querySelectorAll(`#mgrEodSections [data-acct="${cssAttr(acct)}"][data-f]`).forEach(el=>{
+    const f=el.dataset.f; if(f==='bottleneck') return;
+    if(f in sug) el.value=(sug[f]===0?'0':sug[f]);
+  });
+  toast(sug._n?`Pulled ${acct} from ${sug._s} setter · ${sug._c} closer EODs`:`No team EODs submitted yet for ${acct} on ${usDate(date)}`, !sug._n);
+}
+function mgrEodFillAll(){ mgrEodClients().forEach(mgrEodFill); }
+function cssAttr(s){ return String(s||'').replace(/["\\]/g,'\\$&'); }
+function jsStr(s){ return String(s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
 function renderMgrEod(){
   const di=document.getElementById('mgrEodDate'); if(di&&!di.value) di.value=todayLocal();
   const date=((di&&di.value)||todayLocal()).slice(0,10), by=(SESSION&&SESSION.name)||'';
   const accts=mgrEodClients();
   const who=document.getElementById('mgrEodWho'); if(who){ who.textContent=accts.length?`${accts.length} offer${accts.length>1?'s':''} you manage · ${usDate(date)}`:'No offers assigned'; }
   const prior={}; collapseMgrEod(RECORDS).forEach(x=>{ if((x.date||'').slice(0,10)===date && nrmName(x.by)===nrmName(by)) prior[nrmName(x.client)]=x; });
-  const inp=(acct,f,label,step,val)=>`<div class="field"><label>${label}</label><input type="number" min="0" step="${step}" data-acct="${esc(acct)}" data-f="${f}" value="${(val===0||val)?val:''}"></div>`;
+  const inp=(acct,f,label,step,val,auto)=>`<div class="field"><label>${label}</label><input type="number" min="0" step="${step}" data-acct="${esc(acct)}" data-f="${f}" value="${(val===0||val)?val:''}"${auto&&(val===0||val)?' class="mgrauto" title="Auto-filled from the team\'s EODs - edit if needed"':''}></div>`;
   const box=document.getElementById('mgrEodSections');
-  box.innerHTML = accts.length ? accts.map((c,i)=>{
-    const p=prior[nrmName(c)]||{}, v=f=>(p[f]===0||p[f])?p[f]:'';
-    return `<div class="panel mgrsec"><h3><span class="mgrnum">${i+1}</span> ${esc(c)}${p.submittedAt?' <span class="pill good" style="font-weight:600;margin-left:6px">saved today</span>':''}</h3><div style="padding:0 14px 14px">
+  const ctrl=accts.length?`<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px"><span class="sub">Numbers pre-fill from your team's submitted EODs + closed deals for this day. Edit anything, then Submit.</span><button type="button" class="btn ghost sm" onclick="mgrEodFillAll()">&#8635; Refresh all from team</button></div>`:'';
+  box.innerHTML = accts.length ? ctrl+accts.map((c,i)=>{
+    const p=prior[nrmName(c)]||{}, saved=!!p.submittedAt, sug=mgrEodSuggest(c,date);
+    const v=f=> saved ? ((p[f]===0||p[f])?p[f]:'') : (sug[f]===0?0:(sug[f]||''));
+    const hint = sug._n
+      ? `<span class="sub">Auto-filled from <b>${sug._s}</b> setter &middot; <b>${sug._c}</b> closer EOD${sug._n>1?'s':''}${saved?' - showing your saved numbers':''}</span>`
+      : `<span class="sub" style="opacity:.7">No team EODs submitted yet for this day - enter numbers manually</span>`;
+    return `<div class="panel mgrsec"><h3><span class="mgrnum">${i+1}</span> ${esc(c)}${p.submittedAt?' <span class="pill good" style="font-weight:600;margin-left:6px">saved today</span>':''}<button type="button" class="btn ghost sm" style="margin-left:auto;font-weight:600" onclick="mgrEodFill('${jsStr(c)}')"${sug._n?'':' disabled'}>&#8635; Refresh from team</button></h3><div style="padding:0 14px 14px">
+      <div style="margin:2px 0 10px">${hint}</div>
       <div class="formhead" style="margin-top:4px"><b>Setters</b></div>
-      <div class="grid3">${MGR_SET_FIELDS.map(f=>inp(c,f[0],f[1],f[2],v(f[0]))).join('')}</div>
+      <div class="grid3">${MGR_SET_FIELDS.map(f=>inp(c,f[0],f[1],f[2],v(f[0]),!saved)).join('')}</div>
       <div class="formhead" style="margin-top:12px"><b>Closers</b></div>
-      <div class="grid3">${MGR_CLO_FIELDS.map(f=>inp(c,f[0],f[1],f[2],v(f[0]))).join('')}</div>
+      <div class="grid3">${MGR_CLO_FIELDS.map(f=>inp(c,f[0],f[1],f[2],v(f[0]),!saved)).join('')}</div>
       <div class="formhead" style="margin-top:12px"><b>Constraint</b> <span class="sub">what held the team back</span></div>
       <textarea rows="2" style="width:100%" data-acct="${esc(c)}" data-f="bottleneck" placeholder="If reps missed KPIs: who was the bottleneck, what happened (sick, half day, left early), did they meet KPIs?">${esc(p.bottleneck||'')}</textarea>
     </div></div>`;
@@ -4727,34 +4818,32 @@ const USER_GROUPS=[['admin','Admins'],['manager','Sales Managers'],['webinarteam
 function userRowHTML(u, isAdmin){
   const canManage = !u.master && canManageUser(u.username); // Super Admin edits anyone; Sales Director edits managers & below
   const teams=u.master?[]:teamsFor(u.username);
-  const rolesBtn = canManage ? ` <button class="btn sm ghost" onclick="editRoles('${esc(u.username)}')">Responsibilities</button>` : '';
   const isStaff = !u.master && u.role!=='founder';
-  const datesBtn = (canManage&&isStaff) ? ` <button class="btn sm ghost" onclick="editRepMeta('${esc(u.username)}')">Hire / dates</button>` : '';
-  const teamEditBtn = canManage ? ` <button class="btn sm ghost" onclick="editTeams('${esc(u.username)}')">Edit</button>` : '';
+  // read-only breakdown behind Details; all editing now happens in the single Edit modal
   const detailInner = u.master ? '<span class="muted">-</span>'
     : (['closer','setter','founder','recruiter'].includes(u.role)
-        ? ((teams.length?teams.map(t=>`<span class="teamtag">${esc(t)}</span>`).join(''):'<span class="tag" style="color:var(--warn);border-color:var(--warn)">none - not scoped</span>')+teamEditBtn+datesBtn+(isStaff?repMetaSummary(u.username)+userAuthSummary(u.username):''))
+        ? ((teams.length?teams.map(t=>`<span class="teamtag">${esc(t)}</span>`).join(''):'<span class="tag" style="color:var(--warn);border-color:var(--warn)">none - not scoped</span>')+(isStaff?repMetaSummary(u.username)+userAuthSummary(u.username):''))
         : (u.role==='admin'
-            ? '<span class="muted">all (admin)</span>'+roleSummaryHTML(u)+rolesBtn+datesBtn+repMetaSummary(u.username)+userAuthSummary(u.username)
-            : ((roleSummaryHTML(u)||'<span class="tag" style="color:var(--warn);border-color:var(--warn)">no accounts assigned yet</span>')+rolesBtn+datesBtn+repMetaSummary(u.username)+userAuthSummary(u.username))));
-  // compact summary shown by default; the full breakdown + management buttons live behind a per-row "Details" toggle
+            ? '<span class="muted">all (admin)</span>'+roleSummaryHTML(u)+repMetaSummary(u.username)+userAuthSummary(u.username)
+            : ((roleSummaryHTML(u)||'<span class="tag" style="color:var(--warn);border-color:var(--warn)">no accounts assigned yet</span>')+repMetaSummary(u.username)+userAuthSummary(u.username))));
+  // compact summary shown by default; the full breakdown lives behind a per-row "Details" toggle
   const acctCount = u.role==='admin' ? 'all accounts'
     : (teams.length ? teams.length+' account'+(teams.length===1?'':'s')
       : (['closer','setter','founder','recruiter'].includes(u.role) ? '<span style="color:var(--warn)">no account</span>' : 'assignments'));
   const did='ud_'+String(u.username).replace(/[^a-z0-9]/gi,'_');
   const teamCell = u.master ? '<span class="muted">-</span>'
     : `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span class="muted" style="font-size:12.5px">${acctCount}</span><button class="btn sm ghost" onclick="toggleUserDetail('${did}',this)">Details</button></div><div id="${did}" hidden style="margin-top:8px">${detailInner}</div>`;
+  const editBtn = canManage ? `<button class="btn sm ghost" style="font-weight:600" onclick="userEditOpen('${esc(u.username)}')" title="Roles, offers, manager, dates and responsibilities - all in one window">Edit</button>` : '';
   const actions = u.master ? '<span class="tag">master, set in Settings</span>'
     : (canManage
         ? (u.archived
-            ? `<button class="btn sm ghost" style="color:var(--good);border-color:var(--good)" onclick="archiveUser('${esc(u.username)}',false)">Un-archive</button> <button class="btn sm ghost" style="color:var(--warn);border-color:var(--warn)" onclick="delUser('${esc(u.username)}')">Remove</button>`
-            : `<button class="btn sm ghost" onclick="resetPassword('${esc(u.username)}')">Reset password</button> <button class="btn sm ghost" onclick="archiveUser('${esc(u.username)}',true)" title="Deactivate their login + hide them, but keep all their data. Reversible.">Archive</button> <button class="btn sm ghost" style="color:var(--warn);border-color:var(--warn)" onclick="delUser('${esc(u.username)}')">Remove</button>`)
+            ? `${editBtn} <button class="btn sm ghost" style="color:var(--good);border-color:var(--good)" onclick="archiveUser('${esc(u.username)}',false)">Un-archive</button> <button class="btn sm ghost" style="color:var(--warn);border-color:var(--warn)" onclick="delUser('${esc(u.username)}')">Remove</button>`
+            : `${editBtn} <button class="btn sm ghost" onclick="resetPassword('${esc(u.username)}')">Reset password</button> <button class="btn sm ghost" onclick="archiveUser('${esc(u.username)}',true)" title="Deactivate their login + hide them, but keep all their data. Reversible.">Archive</button> <button class="btn sm ghost" style="color:var(--warn);border-color:var(--warn)" onclick="delUser('${esc(u.username)}')">Remove</button>`)
         : '');
   const myRoles = u.master?['admin']:rolesFor(u.username);
   const chips = (myRoles.length?myRoles:['closer']).map(r=>`<span class="pill">${esc(roleLabel(r))}</span>`).join(' ');
   const founderNote = (!u.master && myRoles.includes('founder') && !isTsaStaff(u.username)) ? '<div class="muted" style="font-size:11px;margin-top:3px">Dashboard only while managed by TSA</div>' : '';
-  const editRolesBtn = canManage ? `<button class="btn sm ghost" style="margin-top:5px" onclick="rolesEditOpen('${esc(u.username)}')">Edit roles</button>` : '';
-  const accessCell = `${chips}${founderNote}${editRolesBtn?('<div>'+editRolesBtn+'</div>'):''}`;
+  const accessCell = `${chips}${founderNote}`;
   return `<tr><td>${esc(u.name)}</td><td>${esc(u.username)}</td><td>${accessCell}</td><td>${teamCell}</td><td>${actions}</td></tr>`;
 }
 function toggleUserDetail(id, btn){ const d=document.getElementById(id); if(!d) return; d.hidden=!d.hidden; if(btn) btn.textContent=d.hidden?'Details':'Hide'; }
@@ -4970,6 +5059,7 @@ async function renderUsers(){
     const opts=order.filter(r=>ar.includes(r)).map(r=>`<option value="${r}">${esc(roleLabel(r))}</option>`).join('');
     roleSel.innerHTML = opts + (ar.length>1?'<option value="" disabled>--</option><option value="" disabled>Tip: create with one role, then Edit roles to stack more</option>':''); }
   const nt=document.getElementById('newUserTeams'); if(nt) nt.innerHTML=teamBoxesHtml([]);
+  const nm=document.getElementById('newUserMgr'); if(nm){ const cur=nm.value; nm.innerHTML='<option value="">- select -</option>'+mgrPeople().map(p=>`<option>${esc(p)}</option>`).join(''); if(cur)nm.value=cur; }
   const tbl=document.getElementById('usersGrouped');
   // cache-first: draw whatever we already have instantly, spinner only on a cold load
   if(USERS_CACHE && USERS_CACHE.length){ renderUsersTable(USERS_CACHE); }
@@ -5099,17 +5189,119 @@ async function rolesEditSave(){
   if(SESSION && nrm(SESSION.username)===nrm(ROLES_EDIT)) applyNavAccess(); // if I edited my own roles, refresh my nav now
   fillLists(); renderUsers(); setTimeout(renderUsers, 1200);
 }
+/* ---- unified user editor: roles + offers + manager/dates + responsibilities, one modal (replaces the 4 separate row editors) ---- */
+const OFFBOARD_REASONS=['','Voluntary - resigned','Voluntary - other opportunity','Let go - performance','Let go - conduct / policy','Layoff / restructure','Contract / engagement ended','Other'];
+let USER_EDIT=null;
+function ueRoleListHTML(cur){
+  const allowed=assignableRoles();
+  const defs=[['admin','Super Admin'],['director','Sales Director'],['manager','Sales Manager'],['recruiter','Recruiter'],['webinarteam','Webinar Team'],['closer','Closer'],['setter','Setter'],['founder','Client Admin']];
+  return defs.filter(([r])=>allowed.includes(r)).map(([r,lab])=>`<label style="display:flex;gap:8px;align-items:center"><input type="checkbox" value="${r}" ${cur.includes(r)?'checked':''} onchange="ueRespToggle()"> ${esc(lab)}</label>`).join('');
+}
+function ueIsMgrRoles(){ return [...document.querySelectorAll('#ueRoles input:checked')].map(cb=>cb.value).some(r=>['admin','director','manager','webinarteam'].includes(r)); }
+function ueRespToggle(){ const w=document.getElementById('ueRespWrap'); if(w) w.hidden=!ueIsMgrRoles(); }
+function ueReasonToggle(){ const w=document.getElementById('ueReasonWrap'); if(w) w.hidden=!((document.getElementById('ueEnd')||{}).value||'').trim(); }
+function ueRenderResp(u){
+  const cs=latestClients().slice().sort((a,b)=>String(a.name).localeCompare(String(b.name)));
+  const held=(v)=> (v && !isMgrField(v,u)) ? `<span class="heldby">${esc(v)}</span>` : '';
+  const tog=(c,role,label,f)=>`<label class="roletog" title="${esc(label)} on ${esc(c.name)}"><input type="checkbox" data-client="${esc(c.name)}" data-role="${role}" ${isMgrField(c[f],u)?'checked':''}><span>${label}</span></label>${held(c[f])}`;
+  document.getElementById('ueRespTable').innerHTML = cs.length
+    ? cs.map(c=>`<div class="rolerow"><div class="rname">${esc(c.name)}</div><div class="rtogs">${tog(c,'web','Webinar','webinarMgr')}${tog(c,'set','Setters','setterMgr')}${tog(c,'clo','Closers','closerMgr')}</div></div>`).join('')
+    : `<p class="muted" style="padding:10px">Add clients on the Client Overview tab first.</p>`;
+}
+function userEditOpen(username){
+  if(username==='tsaboss'){ toast('Master admin is fixed in Settings',true); return; }
+  if(!canManageUser(username)){ toast('You can only edit Sales Managers and below',true); return; }
+  USER_EDIT=username; const u=userByName(username), m=repMetaFor(username)||{};
+  document.getElementById('ueWho').textContent=u.name||username;
+  document.getElementById('ueName').value=u.name||'';
+  document.getElementById('ueUser').value=u.username||username;
+  document.getElementById('ueRoles').innerHTML=ueRoleListHTML(rolesFor(username));
+  document.getElementById('ueTeams').innerHTML=teamBoxesHtml(teamsFor(username));
+  const sel=document.getElementById('ueMgr'), people=mgrPeople();
+  sel.innerHTML='<option value="">- none -</option>'+people.map(p=>`<option>${esc(p)}</option>`).join('');
+  if(m.mgr&&!people.includes(m.mgr)) sel.add(new Option(m.mgr,m.mgr));
+  sel.value=m.mgr||'';
+  document.getElementById('ueStart').value=m.startDate?m.startDate.slice(0,10):'';
+  document.getElementById('ueEnd').value=m.endDate?m.endDate.slice(0,10):'';
+  const rsel=document.getElementById('ueReason'); rsel.innerHTML=OFFBOARD_REASONS.map(r=>`<option value="${esc(r)}">${r?esc(r):'- select -'}</option>`).join(''); rsel.value=m.reason||'';
+  const cur=Array.isArray(m.daysOff)?m.daysOff.map(Number):[];
+  document.getElementById('ueDaysOff').innerHTML=DOW_NAMES.map((nm,i)=>`<label><input type="checkbox" value="${i}" ${cur.includes(i)?'checked':''}>${nm}</label>`).join('');
+  ueRenderResp(u); ueRespToggle(); ueReasonToggle();
+  const err=document.getElementById('ueErr'); if(err) err.hidden=true;
+  document.getElementById('userModal').hidden=false;
+}
+function userEditClose(){ const m=document.getElementById('userModal'); if(m) m.hidden=true; USER_EDIT=null; }
+function ueErr(msg){ const e=document.getElementById('ueErr'); if(e){ e.textContent=msg; e.hidden=false; } }
+async function userEditSave(){
+  if(!USER_EDIT) return;
+  const u=userByName(USER_EDIT), username=USER_EDIT;
+  const name=(document.getElementById('ueName').value||'').trim()||u.name||username;
+  const allowed=assignableRoles();
+  const roles=[...document.querySelectorAll('#ueRoles input:checked')].map(cb=>cb.value).filter(r=>allowed.includes(r));
+  if(!roles.length){ ueErr('Pick at least one role.'); return; }
+  const prim=primaryRole(roles), jobs=[];
+  // 1) roles + primary role (also saves the name)
+  jobs.push(addRecord({type:'userroles', username:String(username).toLowerCase(), roles, by:(SESSION&&SESSION.name)||''}));
+  const user={username, name, role:prim}; let ok=false;
+  if(SESSION && SESSION.token){ const res=await authApi({action:'saveUser', token:SESSION.token, user}); ok=!!(res&&res.ok); if(!ok){ ueErr((res&&res.error)||'Could not save the account.'); return; } }
+  else if(CFG.endpoint){ const res=await api({action:'saveUser', ...authFields(), user}); ok=!!(res&&res.ok); if(!ok){ ueErr('Could not save the account.'); return; } }
+  else { const i=LOCAL_USERS.findIndex(x=>x.username===username); if(i>=0){ LOCAL_USERS[i].role=prim; LOCAL_USERS[i].name=name; save(LS.users,LOCAL_USERS); } }
+  const cu=(USERS_CACHE||[]).find(x=>x.username===username); if(cu){ cu.role=prim; cu.name=name; }
+  // 2) offers / teams
+  const teams=[...document.querySelectorAll('#ueTeams input:checked')].map(i=>i.value);
+  jobs.push(addRecord({type:'team', username:String(username).toLowerCase(), teams:JSON.stringify(teams)}));
+  // 3) manager + dates + offboard reason + recurring days off
+  const startDate=(document.getElementById('ueStart').value||'').slice(0,10), endDate=(document.getElementById('ueEnd').value||'').slice(0,10), mgr=document.getElementById('ueMgr').value||'', reason=endDate?(document.getElementById('ueReason').value||''):'';
+  const daysOff=[...document.querySelectorAll('#ueDaysOff input:checked')].map(cb=>+cb.value);
+  jobs.push(addRecord({type:'repmeta', username, name, startDate, endDate, mgr, daysOff, reason}));
+  // 4) responsibilities (client manager fields) - only when that section is shown
+  if(!document.getElementById('ueRespWrap').hidden){
+    const sel={};
+    document.querySelectorAll('#ueRespTable input[type=checkbox]').forEach(b=>{ (sel[b.dataset.client]=sel[b.dataset.client]||{})[b.dataset.role]=b.checked; });
+    Object.keys(sel).forEach(cn=>{
+      const curc=latestClients().find(x=>x.name===cn); if(!curc) return;
+      const {_t,...clean}=curc, s=sel[cn];
+      const fld=(f,checked)=> checked ? name : (isMgrField(curc[f],u) ? '' : (curc[f]||''));
+      const next={ webinarMgr:fld('webinarMgr',s.web), setterMgr:fld('setterMgr',s.set), closerMgr:fld('closerMgr',s.clo) };
+      if(next.webinarMgr!==(curc.webinarMgr||'')||next.setterMgr!==(curc.setterMgr||'')||next.closerMgr!==(curc.closerMgr||''))
+        jobs.push(addRecord(Object.assign({},clean,next,{type:'client'})));
+    });
+  }
+  await Promise.all(jobs);
+  userEditClose();
+  if(SESSION && nrm(SESSION.username)===nrm(username)) applyNavAccess();
+  toast(name+' updated'); fillLists(); renderUsers(); setTimeout(renderUsers,1000);
+}
+// username convention: last name + first initial (John Smith -> smithj), deduped against existing accounts
+function usernameFromName(full){
+  const parts=String(full||'').trim().toLowerCase().replace(/[^a-z\s'-]/g,'').split(/\s+/).filter(Boolean);
+  if(!parts.length) return '';
+  if(parts.length===1) return parts[0].replace(/[^a-z0-9]/g,'');
+  const first=parts[0], last=parts[parts.length-1];
+  return (last+first.charAt(0)).replace(/[^a-z0-9]/g,'');
+}
+function uniqueUsername(base){ if(!base) return ''; const taken=new Set((USERS_CACHE||[]).map(u=>String(u.username||'').toLowerCase())); if(!taken.has(base)) return base; let i=2; while(taken.has(base+i)) i++; return base+i; }
+function suggestUsername(){
+  const f=document.querySelector('#userForm [name=name]'), un=document.querySelector('#userForm [name=username]');
+  if(!f||!un||un.dataset.touched) return;
+  un.value=uniqueUsername(usernameFromName(f.value));
+}
 async function saveUser(e){
   e.preventDefault();
   const o=formObj(e.target); o.username=o.username.trim().toLowerCase();
   if(o.username==='tsaboss'){ toast('tsaboss is the master admin, change it in Settings',true); return; }
   if(!assignableRoles().includes(o.role)){ toast('You are not allowed to assign that role',true); return; }
   const teams=[...document.querySelectorAll('#newUserTeams input:checked')].map(i=>i.value);
+  // primary info is required up front so nothing gets missed after creation
+  if(!teams.length){ toast('Assign at least one team / account.',true); return; }
+  if(!(o.mgr||'').trim()){ toast('Pick a reporting manager.',true); return; }
+  if(!(o.startDate||'').trim()){ toast('Set a hire date.',true); return; }
+  const user={username:o.username, name:o.name, role:o.role, password:o.password}; // only the account fields go to the auth backend
   if(SESSION && SESSION.token){
-    const res=await authApi({action:'saveUser', token:SESSION.token, user:o});
+    const res=await authApi({action:'saveUser', token:SESSION.token, user});
     if(!res||!res.ok){ toast('Save failed'+(res&&res.error?': '+res.error:''),true); return; }
   } else if(CFG.endpoint){
-    const res=await api({action:'saveUser', ...authFields(), user:o});
+    const res=await api({action:'saveUser', ...authFields(), user});
     if(!res||!res.ok){ toast('Save failed (check backend)',true); return; }
   } else {
     const passHash=await sha(o.password);
@@ -5119,8 +5311,10 @@ async function saveUser(e){
     save(LS.users,LOCAL_USERS);
   }
   await addRecord({type:'team', username:o.username, teams:JSON.stringify(teams)}); // assign teams (also clears if none ticked)
+  await addRecord({type:'repmeta', username:o.username, name:o.name, startDate:(o.startDate||'').slice(0,10), endDate:'', mgr:(o.mgr||'').trim(), daysOff:[], reason:''}); // capture manager + hire date at creation
   if(o.password){ try{ await addRecord({type:'pwreset', username:o.username, at:new Date().toISOString(), by:(SESSION&&SESSION.name)||'admin'}); }catch(_){} } // admin-set password -> force them to set their own on first login
   if((o.role==='setter'||o.role==='closer') && !repOnboardFor(o.username)){ await addRecord({type:'reponboard', username:o.username, name:o.name, contract:false, slack:false, ghl:false, training:false}); } // start their onboarding checklist
+  const unEl=e.target.querySelector('[name=username]'); if(unEl) delete unEl.dataset.touched;
   e.target.reset(); toast(o.password?'User saved - they\'ll set their own password on first login':'User saved'); renderUsers(); setTimeout(renderUsers, 2500);
 }
 async function importUsers(){
