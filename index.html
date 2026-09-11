@@ -8,8 +8,6 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;0,800;1,600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/flatpickr/4.6.13/flatpickr.min.css">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/flatpickr/4.6.13/flatpickr.min.js"></script>
 <style>
   /* Warm near-black + gold, serif display headings (Sales Team HQ scheme). Committed single theme. */
   :root{
@@ -173,25 +171,25 @@
   .respmatrix td:first-child{text-align:left;font-weight:600}
   .respmatrix input{width:17px;height:17px;cursor:pointer}
   .respmatrix .heldother{display:block;font-size:10px;color:var(--muted);margin-top:2px}
-  /* flatpickr range picker, themed to the app (dark + gold) */
-  input.fpalt{min-width:230px;cursor:pointer}
-  .flatpickr-calendar{background:var(--surface,#171310);border:1px solid var(--border);box-shadow:0 10px 34px rgba(0,0,0,.55);color:var(--ink)}
-  .flatpickr-calendar.arrowTop:before,.flatpickr-calendar.arrowTop:after{border-bottom-color:var(--surface,#171310)}
-  .flatpickr-calendar.arrowBottom:before,.flatpickr-calendar.arrowBottom:after{border-top-color:var(--surface,#171310)}
-  .flatpickr-months,.flatpickr-weekdays,.flatpickr-months .flatpickr-month,.flatpickr-weekdays .flatpickr-weekdaycontainer{background:transparent}
-  .flatpickr-months .flatpickr-month,.flatpickr-current-month input.cur-year,.flatpickr-current-month .flatpickr-monthDropdown-months{color:var(--ink);fill:var(--ink)}
-  .flatpickr-months .flatpickr-prev-month svg,.flatpickr-months .flatpickr-next-month svg{fill:var(--ink)}
-  .flatpickr-months .flatpickr-prev-month:hover svg,.flatpickr-months .flatpickr-next-month:hover svg{fill:var(--gold)}
-  span.flatpickr-weekday{color:var(--muted);font-weight:700}
-  .flatpickr-monthDropdown-months{background:var(--surface,#171310)}
-  .flatpickr-day{color:var(--ink)}
-  .flatpickr-day:hover,.flatpickr-day:focus{background:var(--surface-2);border-color:var(--surface-2)}
-  .flatpickr-day.today{border-color:var(--gold)}
-  .flatpickr-day.selected,.flatpickr-day.startRange,.flatpickr-day.endRange,.flatpickr-day.selected:hover,.flatpickr-day.startRange:hover,.flatpickr-day.endRange:hover{background:var(--gold);border-color:var(--gold);color:#1a1508}
-  .flatpickr-day.inRange{background:var(--gold-soft);border-color:var(--gold-soft);box-shadow:-5px 0 0 var(--gold-soft),5px 0 0 var(--gold-soft);color:var(--ink)}
-  .flatpickr-day.flatpickr-disabled,.flatpickr-day.prevMonthDay,.flatpickr-day.nextMonthDay{color:var(--muted);opacity:.45}
-  .numInputWrapper span.arrowUp,.numInputWrapper span.arrowDown{border-color:var(--border)}
-  .flatpickr-day.notAllowed,.flatpickr-day.notAllowed.prevMonthDay,.flatpickr-day.notAllowed.nextMonthDay{color:var(--muted)}
+  /* custom range picker (self-contained, dark + gold) */
+  .rangewrap{position:relative}
+  #fRange{min-width:230px;cursor:pointer}
+  .rangepop{position:absolute;z-index:60;top:calc(100% + 6px);left:0;background:var(--surface,#171310);border:1px solid var(--border);border-radius:12px;box-shadow:0 12px 36px rgba(0,0,0,.55);padding:12px;width:260px}
+  .rangepop .rphead{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+  .rangepop .rphead b{font-size:14px}
+  .rangepop .rpnav{background:transparent;border:1px solid var(--border);color:var(--ink);width:28px;height:28px;border-radius:7px;cursor:pointer;font-size:15px;line-height:1;display:inline-flex;align-items:center;justify-content:center}
+  .rangepop .rpnav:hover{border-color:var(--gold);color:var(--gold)}
+  .rangepop .rpgrid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+  .rangepop .rpdow{font-size:10px;color:var(--muted);text-align:center;font-weight:700;padding:2px 0}
+  .rangepop .rpday{aspect-ratio:1;border:none;background:transparent;color:var(--ink);font-size:12.5px;border-radius:7px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+  .rangepop .rpday:hover{background:var(--surface-2)}
+  .rangepop .rpday.muted{color:var(--muted);opacity:.4;cursor:default}
+  .rangepop .rpday.today{box-shadow:inset 0 0 0 1px var(--gold)}
+  .rangepop .rpday.inrange{background:var(--gold-soft);border-radius:0}
+  .rangepop .rpday.end1{background:var(--gold);color:#1a1508;font-weight:700;border-radius:7px 0 0 7px}
+  .rangepop .rpday.end2{background:var(--gold);color:#1a1508;font-weight:700;border-radius:0 7px 7px 0}
+  .rangepop .rpday.only{background:var(--gold);color:#1a1508;font-weight:700;border-radius:7px}
+  .rangepop .rpfoot{display:flex;justify-content:space-between;align-items:center;margin-top:8px;font-size:11px;color:var(--muted)}
   .mgrnum{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:var(--gold-soft);color:var(--gold);font-size:12px;font-weight:700;margin-right:8px}
   .navbadge{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;margin-left:8px;border-radius:9px;background:var(--bad,#c0392b);color:#fff;font-size:11px;font-weight:700;vertical-align:middle;box-shadow:0 0 0 2px rgba(192,57,43,.25)}
   .notifwrap{position:relative;display:inline-block}
@@ -435,7 +433,7 @@
     <h2 class="section" id="dashTitle">Dashboard</h2>
     <p class="hint" id="dashHint">Live view of everything submitted. Filter by date range, client, and role.</p>
     <div class="filters" id="dashFilters">
-      <div class="field"><label>Date range</label><input type="text" id="fRange" class="fpalt" placeholder="Click a start day, then an end day" readonly><input type="hidden" id="fFrom"><input type="hidden" id="fTo"></div>
+      <div class="field"><label>Date range</label><div class="rangewrap"><input type="text" id="fRange" placeholder="Click a start day, then an end day" readonly onclick="rangePopToggle(event)"><input type="hidden" id="fFrom"><input type="hidden" id="fTo"><div class="rangepop" id="fRangePop" hidden></div></div></div>
       <div class="field"><label>Quick range</label><div class="row-actions"><button class="btn ghost sm" onclick="dashRange('today')">Today</button><button class="btn ghost sm" onclick="dashRange('yesterday')">Yesterday</button><button class="btn ghost sm" onclick="dashRange('week')">This week</button><button class="btn ghost sm" onclick="dashRange('month')">This month</button><button class="btn ghost sm" onclick="dashRange('30')">Last 30d</button><button class="btn ghost sm" onclick="dashRange('all')">All time</button></div></div>
       <div class="field"><label>Client</label><select id="fClient" onchange="renderDash()"></select></div>
       <div class="field"><label>Role</label><select id="fRole" onchange="renderDash()"><option value="">All</option><option>Closer</option><option>Setter</option></select></div>
@@ -2846,17 +2844,46 @@ function buildFilterOptions(){
   if(cc)fc.value=cc;
   initDashRangePicker();
 }
-function fpYmd(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
-// single click-start-then-end range picker (flatpickr) that writes into the hidden fFrom/fTo the rest of the dashboard reads
-function initDashRangePicker(){
-  if(window.__dashFp || typeof flatpickr==='undefined') return;
-  const el=document.getElementById('fRange'); if(!el) return;
+// self-contained click-start-then-end range picker (no external lib). Writes the hidden fFrom/fTo the dashboard reads.
+function initDashRangePicker(){ const ff=document.getElementById('fFrom'), ft=document.getElementById('fTo'); window.__rangeStart=(ff&&ff.value)||''; window.__rangeEnd=(ft&&ft.value)||''; rangeDisplay(); }
+function rangeFmtOne(iso){ const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(iso||''); if(!m) return ''; const MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']; return MON[+m[2]-1]+' '+(+m[3])+', '+m[1]; }
+function rangeDisplay(){ const el=document.getElementById('fRange'); if(!el) return; const s=window.__rangeStart||'', e=window.__rangeEnd||''; el.value=(!s&&!e)?'All time':((!e||s===e)?rangeFmtOne(s):rangeFmtOne(s)+' to '+rangeFmtOne(e)); }
+function rangePopToggle(e){ if(e)e.stopPropagation(); const pop=document.getElementById('fRangePop'); if(!pop) return; if(pop.hidden) rangePopOpen(); else rangePopClose(); }
+function rangePopOpen(){
   const ff=document.getElementById('fFrom'), ft=document.getElementById('fTo');
-  const seed=[]; if(ff&&ff.value)seed.push(ff.value); if(ft&&ft.value)seed.push(ft.value);
-  window.__dashFp=flatpickr(el,{ mode:'range', dateFormat:'Y-m-d', altInput:true, altFormat:'M j, Y', altInputClass:'fpalt', defaultDate:seed.length?seed:null,
-    onChange:function(sel){ const f=sel[0]?fpYmd(sel[0]):'', t=sel[1]?fpYmd(sel[1]):(sel[0]?fpYmd(sel[0]):''); if(ff)ff.value=f; if(ft)ft.value=t; renderDash(); } });
+  window.__rangeStart=(ff&&ff.value)||''; window.__rangeEnd=(ft&&ft.value)||'';
+  const seed=window.__rangeStart||todayLocal(), p=/^(\d{4})-(\d{2})/.exec(seed); window.__rangeView=p?new Date(+p[1],+p[2]-1,1):new Date();
+  rangeRender(); const pop=document.getElementById('fRangePop'); if(pop) pop.hidden=false;
 }
-// quick-range buttons drive the same picker so the calendar highlight stays in sync
+function rangePopClose(){ const pop=document.getElementById('fRangePop'); if(pop) pop.hidden=true; }
+function rangeNav(delta){ const v=window.__rangeView||new Date(); window.__rangeView=new Date(v.getFullYear(),v.getMonth()+delta,1); rangeRender(); }
+function rangeRender(){
+  const pop=document.getElementById('fRangePop'); if(!pop) return;
+  const view=window.__rangeView||new Date(), y=view.getFullYear(), m=view.getMonth();
+  const MON=['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const startDow=new Date(y,m,1).getDay(), dim=new Date(y,m+1,0).getDate();
+  const s=window.__rangeStart||'', e=window.__rangeEnd||'', today=todayLocal();
+  const lo=s&&e?(s<e?s:e):s, hi=s&&e?(s<e?e:s):s;
+  let cells=''; for(let i=0;i<startDow;i++) cells+='<div></div>';
+  for(let d=1;d<=dim;d++){ const iso=y+'-'+String(m+1).padStart(2,'0')+'-'+String(d).padStart(2,'0'); let cls='rpday';
+    if(s&&e){ if(iso===lo&&iso===hi) cls+=' only'; else if(iso===lo) cls+=' end1'; else if(iso===hi) cls+=' end2'; else if(iso>lo&&iso<hi) cls+=' inrange'; }
+    else if(s&&iso===s) cls+=' only';
+    if(iso===today) cls+=' today';
+    cells+=`<button type="button" class="${cls}" onclick="rangePick('${iso}')">${d}</button>`;
+  }
+  const DOW=['Su','Mo','Tu','We','Th','Fr','Sa'];
+  pop.innerHTML=`<div class="rphead"><button type="button" class="rpnav" onclick="rangeNav(-1)">&#8249;</button><b>${MON[m]} ${y}</b><button type="button" class="rpnav" onclick="rangeNav(1)">&#8250;</button></div>`
+    +`<div class="rpgrid">`+DOW.map(x=>`<div class="rpdow">${x}</div>`).join('')+cells+`</div>`
+    +`<div class="rpfoot"><span>${s?(e?'Range set':'Now pick the end day'):'Pick the start day'}</span><button type="button" class="rpnav" style="width:auto;padding:0 9px;font-size:12px" onclick="rangeClear()">Clear</button></div>`;
+}
+function rangePick(iso){
+  const s=window.__rangeStart, e=window.__rangeEnd;
+  if(!s||(s&&e)){ window.__rangeStart=iso; window.__rangeEnd=''; rangeRender(); } // start a fresh range
+  else { let a=s,b=iso; if(b<a){ a=iso; b=s; } window.__rangeStart=a; window.__rangeEnd=b; rangeCommit(); rangePopClose(); } // second click completes it
+}
+function rangeClear(){ window.__rangeStart=''; window.__rangeEnd=''; rangeCommit(); rangePopClose(); }
+function rangeCommit(){ const ff=document.getElementById('fFrom'), ft=document.getElementById('fTo'); if(ff)ff.value=window.__rangeStart||''; if(ft)ft.value=window.__rangeEnd||window.__rangeStart||''; rangeDisplay(); renderDash(); }
+// quick-range buttons drive the same hidden inputs + display
 function dashRange(preset){
   const t=todayLocal(); let from='',to='';
   if(preset==='today'){ from=to=t; }
@@ -2866,9 +2893,10 @@ function dashRange(preset){
   else if(preset==='30'){ from=isoOffset(t,-29); to=t; }
   // 'all' -> both blank (no date filter)
   const ff=document.getElementById('fFrom'), ft=document.getElementById('fTo'); if(ff)ff.value=from; if(ft)ft.value=to;
-  if(window.__dashFp){ if(from&&to) window.__dashFp.setDate([from,to],false); else window.__dashFp.clear(false); }
-  renderDash();
+  window.__rangeStart=from; window.__rangeEnd=to; rangeDisplay(); rangePopClose(); renderDash();
 }
+// close the range popover on an outside click
+if(typeof window!=='undefined' && !window.__rangeOutside){ window.__rangeOutside=true; document.addEventListener('click',function(ev){ const pop=document.getElementById('fRangePop'); if(pop&&!pop.hidden&&!ev.target.closest('.rangewrap')) rangePopClose(); }); }
 function agg(recs){
   const s={contractValue:0,cashCollected:0,depositCollected:0,closedDeals:0,connectedMeetings:0,noShows:0,callCapacity:0};
   recs.forEach(x=>{
