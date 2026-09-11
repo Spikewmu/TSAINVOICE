@@ -3093,15 +3093,28 @@ function renderActivityChart(recs){
   let days=Object.keys(byDay).sort().slice(-14);
   const total=days.reduce((s,d)=>s+byDay[d],0), max=Math.max(1,...days.map(d=>byDay[d]));
   const tot=document.getElementById('dashChartTotal'); if(tot) tot.textContent=total.toLocaleString()+' dials';
-  if(!days.length){ el.innerHTML='<div class="muted" style="align-self:center;margin:auto;padding:20px">No dial activity in this view yet.</div>'; return; }
+  el.style.cssText='display:block'; // override the old flex layout - we build our own axis + plot below
+  if(!days.length){ el.innerHTML='<div class="muted" style="padding:30px;text-align:center">No dial activity in this view yet.</div>'; return; }
   const DOW=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-  el.innerHTML=`<style>#dashChart .dialcol:hover .dialtip{opacity:1}#dashChart .dialcol:hover .dialbar{background:rgba(201,162,74,1)}</style>`+days.map(d=>{ const v=byDay[d], h=Math.round(v/max*120), dt=new Date(d+'T00:00:00'), dow=DOW[dt.getDay()], md=(dt.getMonth()+1)+'/'+dt.getDate();
-    return `<div class="dialcol" style="flex:1;min-width:12px;display:flex;flex-direction:column;align-items:center;gap:6px;position:relative">
-      <div class="dialtip" style="position:absolute;top:-26px;background:#2a2a2a;border:1px solid var(--border);color:#fff;font-size:11px;font-weight:600;padding:3px 7px;border-radius:5px;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .08s;box-shadow:0 2px 8px rgba(0,0,0,.35);z-index:2">${v.toLocaleString()} dials &middot; ${dow} ${md}</div>
-      <div class="dialbar" title="${v} dials on ${dow} ${usDate(d)}" style="width:100%;border-radius:5px 5px 0 0;background:rgba(201,162,74,.82);height:${h}px;transition:background .08s"></div>
-      <span style="font-size:9px;color:var(--muted);text-align:center;line-height:1.15">${dow}<br>${md}</span></div>`;
-  }).join('');
+  const H=150, ticks=4, niceMax=chartNiceMax(max);
+  // y-axis value labels (top = niceMax ... bottom = 0) + matching horizontal gridlines, so magnitude reads at a glance
+  const yaxis=Array.from({length:ticks+1},(_,i)=>`<div style="font-size:10px;color:var(--muted);text-align:right;line-height:1">${Math.round(niceMax*(ticks-i)/ticks).toLocaleString()}</div>`).join('');
+  const grid=Array.from({length:ticks+1},(_,i)=>`<div style="position:absolute;left:0;right:0;top:${i/ticks*100}%;border-top:1px solid var(--border);opacity:.3"></div>`).join('');
+  const bars=days.map(d=>{ const v=byDay[d], h=Math.round(v/niceMax*H), dt=new Date(d+'T00:00:00'), dow=DOW[dt.getDay()], md=(dt.getMonth()+1)+'/'+dt.getDate();
+    return `<div class="dialcol" style="flex:1;min-width:12px;height:100%;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;position:relative">
+      <div class="dialtip" style="position:absolute;bottom:${h+6}px;left:50%;transform:translateX(-50%);background:#2a2a2a;border:1px solid var(--border);color:#fff;font-size:11px;font-weight:600;padding:3px 7px;border-radius:5px;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .08s;box-shadow:0 2px 8px rgba(0,0,0,.35);z-index:3">${v.toLocaleString()} dials &middot; ${dow} ${md}</div>
+      <div class="dialbar" title="${v} dials on ${dow} ${usDate(d)}" style="width:100%;border-radius:5px 5px 0 0;background:rgba(201,162,74,.82);min-height:${v>0?2:0}px;height:${h}px;transition:background .08s"></div>
+    </div>`; }).join('');
+  const labels=days.map(d=>{ const dt=new Date(d+'T00:00:00'), dow=DOW[dt.getDay()], md=(dt.getMonth()+1)+'/'+dt.getDate(); return `<div style="flex:1;min-width:12px;font-size:9px;color:var(--muted);text-align:center;line-height:1.15">${dow}<br>${md}</div>`; }).join('');
+  el.innerHTML=`<style>#dashChart .dialcol:hover .dialtip{opacity:1}#dashChart .dialcol:hover .dialbar{background:rgba(201,162,74,1)}</style>`
+    +`<div style="display:flex;gap:8px">`
+      +`<div style="width:40px;flex:none;height:${H}px;display:flex;flex-direction:column;justify-content:space-between;padding-right:4px">${yaxis}</div>`
+      +`<div style="flex:1;position:relative;height:${H}px">${grid}<div style="position:absolute;inset:0;display:flex;align-items:flex-end;gap:8px">${bars}</div></div>`
+    +`</div>`
+    +`<div style="display:flex;gap:8px;margin-top:5px"><div style="width:40px;flex:none"></div><div style="flex:1;display:flex;gap:8px">${labels}</div></div>`;
 }
+// round a max value up to a clean axis ceiling (1,2,5 x 10^n) so the y-axis reads in round numbers
+function chartNiceMax(m){ if(m<=0) return 1; const pow=Math.pow(10,Math.floor(Math.log10(m))), n=m/pow, step=n<=1?1:n<=2?2:n<=5?5:10; return step*pow; }
 // share of logged calls that were wrong/bad numbers, scoped to the dashboard's date range + client + role scope
 function badNumberPct(){
   const from=((document.getElementById('fFrom')||{}).value||'').slice(0,10), to=((document.getElementById('fTo')||{}).value||'').slice(0,10), c=(document.getElementById('fClient')||{}).value||'', sc=dashScopeClients();
