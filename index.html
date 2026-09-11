@@ -700,7 +700,7 @@
       <div class="field"><label>Rep name *</label><select name="rep" data-list="reps" required></select><span class="fieldhelp">Your name (locked to your login).</span></div>
 
       <div class="formhead"><b>Today's calls</b><span class="sub">what's on your calendar this morning</span></div>
-      <div class="field"><label>Calls on the calendar today</label><input type="number" name="sodCallsToday" min="0" step="1" placeholder="e.g. 6"><span class="fieldhelp" id="sodCallsHelp">Sales calls booked on your calendar today.</span></div>
+      <div class="field"><label>Calls on the calendar today</label><input type="number" name="sodCallsToday" min="0" step="1" placeholder="e.g. 6"><div class="row-actions" style="margin-top:5px"><button type="button" class="btn ghost sm" id="sodPullBtn" onclick="sodPullCalls()">&#8635; Pull from my GHL calendar</button></div><span class="fieldhelp" id="sodCallsHelp">Sales calls booked on your calendar today - or pull the live count from GHL.</span></div>
       <div class="field"><label>How many have confirmed</label><input type="number" name="sodConfirmed" min="0" step="1"><span class="fieldhelp">Of those, how many confirmed their appointment time.</span></div>
 
       <div class="field setterOnly" hidden><label>How many watched the VSL</label><input type="number" name="sodWatchedVsl" min="0" step="1"><span class="fieldhelp">Of today's booked leads, how many watched the VSL.</span></div>
@@ -2137,6 +2137,23 @@ function renderSodTab(){
     if(cs){ if(opts.length===1){ cs.innerHTML='<option>'+esc(opts[0])+'</option>'; cs.value=opts[0]; cs.disabled=true; } else { const cur=cs.value; cs.innerHTML='<option value="">-</option>'+opts.map(c=>'<option>'+esc(c)+'</option>').join(''); cs.value=(cur&&opts.includes(cur))?cur:''; cs.disabled=false; } }
   } else { const seg=document.getElementById('sodRoleSegWrap'); if(seg) seg.hidden=false; const cur=document.querySelector('#sodForm [name=role]'); setSodRole((cur&&cur.value)||'Closer'); }
   sodSum();
+}
+// T-478: auto-fill "Calls on the calendar today" from the rep's GHL calendar (count of appointments assigned to them that day)
+async function sodPullCalls(){
+  const form=document.getElementById('sodForm'); if(!form) return;
+  const rep=(form.querySelector('[name=rep]')||{}).value||(SESSION&&SESSION.name)||'';
+  const date=((form.querySelector('[name=date]')||{}).value||todayLocal()).slice(0,10);
+  const help=document.getElementById('sodCallsHelp'), btn=document.getElementById('sodPullBtn');
+  if(!rep){ toast('Pick your rep name first',true); return; }
+  if(btn){ btn.disabled=true; btn.textContent='Pulling...'; }
+  try{
+    const hdr={'Content-Type':'application/json'}; if(SESSION&&SESSION.token) hdr['x-session-token']=SESSION.token; else if(SESSION&&SESSION.pw) hdr['x-admin-pass']=SESSION.pw;
+    const r=await fetch('/api/reactivation',{method:'POST',headers:hdr,body:JSON.stringify({action:'sodCalls',rep,date,tzOffset:new Date().getTimezoneOffset()})});
+    const d=await r.json();
+    if(d&&d.ok){ const inp=form.querySelector('[name=sodCallsToday]'); if(inp) inp.value=d.count; if(help) help.innerHTML='Auto-filled <b>'+d.count+'</b> from your GHL calendar for '+esc(usDate(d.day))+' - edit if needed.'; }
+    else { toast('Could not pull calendar'+(d&&d.error?': '+d.error:''),true); }
+  }catch(e){ toast('Calendar pull failed',true); }
+  finally{ if(btn){ btn.disabled=false; btn.innerHTML='&#8635; Pull from my GHL calendar'; } }
 }
 async function submitSod(e){ e.preventDefault(); const btn=e.target.querySelector('[type=submit]'); if(btn&&btn.disabled) return; btnBusy(btn,true); let ok=false;
   try{ const o=num(formObj(e.target)); o.type='sod'; if(repMode()){ o.rep=SESSION.name; o.role=myRepRole(); }

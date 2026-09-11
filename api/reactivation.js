@@ -139,14 +139,16 @@ export default async function handler(req, res) {
   const action = q.action || b.action || 'dryrun';
   // Sales Managers may run ONLY the two speed-to-lead actions, scoped server-side to accounts where they manage setters.
   const MANAGER_OK = ['speedToLead', 'speedToLeadClients'];
-  let isSuper = false, isManager = false, sName = '';
+  const ANY_AUTH = ['sodCalls']; // any signed-in user - returns only a count of the caller's own appointments
+  let isSuper = false, isManager = false, isRep = false, sName = '';
   if (s) {
     sName = s.name || s.username || '';
     if (s.role === 'admin') isSuper = true;
     else if (s.role === 'manager' && MANAGER_OK.includes(action)) isManager = true;
+    else if (ANY_AUTH.includes(action)) isRep = true;
     else return res.status(200).json({ ok: false, error: 'Admins only' });
   } else { const ap = b.adminPass || q.adminPass || h['x-admin-pass'] || ''; if (ap && (ap === process.env.ADMIN_PASS || ap === process.env.BOT_ADMIN_TOKEN)) isSuper = true; }
-  if (!isSuper && !isManager) return res.status(401).json({ ok: false, error: 'unauthorized' });
+  if (!isSuper && !isManager && !isRep) return res.status(401).json({ ok: false, error: 'unauthorized' });
   if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) return res.status(200).json({ ok: false, error: 'not-provisioned' });
 
   // multi-client calendar aggregator (no single locationId)
@@ -186,6 +188,24 @@ export default async function handler(req, res) {
     let clients = cfgs.filter(c => /^pit-/i.test(String(c.ghlApiKey || ''))).map(c => ({ client: c.client || c.key || c.ghlLocationId, locationId: c.ghlLocationId })).sort((a, c) => String(a.client).localeCompare(String(c.client)));
     if (isManager) { const locs = await managerSetterLocations(sName); clients = clients.filter(c => locs.has(String(c.locationId || '').trim())); }
     return res.status(200).json({ ok: true, clients });
+  }
+
+  // SOD helper: count the appointments on the caller's GHL calendar for a given local day (any signed-in user). 15-min cached.
+  if (action === 'sodCalls') {
+    const day = dayOf(b.date || q.date || '') || new Date().toISOString().slice(0, 10);
+    const rep = String(b.rep || sName || '').trim();
+    if (!rep) return res.status(200).json({ ok: true, count: 0, day, rep: '' });
+    const tzOff = parseInt(b.tzOffset != null ? b.tzOffset : (q.tzOffset || 0), 10) || 0;
+    const localDay = iso => { const t = Date.parse(iso); return isFinite(t) ? new Date(t - tzOff * 60000).toISOString().slice(0, 10) : ''; };
+    const cacheKey = 'sod:' + rep.toLowerCase() + ':' + day + ':' + tzOff;
+    try { const cr = await supa('records?select=data&type=eq.calcache&data->>k=eq.' + encodeURIComponent(cacheKey) + '&order=submitted_at.desc&limit=1');
+      if (cr && cr.ok) { const rows = await cr.json(); const c = rows[0] && rows[0].data; if (c && c.payload && (Date.now() - (c.at || 0)) < 15 * 60 * 1000) return res.status(200).json({ ...c.payload, cached: true }); } } catch (e) {}
+    const dayMs = Date.parse(day + 'T12:00:00Z'), fromMs = dayMs - 36 * 3600 * 1000, toMs = dayMs + 36 * 3600 * 1000;
+    const cfgs = await cfgAll(); let count = 0;
+    for (const cfg of cfgs) { if (!/^pit-/i.test(String(cfg.ghlApiKey || ''))) continue; try { const evs = await pullCalV2(cfg, fromMs, toMs); evs.forEach(e => { if (String(e.bookedWith || '').trim().toLowerCase() === rep.toLowerCase() && localDay(e.start) === day) count++; }); } catch (e) {} }
+    const payload = { ok: true, count, day, rep };
+    try { await supa('records', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ rid: (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())), type: 'calcache', submitted_at: new Date().toISOString(), data: { k: cacheKey, at: Date.now(), payload } }) }); } catch (e) {}
+    return res.status(200).json(payload);
   }
 
   const locationId = String(b.locationId || q.locationId || '').trim();
