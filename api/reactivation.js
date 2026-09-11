@@ -52,6 +52,20 @@ async function managerSetterLocations(name) {
   cfgs.forEach(c => { if (myClients.has(nrm(c.client || c.key))) locs.add(String(c.ghlLocationId || '').trim()); });
   return locs;
 }
+// locationIds a user is assigned to via their team records (used to scope a Founder to their own account)
+async function userAssignedLocations(username) {
+  const nrm = x => String(x || '').trim().toLowerCase();
+  const u = nrm(username); if (!u) return new Set();
+  const r = await supa('records?select=data&type=eq.team&order=submitted_at.asc&limit=100000');
+  if (!r || !r.ok) return new Set();
+  const rows = await r.json(); let teamsStr = null;
+  rows.forEach(x => { const d = x.data; if (d && nrm(d.username) === u) teamsStr = d.teams; }); // asc -> latest wins
+  let names = []; try { names = JSON.parse(teamsStr || '[]') || []; } catch (e) { names = []; }
+  const mine = new Set(names.map(nrm));
+  const cfgs = await cfgAll(); const locs = new Set();
+  cfgs.forEach(c => { if (mine.has(nrm(c.client || c.key))) locs.add(String(c.ghlLocationId || '').trim()); });
+  return locs;
+}
 // pull calendar events for one v2 client in [fromMs,toMs]; returns normalized events
 async function pullCalV2(cfg, fromMs, toMs) {
   const { loc, base, H } = ghlCtx(cfg);
@@ -137,18 +151,20 @@ export default async function handler(req, res) {
   const b = req.body || {}, q = req.query || {}, h = req.headers || {};
   const s = verifySession(b.token || q.token || h['x-session-token'] || '');
   const action = q.action || b.action || 'dryrun';
-  // Sales Managers may run ONLY the two speed-to-lead actions, scoped server-side to accounts where they manage setters.
-  const MANAGER_OK = ['speedToLead', 'speedToLeadClients'];
+  // Managers + Founders may run ONLY the two speed-to-lead actions, scoped server-side to their own accounts.
+  const SCOPED_OK = ['speedToLead', 'speedToLeadClients'];
   const ANY_AUTH = ['sodCalls']; // any signed-in user - returns only a count of the caller's own appointments
-  let isSuper = false, isManager = false, isRep = false, sName = '';
+  let isSuper = false, isScoped = false, isRep = false, sName = '', sUser = '', sRole = '';
   if (s) {
-    sName = s.name || s.username || '';
+    sName = s.name || s.username || ''; sUser = s.username || ''; sRole = s.role || '';
     if (s.role === 'admin') isSuper = true;
-    else if (s.role === 'manager' && MANAGER_OK.includes(action)) isManager = true;
+    else if ((s.role === 'manager' || s.role === 'founder') && SCOPED_OK.includes(action)) isScoped = true;
     else if (ANY_AUTH.includes(action)) isRep = true;
     else return res.status(200).json({ ok: false, error: 'Admins only' });
   } else { const ap = b.adminPass || q.adminPass || h['x-admin-pass'] || ''; if (ap && (ap === process.env.ADMIN_PASS || ap === process.env.BOT_ADMIN_TOKEN)) isSuper = true; }
-  if (!isSuper && !isManager && !isRep) return res.status(401).json({ ok: false, error: 'unauthorized' });
+  if (!isSuper && !isScoped && !isRep) return res.status(401).json({ ok: false, error: 'unauthorized' });
+  // which locationIds a scoped (manager/founder) caller may see: managers -> their setter accounts; founders -> their assigned client accounts
+  const scopedLocations = async () => sRole === 'manager' ? await managerSetterLocations(sName) : await userAssignedLocations(sUser);
   if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) return res.status(200).json({ ok: false, error: 'not-provisioned' });
 
   // multi-client calendar aggregator (no single locationId)
@@ -186,7 +202,7 @@ export default async function handler(req, res) {
   if (action === 'speedToLeadClients') {
     const cfgs = await cfgAll();
     let clients = cfgs.filter(c => /^pit-/i.test(String(c.ghlApiKey || ''))).map(c => ({ client: c.client || c.key || c.ghlLocationId, locationId: c.ghlLocationId })).sort((a, c) => String(a.client).localeCompare(String(c.client)));
-    if (isManager) { const locs = await managerSetterLocations(sName); clients = clients.filter(c => locs.has(String(c.locationId || '').trim())); }
+    if (isScoped) { const locs = await scopedLocations(); clients = clients.filter(c => locs.has(String(c.locationId || '').trim())); }
     return res.status(200).json({ ok: true, clients });
   }
 
@@ -268,7 +284,7 @@ export default async function handler(req, res) {
     // Speed to lead: for leads created in [fromDate,toDate], find each lead's FIRST OUTBOUND CALL and the gap from
     // when the lead came in. Bounded (cap) + batched + 15-min cached so it fits the serverless budget + GHL rate limits.
     if (action === 'speedToLead') {
-      if (isManager) { const locs = await managerSetterLocations(sName); if (!locs.has(String(locationId).trim())) return res.status(200).json({ ok: false, error: 'You do not manage setters on this account' }); }
+      if (isScoped) { const locs = await scopedLocations(); if (!locs.has(String(locationId).trim())) return res.status(200).json({ ok: false, error: 'You do not have access to this account' }); }
       const fromDay = dayOf(b.fromDate || q.fromDate || ''), toDay = dayOf(b.toDate || q.toDate || '');
       const target = Math.max(1, parseInt(b.targetMin || q.targetMin || 5, 10) || 5);
       const cap = Math.min(Math.max(10, parseInt(b.cap || q.cap || 60, 10) || 60), 150);
@@ -323,7 +339,7 @@ export default async function handler(req, res) {
       const within = n => gaps.length ? Math.round(gaps.filter(g => g <= n).length / gaps.length * 100) : 0;
       const byRepMap = {}; called.forEach(r => { const k = r.rep || '(unknown)'; (byRepMap[k] = byRepMap[k] || { rep: k, n: 0, sum: 0 }).n++; byRepMap[k].sum += r.gapMin; });
       const byRep = Object.values(byRepMap).map(x => ({ rep: x.rep, count: x.n, avgMin: Math.round(x.sum / x.n * 10) / 10 })).sort((a, c) => a.avgMin - c.avgMin);
-      const payload = { ok: true, window: { fromDay, toDay }, target, totalLeads: results.length, called: called.length, uncalled: results.length - called.length, avgMin: avg, medianMin: median, within: { [target]: within(target), 30: within(30), 60: within(60) }, byRep, leads: results.sort((a, c) => (c.gapMin == null ? -1 : c.gapMin) - (a.gapMin == null ? -1 : a.gapMin)).slice(0, 200), diag: { messageTypeHistogram: typeHist } };
+      const payload = { ok: true, window: { fromDay, toDay }, target, totalLeads: results.length, called: called.length, uncalled: results.length - called.length, avgMin: avg, medianMin: median, within: { 1: within(1), [target]: within(target), 30: within(30), 60: within(60) }, byRep, leads: results.sort((a, c) => (c.gapMin == null ? -1 : c.gapMin) - (a.gapMin == null ? -1 : a.gapMin)).slice(0, 200), diag: { messageTypeHistogram: typeHist } };
       try { await supa('records', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ rid: (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())), type: 'splcache', submitted_at: new Date().toISOString(), data: { k: cacheKey, at: Date.now(), payload } }) }); } catch (e) {}
       return res.status(200).json(payload);
     }

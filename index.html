@@ -199,6 +199,7 @@
   .rangepop .rpday.only{background:var(--gold);color:#1a1508;font-weight:700;border-radius:7px}
   .rangepop .rpfoot{display:flex;justify-content:space-between;align-items:center;margin-top:8px;font-size:11px;color:var(--muted)}
   .kpi.splclk{transition:border-color .1s,transform .1s} .kpi.splclk:hover{border-color:var(--gold);transform:translateY(-1px)}
+  #dashSpeedToggle button.on{background:var(--gold-soft);color:var(--gold);border-color:var(--gold)}
   /* retro dial-up spinner for the Speed to Lead load */
   .dialspin{width:36px;height:36px;border-radius:50%;flex:none;background:conic-gradient(var(--gold) 0 25%, rgba(201,162,74,.15) 0 100%);-webkit-mask:radial-gradient(circle 12px at center, transparent 97%, #000 100%);mask:radial-gradient(circle 12px at center, transparent 97%, #000 100%);animation:dialspin .9s steps(8) infinite}
   @keyframes dialspin{to{transform:rotate(360deg)}}
@@ -466,6 +467,13 @@
         <span id="dashChartTotal" class="tag"></span>
       </div>
       <div id="dashChart" style="display:flex;align-items:flex-end;gap:8px;height:150px"></div>
+    </div>
+    <div class="panel" id="dashSpeedPanel" style="margin:0 0 16px" hidden>
+      <div style="display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+        <h3 style="margin:0">Speed to lead <span style="font-weight:400;color:var(--muted);font-size:12px">- time from a new lead coming in to the first call</span></h3>
+        <div class="row-actions" id="dashSpeedToggle"><button class="btn ghost sm" data-w="today" onclick="dashSpeed('today')">Today</button><button class="btn ghost sm" data-w="yesterday" onclick="dashSpeed('yesterday')">Yesterday</button><button class="btn ghost sm" data-w="week" onclick="dashSpeed('week')">This week</button><button class="btn ghost sm" data-w="month" onclick="dashSpeed('month')">This month</button></div>
+      </div>
+      <div class="cards" id="dashSpeedKpis" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));margin:0"></div>
     </div>
     <div class="cards" style="grid-template-columns:repeat(auto-fit,minmax(340px,1fr))">
       <div class="panel" style="margin:0"><h3>Closer leaderboard <span style="font-weight:400;color:var(--muted);font-size:12px">- by cash collected</span></h3><div class="tablewrap"><table id="lbClosers"></table></div></div>
@@ -3118,6 +3126,7 @@ function renderDash(){
   renderGettingStarted();
   renderTeamValue();
   renderActivityChart(recs);
+  dashSpeedInit();
   renderLeaderboard(recs);
   renderBreakdownTables(recs, {setterEl:'dashSetterTable', closerEl:'dashCloserTable', rm:(SESSION&&(SESSION.role==='founder'||repMode())), clickable:false});
   renderClients(recs); renderDeals(recs);
@@ -3250,6 +3259,39 @@ async function splLoad(force){
 }
 function splFmtMin(m){ if(m==null) return '-'; if(m<60) return m+' min'; const h=Math.floor(m/60), r=Math.round(m%60); return h+'h'+(r?' '+r+'m':''); }
 function splSpinner(){ return `<div style="grid-column:1/-1;display:flex;align-items:center;gap:16px;padding:22px 8px"><div class="dialspin"></div><div style="font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;color:var(--muted);line-height:1.5"><b style="color:var(--gold);letter-spacing:.08em">DIALING GHL</b><span class="dialdots"></span><br><span style="font-size:11px">handshake in progress &middot; pulling first-call times</span></div></div>`; }
+/* ---- dashboard Speed-to-Lead summary panel (admins/managers + FOUNDERS see just the stats, scoped to their account) ---- */
+let __dashSpeedWin='today', __dashSpeedLoc='', __dashSpeedBusy=false;
+function dashSpeedRange(win){ const t=todayLocal(); if(win==='yesterday'){ const y=isoOffset(t,-1); return {from:y,to:y}; } if(win==='week'){ const dow=new Date(t+'T00:00:00').getDay(); return {from:isoOffset(t,dow===0?-6:1-dow),to:t}; } if(win==='month') return {from:t.slice(0,7)+'-01',to:t}; return {from:t,to:t}; }
+async function dashSpeedInit(){
+  const panel=document.getElementById('dashSpeedPanel'); if(!panel) return;
+  if(!(SESSION && ['admin','manager','founder'].includes(SESSION.role))){ panel.hidden=true; return; } // reps don't see it
+  const founder = SESSION.role==='founder';
+  const clientName = founder ? ((teamsFor(SESSION.username)[0])||'') : ((document.getElementById('fClient')||{}).value||'');
+  if(!clientName){ panel.hidden=true; return; } // admin on "All clients" -> hide (needs a specific account)
+  if(!__splClients.length){ try{ const res=await splApi({action:'speedToLeadClients'}); __splClients=(res&&res.clients)||[]; }catch(e){} }
+  const match=(__splClients||[]).find(c=>String(c.client).toLowerCase()===String(clientName).toLowerCase());
+  if(!match){ panel.hidden=true; return; } // no v2 GHL connection for this client
+  const changed=(match.locationId!==__dashSpeedLoc); __dashSpeedLoc=match.locationId; panel.hidden=false;
+  if(changed || !((document.getElementById('dashSpeedKpis')||{}).innerHTML||'').trim()) dashSpeed(__dashSpeedWin);
+}
+async function dashSpeed(win){
+  __dashSpeedWin=win;
+  document.querySelectorAll('#dashSpeedToggle button').forEach(b=>b.classList.toggle('on', b.dataset.w===win));
+  const k=document.getElementById('dashSpeedKpis'); if(!k||!__dashSpeedLoc) return;
+  if(__dashSpeedBusy) return; __dashSpeedBusy=true; k.innerHTML=splSpinner();
+  const {from,to}=dashSpeedRange(win);
+  try{
+    const res=await splApi({action:'speedToLead', locationId:__dashSpeedLoc, fromDate:from, toDate:to, targetMin:1, tzOffset:new Date().getTimezoneOffset()});
+    if(!res||!res.ok){ k.innerHTML='<div class="muted" style="grid-column:1/-1;padding:14px">Could not load speed to lead'+(res&&res.error?': '+esc(res.error):'')+'</div>'; return; }
+    const u1=(res.within&&res.within[1])||0;
+    k.innerHTML=`
+      <div class="kpi goal"><div class="lbl">Avg time to first call</div><div class="val">${splFmtMin(res.avgMin)}</div></div>
+      <div class="kpi"><div class="lbl">Reached under 1 min</div><div class="val">${u1}%</div></div>
+      <div class="kpi"><div class="lbl">Leads called</div><div class="val">${res.called}<span style="font-size:15px;color:var(--muted)"> / ${res.totalLeads}</span></div></div>
+      <div class="kpi"><div class="lbl">Not called yet</div><div class="val" style="color:${res.uncalled?'var(--warn)':'inherit'}">${res.uncalled}</div></div>`;
+  }catch(e){ k.innerHTML='<div class="muted" style="grid-column:1/-1;padding:14px">Speed to lead error</div>'; }
+  finally{ __dashSpeedBusy=false; }
+}
 function splTs(iso){ if(!iso) return ''; const dt=new Date(iso); if(isNaN(dt)) return String(iso).slice(0,16); return (dt.getMonth()+1)+'/'+dt.getDate()+' '+dt.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}); }
 let __splLast=null, __splLoc='';
 function splGhlLink(id){ return (id&&__splLoc)?('https://app.gohighlevel.com/v2/location/'+encodeURIComponent(__splLoc)+'/contacts/detail/'+encodeURIComponent(id)):''; }
