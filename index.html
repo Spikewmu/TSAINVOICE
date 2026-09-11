@@ -895,7 +895,7 @@
       <div class="field"><label>Client</label><select id="splClient"></select></div>
       <div class="field"><label>Leads from</label><div class="rangewrap"><input type="text" id="spl_txt" readonly placeholder="Click a start day, then an end day" onclick="rpToggle('spl',event)"><input type="hidden" id="spl_from"><input type="hidden" id="spl_to"><div class="rangepop" id="spl_pop" hidden onclick="event.stopPropagation()"></div></div></div>
       <div class="field"><label>Quick</label><div class="row-actions"><button class="btn ghost sm" onclick="splQuick('yesterday')">Yesterday</button><button class="btn ghost sm" onclick="splQuick('7')">Last 7d</button><button class="btn ghost sm" onclick="splQuick('30')">Last 30d</button></div></div>
-      <div class="field"><label>Target (min)</label><input type="number" id="splTarget" value="5" min="1" step="1" style="width:80px"></div>
+      <div class="field"><label>Target (min)</label><input type="number" id="splTarget" value="2" min="1" step="1" style="width:80px"></div>
       <div class="field"><label>&nbsp;</label><button class="btn gold sm" id="splLoadBtn" onclick="splLoad(true)">Load</button></div>
       <span id="splMeta" class="tag" style="align-self:flex-end;margin-bottom:2px"></span>
     </div>
@@ -3169,7 +3169,7 @@ let __splClients=[];
 async function splApi(body){ const hdr={'Content-Type':'application/json'}; if(SESSION&&SESSION.token) hdr['x-session-token']=SESSION.token; else if(SESSION&&SESSION.pw) hdr['x-admin-pass']=SESSION.pw; const r=await fetch('/api/reactivation',{method:'POST',headers:hdr,body:JSON.stringify(body)}); return await r.json(); }
 async function renderSpeedToLead(){
   const ff=document.getElementById('spl_from'), ft=document.getElementById('spl_to');
-  if(ff&&!ff.value) ff.value=isoOffset(todayLocal(),-6); if(ft&&!ft.value) ft.value=todayLocal();
+  if(ff&&!ff.value) ff.value=todayLocal(); if(ft&&!ft.value) ft.value=todayLocal(); // default to today's leads
   rpAttach('spl', function(){}); // one click-start-then-end range field (same as the dashboard)
   const sel=document.getElementById('splClient');
   if(sel && !__splClients.length){
