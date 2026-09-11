@@ -51,17 +51,21 @@
   nav.tabs .navgroup.collapsed .navsub{display:none}
   nav.tabs .navsub{display:flex;flex-direction:column;gap:1px;padding:3px 0}
   main{flex:1;min-width:0;max-width:1120px;padding:22px 22px 60px}
+  .hamburger{display:none;background:transparent;border:1px solid var(--glass-brd);color:var(--ink,#fff);width:42px;height:38px;border-radius:9px;font-size:19px;cursor:pointer;align-items:center;justify-content:center;line-height:1;flex:none}
+  .hamburger:hover{border-color:var(--gold);color:var(--gold)}
   @media(max-width:860px){
     .shell{display:block}
-    nav.tabs{flex-direction:row;flex-wrap:wrap;width:auto;min-width:0;height:auto;overflow-x:auto;overflow-y:hidden;border-right:none;border-bottom:1px solid var(--glass-brd);padding:0 12px;gap:6px}
-    nav.tabs button[data-tab]{border-left:none;border-bottom:2.5px solid transparent;border-radius:0;width:auto;padding:13px 15px;font-size:14px;box-shadow:none}
-    nav.tabs button[data-tab]:hover{background:none}
-    nav.tabs button[data-tab].active{border-bottom-color:var(--gold);background:none;box-shadow:none}
-    nav.tabs .navgroup{flex-direction:row;margin:0}
-    nav.tabs .navhead{display:none}
-    nav.tabs .navgroup.collapsed .navsub{display:flex}
-    nav.tabs .navsub{flex-direction:row;padding:0}
-    main{padding:22px 16px 60px}
+    .hamburger{display:inline-flex}
+    header.app{padding:12px 16px;gap:10px}
+    /* nav becomes a collapsible drawer, hidden until the hamburger opens it */
+    nav.tabs{display:none;flex-direction:column;width:100%;height:auto;max-height:74vh;overflow-y:auto;border-right:none;border-bottom:1px solid var(--glass-brd);padding:8px 10px 12px;gap:2px}
+    nav.tabs.navopen{display:flex}
+    nav.tabs .navgroup{flex-direction:column;margin:0}
+    nav.tabs .navhead{display:flex;width:100%}
+    nav.tabs .navsub{flex-direction:column;padding:2px 0 6px}
+    nav.tabs > button[data-tab], nav.tabs .navsub button[data-tab]{width:100%;text-align:left;border-left:none;border-bottom:none;border-radius:8px;padding:12px 16px;font-size:15px;box-shadow:none}
+    nav.tabs button[data-tab].active{background:var(--gold-soft);color:var(--gold);border-color:transparent;box-shadow:none}
+    main{padding:20px 16px 60px}
   }
   #usersGrouped td:nth-child(4){white-space:normal;vertical-align:top}
   h2.section{font-family:var(--serif);font-weight:700;font-size:24px;margin:4px 0 2px;letter-spacing:-.01em}
@@ -369,6 +373,7 @@
   </select>
   <div class="who" id="whoTag" onclick="openChangePw()" style="cursor:pointer" title="Change your password"></div>
   <button class="logout" onclick="logout()">Sign out</button>
+  <button class="hamburger" id="hamburger" onclick="toggleNav(event)" aria-label="Menu" title="Menu">&#9776;</button>
 </header>
 
 <div id="viewAsBanner" hidden style="background:var(--gold);color:#241c08;padding:7px 20px;font-size:13px;font-weight:600;text-align:center"></div>
@@ -1960,7 +1965,11 @@ function wireTabs(){
   document.querySelectorAll('#tabs button[data-tab]').forEach(b=>b.onclick=()=>showTab(b.dataset.tab));
   document.querySelectorAll('#tabs .navhead').forEach(h=>h.onclick=()=>{ h.closest('.navgroup').classList.toggle('collapsed'); updateNavBadges(); });
 }
+// mobile drawer: hamburger toggles the nav; picking a tab auto-closes it
+function toggleNav(e){ if(e)e.stopPropagation(); const n=document.getElementById('tabs'); if(n) n.classList.toggle('navopen'); }
+function closeNav(){ const n=document.getElementById('tabs'); if(n) n.classList.remove('navopen'); }
 function showTab(t){
+  closeNav();
   document.querySelectorAll('#tabs button[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
   document.querySelectorAll('#tabs .navgroup').forEach(g=>{ if(g.querySelector('button[data-tab="'+t+'"]')) g.classList.remove('collapsed'); }); // reveal the active tab's group
 
