@@ -39,6 +39,19 @@ async function cfgAll() {
   rows.forEach(x => { const d = x.data; const loc = d && String(d.ghlLocationId || '').trim(); if (d && d.ghlApiKey && loc) byLoc[loc] = d; });
   return Object.values(byLoc);
 }
+// locationIds a Sales Manager runs SETTERS for (client.setterMgr === their name), so they only pull their own accounts
+async function managerSetterLocations(name) {
+  const nrm = x => String(x || '').trim().toLowerCase();
+  const me = nrm(name); if (!me) return new Set();
+  const r = await supa('records?select=data&type=eq.client&order=submitted_at.asc&limit=100000');
+  if (!r || !r.ok) return new Set();
+  const rows = await r.json(); const latest = {};
+  rows.forEach(x => { const d = x.data, k = nrm(d && d.name); if (k) latest[k] = d; }); // asc order -> last write per client wins
+  const myClients = new Set(Object.values(latest).filter(d => d.status !== '__DELETED__' && nrm(d.setterMgr) === me).map(d => nrm(d.name)));
+  const cfgs = await cfgAll(); const locs = new Set();
+  cfgs.forEach(c => { if (myClients.has(nrm(c.client || c.key))) locs.add(String(c.ghlLocationId || '').trim()); });
+  return locs;
+}
 // pull calendar events for one v2 client in [fromMs,toMs]; returns normalized events
 async function pullCalV2(cfg, fromMs, toMs) {
   const { loc, base, H } = ghlCtx(cfg);
@@ -123,13 +136,18 @@ async function selectAudience(base, H, loc, pipelineId, fromDay, toDay, excludeT
 export default async function handler(req, res) {
   const b = req.body || {}, q = req.query || {}, h = req.headers || {};
   const s = verifySession(b.token || q.token || h['x-session-token'] || '');
-  let isSuper = false;
-  if (s) { if (s.role !== 'admin') return res.status(200).json({ ok: false, error: 'Admins only' }); isSuper = true; }
-  else { const ap = b.adminPass || q.adminPass || h['x-admin-pass'] || ''; if (ap && (ap === process.env.ADMIN_PASS || ap === process.env.BOT_ADMIN_TOKEN)) isSuper = true; }
-  if (!isSuper) return res.status(401).json({ ok: false, error: 'unauthorized' });
-  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) return res.status(200).json({ ok: false, error: 'not-provisioned' });
-
   const action = q.action || b.action || 'dryrun';
+  // Sales Managers may run ONLY the two speed-to-lead actions, scoped server-side to accounts where they manage setters.
+  const MANAGER_OK = ['speedToLead', 'speedToLeadClients'];
+  let isSuper = false, isManager = false, sName = '';
+  if (s) {
+    sName = s.name || s.username || '';
+    if (s.role === 'admin') isSuper = true;
+    else if (s.role === 'manager' && MANAGER_OK.includes(action)) isManager = true;
+    else return res.status(200).json({ ok: false, error: 'Admins only' });
+  } else { const ap = b.adminPass || q.adminPass || h['x-admin-pass'] || ''; if (ap && (ap === process.env.ADMIN_PASS || ap === process.env.BOT_ADMIN_TOKEN)) isSuper = true; }
+  if (!isSuper && !isManager) return res.status(401).json({ ok: false, error: 'unauthorized' });
+  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) return res.status(200).json({ ok: false, error: 'not-provisioned' });
 
   // multi-client calendar aggregator (no single locationId)
   if (action === 'calendarEvents') {
@@ -165,7 +183,8 @@ export default async function handler(req, res) {
   // list the connected v2 clients (client name + locationId) so the Speed-to-Lead UI can offer a picker
   if (action === 'speedToLeadClients') {
     const cfgs = await cfgAll();
-    const clients = cfgs.filter(c => /^pit-/i.test(String(c.ghlApiKey || ''))).map(c => ({ client: c.client || c.key || c.ghlLocationId, locationId: c.ghlLocationId })).sort((a, c) => String(a.client).localeCompare(String(c.client)));
+    let clients = cfgs.filter(c => /^pit-/i.test(String(c.ghlApiKey || ''))).map(c => ({ client: c.client || c.key || c.ghlLocationId, locationId: c.ghlLocationId })).sort((a, c) => String(a.client).localeCompare(String(c.client)));
+    if (isManager) { const locs = await managerSetterLocations(sName); clients = clients.filter(c => locs.has(String(c.locationId || '').trim())); }
     return res.status(200).json({ ok: true, clients });
   }
 
@@ -229,6 +248,7 @@ export default async function handler(req, res) {
     // Speed to lead: for leads created in [fromDate,toDate], find each lead's FIRST OUTBOUND CALL and the gap from
     // when the lead came in. Bounded (cap) + batched + 15-min cached so it fits the serverless budget + GHL rate limits.
     if (action === 'speedToLead') {
+      if (isManager) { const locs = await managerSetterLocations(sName); if (!locs.has(String(locationId).trim())) return res.status(200).json({ ok: false, error: 'You do not manage setters on this account' }); }
       const fromDay = dayOf(b.fromDate || q.fromDate || ''), toDay = dayOf(b.toDate || q.toDate || '');
       const target = Math.max(1, parseInt(b.targetMin || q.targetMin || 5, 10) || 5);
       const cap = Math.min(Math.max(10, parseInt(b.cap || q.cap || 60, 10) || 60), 150);
