@@ -1969,7 +1969,7 @@ function applyIdentity(){
   ['#eodForm','#dealForm','#postcallForm'].forEach(sel=>{ const cs=document.querySelector(sel+' [name=client]'); if(!cs) return;
     if(opts.length===1){ cs.innerHTML='<option>'+esc(opts[0])+'</option>'; cs.value=opts[0]; cs.disabled=true; }
     else { const cur=cs.value; cs.innerHTML='<option value="">-</option>'+opts.map(c=>'<option>'+esc(c)+'</option>').join(''); cs.value=(cur&&opts.includes(cur))?cur:''; cs.disabled=false; } });
-  postcallClientChanged(); renderEodProducts();
+  postcallClientChanged(); scopeSetterFor('#dealForm'); renderEodProducts();
   renderEodTab(); // reps with 2+ accounts get the one-page, section-per-account End of Day
 }
 
@@ -2021,21 +2021,52 @@ function leaderNames(){
   if(SESSION.name) s.add(SESSION.name);
   return [...s].sort((a,b)=>a.localeCompare(b));
 }
+// reps of a role assigned to a specific offer (via their latest team assignment).
+// No offer selected -> every rep of that role. Offer selected but none assigned on file -> fall back to all,
+// so a form's setter dropdown is never empty. Keeps the closer from having to scroll every setter in the company.
+function repsForClient(role, client){
+  const all=repNames(role);
+  client=String(client||'').trim();
+  if(!client) return all;
+  const scoped=all.filter(name=>{
+    const u=USERS_CACHE.find(x=>String(x.name||'').trim()===String(name).trim());
+    return u ? teamsFor(u.username).includes(client) : false;
+  });
+  return scoped.length?scoped:all;
+}
 function fillLists(){
   // admins/managers who also sell (e.g. Robb closing on MSP) appear in the rep dropdowns
   const ldr=leaderNames();
   document.querySelectorAll('select[data-list]').forEach(sel=>{
     const key=sel.dataset.list;
-    let items = key==='reps' ? [...repNames('closer'),...repNames('setter')]
-      : key==='clients' ? clientNames()
-      : key==='closers' ? repNames('closer')
-      : key==='setters' ? repNames('setter')
-      : (CFG[key]||[]);
+    let items;
+    if(key==='setters'){
+      // scope to the setters assigned to THIS form's selected offer (falls back to all if none picked/assigned)
+      const form=sel.closest('form'), clientVal=form?((form.querySelector('[name=client]')||{}).value||''):'';
+      items=repsForClient('setter', clientVal);
+    } else {
+      items = key==='reps' ? [...repNames('closer'),...repNames('setter')]
+        : key==='clients' ? clientNames()
+        : key==='closers' ? repNames('closer')
+        : (CFG[key]||[]);
+    }
     if(ldr.length && ['reps','closers','setters'].includes(key)) items=[...ldr.filter(n=>!items.includes(n)), ...items];
     const cur=sel.value;
+    if(cur && !items.includes(cur)) items=[cur, ...items]; // never drop a value the user already picked
     sel.innerHTML='<option value="">-</option>'+items.map(i=>`<option>${esc(i)}</option>`).join('');
     if(cur) sel.value=cur;
   });
+}
+// re-scope one form's setter dropdown after its offer changes (keeps the current pick even if now out of scope)
+function scopeSetterFor(formSel){
+  const form=document.querySelector(formSel); if(!form) return;
+  const sel=form.querySelector('[name=setter][data-list="setters"]'); if(!sel) return;
+  const clientVal=(form.querySelector('[name=client]')||{}).value||'';
+  let items=repsForClient('setter', clientVal);
+  const ldr=leaderNames(); if(ldr.length) items=[...ldr.filter(n=>!items.includes(n)), ...items];
+  const cur=sel.value; if(cur && !items.includes(cur)) items=[cur, ...items];
+  sel.innerHTML='<option value="">-</option>'+items.map(i=>`<option>${esc(i)}</option>`).join('');
+  if(cur) sel.value=cur;
 }
 // LOCAL calendar day (not UTC) - using toISOString() here would roll to tomorrow in the evening for US time zones
 function todayLocal(){ const d=new Date(); return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10); }
@@ -2254,6 +2285,7 @@ function postcallClientChanged(){
   const cs=document.querySelector('#postcallForm [name=client]'), ps=document.querySelector('#postcallForm [name=product]'); if(!ps) return;
   const prods = cs && cs.value ? productsForClient(cs.value) : (CFG.products||[]);
   const cur=ps.value; ps.innerHTML='<option value="">-</option>'+prods.map(p=>`<option>${esc(p)}</option>`).join(''); if(cur) ps.value=cur;
+  scopeSetterFor('#postcallForm');
 }
 function postcallOutcomeChanged(){
   const sel=document.querySelector('#postcallForm [name=outcome]'), won = sel && /^Won/.test(sel.value||''), dq = sel && /^Disqualified/.test(sel.value||''), fu = sel && /(Follow-up booked|Callback scheduled|Rescheduled)/.test(sel.value||'');
@@ -5746,6 +5778,7 @@ function dealClientChanged(){
   const items=productsForClient(c), cur=sel.value;
   sel.innerHTML='<option value="">-</option>'+items.map(i=>`<option>${esc(i)}</option>`).join('');
   if(cur&&items.includes(cur)) sel.value=cur;
+  scopeSetterFor('#dealForm');
 }
 function thisMonth(){ return todayLocal().slice(0,7); }
 // cash collected this month for one client: use the same money model as the dashboard (deals + confirmed payments only,
