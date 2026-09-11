@@ -887,7 +887,8 @@
       <div class="field"><label>&nbsp;</label><div class="row-actions"><button class="btn ghost sm" onclick="calShift(-1)">&#9664;</button><button class="btn ghost sm" onclick="calShift(0)">Today</button><button class="btn ghost sm" onclick="calShift(1)">&#9654;</button></div></div>
       <div class="field"><label>&nbsp;</label><b id="calRange" style="font-size:15px"></b></div>
       <div class="field"><label>Client</label><select id="calClient" onchange="calOnClientChange()"><option value="">All clients</option></select></div>
-      <div class="field"><label>Rep (calendar owner)</label><div class="rangewrap"><input type="text" id="calRepBtn" readonly placeholder="All reps" onclick="calRepToggle(event)" style="min-width:160px;cursor:pointer"><div class="rangepop" id="calRepPop" hidden onclick="event.stopPropagation()" style="width:230px;max-height:280px;overflow:auto"></div></div></div>
+      <div class="field"><label>Show by</label><select id="calByBtn" onchange="calSetBy(this.value)"><option value="closer">Closer (calendar)</option><option value="setter">Setter (who set it)</option></select></div>
+      <div class="field"><label id="calRepLbl">Reps</label><div class="rangewrap"><input type="text" id="calRepBtn" readonly placeholder="All reps" onclick="calRepToggle(event)" style="min-width:160px;cursor:pointer"><div class="rangepop" id="calRepPop" hidden onclick="event.stopPropagation()" style="width:230px;max-height:280px;overflow:auto"></div></div></div>
       <div class="field"><label>&nbsp;</label><button class="btn ghost sm" onclick="renderCalendar(true)">Refresh</button></div>
       <span id="calMeta" class="tag" style="align-self:flex-end;margin-bottom:2px"></span>
     </div>
@@ -2356,9 +2357,20 @@ let __calReps=[]; try{ __calReps=JSON.parse(localStorage.getItem('tsa_cal_reps')
 function calSaveRep(){ try{ localStorage.setItem('tsa_cal_reps', JSON.stringify(__calReps)); }catch(e){} }
 // rep + calendar dropdowns are scoped to the selected client (so DHG won't list Prime's Billy, etc.)
 function calScopedEvents(){ const cf=(document.getElementById('calClient')||{}).value||''; return (window.__calEvents||[]).filter(e=>!cf||e.client===cf); }
-function calRepList(){ return [...new Set(calScopedEvents().map(e=>String(e.bookedWith||'').trim()).filter(n=>n && !/^[A-Za-z0-9]{15,}$/.test(n)))].sort(); }
+// T-477 setter attribution: GHL stores only the closer (calendar owner) on an appointment, so the SETTER is matched
+// from the setter's own post-call SET record (client + lead name). Owner toggle switches the whole view by closer vs setter.
+let __calBy='closer'; try{ const v=localStorage.getItem('tsa_cal_by'); if(v==='setter'||v==='closer') __calBy=v; }catch(e){}
+let __calSetterCache=null, __calSetterCacheLen=-1;
+function calSetterMap(){ if(__calSetterCache && __calSetterCacheLen===RECORDS.length) return __calSetterCache; const m={}; collapsePostcall(RECORDS).forEach(x=>{ if(x.role!=='Setter') return; if(!/^(Booked|Follow-up booked|Callback)/i.test(String(x.outcome||''))) return; const lead=String(x.lead||'').trim().toLowerCase(); if(!lead) return; m[String(x.client||'').trim().toLowerCase()+'|'+lead]=String(x.rep||'').trim(); }); __calSetterCache=m; __calSetterCacheLen=RECORDS.length; return m; }
+function calSetterFor(client, lead){ const k=String(client||'').trim().toLowerCase()+'|'+String(lead||'').trim().toLowerCase(); return calSetterMap()[k]||''; }
+function calWho(e){ return __calBy==='setter' ? calSetterFor(e.client, e.lead||e.title) : String(e.bookedWith||'').trim(); } // the person we filter/group by, per the owner toggle
+function calSetBy(v){ __calBy=(v==='setter')?'setter':'closer'; try{ localStorage.setItem('tsa_cal_by',__calBy); }catch(e){} __calReps=[]; calSaveRep(); calPopulateReps(); renderCalendarGrid(); }
+function calRepList(){ return [...new Set(calScopedEvents().map(calWho).map(s=>String(s||'').trim()).filter(n=>n && !/^[A-Za-z0-9]{15,}$/.test(n)))].sort(); }
 function calRepLabel(){ const b=document.getElementById('calRepBtn'); if(!b) return; b.value = !__calReps.length ? 'All reps' : (__calReps.length===1 ? __calReps[0] : __calReps.length+' reps'); }
-function calPopulateReps(){ const reps=calRepList(); __calReps=__calReps.filter(r=>reps.includes(r)); calRepLabel(); const pop=document.getElementById('calRepPop'); if(pop && !pop.hidden) calRepRender(); }
+function calPopulateReps(){ const reps=calRepList(); __calReps=__calReps.filter(r=>reps.includes(r)); calRepLabel();
+  const bsel=document.getElementById('calByBtn'); if(bsel) bsel.value=__calBy;
+  const lbl=document.getElementById('calRepLbl'); if(lbl) lbl.textContent=__calBy==='setter'?'Setters':'Closers';
+  const pop=document.getElementById('calRepPop'); if(pop && !pop.hidden) calRepRender(); }
 function calRepToggle(e){ if(e)e.stopPropagation(); const pop=document.getElementById('calRepPop'); if(!pop) return; if(pop.hidden){ calRepRender(); pop.hidden=false; } else pop.hidden=true; }
 function calRepRender(){ const pop=document.getElementById('calRepPop'); if(!pop) return; const reps=calRepList();
   pop.innerHTML=`<div style="display:flex;justify-content:space-between;margin-bottom:6px;padding-bottom:5px;border-bottom:1px solid var(--border)"><a class="linklike" style="cursor:pointer;font-size:12px" onclick="event.stopPropagation();calRepAll(true)">Select all</a><a class="linklike" style="cursor:pointer;font-size:12px" onclick="event.stopPropagation();calRepAll(false)">Clear</a></div>`
@@ -2407,7 +2419,8 @@ function calDetail(idx){ const e=(window.__calRendered||[])[idx]; if(!e) return;
       +'<button class="btn ghost sm" onclick="calDetailClose()" style="flex:none">&#10005;</button></div>'
     +'<div style="margin-top:12px;display:grid;grid-template-columns:auto 1fr;gap:8px 14px;font-size:13px">'
       +'<span class="muted">When</span><span>'+esc(usDate(calLocalDate(e.start)))+' &middot; '+esc(calFmtT(e.start))+(e.end?' - '+esc(calFmtT(e.end)):'')+' <span class="muted">'+esc(calTzLabel())+'</span></span>'
-      +'<span class="muted">Rep (calendar)</span><span>'+esc(rep)+'</span>'
+      +'<span class="muted">Closer (calendar)</span><span>'+esc(rep)+'</span>'
+      +'<span class="muted">Set by</span><span>'+(calSetterFor(e.client,e.lead||e.title)?esc(calSetterFor(e.client,e.lead||e.title)):'<span class="muted">not matched to a post-call</span>')+'</span>'
       +'<span class="muted">Client</span><span>'+esc(e.client||'')+'</span>'
       +'<span class="muted">Calendar</span><span>'+esc(e.calendar||'')+'</span>'
       +'<span class="muted">Status</span><span>'+calStatusBadge(e.status)+'</span>'
@@ -2420,7 +2433,7 @@ function renderCalendarGrid(){
   const cf=(document.getElementById('calClient')||{}).value||'';
   const tf=(document.getElementById('calType')||{}).value||'';
   const rf=Array.isArray(__calReps)?__calReps:[]; // multi-select: empty = all reps
-  const flt=(window.__calEvents||[]).filter(e=>(!cf||e.client===cf)&&(!tf||e.calendar===tf)&&(!rf.length||rf.includes(String(e.bookedWith||'').trim())));
+  const flt=(window.__calEvents||[]).filter(e=>(!cf||e.client===cf)&&(!tf||e.calendar===tf)&&(!rf.length||rf.includes(String(calWho(e)||'').trim())));
   const dayKeys=[]; for(let i=0;i<N;i++){ const d=new Date(start); d.setDate(d.getDate()+i); dayKeys.push(calYmd(d)); }
   const pm=iso=>{ const d=new Date(iso); return isNaN(d)?null:(d.getHours()*60+d.getMinutes()); };
   const durMin=e=>{ const a=new Date(e.start), b=new Date(e.end); if(isNaN(a)||isNaN(b)) return 30; const m=(b-a)/60000; return (m>0&&m<=24*60)?m:30; };
@@ -2439,7 +2452,7 @@ function renderCalendarGrid(){
     const lanes=Math.max(1,laneEnd.length);
     let inner=''; for(let h=minM; h<=maxM; h+=60){ inner+='<div style="position:absolute;left:0;right:0;top:'+((h-minM)*ppm)+'px;border-top:1px solid var(--line,#2a3348);opacity:.3"></div>'; }
     list.forEach(it=>{ const e=it.e, top=(it.s-minM)*ppm, hh=Math.max(20,(it.en-it.s)*ppm-1), w=100/lanes, left=it.lane*w, col=calClientColor(e.client);
-      const bw=String(e.bookedWith||'').trim(); const rep=(bw && !/^[A-Za-z0-9]{15,}$/.test(bw))?bw:''; const co=String(e.client||'').trim(); const lead=String(e.lead||e.title||''); const ci=window.__calRendered.push(e)-1;
+      const bw=String(calWho(e)||'').trim(); const rep=(bw && !/^[A-Za-z0-9]{15,}$/.test(bw))?bw:''; const co=String(e.client||'').trim(); const lead=String(e.lead||e.title||''); const ci=window.__calRendered.push(e)-1;
       const full=lead+(rep?(' × '+rep):'')+(co?(' - '+co):'');
       inner+='<div onclick="calDetail('+ci+')" title="'+esc(full)+'" style="cursor:pointer;position:absolute;top:'+top+'px;height:'+hh+'px;left:calc('+left+'% + 1px);width:calc('+w+'% - 3px);background:'+calStatusBg(e.status)+';border-left:3px solid '+col+';border-radius:4px;padding:2px 5px;overflow:hidden;box-sizing:border-box;font-size:'+(N<=2?11:10)+'px;line-height:1.2">'
         +'<div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'
