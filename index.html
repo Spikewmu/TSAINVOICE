@@ -433,7 +433,7 @@
     <h2 class="section" id="dashTitle">Dashboard</h2>
     <p class="hint" id="dashHint">Live view of everything submitted. Filter by date range, client, and role.</p>
     <div class="filters" id="dashFilters">
-      <div class="field"><label>Date range</label><div class="rangewrap"><input type="text" id="fRange" placeholder="Click a start day, then an end day" readonly onclick="rangePopToggle(event)"><input type="hidden" id="fFrom"><input type="hidden" id="fTo"><div class="rangepop" id="fRangePop" hidden></div></div></div>
+      <div class="field"><label>Date range</label><div class="rangewrap"><input type="text" id="fRange" placeholder="Click a start day, then an end day" readonly onclick="rangePopToggle(event)"><input type="hidden" id="fFrom"><input type="hidden" id="fTo"><div class="rangepop" id="fRangePop" hidden onclick="event.stopPropagation()"></div></div></div>
       <div class="field"><label>Quick range</label><div class="row-actions"><button class="btn ghost sm" onclick="dashRange('today')">Today</button><button class="btn ghost sm" onclick="dashRange('yesterday')">Yesterday</button><button class="btn ghost sm" onclick="dashRange('week')">This week</button><button class="btn ghost sm" onclick="dashRange('month')">This month</button><button class="btn ghost sm" onclick="dashRange('30')">Last 30d</button><button class="btn ghost sm" onclick="dashRange('all')">All time</button></div></div>
       <div class="field"><label>Client</label><select id="fClient" onchange="renderDash()"></select></div>
       <div class="field"><label>Role</label><select id="fRole" onchange="renderDash()"><option value="">All</option><option>Closer</option><option>Setter</option></select></div>
@@ -2869,12 +2869,12 @@ function rangeRender(){
     if(s&&e){ if(iso===lo&&iso===hi) cls+=' only'; else if(iso===lo) cls+=' end1'; else if(iso===hi) cls+=' end2'; else if(iso>lo&&iso<hi) cls+=' inrange'; }
     else if(s&&iso===s) cls+=' only';
     if(iso===today) cls+=' today';
-    cells+=`<button type="button" class="${cls}" onclick="rangePick('${iso}')">${d}</button>`;
+    cells+=`<button type="button" class="${cls}" onclick="event.stopPropagation();rangePick('${iso}')">${d}</button>`;
   }
   const DOW=['Su','Mo','Tu','We','Th','Fr','Sa'];
-  pop.innerHTML=`<div class="rphead"><button type="button" class="rpnav" onclick="rangeNav(-1)">&#8249;</button><b>${MON[m]} ${y}</b><button type="button" class="rpnav" onclick="rangeNav(1)">&#8250;</button></div>`
+  pop.innerHTML=`<div class="rphead"><button type="button" class="rpnav" onclick="event.stopPropagation();rangeNav(-1)">&#8249;</button><b>${MON[m]} ${y}</b><button type="button" class="rpnav" onclick="event.stopPropagation();rangeNav(1)">&#8250;</button></div>`
     +`<div class="rpgrid">`+DOW.map(x=>`<div class="rpdow">${x}</div>`).join('')+cells+`</div>`
-    +`<div class="rpfoot"><span>${s?(e?'Range set':'Now pick the end day'):'Pick the start day'}</span><button type="button" class="rpnav" style="width:auto;padding:0 9px;font-size:12px" onclick="rangeClear()">Clear</button></div>`;
+    +`<div class="rpfoot"><span>${s?(e?'Range set':'Now pick the end day'):'Pick the start day'}</span><button type="button" class="rpnav" style="width:auto;padding:0 9px;font-size:12px" onclick="event.stopPropagation();rangeClear()">Clear</button></div>`;
 }
 function rangePick(iso){
   const s=window.__rangeStart, e=window.__rangeEnd;
