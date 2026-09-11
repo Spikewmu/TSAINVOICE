@@ -3209,10 +3209,19 @@ function splRender(d){
     <div class="kpi splclk" style="${clk}" onclick="splSetView('within')"><div class="lbl">Called within ${d.target} min</div><div class="val">${wT}%</div><div class="lbl" style="margin-top:4px">${wN} lead${wN===1?'':'s'} &rsaquo;</div></div>
     <div class="kpi splclk" style="${clk}" onclick="splSetView('all')"><div class="lbl">Leads called</div><div class="val">${d.called}<span style="font-size:15px;color:var(--muted)"> / ${d.totalLeads}</span></div></div>
     <div class="kpi splclk" style="${clk}" onclick="splSetView('uncalled')"><div class="lbl">Not called yet</div><div class="val" style="color:${d.uncalled?'var(--warn)':'inherit'}">${d.uncalled}${d.uncalled?' <span style="font-size:14px">&rsaquo;</span>':''}</div></div>`;
-  const rt=document.getElementById('splByRep');
-  if(rt) rt.innerHTML=`<thead><tr><th>Rep</th><th class="num">Leads</th><th class="num">Avg to 1st call</th></tr></thead><tbody>`
-    +((d.byRep&&d.byRep.length)?d.byRep.map(r=>`<tr><td>${esc(r.rep)}</td><td class="num">${r.count}</td><td class="num">${splFmtMin(r.avgMin)}</td></tr>`).join(''):`<tr><td colspan="3" class="muted" style="padding:14px">No calls in this window.</td></tr>`)+`</tbody>`;
+  splRenderByRep();
   splRenderLeads();
+}
+let __splRepSort={key:'avgMin',dir:1};
+function splSortRep(key){ const s=__splRepSort; if(s.key===key) s.dir=-s.dir; else { s.key=key; s.dir=1; } splRenderByRep(); }
+function splRenderByRep(){
+  const d=__splLast, rt=document.getElementById('splByRep'); if(!d||!rt) return;
+  const s=__splRepSort;
+  const rows=(d.byRep||[]).slice().sort((a,b)=> s.key==='rep' ? String(a.rep).localeCompare(String(b.rep))*s.dir : ((a[s.key]||0)-(b[s.key]||0))*s.dir);
+  const ar=k=> s.key===k?(s.dir>0?' &#9650;':' &#9660;'):'';
+  const th=(k,label,cls)=>`<th class="${cls||''}" style="cursor:pointer" onclick="splSortRep('${k}')">${label}${ar(k)}</th>`;
+  rt.innerHTML=`<thead><tr>${th('rep','Rep')}${th('count','Leads','num')}${th('avgMin','Avg to 1st call','num')}</tr></thead><tbody>`
+    +(rows.length?rows.map(r=>`<tr><td>${esc(r.rep)}</td><td class="num">${r.count}</td><td class="num">${splFmtMin(r.avgMin)}</td></tr>`).join(''):`<tr><td colspan="3" class="muted" style="padding:14px">No calls in this window.</td></tr>`)+`</tbody>`;
 }
 function splSetView(v){ const sel=document.getElementById('splLeadView'); if(sel){ sel.value=v; splRenderLeads(); const p=sel.closest('.panel'); if(p) p.scrollIntoView({behavior:'smooth',block:'nearest'}); } }
 function splRenderLeads(){
