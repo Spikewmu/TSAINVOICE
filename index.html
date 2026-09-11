@@ -887,7 +887,7 @@
       <div class="field"><label>&nbsp;</label><div class="row-actions"><button class="btn ghost sm" onclick="calShift(-1)">&#9664;</button><button class="btn ghost sm" onclick="calShift(0)">Today</button><button class="btn ghost sm" onclick="calShift(1)">&#9654;</button></div></div>
       <div class="field"><label>&nbsp;</label><b id="calRange" style="font-size:15px"></b></div>
       <div class="field"><label>Client</label><select id="calClient" onchange="calOnClientChange()"><option value="">All clients</option></select></div>
-      <div class="field"><label>Rep (calendar owner)</label><select id="calRep" onchange="calSaveRep();renderCalendarGrid()"><option value="">All reps</option></select></div>
+      <div class="field"><label>Rep (calendar owner)</label><div class="rangewrap"><input type="text" id="calRepBtn" readonly placeholder="All reps" onclick="calRepToggle(event)" style="min-width:160px;cursor:pointer"><div class="rangepop" id="calRepPop" hidden onclick="event.stopPropagation()" style="width:230px;max-height:280px;overflow:auto"></div></div></div>
       <div class="field"><label>&nbsp;</label><button class="btn ghost sm" onclick="renderCalendar(true)">Refresh</button></div>
       <span id="calMeta" class="tag" style="align-self:flex-end;margin-bottom:2px"></span>
     </div>
@@ -2334,10 +2334,20 @@ function calViewStart(){ const ref=__calRef||new Date(); if((__calView||7)===7) 
 function calSetView(n){ __calView=n; try{ localStorage.setItem('tsa_cal_view',String(n)); }catch(e){} renderCalendar(); }
 function calShift(delta){ const step=(__calView||7); if(!__calRef||delta===0) __calRef=new Date(); if(delta) __calRef.setDate(__calRef.getDate()+(delta>0?step:-step)); renderCalendar(); }
 function calSaveType(){ try{ localStorage.setItem('tsa_cal_type', (document.getElementById('calType')||{}).value||''); }catch(e){} }
-function calSaveRep(){ try{ localStorage.setItem('tsa_cal_rep', (document.getElementById('calRep')||{}).value||''); }catch(e){} }
+// rep filter is now MULTI-select (checkbox dropdown). __calReps = selected rep names; empty = all reps.
+let __calReps=[]; try{ __calReps=JSON.parse(localStorage.getItem('tsa_cal_reps')||'[]')||[]; }catch(e){ __calReps=[]; }
+function calSaveRep(){ try{ localStorage.setItem('tsa_cal_reps', JSON.stringify(__calReps)); }catch(e){} }
 // rep + calendar dropdowns are scoped to the selected client (so DHG won't list Prime's Billy, etc.)
 function calScopedEvents(){ const cf=(document.getElementById('calClient')||{}).value||''; return (window.__calEvents||[]).filter(e=>!cf||e.client===cf); }
-function calPopulateReps(){ const rsel=document.getElementById('calRep'); if(!rsel) return; let cur=rsel.value; if(!cur){ try{cur=localStorage.getItem('tsa_cal_rep')||'';}catch(e){} } const reps=[...new Set(calScopedEvents().map(e=>String(e.bookedWith||'').trim()).filter(n=>n && !/^[A-Za-z0-9]{15,}$/.test(n)))].sort(); rsel.innerHTML='<option value="">All reps</option>'+reps.map(n=>'<option>'+esc(n)+'</option>').join(''); rsel.value=reps.includes(cur)?cur:''; }
+function calRepList(){ return [...new Set(calScopedEvents().map(e=>String(e.bookedWith||'').trim()).filter(n=>n && !/^[A-Za-z0-9]{15,}$/.test(n)))].sort(); }
+function calRepLabel(){ const b=document.getElementById('calRepBtn'); if(!b) return; b.value = !__calReps.length ? 'All reps' : (__calReps.length===1 ? __calReps[0] : __calReps.length+' reps'); }
+function calPopulateReps(){ const reps=calRepList(); __calReps=__calReps.filter(r=>reps.includes(r)); calRepLabel(); const pop=document.getElementById('calRepPop'); if(pop && !pop.hidden) calRepRender(); }
+function calRepToggle(e){ if(e)e.stopPropagation(); const pop=document.getElementById('calRepPop'); if(!pop) return; if(pop.hidden){ calRepRender(); pop.hidden=false; } else pop.hidden=true; }
+function calRepRender(){ const pop=document.getElementById('calRepPop'); if(!pop) return; const reps=calRepList();
+  pop.innerHTML=`<div style="display:flex;justify-content:space-between;margin-bottom:6px;padding-bottom:5px;border-bottom:1px solid var(--border)"><a class="linklike" style="cursor:pointer;font-size:12px" onclick="event.stopPropagation();calRepAll(true)">Select all</a><a class="linklike" style="cursor:pointer;font-size:12px" onclick="event.stopPropagation();calRepAll(false)">Clear</a></div>`
+    +(reps.length?reps.map(r=>`<label style="display:flex;gap:8px;align-items:center;padding:5px 2px;font-size:13px;cursor:pointer"><input type="checkbox" value="${esc(r)}" ${__calReps.includes(r)?'checked':''} onclick="event.stopPropagation();calRepChange()">${esc(r)}</label>`).join(''):'<span class="muted" style="font-size:12px">No reps in view</span>'); }
+function calRepChange(){ __calReps=[...document.querySelectorAll('#calRepPop input:checked')].map(cb=>cb.value); calRepLabel(); calSaveRep(); renderCalendarGrid(); }
+function calRepAll(on){ __calReps = on?calRepList().slice():[]; calRepRender(); calRepLabel(); calSaveRep(); renderCalendarGrid(); }
 function calPopulateCalendars(){ const tsel=document.getElementById('calType'); if(!tsel) return; let cur=tsel.value; if(!cur){ try{cur=localStorage.getItem('tsa_cal_type')||'';}catch(e){} } const cnames=[...new Set(calScopedEvents().map(e=>e.calendar).filter(Boolean))].sort(); tsel.innerHTML='<option value="">All calendars</option>'+cnames.map(n=>'<option>'+esc(n)+'</option>').join(''); tsel.value=cnames.includes(cur)?cur:''; }
 function calOnClientChange(){ calPopulateCalendars(); calPopulateReps(); renderCalendarGrid(); }
 function calRepLine(w){ w=String(w||'').trim(); return (w && !/^[A-Za-z0-9]{15,}$/.test(w)) ? 'with '+esc(w) : '<span style="opacity:.55">unassigned</span>'; }
@@ -2392,8 +2402,8 @@ function renderCalendarGrid(){
   const N=__calView||7; const start=calViewStart();
   const cf=(document.getElementById('calClient')||{}).value||'';
   const tf=(document.getElementById('calType')||{}).value||'';
-  const rf=(document.getElementById('calRep')||{}).value||'';
-  const flt=(window.__calEvents||[]).filter(e=>(!cf||e.client===cf)&&(!tf||e.calendar===tf)&&(!rf||String(e.bookedWith||'').trim()===rf));
+  const rf=Array.isArray(__calReps)?__calReps:[]; // multi-select: empty = all reps
+  const flt=(window.__calEvents||[]).filter(e=>(!cf||e.client===cf)&&(!tf||e.calendar===tf)&&(!rf.length||rf.includes(String(e.bookedWith||'').trim())));
   const dayKeys=[]; for(let i=0;i<N;i++){ const d=new Date(start); d.setDate(d.getDate()+i); dayKeys.push(calYmd(d)); }
   const pm=iso=>{ const d=new Date(iso); return isNaN(d)?null:(d.getHours()*60+d.getMinutes()); };
   const durMin=e=>{ const a=new Date(e.start), b=new Date(e.end); if(isNaN(a)||isNaN(b)) return 30; const m=(b-a)/60000; return (m>0&&m<=24*60)?m:30; };
