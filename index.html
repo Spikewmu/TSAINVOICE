@@ -3188,7 +3188,7 @@ async function splLoad(force){
   const btn=document.getElementById('splLoadBtn'), meta=document.getElementById('splMeta');
   if(btn){ btn.disabled=true; btn.textContent='Loading...'; } if(meta) meta.textContent='Pulling from GHL - can take a few seconds...';
   try{
-    const res=await splApi({action:'speedToLead', locationId:loc, fromDate:from, toDate:to, targetMin:target, force:!!force});
+    const res=await splApi({action:'speedToLead', locationId:loc, fromDate:from, toDate:to, targetMin:target, tzOffset:new Date().getTimezoneOffset(), force:!!force});
     if(!res||!res.ok){ if(meta) meta.textContent=(res&&res.error)||'Failed'; toast('Speed to lead failed'+(res&&res.error?': '+res.error:''),true); return; }
     splRender(res); if(meta) meta.textContent=`${res.totalLeads} leads · ${res.called} called${res.cached?' · cached':''}`;
   }catch(e){ if(meta) meta.textContent='Error'; toast('Speed to lead error',true); }

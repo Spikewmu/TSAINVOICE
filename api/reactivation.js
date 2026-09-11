@@ -233,7 +233,11 @@ export default async function handler(req, res) {
       const target = Math.max(1, parseInt(b.targetMin || q.targetMin || 5, 10) || 5);
       const cap = Math.min(Math.max(10, parseInt(b.cap || q.cap || 60, 10) || 60), 150);
       const force = !!(b.force || q.force);
-      const cacheKey = 'spl:' + loc + ':' + fromDay + ':' + toDay + ':' + target;
+      // window boundaries follow the VIEWER's timezone (so "today" matches the local dates shown in the table, not UTC).
+      // tzOffset = new Date().getTimezoneOffset() from the browser (minutes to add to local to get UTC; ET=240/300).
+      const tzOff = parseInt(b.tzOffset != null ? b.tzOffset : (q.tzOffset || 0), 10) || 0;
+      const localDay = iso => { const t = Date.parse(iso); return isFinite(t) ? new Date(t - tzOff * 60000).toISOString().slice(0, 10) : ''; };
+      const cacheKey = 'spl:' + loc + ':' + fromDay + ':' + toDay + ':' + target + ':' + tzOff;
       if (!force) {
         try { const cr = await supa('records?select=data&type=eq.splcache&data->>k=eq.' + encodeURIComponent(cacheKey) + '&order=submitted_at.desc&limit=1');
           if (cr && cr.ok) { const rows = await cr.json(); const c = rows[0] && rows[0].data; if (c && c.payload && (Date.now() - (c.at || 0)) < 15 * 60 * 1000) return res.status(200).json({ ...c.payload, cached: true }); } } catch (e) {}
@@ -245,7 +249,7 @@ export default async function handler(req, res) {
         if (startAfterId) url += '&startAfterId=' + encodeURIComponent(startAfterId) + '&startAfter=' + encodeURIComponent(startAfter);
         const { ok, j } = await jretry(url, { headers: H }); if (!ok) break;
         const arr = (j && j.contacts) || []; if (!arr.length) break;
-        for (const c of arr) { const created = c.dateAdded || c.createdAt || '', cd = dayOf(created);
+        for (const c of arr) { const created = c.dateAdded || c.createdAt || '', cd = localDay(created);
           if (fromDay && cd < fromDay) { passedWindow = true; continue; }
           if (toDay && cd > toDay) continue;
           leads.push({ id: c.id, name: c.contactName || ((c.firstName || '') + ' ' + (c.lastName || '')).trim() || c.id, created }); if (leads.length >= cap) break; }
