@@ -737,14 +737,13 @@
     </div>
 
     <div class="panel"><h3>Wins &amp; account updates</h3><div style="padding:14px">
-      <p class="fieldhelp" style="margin:0 0 12px">For each account you manage, write your update and any win. Leave an account blank if there is nothing to report. Saving updates all of them at once.</p>
+      <p class="fieldhelp" style="margin:0 0 12px">For each account you manage, write your update and any win. Leave an account blank if there is nothing to report. The single <b>Save all updates</b> button below saves these <b>and</b> the whole-team note together.</p>
       <div id="fillGrid"></div>
-      <div class="row-actions" style="margin-top:12px"><button class="btn gold sm" onclick="saveFillGrid()">Save my updates</button></div>
     </div></div>
 
     <div class="panel"><h3>Whole team updates <span style="font-weight:400;color:var(--muted);font-size:12px">- not tied to a specific account</span></h3><div style="padding:14px">
       <div class="field full"><label>Update for the whole team (optional)</label><textarea id="agTeam" rows="2" style="width:100%" placeholder="Announcements or notes for everyone"></textarea></div>
-      <div class="row-actions" style="margin-top:8px"><button class="btn sm" onclick="saveTeamUpdate()">Post team update</button></div>
+      <div class="row-actions" style="margin-top:10px"><button class="btn gold" onclick="saveMeeting()">Save all updates</button><span class="tag">Saves your account wins/updates/needs and this whole-team note in one go.</span></div>
     </div></div>
 
     <div class="panel"><h3>Agenda <span id="mtgWhen" class="muted" style="font-weight:400;font-size:12px"></span></h3><div style="padding:16px" id="agendaView"></div></div>
@@ -2663,7 +2662,7 @@ function renderMeeting(){
   const tgt=document.getElementById('mtgTarget'); if(tgt) tgt.textContent='You are filling notes for the meeting on '+usDate(date)+'.';
   const by=((SESSION&&SESSION.name)||'').trim();
   const myTeam=collapseAgenda(RECORDS).find(x=>(x.date||'').slice(0,10)===date && !(x.client||'').trim() && (x.section||'')==='Whole team' && (x.by||'').trim()===by);
-  const at=document.getElementById('agTeam'); if(at) at.value=myTeam?(myTeam.text||''):'';
+  const at=document.getElementById('agTeam'); if(at){ at.value=myTeam?(myTeam.text||''):''; at.dataset.orig=at.value; }
   renderFillGrid(); renderAgendaView(date); renderPromises(date);
 }
 // one block per account with an Update box and a Win box, prefilled with what this person already wrote
@@ -2682,18 +2681,17 @@ function renderFillGrid(){
     </div>`; }).join('')
     : '<p class="muted">Add clients on the Client Overview tab first.</p>';
 }
-function saveFillGrid(){
-  const date=(document.getElementById('mtgDate').value)||todayLocal();
-  const els=[...document.querySelectorAll('#fillGrid [data-client]')];
-  const jobs=[]; els.forEach(e=>{ const text=(e.value||'').trim(), orig=(e.dataset.orig||'').trim(); if(text!==orig) jobs.push(addRecord({type:'agenda',date,section:e.dataset.section,client:e.dataset.client,text,by:(SESSION&&SESSION.name)||''})); });
+// T-480: ONE save for the whole tab. The old two separate buttons each re-rendered the tab on save, which reset every
+// field to its last-SAVED value - so saving one section wiped whatever you'd typed in the other but not yet saved.
+// This collects the account grid AND the whole-team note together, saves once, then re-renders once.
+function saveMeeting(){
+  const date=(document.getElementById('mtgDate').value)||todayLocal(), by=(SESSION&&SESSION.name)||'';
+  const jobs=[];
+  [...document.querySelectorAll('#fillGrid [data-client]')].forEach(e=>{ const text=(e.value||'').trim(), orig=(e.dataset.orig||'').trim(); if(text!==orig) jobs.push(addRecord({type:'agenda',date,section:e.dataset.section,client:e.dataset.client,text,by})); });
+  const at=document.getElementById('agTeam'); if(at){ const text=(at.value||'').trim(), orig=(at.dataset.orig||'').trim(); if(text!==orig) jobs.push(addRecord({type:'agenda',date,section:'Whole team',client:'',text,by})); }
   if(!jobs.length){ toast('No changes to save'); return; }
-  Promise.all(jobs).then(()=>{ toast('Saved your account updates'); renderMeeting(); });
-}
-function saveTeamUpdate(){
-  const date=(document.getElementById('mtgDate').value)||todayLocal();
-  const t=(document.getElementById('agTeam').value||'').trim();
-  if(!t){ toast('Nothing to post',true); return; }
-  addRecord({type:'agenda',date,section:'Whole team',client:'',text:t,by:(SESSION&&SESSION.name)||''}).then(()=>{ document.getElementById('agTeam').value=''; toast('Posted'); renderMeeting(); });
+  Promise.all(jobs).then(()=>{ toast('Saved '+jobs.length+' update'+(jobs.length>1?'s':'')+' for '+usDate(date)); renderMeeting(); })
+    .catch(()=>toast('Save failed - try again',true));
 }
 function fmtEntry(x){ return `<div class="agentry">${esc(x.text||'')} <span class="agby">- ${esc(x.by||'')}</span></div>`; }
 // The activity days a meeting reviews: the PRIOR day, except a Monday meeting reviews Fri+Sat+Sun
