@@ -411,9 +411,11 @@
   <section id="tab-dash">
     <div id="getStarted" hidden></div>
     <h2 class="section" id="dashTitle">Dashboard</h2>
-    <p class="hint" id="dashHint">Live view of everything submitted. Filter by month, client, and role.</p>
+    <p class="hint" id="dashHint">Live view of everything submitted. Filter by date range, client, and role.</p>
     <div class="filters" id="dashFilters">
-      <div class="field"><label>Month</label><select id="fMonth" onchange="renderDash()"></select></div>
+      <div class="field"><label>From</label><input type="date" id="fFrom" onchange="renderDash()" oninput="renderDash()"></div>
+      <div class="field"><label>To</label><input type="date" id="fTo" onchange="renderDash()" oninput="renderDash()"></div>
+      <div class="field"><label>Quick range</label><div class="row-actions"><button class="btn ghost sm" onclick="rangePreset('fFrom','fTo','today','renderDash')">Today</button><button class="btn ghost sm" onclick="rangePreset('fFrom','fTo','yesterday','renderDash')">Yesterday</button><button class="btn ghost sm" onclick="rangePreset('fFrom','fTo','week','renderDash')">This week</button><button class="btn ghost sm" onclick="rangePreset('fFrom','fTo','month','renderDash')">This month</button><button class="btn ghost sm" onclick="rangePreset('fFrom','fTo','30','renderDash')">Last 30d</button><button class="btn ghost sm" onclick="rangePreset('fFrom','fTo','all','renderDash')">All time</button></div></div>
       <div class="field"><label>Client</label><select id="fClient" onchange="renderDash()"></select></div>
       <div class="field"><label>Role</label><select id="fRole" onchange="renderDash()"><option value="">All</option><option>Closer</option><option>Setter</option></select></div>
       <button class="btn ghost sm" onclick="renderDash()">Refresh</button>
@@ -2812,12 +2814,11 @@ function dashScopeClients(){
   if(r==='manager'||r==='webinarteam'){ const m=managedClients(); return m.length?m:null; }
   return null;
 }
-function filtered(){ const m=document.getElementById('fMonth').value,c=document.getElementById('fClient').value,r=document.getElementById('fRole').value,sc=dashScopeClients(); return activityRecords().filter(x=>(!m||monthKey(x.date)===m)&&(!c||x.client===c)&&(!r||x.role===r)&&(!sc||sc.includes(x.client))); }
+function filtered(){ const from=((document.getElementById('fFrom')||{}).value||'').slice(0,10),to=((document.getElementById('fTo')||{}).value||'').slice(0,10),c=document.getElementById('fClient').value,r=document.getElementById('fRole').value,sc=dashScopeClients(); return activityRecords().filter(x=>((!from&&!to)||inRange(x.date,from,to))&&(!c||x.client===c)&&(!r||x.role===r)&&(!sc||sc.includes(x.client))); }
+let DASH_RANGE_INIT=false;
 function buildFilterOptions(){
-  const months=[...new Set(RECORDS.map(x=>monthKey(x.date)).filter(Boolean))].filter(mk=>mk<=thisMonth()).sort().reverse(); // no future months (e.g. an expected payment dated next month)
-  const fm=document.getElementById('fMonth'),cur=fm.value,first=fm.options.length===0;
-  fm.innerHTML='<option value="">All months</option>'+months.map(m=>`<option value="${m}">${usMonth(m)}</option>`).join('');
-  if(cur)fm.value=cur; else if(first&&months[0])fm.value=months[0]; // default to latest month only on first build; keep an explicit "All months" choice
+  // default the date range to the current month on first open (keeps the old "latest month" default); respect the user's choice after
+  if(!DASH_RANGE_INIT){ DASH_RANGE_INIT=true; const ff=document.getElementById('fFrom'), ft=document.getElementById('fTo'), t=todayLocal(); if(ff&&!ff.value) ff.value=t.slice(0,7)+'-01'; if(ft&&!ft.value) ft.value=t; }
   const fc=document.getElementById('fClient'),cc=fc.value;
   const sc=dashScopeClients(), clist=sc?sc.filter(c=>c!==' none'):clientNames();
   fc.innerHTML='<option value="">'+(sc?('My account'+(clist.length>1?'s':'')):'All clients')+'</option>'+clist.map(c=>`<option>${esc(c)}</option>`).join('');
@@ -2888,7 +2889,7 @@ function renderDash(){
   const df=document.getElementById('dashFilters'); if(df) df.hidden=founder;
   const dt=document.getElementById('dashTitle'), dh=document.getElementById('dashHint');
   if(founder){ const co=(teamsFor(SESSION.username)[0])||SESSION.name; if(dt) dt.textContent=co; if(dh) dh.textContent='Your live performance dashboard.'; }
-  else if(dt){ dt.textContent='Dashboard'; if(dh) dh.textContent='Live view of everything submitted. Filter by month, client, and role.'; }
+  else if(dt){ dt.textContent='Dashboard'; if(dh) dh.textContent='Live view of everything submitted. Filter by date range, client, and role.'; }
   const recs=filtered(); const s=agg(recs);
   const gm=monthlyGoalScope(), gpc=gm?Math.min(100,Math.round(s.cashCollected/gm*100)):0;
   document.getElementById('kpis').innerHTML=`
@@ -2990,17 +2991,18 @@ function renderActivityChart(recs){
   const total=days.reduce((s,d)=>s+byDay[d],0), max=Math.max(1,...days.map(d=>byDay[d]));
   const tot=document.getElementById('dashChartTotal'); if(tot) tot.textContent=total.toLocaleString()+' dials';
   if(!days.length){ el.innerHTML='<div class="muted" style="align-self:center;margin:auto;padding:20px">No dial activity in this view yet.</div>'; return; }
-  el.innerHTML=`<style>#dashChart .dialcol:hover .dialtip{opacity:1}#dashChart .dialcol:hover .dialbar{background:rgba(201,162,74,1)}</style>`+days.map(d=>{ const v=byDay[d], h=Math.round(v/max*120), dt=new Date(d+'T00:00:00'), lbl=(dt.getMonth()+1)+'/'+dt.getDate();
+  const DOW=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  el.innerHTML=`<style>#dashChart .dialcol:hover .dialtip{opacity:1}#dashChart .dialcol:hover .dialbar{background:rgba(201,162,74,1)}</style>`+days.map(d=>{ const v=byDay[d], h=Math.round(v/max*120), dt=new Date(d+'T00:00:00'), dow=DOW[dt.getDay()], md=(dt.getMonth()+1)+'/'+dt.getDate();
     return `<div class="dialcol" style="flex:1;min-width:12px;display:flex;flex-direction:column;align-items:center;gap:6px;position:relative">
-      <div class="dialtip" style="position:absolute;top:-26px;background:#2a2a2a;border:1px solid var(--border);color:#fff;font-size:11px;font-weight:600;padding:3px 7px;border-radius:5px;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .08s;box-shadow:0 2px 8px rgba(0,0,0,.35);z-index:2">${v.toLocaleString()} dials &middot; ${lbl}</div>
-      <div class="dialbar" title="${v} dials on ${usDate(d)}" style="width:100%;border-radius:5px 5px 0 0;background:rgba(201,162,74,.82);height:${h}px;transition:background .08s"></div>
-      <span style="font-size:10px;color:var(--muted)">${lbl}</span></div>`;
+      <div class="dialtip" style="position:absolute;top:-26px;background:#2a2a2a;border:1px solid var(--border);color:#fff;font-size:11px;font-weight:600;padding:3px 7px;border-radius:5px;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .08s;box-shadow:0 2px 8px rgba(0,0,0,.35);z-index:2">${v.toLocaleString()} dials &middot; ${dow} ${md}</div>
+      <div class="dialbar" title="${v} dials on ${dow} ${usDate(d)}" style="width:100%;border-radius:5px 5px 0 0;background:rgba(201,162,74,.82);height:${h}px;transition:background .08s"></div>
+      <span style="font-size:9px;color:var(--muted);text-align:center;line-height:1.15">${dow}<br>${md}</span></div>`;
   }).join('');
 }
-// share of logged calls that were wrong/bad numbers, scoped to the dashboard's month + client + role scope
+// share of logged calls that were wrong/bad numbers, scoped to the dashboard's date range + client + role scope
 function badNumberPct(){
-  const m=(document.getElementById('fMonth')||{}).value||'', c=(document.getElementById('fClient')||{}).value||'', sc=dashScopeClients();
-  const pc=collapsePostcall(RECORDS).filter(x=>(!m||monthKey(x.date)===m)&&(!c||x.client===c)&&(!sc||sc.includes(x.client)));
+  const from=((document.getElementById('fFrom')||{}).value||'').slice(0,10), to=((document.getElementById('fTo')||{}).value||'').slice(0,10), c=(document.getElementById('fClient')||{}).value||'', sc=dashScopeClients();
+  const pc=collapsePostcall(RECORDS).filter(x=>((!from&&!to)||inRange(x.date,from,to))&&(!c||x.client===c)&&(!sc||sc.includes(x.client)));
   const total=pc.length, bad=pc.filter(x=>/wrong number|bad number/i.test(x.outcome||'')).length;
   return { bad, total, rate: total?bad/total:0 };
 }
