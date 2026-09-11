@@ -162,6 +162,13 @@ export default async function handler(req, res) {
     } catch (e) { return res.status(200).json({ ok: false, error: String((e && e.message) || e) }); }
   }
 
+  // list the connected v2 clients (client name + locationId) so the Speed-to-Lead UI can offer a picker
+  if (action === 'speedToLeadClients') {
+    const cfgs = await cfgAll();
+    const clients = cfgs.filter(c => /^pit-/i.test(String(c.ghlApiKey || ''))).map(c => ({ client: c.client || c.key || c.ghlLocationId, locationId: c.ghlLocationId })).sort((a, c) => String(a.client).localeCompare(String(c.client)));
+    return res.status(200).json({ ok: true, clients });
+  }
+
   const locationId = String(b.locationId || q.locationId || '').trim();
   if (!locationId) return res.status(200).json({ ok: false, error: 'locationId required' });
   const cfg = await cfgForLocation(locationId);
