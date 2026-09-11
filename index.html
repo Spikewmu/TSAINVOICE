@@ -137,6 +137,12 @@
   .teamboxes input{margin:0;cursor:pointer}
   .teamtag{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;background:var(--gold-soft);color:var(--gold,#b8860b);margin:2px 3px 2px 0}
   .rolelab{display:inline-block;min-width:62px;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:700;vertical-align:middle}
+  .udetail{display:flex;flex-direction:column;gap:5px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;max-width:600px}
+  .udrow{display:flex;gap:10px;align-items:flex-start}
+  .udrow .rolelab{flex:none;padding-top:4px}
+  .udchips{display:flex;flex-wrap:wrap;gap:0;flex:1}
+  .udmeta{margin-top:4px;padding-top:7px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:2px}
+  .udmeta > div{margin:0 !important}
   .roletog{position:relative;display:inline-flex;align-items:center;cursor:pointer;margin:0 6px 6px 0}
   .roletog input{position:absolute;opacity:0;width:0;height:0}
   .roletog span{display:inline-block;padding:6px 13px;border-radius:20px;border:1px solid var(--border);font-size:12px;font-weight:600;color:var(--muted);background:transparent;transition:background .12s,border-color .12s,color .12s}
@@ -153,6 +159,18 @@
   input.mgrauto{background:var(--gold-soft);border-color:var(--gold)}
   .uesec{border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:12px}
   .uehead{font-weight:700;font-size:13px;letter-spacing:.02em;margin-bottom:8px;color:var(--gold)}
+  .uegrid2{display:grid;grid-template-columns:1fr 1fr;gap:8px 14px}
+  @media(max-width:560px){ .uegrid2{grid-template-columns:1fr} }
+  .uegrid2 label{display:flex;align-items:center;gap:9px;font-size:13.5px;font-weight:500;padding:8px 11px;border:1px solid var(--border);border-radius:8px;cursor:pointer;background:var(--surface-2)}
+  .uegrid2 label:hover{border-color:var(--gold)}
+  .uegrid2 input{margin:0;cursor:pointer;flex:none;width:16px;height:16px}
+  .respmatrix{width:100%;border-collapse:collapse;font-size:13px;min-width:360px}
+  .respmatrix th{text-align:center;font-size:11px;letter-spacing:.03em;color:var(--muted);font-weight:700;padding:6px 8px;border-bottom:1px solid var(--border)}
+  .respmatrix th:first-child{text-align:left}
+  .respmatrix td{padding:9px 8px;border-bottom:1px solid var(--border);text-align:center;vertical-align:middle}
+  .respmatrix td:first-child{text-align:left;font-weight:600}
+  .respmatrix input{width:17px;height:17px;cursor:pointer}
+  .respmatrix .heldother{display:block;font-size:10px;color:var(--muted);margin-top:2px}
   .mgrnum{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:var(--gold-soft);color:var(--gold);font-size:12px;font-weight:700;margin-right:8px}
   .navbadge{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;margin-left:8px;border-radius:9px;background:var(--bad,#c0392b);color:#fff;font-size:11px;font-weight:700;vertical-align:middle;box-shadow:0 0 0 2px rgba(192,57,43,.25)}
   .notifwrap{position:relative;display:inline-block}
@@ -1406,12 +1424,12 @@
 
     <div class="uesec"><div class="uehead">Access / roles</div>
       <p class="hint" style="margin:0 0 8px">Access is the combination of everything checked. Turning on a manager role reveals Responsibilities below.</p>
-      <div id="ueRoles" style="display:flex;flex-wrap:wrap;gap:10px 18px"></div>
+      <div id="ueRoles" class="uegrid2"></div>
     </div>
 
     <div class="uesec"><div class="uehead">Offers / accounts</div>
       <p class="hint" style="margin:0 0 8px">Every account this person works.</p>
-      <div id="ueTeams" class="teamboxes"></div>
+      <div id="ueTeams" class="uegrid2"></div>
     </div>
 
     <div class="uesec"><div class="uehead">Manager &amp; dates</div>
@@ -1425,8 +1443,8 @@
         <div id="ueDaysOff" class="teamboxes" style="margin-top:6px"></div></div>
     </div>
 
-    <div class="uesec" id="ueRespWrap" hidden><div class="uehead">Responsibilities <span class="muted" style="font-weight:400;font-size:12px">- what this manager runs per account</span></div>
-      <p class="hint" style="margin:0 0 8px">Toggle the function(s) they run for each account (unlocks the matching manager tabs). One person per function per account - turning one on reassigns it from whoever holds it (shown in grey).</p>
+    <div class="uesec" id="ueRespWrap" hidden><div class="uehead">Responsibilities <span class="muted" style="font-weight:400;font-size:12px">- which teams this manager runs</span></div>
+      <p class="hint" style="margin:0 0 8px">Tick a box to put this person in charge of that team on that account (it unlocks the matching manager tab for them). A grey name in a box means someone else runs it now - ticking takes it over.</p>
       <div id="ueRespTable"></div>
     </div>
 
@@ -4810,7 +4828,7 @@ function roleLabel(r){
 // a manager/admin's responsibilities, grouped by function so it reads at a glance (e.g. Keithan = Webinar on several accounts + Setters on Prime)
 function roleSummaryHTML(u){
   const f=managedFunctionsForUser(u);
-  const line=(lab,arr)=> arr.length?`<div style="margin:2px 0"><span class="rolelab">${lab}</span>${arr.map(a=>`<span class="teamtag">${esc(a)}</span>`).join('')}</div>`:'';
+  const line=(lab,arr)=> arr.length?`<div class="udrow"><span class="rolelab">${lab}</span><span class="udchips">${arr.map(a=>`<span class="teamtag">${esc(a)}</span>`).join('')}</span></div>`:'';
   return line('Webinar',f.web)+line('Setters',f.set)+line('Closers',f.clo);
 }
 let USERS_LIST=[];
@@ -4820,12 +4838,17 @@ function userRowHTML(u, isAdmin){
   const teams=u.master?[]:teamsFor(u.username);
   const isStaff = !u.master && u.role!=='founder';
   // read-only breakdown behind Details; all editing now happens in the single Edit modal
-  const detailInner = u.master ? '<span class="muted">-</span>'
-    : (['closer','setter','founder','recruiter'].includes(u.role)
-        ? ((teams.length?teams.map(t=>`<span class="teamtag">${esc(t)}</span>`).join(''):'<span class="tag" style="color:var(--warn);border-color:var(--warn)">none - not scoped</span>')+(isStaff?repMetaSummary(u.username)+userAuthSummary(u.username):''))
-        : (u.role==='admin'
-            ? '<span class="muted">all (admin)</span>'+roleSummaryHTML(u)+repMetaSummary(u.username)+userAuthSummary(u.username)
-            : ((roleSummaryHTML(u)||'<span class="tag" style="color:var(--warn);border-color:var(--warn)">no accounts assigned yet</span>')+repMetaSummary(u.username)+userAuthSummary(u.username))));
+  const dMeta=(!u.master && isStaff) ? (repMetaSummary(u.username)+userAuthSummary(u.username)) : '';
+  let dBody;
+  if(u.master){ dBody='<span class="muted">-</span>'; }
+  else if(['closer','setter','founder','recruiter'].includes(u.role)){
+    dBody = teams.length ? `<div class="udchips">${teams.map(t=>`<span class="teamtag">${esc(t)}</span>`).join('')}</div>` : '<span class="tag" style="color:var(--warn);border-color:var(--warn)">none - not scoped</span>';
+  } else if(u.role==='admin'){
+    dBody = '<div class="udrow"><span class="rolelab">Access</span><span class="udchips"><span class="muted">all accounts</span></span></div>'+roleSummaryHTML(u);
+  } else {
+    dBody = roleSummaryHTML(u)||'<span class="tag" style="color:var(--warn);border-color:var(--warn)">no accounts assigned yet</span>';
+  }
+  const detailInner = u.master ? '<span class="muted">-</span>' : `<div class="udetail">${dBody}${dMeta?`<div class="udmeta">${dMeta}</div>`:''}</div>`;
   // compact summary shown by default; the full breakdown lives behind a per-row "Details" toggle
   const acctCount = u.role==='admin' ? 'all accounts'
     : (teams.length ? teams.length+' account'+(teams.length===1?'':'s')
@@ -5195,18 +5218,18 @@ let USER_EDIT=null;
 function ueRoleListHTML(cur){
   const allowed=assignableRoles();
   const defs=[['admin','Super Admin'],['director','Sales Director'],['manager','Sales Manager'],['recruiter','Recruiter'],['webinarteam','Webinar Team'],['closer','Closer'],['setter','Setter'],['founder','Client Admin']];
-  return defs.filter(([r])=>allowed.includes(r)).map(([r,lab])=>`<label style="display:flex;gap:8px;align-items:center"><input type="checkbox" value="${r}" ${cur.includes(r)?'checked':''} onchange="ueRespToggle()"> ${esc(lab)}</label>`).join('');
+  return defs.filter(([r])=>allowed.includes(r)).map(([r,lab])=>`<label><input type="checkbox" value="${r}" ${cur.includes(r)?'checked':''} onchange="ueRespToggle()"> ${esc(lab)}</label>`).join('');
 }
 function ueIsMgrRoles(){ return [...document.querySelectorAll('#ueRoles input:checked')].map(cb=>cb.value).some(r=>['admin','director','manager','webinarteam'].includes(r)); }
 function ueRespToggle(){ const w=document.getElementById('ueRespWrap'); if(w) w.hidden=!ueIsMgrRoles(); }
 function ueReasonToggle(){ const w=document.getElementById('ueReasonWrap'); if(w) w.hidden=!((document.getElementById('ueEnd')||{}).value||'').trim(); }
 function ueRenderResp(u){
   const cs=latestClients().slice().sort((a,b)=>String(a.name).localeCompare(String(b.name)));
-  const held=(v)=> (v && !isMgrField(v,u)) ? `<span class="heldby">${esc(v)}</span>` : '';
-  const tog=(c,role,label,f)=>`<label class="roletog" title="${esc(label)} on ${esc(c.name)}"><input type="checkbox" data-client="${esc(c.name)}" data-role="${role}" ${isMgrField(c[f],u)?'checked':''}><span>${label}</span></label>${held(c[f])}`;
-  document.getElementById('ueRespTable').innerHTML = cs.length
-    ? cs.map(c=>`<div class="rolerow"><div class="rname">${esc(c.name)}</div><div class="rtogs">${tog(c,'web','Webinar','webinarMgr')}${tog(c,'set','Setters','setterMgr')}${tog(c,'clo','Closers','closerMgr')}</div></div>`).join('')
-    : `<p class="muted" style="padding:10px">Add clients on the Client Overview tab first.</p>`;
+  if(!cs.length){ document.getElementById('ueRespTable').innerHTML=`<p class="muted" style="padding:10px">Add clients on the Client Overview tab first.</p>`; return; }
+  const cell=(c,role,f)=>{ const holder=c[f]||'', mine=isMgrField(holder,u), other=(holder&&!mine)?holder:''; return `<td><input type="checkbox" data-client="${esc(c.name)}" data-role="${role}" ${mine?'checked':''}>${other?`<span class="heldother" title="Currently ${esc(holder)} - ticking takes it over">${esc(other)}</span>`:''}</td>`; };
+  document.getElementById('ueRespTable').innerHTML=`<div style="overflow-x:auto"><table class="respmatrix"><thead><tr><th>Account</th><th>Webinar</th><th>Setters</th><th>Closers</th></tr></thead><tbody>`
+    +cs.map(c=>`<tr><td>${esc(c.name)}</td>${cell(c,'web','webinarMgr')}${cell(c,'set','setterMgr')}${cell(c,'clo','closerMgr')}</tr>`).join('')
+    +`</tbody></table></div>`;
 }
 function userEditOpen(username){
   if(username==='tsaboss'){ toast('Master admin is fixed in Settings',true); return; }
@@ -5376,7 +5399,9 @@ function dealClientChanged(){
   if(cur&&items.includes(cur)) sel.value=cur;
 }
 function thisMonth(){ return todayLocal().slice(0,7); }
-function cashThisMonth(name){ const m=thisMonth(); return RECORDS.filter(x=>x.client===name && monthKey(x.date)===m).reduce((s,x)=>s+(x.cashCollected||0),0); }
+// cash collected this month for one client: use the same money model as the dashboard (deals + confirmed payments only,
+// never EODs - which would double-count) and coerce to Number so string-typed values add instead of concatenating.
+function cashThisMonth(name){ const m=thisMonth(); return activityRecords().filter(x=>x.client===name && countsMoney(x) && monthKey(x.date)===m).reduce((s,x)=>s+(Number(x.cashCollected)||0),0); }
 // products chip editor for the client form
 let CLIENT_PRODUCTS=[];
 function renderClientProductChips(){
