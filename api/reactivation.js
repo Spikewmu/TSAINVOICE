@@ -188,6 +188,37 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, window: { fromDay, toDay }, excludeTags, ...r, sample: r.items.slice(0, 8) });
     }
 
+    // Speed-to-lead feasibility probe: sample recent contacts, look up their conversations, and report whether GHL
+    // logs outbound CALLS with timestamps (so we can compute lead-created -> first-call). Returns metadata only
+    // (message types, direction, timestamps, contact names) - never message bodies.
+    if (action === 'speedToLeadDiag') {
+      const sample = Math.min(parseInt(b.sample || q.sample || 6, 10) || 6, 12);
+      const cr = await jretry(base + '/contacts/?locationId=' + encodeURIComponent(loc) + '&limit=' + sample, { headers: H });
+      if (!cr.ok) return res.status(200).json({ ok: false, error: 'contacts ' + cr.status + ' ' + String(cr.t).slice(0, 200) });
+      const contacts = (cr.j && cr.j.contacts) || [];
+      const typeHist = {}; const out = []; let withOutboundCall = 0;
+      for (const c of contacts.slice(0, sample)) {
+        const cid = c.id, created = c.dateAdded || c.createdAt || '';
+        const conv = await jretry(base + '/conversations/search?locationId=' + encodeURIComponent(loc) + '&contactId=' + encodeURIComponent(cid), { headers: H });
+        const convs = (conv.j && conv.j.conversations) || [];
+        const calls = []; const typesSeen = new Set();
+        for (const cv of convs.slice(0, 3)) {
+          const msgr = await jretry(base + '/conversations/' + encodeURIComponent(cv.id) + '/messages?limit=100', { headers: H });
+          const mm = (msgr.j && msgr.j.messages && (msgr.j.messages.messages || msgr.j.messages)) || [];
+          (Array.isArray(mm) ? mm : []).forEach(m => {
+            const mt = String(m.messageType || m.type || 'unknown'); typesSeen.add(mt); typeHist[mt] = (typeHist[mt] || 0) + 1;
+            if (/call/i.test(mt)) calls.push({ direction: m.direction || '', at: m.dateAdded || m.dateUpdated || '' });
+          });
+        }
+        const outboundCalls = calls.filter(x => /out/i.test(String(x.direction))).map(x => x.at).filter(Boolean).sort();
+        const firstOut = outboundCalls[0] || '';
+        let gapMin = null; if (firstOut && created) { const g = (new Date(firstOut) - new Date(created)) / 60000; if (isFinite(g)) gapMin = Math.round(g * 10) / 10; }
+        if (firstOut) withOutboundCall++;
+        out.push({ name: c.contactName || ((c.firstName || '') + ' ' + (c.lastName || '')).trim() || cid, created, convCount: convs.length, callCount: calls.length, typesSeen: [...typesSeen], firstOutboundCallAt: firstOut, gapMin });
+      }
+      return res.status(200).json({ ok: true, sampled: out.length, withOutboundCall, messageTypeHistogram: typeHist, contacts: out });
+    }
+
     if (action === 'execute') {
       const items = Array.isArray(b.items) ? b.items : null; // [{id,name}]
       const targetPipelineId = String(b.targetPipelineId || '').trim();
