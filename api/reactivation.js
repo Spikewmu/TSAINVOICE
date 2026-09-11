@@ -260,7 +260,10 @@ export default async function handler(req, res) {
       const cacheKey = 'spl:' + loc + ':' + fromDay + ':' + toDay + ':' + target + ':' + tzOff;
       if (!force) {
         try { const cr = await supa('records?select=data&type=eq.splcache&data->>k=eq.' + encodeURIComponent(cacheKey) + '&order=submitted_at.desc&limit=1');
-          if (cr && cr.ok) { const rows = await cr.json(); const c = rows[0] && rows[0].data; if (c && c.payload && (Date.now() - (c.at || 0)) < 15 * 60 * 1000) return res.status(200).json({ ...c.payload, cached: true }); } } catch (e) {}
+          if (cr && cr.ok) { const rows = await cr.json(); const c = rows[0] && rows[0].data;
+            const todayL = localDay(new Date().toISOString());
+            const ttl = (toDay && toDay < todayL) ? 7 * 24 * 3600 * 1000 : 15 * 60 * 1000; // a fully-past window never changes -> cache it long; a window incl. today refreshes every 15 min
+            if (c && c.payload && (Date.now() - (c.at || 0)) < ttl) return res.status(200).json({ ...c.payload, cached: true }); } } catch (e) {}
       }
       // 1) leads created in the window (v2 contacts paginate newest-first; stop once we page past the window or hit the cap)
       const leads = []; let startAfter = null, startAfterId = null, pages = 0, passedWindow = false;
