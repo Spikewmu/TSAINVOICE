@@ -408,6 +408,7 @@
       <button data-tab="mgreod">Manager EOD</button>
       <button data-tab="calllog">Call Log</button>
       <button data-tab="calendar">Calendar</button>
+      <button data-tab="speedtolead">Speed to Lead</button>
       <button data-tab="adminreport">Admin Report</button>
     </div>
   </div>
@@ -882,6 +883,26 @@
     <div id="calGrid" style="margin-top:8px"></div>
     <div id="calModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;align-items:center;justify-content:center" onclick="if(event.target===this)calDetailClose()">
       <div id="calModalCard" style="background:var(--card,#141a28);border:1px solid var(--line,#2a3348);border-radius:12px;padding:18px 20px;max-width:380px;width:90%;box-shadow:0 12px 48px rgba(0,0,0,.55)"></div>
+    </div>
+  </section>
+
+  <!-- ===== SPEED TO LEAD ===== -->
+  <section id="tab-speedtolead" hidden>
+    <h2 class="section">Speed to Lead</h2>
+    <p class="hint">How fast a new lead gets its <b>first outbound call</b>, pulled live from GHL. Pick a client and the window the leads came in, then Load. Speed to lead is measured from when the lead was created in GHL to the first outbound call on that contact.</p>
+    <div class="filters" style="align-items:flex-end;gap:10px">
+      <div class="field"><label>Client</label><select id="splClient"></select></div>
+      <div class="field"><label>Leads from</label><div class="rangewrap"><input type="text" id="splFrom_txt" readonly placeholder="Start day" onclick="dayPopToggle('splFrom',event)"><input type="hidden" id="splFrom"><div class="rangepop" id="splFrom_pop" hidden onclick="event.stopPropagation()"></div></div></div>
+      <div class="field"><label>to</label><div class="rangewrap"><input type="text" id="splTo_txt" readonly placeholder="End day" onclick="dayPopToggle('splTo',event)"><input type="hidden" id="splTo"><div class="rangepop" id="splTo_pop" hidden onclick="event.stopPropagation()"></div></div></div>
+      <div class="field"><label>Quick</label><div class="row-actions"><button class="btn ghost sm" onclick="splQuick('yesterday')">Yesterday</button><button class="btn ghost sm" onclick="splQuick('7')">Last 7d</button><button class="btn ghost sm" onclick="splQuick('30')">Last 30d</button></div></div>
+      <div class="field"><label>Target (min)</label><input type="number" id="splTarget" value="5" min="1" step="1" style="width:80px"></div>
+      <div class="field"><label>&nbsp;</label><button class="btn gold sm" id="splLoadBtn" onclick="splLoad(true)">Load</button></div>
+      <span id="splMeta" class="tag" style="align-self:flex-end;margin-bottom:2px"></span>
+    </div>
+    <div class="cards" id="splKpis" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));margin:14px 0"></div>
+    <div class="cards" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">
+      <div class="panel" style="margin:0"><h3>By rep <span style="font-weight:400;color:var(--muted);font-size:12px">- avg time to first call</span></h3><div class="tablewrap"><table id="splByRep"></table></div></div>
+      <div class="panel" style="margin:0"><h3>Slowest / uncalled leads</h3><div class="tablewrap"><table id="splLeads"></table></div></div>
     </div>
   </section>
 
@@ -1846,7 +1867,7 @@ function startApp(){
 // base tabs a login TIER can see; per-account responsibilities add to this in applyNavAccess()
 function baseAllow(role){
   return ({
-    admin:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','postcall','sod','eod','training','mgreod','webinar','calllog','calendar','adminreport','recruiting','messages','invoicing','data','users','integrations','settings'],
+    admin:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','postcall','sod','eod','training','mgreod','webinar','calllog','calendar','speedtolead','adminreport','recruiting','messages','invoicing','data','users','integrations','settings'],
     director:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','recruiting','messages','adminreport'],
     manager:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','recruiting','messages'],
     founder:['dash'],
@@ -1943,9 +1964,9 @@ function showTab(t){
   document.querySelectorAll('#tabs button[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
   document.querySelectorAll('#tabs .navgroup').forEach(g=>{ if(g.querySelector('button[data-tab="'+t+'"]')) g.classList.remove('collapsed'); }); // reveal the active tab's group
 
-  ['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','sod','eod','training','mgreod','webinar','calllog','calendar','adminreport','recruiting','messages','invoicing','data','users','integrations','settings'].forEach(x=>{ const el=document.getElementById('tab-'+x); if(el) el.hidden = (x!==t); });
+  ['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','sod','eod','training','mgreod','webinar','calllog','calendar','speedtolead','adminreport','recruiting','messages','invoicing','data','users','integrations','settings'].forEach(x=>{ const el=document.getElementById('tab-'+x); if(el) el.hidden = (x!==t); });
   // stale-while-revalidate: render instantly from the cached records, then refresh in the background
-  const render={dash:renderDash, mydeals:renderMyDeals, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, promises:renderPromisesTab, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, webinar:renderWebinars, calllog:renderCallLog, calendar:renderCalendar, adminreport:renderAdminReport, recruiting:renderRecruiting, messages:renderMessages, training:renderTraining, invoicing:renderInvoicing, data:renderAll}[t];
+  const render={dash:renderDash, mydeals:renderMyDeals, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, promises:renderPromisesTab, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, webinar:renderWebinars, calllog:renderCallLog, calendar:renderCalendar, speedtolead:renderSpeedToLead, adminreport:renderAdminReport, recruiting:renderRecruiting, messages:renderMessages, training:renderTraining, invoicing:renderInvoicing, data:renderAll}[t];
   if(render){ render(); syncRecords().then(()=>{ if(currentTab()===t) render(); updateNavBadges(); renderReminders(); }); }
   updateNavBadges();
   if(t==='data'){ renderDailyEntry(); }
@@ -3115,6 +3136,55 @@ function renderActivityChart(recs){
 function dialHover(col,on){ const t=col.querySelector('.dialtip'), b=col.querySelector('.dialbar'); if(t)t.style.opacity=on?'1':'0'; if(b)b.style.background=on?'rgba(201,162,74,1)':'rgba(201,162,74,.82)'; }
 // choose a tight, round axis: 4 gridlines whose step is a nice number (1/1.5/2/2.5/3/4/5/6/8 x 10^n) just above max/4
 function chartAxis(max){ if(!(max>0)) return {max:4,step:1}; const ticks=4, rough=max/ticks, pow=Math.pow(10,Math.floor(Math.log10(rough))), n=rough/pow; const niceN=n<=1?1:n<=1.5?1.5:n<=2?2:n<=2.5?2.5:n<=3?3:n<=4?4:n<=5?5:n<=6?6:n<=8?8:10; const step=niceN*pow; return {max:step*ticks, step}; }
+
+/* ---------------- Speed to Lead (GHL): lead-created -> first outbound call ---------------- */
+let __splClients=[];
+async function splApi(body){ const hdr={'Content-Type':'application/json'}; if(SESSION&&SESSION.token) hdr['x-session-token']=SESSION.token; else if(SESSION&&SESSION.pw) hdr['x-admin-pass']=SESSION.pw; const r=await fetch('/api/reactivation',{method:'POST',headers:hdr,body:JSON.stringify(body)}); return await r.json(); }
+async function renderSpeedToLead(){
+  const ff=document.getElementById('splFrom'), ft=document.getElementById('splTo');
+  if(ff&&!ff.value) ff.value=isoOffset(todayLocal(),-6); if(ft&&!ft.value) ft.value=todayLocal();
+  dayPickAttach('splFrom', function(){}); dayPickAttach('splTo', function(){});
+  const sel=document.getElementById('splClient');
+  if(sel && !__splClients.length){
+    sel.innerHTML='<option>Loading clients...</option>';
+    const res=await splApi({action:'speedToLeadClients'}); __splClients=(res&&res.clients)||[];
+    sel.innerHTML = __splClients.length ? __splClients.map(c=>`<option value="${esc(c.locationId)}">${esc(c.client)}</option>`).join('') : '<option value="">No connected GHL accounts</option>';
+  }
+}
+function splQuick(p){ const t=todayLocal(); let from,to=t; if(p==='yesterday'){ from=to=isoOffset(t,-1); } else if(p==='7'){ from=isoOffset(t,-6); } else { from=isoOffset(t,-29); }
+  const ff=document.getElementById('splFrom'), ft=document.getElementById('splTo'); if(ff)ff.value=from; if(ft)ft.value=to; dayPickSync('splFrom'); dayPickSync('splTo'); splLoad(true); }
+async function splLoad(force){
+  const loc=(document.getElementById('splClient')||{}).value||'';
+  const from=(document.getElementById('splFrom')||{}).value||'', to=(document.getElementById('splTo')||{}).value||'';
+  const target=parseInt((document.getElementById('splTarget')||{}).value||'5',10)||5;
+  if(!loc){ toast('Pick a client first',true); return; }
+  const btn=document.getElementById('splLoadBtn'), meta=document.getElementById('splMeta');
+  if(btn){ btn.disabled=true; btn.textContent='Loading...'; } if(meta) meta.textContent='Pulling from GHL - can take a few seconds...';
+  try{
+    const res=await splApi({action:'speedToLead', locationId:loc, fromDate:from, toDate:to, targetMin:target, force:!!force});
+    if(!res||!res.ok){ if(meta) meta.textContent=(res&&res.error)||'Failed'; toast('Speed to lead failed'+(res&&res.error?': '+res.error:''),true); return; }
+    splRender(res); if(meta) meta.textContent=`${res.totalLeads} leads · ${res.called} called${res.cached?' · cached':''}`;
+  }catch(e){ if(meta) meta.textContent='Error'; toast('Speed to lead error',true); }
+  finally{ if(btn){ btn.disabled=false; btn.textContent='Load'; } }
+}
+function splFmtMin(m){ if(m==null) return '-'; if(m<60) return m+' min'; const h=Math.floor(m/60), r=Math.round(m%60); return h+'h'+(r?' '+r+'m':''); }
+function splTs(iso){ if(!iso) return ''; const dt=new Date(iso); if(isNaN(dt)) return String(iso).slice(0,16); return (dt.getMonth()+1)+'/'+dt.getDate()+' '+dt.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}); }
+function splRender(d){
+  const k=document.getElementById('splKpis');
+  const wT=(d.within&&d.within[d.target])||0;
+  if(k) k.innerHTML=`
+    <div class="kpi goal"><div class="lbl">Avg time to first call</div><div class="val">${splFmtMin(d.avgMin)}</div></div>
+    <div class="kpi"><div class="lbl">Median</div><div class="val small">${splFmtMin(d.medianMin)}</div></div>
+    <div class="kpi"><div class="lbl">Called within ${d.target} min</div><div class="val">${wT}%</div></div>
+    <div class="kpi"><div class="lbl">Leads called</div><div class="val">${d.called}<span style="font-size:15px;color:var(--muted)"> / ${d.totalLeads}</span></div></div>
+    <div class="kpi"><div class="lbl">Not called yet</div><div class="val" style="color:${d.uncalled?'var(--warn)':'inherit'}">${d.uncalled}</div></div>`;
+  const rt=document.getElementById('splByRep');
+  if(rt) rt.innerHTML=`<thead><tr><th>Rep</th><th class="num">Leads</th><th class="num">Avg to 1st call</th></tr></thead><tbody>`
+    +((d.byRep&&d.byRep.length)?d.byRep.map(r=>`<tr><td>${esc(r.rep)}</td><td class="num">${r.count}</td><td class="num">${splFmtMin(r.avgMin)}</td></tr>`).join(''):`<tr><td colspan="3" class="muted" style="padding:14px">No calls in this window.</td></tr>`)+`</tbody>`;
+  const lt=document.getElementById('splLeads'), rows=(d.leads||[]).slice(0,40);
+  if(lt) lt.innerHTML=`<thead><tr><th>Lead</th><th>Came in</th><th>1st call</th><th class="num">Gap</th><th>Rep</th></tr></thead><tbody>`
+    +(rows.length?rows.map(r=>`<tr><td>${esc(r.name)}</td><td style="white-space:nowrap;font-size:12px">${esc(splTs(r.created))}</td><td style="white-space:nowrap;font-size:12px">${r.firstCall?esc(splTs(r.firstCall)):'<span style="color:var(--warn)">none</span>'}</td><td class="num">${r.gapMin==null?'<span style="color:var(--warn)">-</span>':splFmtMin(r.gapMin)}</td><td>${esc(r.rep||'')}</td></tr>`).join(''):`<tr><td colspan="5" class="muted" style="padding:14px">No leads in this window.</td></tr>`)+`</tbody>`;
+}
 // share of logged calls that were wrong/bad numbers, scoped to the dashboard's date range + client + role scope
 function badNumberPct(){
   const from=((document.getElementById('fFrom')||{}).value||'').slice(0,10), to=((document.getElementById('fTo')||{}).value||'').slice(0,10), c=(document.getElementById('fClient')||{}).value||'', sc=dashScopeClients();
