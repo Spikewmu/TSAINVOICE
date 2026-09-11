@@ -902,7 +902,7 @@
     <div class="cards" id="splKpis" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));margin:14px 0"></div>
     <div class="cards" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">
       <div class="panel" style="margin:0"><h3>By rep <span style="font-weight:400;color:var(--muted);font-size:12px">- avg time to first call</span></h3><div class="tablewrap"><table id="splByRep"></table></div></div>
-      <div class="panel" style="margin:0"><h3>Leads <select id="splLeadView" onchange="splRenderLeads()" style="float:right;font-size:12px;padding:3px 6px"><option value="slowest">Slowest / uncalled</option><option value="within">Called within target</option><option value="uncalled">Not called yet</option><option value="all">All called (fastest first)</option></select></h3><div class="tablewrap"><table id="splLeads"></table></div></div>
+      <div class="panel" style="margin:0"><h3>Leads <span id="splLeadFilterTag" style="font-weight:400;font-size:12.5px;color:var(--muted)"></span><select id="splLeadView" onchange="splRenderLeads()" style="float:right;font-size:12px;padding:3px 6px"><option value="slowest">Slowest / uncalled</option><option value="within">Called within target</option><option value="uncalled">Not called yet</option><option value="all">All called (fastest first)</option></select></h3><div class="tablewrap"><table id="splLeads"></table></div></div>
     </div>
   </section>
 
@@ -3198,7 +3198,7 @@ function splFmtMin(m){ if(m==null) return '-'; if(m<60) return m+' min'; const h
 function splTs(iso){ if(!iso) return ''; const dt=new Date(iso); if(isNaN(dt)) return String(iso).slice(0,16); return (dt.getMonth()+1)+'/'+dt.getDate()+' '+dt.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}); }
 let __splLast=null;
 function splRender(d){
-  __splLast=d;
+  __splLast=d; __splRepFilter=''; // fresh data clears any rep drill-down
   const k=document.getElementById('splKpis');
   const wT=(d.within&&d.within[d.target])||0;
   const wN=(d.leads||[]).filter(r=>r.gapMin!=null && r.gapMin<=d.target).length;
@@ -3212,8 +3212,10 @@ function splRender(d){
   splRenderByRep();
   splRenderLeads();
 }
-let __splRepSort={key:'avgMin',dir:1};
+let __splRepSort={key:'avgMin',dir:1}, __splRepFilter='';
 function splSortRep(key){ const s=__splRepSort; if(s.key===key) s.dir=-s.dir; else { s.key=key; s.dir=1; } splRenderByRep(); }
+function splFilterRep(rep){ __splRepFilter=(__splRepFilter===rep)?'':rep; splRenderByRep(); splRenderLeads(); const lt=document.getElementById('splLeads'), p=lt&&lt.closest('.panel'); if(p) p.scrollIntoView({behavior:'smooth',block:'nearest'}); }
+function splClearRep(){ __splRepFilter=''; splRenderByRep(); splRenderLeads(); }
 function splRenderByRep(){
   const d=__splLast, rt=document.getElementById('splByRep'); if(!d||!rt) return;
   const s=__splRepSort;
@@ -3221,13 +3223,15 @@ function splRenderByRep(){
   const ar=k=> s.key===k?(s.dir>0?' &#9650;':' &#9660;'):'';
   const th=(k,label,cls)=>`<th class="${cls||''}" style="cursor:pointer" onclick="splSortRep('${k}')">${label}${ar(k)}</th>`;
   rt.innerHTML=`<thead><tr>${th('rep','Rep')}${th('count','Leads','num')}${th('avgMin','Avg to 1st call','num')}</tr></thead><tbody>`
-    +(rows.length?rows.map(r=>`<tr><td>${esc(r.rep)}</td><td class="num">${r.count}</td><td class="num">${splFmtMin(r.avgMin)}</td></tr>`).join(''):`<tr><td colspan="3" class="muted" style="padding:14px">No calls in this window.</td></tr>`)+`</tbody>`;
+    +(rows.length?rows.map(r=>`<tr onclick="splFilterRep('${jsStr(r.rep)}')" style="cursor:pointer" class="${__splRepFilter===r.rep?'rank1':''}" title="Click to see this rep's leads below"><td>${esc(r.rep)}</td><td class="num">${r.count}</td><td class="num">${splFmtMin(r.avgMin)}</td></tr>`).join(''):`<tr><td colspan="3" class="muted" style="padding:14px">No calls in this window.</td></tr>`)+`</tbody>`;
 }
 function splSetView(v){ const sel=document.getElementById('splLeadView'); if(sel){ sel.value=v; splRenderLeads(); const p=sel.closest('.panel'); if(p) p.scrollIntoView({behavior:'smooth',block:'nearest'}); } }
 function splRenderLeads(){
   const d=__splLast, lt=document.getElementById('splLeads'); if(!d||!lt) return;
   const view=(document.getElementById('splLeadView')||{}).value||'slowest', target=d.target;
+  const tag=document.getElementById('splLeadFilterTag'); if(tag) tag.innerHTML=__splRepFilter?`&middot; ${esc(__splRepFilter)} <a class="linklike" style="cursor:pointer" onclick="splClearRep()">&#10005; clear</a>`:'';
   let rows=(d.leads||[]).slice();
+  if(__splRepFilter) rows=rows.filter(r=>String(r.rep||'')===__splRepFilter); // drill down to one rep's leads
   if(view==='within') rows=rows.filter(r=>r.gapMin!=null && r.gapMin<=target).sort((a,b)=>a.gapMin-b.gapMin);
   else if(view==='uncalled') rows=rows.filter(r=>r.gapMin==null);
   else if(view==='all') rows=rows.filter(r=>r.gapMin!=null).sort((a,b)=>a.gapMin-b.gapMin);
@@ -3235,7 +3239,7 @@ function splRenderLeads(){
   rows=rows.slice(0,60);
   const gap=r=> r.gapMin==null?'<span style="color:var(--warn)">-</span>':`<span style="color:${r.gapMin<=target?'var(--good)':'inherit'};font-weight:${r.gapMin<=target?'600':'400'}">${splFmtMin(r.gapMin)}</span>`;
   lt.innerHTML=`<thead><tr><th>Lead</th><th>Came in</th><th>1st call</th><th class="num">Gap</th><th>Rep</th></tr></thead><tbody>`
-    +(rows.length?rows.map(r=>`<tr><td>${esc(r.name)}</td><td style="white-space:nowrap;font-size:12px">${esc(splTs(r.created))}</td><td style="white-space:nowrap;font-size:12px">${r.firstCall?esc(splTs(r.firstCall)):'<span style="color:var(--warn)">none</span>'}</td><td class="num">${gap(r)}</td><td>${esc(r.rep||'')}</td></tr>`).join(''):`<tr><td colspan="5" class="muted" style="padding:14px">${view==='within'?('No leads called within '+target+' min in this window.'):(view==='uncalled'?'Every lead in this window got a call.':'No leads in this window.')}</td></tr>`)+`</tbody>`;
+    +(rows.length?rows.map(r=>`<tr><td>${esc(r.name)}</td><td style="white-space:nowrap;font-size:12px">${esc(splTs(r.created))}</td><td style="white-space:nowrap;font-size:12px">${r.firstCall?esc(splTs(r.firstCall)):'<span style="color:var(--warn)">none</span>'}</td><td class="num">${gap(r)}</td><td>${esc(r.rep||'')}</td></tr>`).join(''):`<tr><td colspan="5" class="muted" style="padding:14px">${__splRepFilter?('No leads for '+esc(__splRepFilter)+' in this view.'):(view==='within'?('No leads called within '+target+' min in this window.'):(view==='uncalled'?'Every lead in this window got a call.':'No leads in this window.'))}</td></tr>`)+`</tbody>`;
 }
 // share of logged calls that were wrong/bad numbers, scoped to the dashboard's date range + client + role scope
 function badNumberPct(){
