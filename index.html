@@ -194,6 +194,7 @@
   .rangepop .rpday.end2{background:var(--gold);color:#1a1508;font-weight:700;border-radius:0 7px 7px 0}
   .rangepop .rpday.only{background:var(--gold);color:#1a1508;font-weight:700;border-radius:7px}
   .rangepop .rpfoot{display:flex;justify-content:space-between;align-items:center;margin-top:8px;font-size:11px;color:var(--muted)}
+  .kpi.splclk{transition:border-color .1s,transform .1s} .kpi.splclk:hover{border-color:var(--gold);transform:translateY(-1px)}
   .mgrnum{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:var(--gold-soft);color:var(--gold);font-size:12px;font-weight:700;margin-right:8px}
   .navbadge{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;margin-left:8px;border-radius:9px;background:var(--bad,#c0392b);color:#fff;font-size:11px;font-weight:700;vertical-align:middle;box-shadow:0 0 0 2px rgba(192,57,43,.25)}
   .notifwrap{position:relative;display:inline-block}
@@ -901,7 +902,7 @@
     <div class="cards" id="splKpis" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));margin:14px 0"></div>
     <div class="cards" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">
       <div class="panel" style="margin:0"><h3>By rep <span style="font-weight:400;color:var(--muted);font-size:12px">- avg time to first call</span></h3><div class="tablewrap"><table id="splByRep"></table></div></div>
-      <div class="panel" style="margin:0"><h3>Leads <select id="splLeadView" onchange="splRenderLeads()" style="float:right;font-size:12px;padding:3px 6px"><option value="slowest">Slowest / uncalled</option><option value="within">Called within target</option><option value="all">All called (fastest first)</option></select></h3><div class="tablewrap"><table id="splLeads"></table></div></div>
+      <div class="panel" style="margin:0"><h3>Leads <select id="splLeadView" onchange="splRenderLeads()" style="float:right;font-size:12px;padding:3px 6px"><option value="slowest">Slowest / uncalled</option><option value="within">Called within target</option><option value="uncalled">Not called yet</option><option value="all">All called (fastest first)</option></select></h3><div class="tablewrap"><table id="splLeads"></table></div></div>
     </div>
   </section>
 
@@ -3201,28 +3202,31 @@ function splRender(d){
   const k=document.getElementById('splKpis');
   const wT=(d.within&&d.within[d.target])||0;
   const wN=(d.leads||[]).filter(r=>r.gapMin!=null && r.gapMin<=d.target).length;
+  const clk='cursor:pointer" title="Click to see these leads below';
   if(k) k.innerHTML=`
-    <div class="kpi goal"><div class="lbl">Avg time to first call</div><div class="val">${splFmtMin(d.avgMin)}</div></div>
-    <div class="kpi"><div class="lbl">Median</div><div class="val small">${splFmtMin(d.medianMin)}</div></div>
-    <div class="kpi"><div class="lbl">Called within ${d.target} min</div><div class="val">${wT}%</div><div class="lbl" style="margin-top:4px">${wN} lead${wN===1?'':'s'}</div></div>
-    <div class="kpi"><div class="lbl">Leads called</div><div class="val">${d.called}<span style="font-size:15px;color:var(--muted)"> / ${d.totalLeads}</span></div></div>
-    <div class="kpi"><div class="lbl">Not called yet</div><div class="val" style="color:${d.uncalled?'var(--warn)':'inherit'}">${d.uncalled}</div></div>`;
+    <div class="kpi goal splclk" style="${clk}" onclick="splSetView('all')"><div class="lbl">Avg time to first call</div><div class="val">${splFmtMin(d.avgMin)}</div></div>
+    <div class="kpi splclk" style="${clk}" onclick="splSetView('all')"><div class="lbl">Median</div><div class="val small">${splFmtMin(d.medianMin)}</div></div>
+    <div class="kpi splclk" style="${clk}" onclick="splSetView('within')"><div class="lbl">Called within ${d.target} min</div><div class="val">${wT}%</div><div class="lbl" style="margin-top:4px">${wN} lead${wN===1?'':'s'} &rsaquo;</div></div>
+    <div class="kpi splclk" style="${clk}" onclick="splSetView('all')"><div class="lbl">Leads called</div><div class="val">${d.called}<span style="font-size:15px;color:var(--muted)"> / ${d.totalLeads}</span></div></div>
+    <div class="kpi splclk" style="${clk}" onclick="splSetView('uncalled')"><div class="lbl">Not called yet</div><div class="val" style="color:${d.uncalled?'var(--warn)':'inherit'}">${d.uncalled}${d.uncalled?' <span style="font-size:14px">&rsaquo;</span>':''}</div></div>`;
   const rt=document.getElementById('splByRep');
   if(rt) rt.innerHTML=`<thead><tr><th>Rep</th><th class="num">Leads</th><th class="num">Avg to 1st call</th></tr></thead><tbody>`
     +((d.byRep&&d.byRep.length)?d.byRep.map(r=>`<tr><td>${esc(r.rep)}</td><td class="num">${r.count}</td><td class="num">${splFmtMin(r.avgMin)}</td></tr>`).join(''):`<tr><td colspan="3" class="muted" style="padding:14px">No calls in this window.</td></tr>`)+`</tbody>`;
   splRenderLeads();
 }
+function splSetView(v){ const sel=document.getElementById('splLeadView'); if(sel){ sel.value=v; splRenderLeads(); const p=sel.closest('.panel'); if(p) p.scrollIntoView({behavior:'smooth',block:'nearest'}); } }
 function splRenderLeads(){
   const d=__splLast, lt=document.getElementById('splLeads'); if(!d||!lt) return;
   const view=(document.getElementById('splLeadView')||{}).value||'slowest', target=d.target;
   let rows=(d.leads||[]).slice();
   if(view==='within') rows=rows.filter(r=>r.gapMin!=null && r.gapMin<=target).sort((a,b)=>a.gapMin-b.gapMin);
+  else if(view==='uncalled') rows=rows.filter(r=>r.gapMin==null);
   else if(view==='all') rows=rows.filter(r=>r.gapMin!=null).sort((a,b)=>a.gapMin-b.gapMin);
   else rows=rows.sort((a,b)=>(b.gapMin==null?1e9:b.gapMin)-(a.gapMin==null?1e9:a.gapMin)); // uncalled first, then slowest
   rows=rows.slice(0,60);
   const gap=r=> r.gapMin==null?'<span style="color:var(--warn)">-</span>':`<span style="color:${r.gapMin<=target?'var(--good)':'inherit'};font-weight:${r.gapMin<=target?'600':'400'}">${splFmtMin(r.gapMin)}</span>`;
   lt.innerHTML=`<thead><tr><th>Lead</th><th>Came in</th><th>1st call</th><th class="num">Gap</th><th>Rep</th></tr></thead><tbody>`
-    +(rows.length?rows.map(r=>`<tr><td>${esc(r.name)}</td><td style="white-space:nowrap;font-size:12px">${esc(splTs(r.created))}</td><td style="white-space:nowrap;font-size:12px">${r.firstCall?esc(splTs(r.firstCall)):'<span style="color:var(--warn)">none</span>'}</td><td class="num">${gap(r)}</td><td>${esc(r.rep||'')}</td></tr>`).join(''):`<tr><td colspan="5" class="muted" style="padding:14px">${view==='within'?('No leads called within '+target+' min in this window.'):'No leads in this window.'}</td></tr>`)+`</tbody>`;
+    +(rows.length?rows.map(r=>`<tr><td>${esc(r.name)}</td><td style="white-space:nowrap;font-size:12px">${esc(splTs(r.created))}</td><td style="white-space:nowrap;font-size:12px">${r.firstCall?esc(splTs(r.firstCall)):'<span style="color:var(--warn)">none</span>'}</td><td class="num">${gap(r)}</td><td>${esc(r.rep||'')}</td></tr>`).join(''):`<tr><td colspan="5" class="muted" style="padding:14px">${view==='within'?('No leads called within '+target+' min in this window.'):(view==='uncalled'?'Every lead in this window got a call.':'No leads in this window.')}</td></tr>`)+`</tbody>`;
 }
 // share of logged calls that were wrong/bad numbers, scoped to the dashboard's date range + client + role scope
 function badNumberPct(){
