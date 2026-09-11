@@ -661,7 +661,7 @@
     <div id="eodMulti" hidden>
       <div class="rolenote">You work more than one account - fill the numbers for each account below and submit them all at once.</div>
       <div class="filters" style="margin:0 0 6px;align-items:flex-end">
-        <div class="field"><label>Date this report is for *</label><input type="date" id="eodMultiDate" onchange="renderEodSections()" oninput="renderEodSections()"></div>
+        <div class="field"><label>Date this report is for *</label><div class="rangewrap"><input type="text" id="eodMultiDate_txt" readonly placeholder="Pick a day" onclick="dayPopToggle('eodMultiDate',event)"><input type="hidden" id="eodMultiDate"><div class="rangepop" id="eodMultiDate_pop" hidden onclick="event.stopPropagation()"></div></div></div>
         <span class="tag" id="eodMultiWho" style="align-self:flex-end;margin-bottom:2px"></span>
       </div>
       <div id="eodSections"></div>
@@ -795,7 +795,7 @@
     <h2 class="section">Manager End of Day</h2>
     <p class="hint">Fill the end-of-day numbers for <b>every offer you manage</b> in one place, then submit once. Each offer is its own section below. Leave a section blank if there is nothing to report for it. Managers get held accountable the same way reps do; the raw numbers also auto-roll onto the Meeting agenda.</p>
     <div class="filters" style="margin:0 0 6px;align-items:flex-end">
-      <div class="field"><label>Date *</label><input type="date" id="mgrEodDate" onchange="renderMgrEod()" oninput="renderMgrEod()"></div>
+      <div class="field"><label>Date *</label><div class="rangewrap"><input type="text" id="mgrEodDate_txt" readonly placeholder="Pick a day" onclick="dayPopToggle('mgrEodDate',event)"><input type="hidden" id="mgrEodDate"><div class="rangepop" id="mgrEodDate_pop" hidden onclick="event.stopPropagation()"></div></div></div>
       <span class="tag" id="mgrEodWho" style="align-self:flex-end;margin-bottom:2px"></span>
     </div>
     <div id="mgrEodSections"></div>
@@ -1184,7 +1184,7 @@
     <p class="hint" id="repsHint">Every setter and closer, split out. Click a rep's name to see their day-by-day submissions. Numbers reconcile with the Dashboard leaderboard.</p>
     <div class="panel" id="sodCheckPanel" hidden><h3>Start-of-day projections <span style="font-weight:400;color:var(--muted);font-size:12px">- today's plan + who submitted</span></h3>
       <div style="padding:14px">
-        <div class="filters" style="margin:0 0 10px"><div class="field"><label>Day</label><input type="date" id="sodCheckDate" onchange="renderSodCheck()"></div><span id="sodCheckSummary" class="tag" style="align-self:flex-end;margin-bottom:2px"></span></div>
+        <div class="filters" style="margin:0 0 10px"><div class="field"><label>Day</label><div class="rangewrap"><input type="text" id="sodCheckDate_txt" readonly placeholder="Pick a day" onclick="dayPopToggle('sodCheckDate',event)"><input type="hidden" id="sodCheckDate"><div class="rangepop" id="sodCheckDate_pop" hidden onclick="event.stopPropagation()"></div></div></div><span id="sodCheckSummary" class="tag" style="align-self:flex-end;margin-bottom:2px"></span></div>
         <div id="sodAgg" class="cards" style="grid-template-columns:repeat(auto-fill,minmax(190px,1fr));margin:0 0 12px"></div>
         <div style="margin-bottom:12px"><div style="font-size:12px;text-transform:uppercase;color:var(--muted);font-weight:700;letter-spacing:.02em">Setters</div><div class="chiprow" id="sodCheckSetters" style="margin-top:6px"></div></div>
         <div style="margin-bottom:8px"><div style="font-size:12px;text-transform:uppercase;color:var(--muted);font-weight:700;letter-spacing:.02em">Closers</div><div class="chiprow" id="sodCheckClosers" style="margin-top:6px"></div></div>
@@ -1193,7 +1193,7 @@
     </div>
     <div class="panel" id="eodCheckPanel" hidden><h3>EOD submissions <span style="font-weight:400;color:var(--muted);font-size:12px">- who checked out that day</span></h3>
       <div style="padding:14px">
-        <div class="filters" style="margin:0 0 12px"><div class="field"><label>Day</label><input type="date" id="eodCheckDate" onchange="renderEodCheck()"></div><span id="eodCheckSummary" class="tag" style="align-self:flex-end;margin-bottom:2px"></span></div>
+        <div class="filters" style="margin:0 0 12px"><div class="field"><label>Day</label><div class="rangewrap"><input type="text" id="eodCheckDate_txt" readonly placeholder="Pick a day" onclick="dayPopToggle('eodCheckDate',event)"><input type="hidden" id="eodCheckDate"><div class="rangepop" id="eodCheckDate_pop" hidden onclick="event.stopPropagation()"></div></div></div><span id="eodCheckSummary" class="tag" style="align-self:flex-end;margin-bottom:2px"></span></div>
         <div style="margin-bottom:12px"><div style="font-size:12px;text-transform:uppercase;color:var(--muted);font-weight:700;letter-spacing:.02em">Setters</div><div class="chiprow" id="eodCheckSetters" style="margin-top:6px"></div></div>
         <div><div style="font-size:12px;text-transform:uppercase;color:var(--muted);font-weight:700;letter-spacing:.02em">Closers</div><div class="chiprow" id="eodCheckClosers" style="margin-top:6px"></div></div>
       </div>
@@ -1307,7 +1307,7 @@
       <div class="field"><label>Company</label><input id="giCompany" value="The Sales Agency" oninput="giRender()"></div>
     </div>
     <div class="filters" style="align-items:flex-end;margin:0 0 10px">
-      <div class="field"><label>Date</label><input type="date" id="giDate" oninput="giRender()"></div>
+      <div class="field"><label>Date</label><div class="rangewrap"><input type="text" id="giDate_txt" readonly placeholder="Pick a day" onclick="dayPopToggle('giDate',event)"><input type="hidden" id="giDate"><div class="rangepop" id="giDate_pop" hidden onclick="event.stopPropagation()"></div></div></div>
       <div class="field"><label>Time</label><input type="time" id="giTime" oninput="giRender()"></div>
       <div class="field"><label>Time zone</label><input id="giTz" value="ET" oninput="giRender()"></div>
     </div>
@@ -1334,7 +1334,7 @@
       <div class="field"><label>Company</label><input id="ofCompany" value="The Sales Agency" oninput="offerRender()"></div>
     </div>
     <div class="filters" style="align-items:flex-end;margin:0 0 10px">
-      <div class="field"><label>Start date</label><input type="date" id="ofStart" oninput="offerRender()"></div>
+      <div class="field"><label>Start date</label><div class="rangewrap"><input type="text" id="ofStart_txt" readonly placeholder="Pick a day" onclick="dayPopToggle('ofStart',event)"><input type="hidden" id="ofStart"><div class="rangepop" id="ofStart_pop" hidden onclick="event.stopPropagation()"></div></div></div>
       <div class="field"><label>Compensation / terms</label><input id="ofComp" placeholder="e.g. 10% commission, $500 base/wk" oninput="offerRender()"></div>
     </div>
     <div class="field" style="margin-bottom:10px"><label>Notes / anything extra (optional)</label><input id="ofNotes" placeholder="e.g. schedule, ramp expectations" oninput="offerRender()"></div>
@@ -2125,6 +2125,7 @@ function renderEodTab(){
 function renderEodSections(){
   const box=document.getElementById('eodSections'); if(!box) return;
   const di=document.getElementById('eodMultiDate'); if(di&&!di.value) di.value=todayLocal();
+  dayPickAttach('eodMultiDate', renderEodSections);
   const date=((di&&di.value)||todayLocal()).slice(0,10), role=myRepRole(), me=(SESSION&&SESSION.name)||'';
   const accts=teamsFor(SESSION&&SESSION.username);
   const who=document.getElementById('eodMultiWho'); if(who) who.textContent=`${accts.length} accounts · ${role} · ${usDate(date)}`;
@@ -2496,6 +2497,7 @@ function cssAttr(s){ return String(s||'').replace(/["\\]/g,'\\$&'); }
 function jsStr(s){ return String(s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
 function renderMgrEod(){
   const di=document.getElementById('mgrEodDate'); if(di&&!di.value) di.value=todayLocal();
+  dayPickAttach('mgrEodDate', renderMgrEod);
   const date=((di&&di.value)||todayLocal()).slice(0,10), by=(SESSION&&SESSION.name)||'';
   const accts=mgrEodClients();
   const who=document.getElementById('mgrEodWho'); if(who){ who.textContent=accts.length?`${accts.length} offer${accts.length>1?'s':''} you manage · ${usDate(date)}`:'No offers assigned'; }
@@ -3546,6 +3548,7 @@ function renderEodCheck(){
   if(repMode()){ panel.hidden=true; return; } // managers/admin only
   panel.hidden=false;
   const di=document.getElementById('eodCheckDate'); if(!di.value) di.value=todayLocal();
+  dayPickAttach('eodCheckDate', renderEodCheck);
   const day=di.value;
   // approved day off = neutral chip (not counted missing); pre-hire / post-termination days are omitted entirely
   const chip=(n)=>{
@@ -3575,6 +3578,7 @@ function renderSodCheck(){
   if(repMode()){ panel.hidden=true; return; } // managers/admin only
   panel.hidden=false;
   const di=document.getElementById('sodCheckDate'); if(!di.value) di.value=todayLocal();
+  dayPickAttach('sodCheckDate', renderSodCheck);
   const day=di.value;
   const chip=(n)=>{ const ok=submittedSod(n,day);
     if(ok) return `<span class="chip" style="background:var(--good-soft);color:var(--good);font-weight:600">✓ ${esc(n)}</span>`;
@@ -4144,6 +4148,7 @@ let GI_CONFIRM_LINK='';
 function giOpen(){
   if(!REC_SEL.size){ toast('Select candidates first (checkboxes in the Search view)',true); return; }
   const d=document.getElementById('giDate'); if(d&&!d.value){ const t=new Date(); t.setDate(t.getDate()+1); d.value=`${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`; }
+  dayPickAttach('giDate', giRender);
   document.getElementById('giErr').hidden=true;
   GI_CONFIRM_LINK=''; const sel=giSel();
   if(sel.length===1){ // mint a per-candidate confirm/decline link for the invite
@@ -4203,6 +4208,7 @@ function offerOpenFor(id){ if(!id) return; OFFER_TARGETS=[id]; offerShow(); }
 let OFFER_ACCEPT_LINK='';
 function offerShow(){
   const d=document.getElementById('ofStart'); if(d&&!d.value){ const t=new Date(); t.setDate(t.getDate()+7); d.value=`${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`; }
+  dayPickAttach('ofStart', offerRender);
   document.getElementById('ofErr').hidden=true;
   OFFER_ACCEPT_LINK=''; const sel=ofSel();
   if(sel.length===1){ // mint a signed accept link for the single candidate so the offer carries a real "Accept" link
