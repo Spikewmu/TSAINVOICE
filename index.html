@@ -1456,7 +1456,7 @@
 </div>
 
 <div class="modal" id="payModal" hidden onclick="if(event.target===this)closePayments()">
-  <div class="modalcard" style="width:min(580px,95vw);max-height:90vh;overflow:auto">
+  <div class="modalcard" style="width:min(860px,96vw);max-height:92vh;overflow:auto">
     <h3 style="margin:0 0 2px">Payments <span id="payWho" style="color:var(--gold)"></span></h3>
     <p class="hint" id="paySub" style="margin:0 0 12px"></p>
     <div id="payBody"></div>
@@ -3556,7 +3556,7 @@ function renderPaymentsModal(){
       : esc(usDate(p.date));
     rows+=`<tr><td>${dateCell}</td><td class="num">${money(p.amount)}</td><td>${esc(p.method||'')}${p.notes?`<div class="muted" style="font-size:11px">${esc(p.notes)}</div>`:''}</td><td>${pill(p.status)}</td><td>${act}</td></tr>`;
   });
-  const table=`<table style="margin-bottom:14px"><thead><tr><th>Date</th><th class="num">Amount</th><th>Method</th><th>Status</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+  const table=`<div style="overflow-x:auto;margin-bottom:14px"><table style="margin-bottom:0;min-width:600px;width:100%"><thead><tr><th>Date</th><th class="num">Amount</th><th>Method</th><th>Status</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`;
   const form=canMng?`<div style="border:1px solid var(--border);border-radius:10px;padding:12px;background:var(--surface-2)">
       <div style="font-weight:600;margin-bottom:8px;font-size:13px">Add a payment</div>
       <div class="grid3" style="gap:8px">
