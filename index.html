@@ -3206,16 +3206,16 @@ function rpCommit(id){ const st=__rp[id]||{}, f=document.getElementById(id+'_fro
 // close any open range/day popover on an outside click (generic across all .rangewrap pickers)
 if(typeof window!=='undefined' && !window.__rangeOutside){ window.__rangeOutside=true; document.addEventListener('click',function(ev){ if(ev.target.closest('.rangewrap')) return; document.querySelectorAll('.rangepop').forEach(p=>{ if(!p.hidden) p.hidden=true; }); }); }
 function agg(recs){
-  const s={contractValue:0,cashCollected:0,depositCollected:0,closedDeals:0,connectedMeetings:0,noShows:0,callCapacity:0};
+  const s={contractValue:0,cashCollected:0,depositCollected:0,closedDeals:0,connectedMeetings:0,newMtgs:0,followMtgs:0,noShows:0,callCapacity:0};
   recs.forEach(x=>{
     if(countsMoney(x)){ s.contractValue+=x.contractValue||0; s.cashCollected+=x.cashCollected||0; s.depositCollected+=x.depositCollected||0; s.closedDeals+=x.closedDeals||0; } // deals only, not EODs (Option A - avoids double-count)
     // meetings/connects/no-shows/capacity are closer-reported only - never count setter activity (would push capacity used past 100%)
-    if(x.role!=='Setter'){ s.connectedMeetings+=x.connectedMeetings||0; s.noShows+=x.noShows||0; s.callCapacity+=x.callCapacity||0; }
+    if(x.role!=='Setter'){ s.connectedMeetings+=x.connectedMeetings||0; s.newMtgs+=x.newMeetings||0; s.followMtgs+=x.followUpMeetings||0; s.noShows+=x.noShows||0; s.callCapacity+=x.callCapacity||0; }
   });
   s.closeRate=s.connectedMeetings?s.closedDeals/s.connectedMeetings:0;
   s.showRate=(s.connectedMeetings+s.noShows)?s.connectedMeetings/(s.connectedMeetings+s.noShows):0;
   s.cashPct=s.contractValue?s.cashCollected/s.contractValue:0;
-  s.utilization=s.callCapacity?s.connectedMeetings/s.callCapacity:0;
+  s.utilization=s.callCapacity?(s.newMtgs+s.followMtgs)/s.callCapacity:0; // meetings held (new + follow-up) / calendar spots opened
   return s;
 }
 // Shared "double chart": ranked setter + closer breakdown tables (used by the Dashboard and Rep Breakdown).
@@ -3223,14 +3223,14 @@ function agg(recs){
 function renderBreakdownTables(recs, opts){
   const rm=!!opts.rm, clickable=!!opts.clickable;
   const setters={}, closers={};
-  function b(map,name){ if(!map[name]) map[name]={rep:name,days:new Set(),hours:0,newOut:0,fuOut:0,offered:0,set:0,connCalls:0,convos4:0,connected:0,noShows:0,capacity:0,cash:0,deals:0,contract:0}; return map[name]; }
+  function b(map,name){ if(!map[name]) map[name]={rep:name,days:new Set(),hours:0,newOut:0,fuOut:0,offered:0,set:0,connCalls:0,convos4:0,connected:0,newMtg:0,followMtg:0,noShows:0,capacity:0,cash:0,deals:0,contract:0}; return map[name]; }
   recs.forEach(x=>{
     const rep=(x.rep||'').trim(), setter=(x.setter||'').trim();
     if((x.type==='eod'||!x.type) && rep){
       const o=b((x.role==='Setter')?setters:closers, rep);
       if(x.date) o.days.add(x.date.slice(0,10));
       o.hours+=x.hoursDialing||0; o.newOut+=x.newOutreach||0; o.fuOut+=x.followUpOutreach||0; o.offered+=x.callsOffered||0; o.set+=x.callsSet||0; o.connCalls+=x.connectedCalls||0; o.convos4+=x.convos4min||0;
-      o.connected+=x.connectedMeetings||0; o.noShows+=x.noShows||0; o.capacity+=x.callCapacity||0;
+      o.connected+=x.connectedMeetings||0; o.newMtg+=x.newMeetings||0; o.followMtg+=x.followUpMeetings||0; o.noShows+=x.noShows||0; o.capacity+=x.callCapacity||0;
       if(x.role!=='Setter' && countsMoney(x)){ o.cash+=x.cashCollected||0; o.deals+=x.closedDeals||0; o.contract+=x.contractValue||0; } // cash/deals from DEALS only, not EODs (Option A)
     }
     if(x.type==='deal'||x.type==='payment'){
@@ -3242,9 +3242,9 @@ function renderBreakdownTables(recs, opts){
   const sum=(arr,k)=>arr.reduce((a,b)=>a+(b[k]||0),0);
   const daysUnion=map=>{const s=new Set();Object.values(map).forEach(o=>o.days.forEach(d=>s.add(d)));return s.size;};
   const setRows=Object.values(setters).map(o=>{ const dials=o.newOut; return {...o,days:o.days.size,dials,connRate:dials?o.connCalls/dials:0,bookRate:o.connCalls?o.set/o.connCalls:0,payout:o.cash*sRate}; }).sort((a,b)=>b.cash-a.cash||b.set-a.set);
-  const cloRows=Object.values(closers).map(o=>({...o,days:o.days.size,dials:o.newOut,closeRate:o.connected?o.deals/o.connected:0,cashPct:o.contract?o.cash/o.contract:0,util:o.capacity?o.connected/o.capacity:0,payout:o.cash*cRate})).sort((a,b)=>b.cash-a.cash);
+  const cloRows=Object.values(closers).map(o=>({...o,days:o.days.size,dials:o.newOut,closeRate:o.connected?o.deals/o.connected:0,cashPct:o.contract?o.cash/o.contract:0,util:o.capacity?(o.newMtg+o.followMtg)/o.capacity:0,payout:o.cash*cRate})).sort((a,b)=>b.cash-a.cash);
   let sT=null; if(setRows.length){ const dl=sum(setRows,'dials'),cc=sum(setRows,'connCalls'),st=sum(setRows,'set'); sT={n:setRows.length,days:daysUnion(setters),hours:sum(setRows,'hours'),dials:dl,connCalls:cc,connRate:dl?cc/dl:0,set:st,bookRate:cc?st/cc:0,convos4:sum(setRows,'convos4'),cash:sum(setRows,'cash'),payout:sum(setRows,'payout')}; }
-  let cT=null; if(cloRows.length){ const c=sum(cloRows,'connected'),cap=sum(cloRows,'capacity'),d=sum(cloRows,'deals'),ct=sum(cloRows,'contract'),ca=sum(cloRows,'cash'); cT={n:cloRows.length,days:daysUnion(closers),hours:sum(cloRows,'hours'),dials:sum(cloRows,'dials'),set:sum(cloRows,'set'),connected:c,capacity:cap,util:cap?c/cap:0,deals:d,contract:ct,cash:ca,closeRate:c?d/c:0,cashPct:ct?ca/ct:0,payout:sum(cloRows,'payout')}; }
+  let cT=null; if(cloRows.length){ const c=sum(cloRows,'connected'),cap=sum(cloRows,'capacity'),d=sum(cloRows,'deals'),ct=sum(cloRows,'contract'),ca=sum(cloRows,'cash'); cT={n:cloRows.length,days:daysUnion(closers),hours:sum(cloRows,'hours'),dials:sum(cloRows,'dials'),set:sum(cloRows,'set'),connected:c,capacity:cap,util:cap?(sum(cloRows,'newMtg')+sum(cloRows,'followMtg'))/cap:0,deals:d,contract:ct,cash:ca,closeRate:c?d/c:0,cashPct:ct?ca/ct:0,payout:sum(cloRows,'payout')}; }
   const hrs=v=>v?(Math.round(v*10)/10):0;
   const payH = rm?'':'<th class="num">Est. payout</th>';
   const payC = r => rm?'':`<td class="num">${money(r.payout)}</td>`;
@@ -3280,7 +3280,7 @@ function renderDash(){
     <div class="kpi"><div class="lbl">Cash collected %</div><div class="val">${pct(s.cashPct)}</div></div>
     <div class="kpi"><div class="lbl">Close %</div><div class="val">${pct(s.closeRate)}</div></div>
     <div class="kpi"><div class="lbl">Show rate</div><div class="val">${pct(s.showRate)}</div></div>
-    <div class="kpi"><div class="lbl" title="Connected sales calls divided by how many calls closers had room to take. Low = we can push for more bookings or spend more on ads.">Call utilization</div><div class="val">${pct(s.utilization)}</div></div>
+    <div class="kpi"><div class="lbl" title="Meetings held (new + follow-up) divided by the calendar spots closers opened for sales calls. Low = open spots went unused; we can push for more bookings or spend more on ads.">Call utilization</div><div class="val">${pct(s.utilization)}</div></div>
     <div class="kpi"><div class="lbl">Deposits collected</div><div class="val small">${money(s.depositCollected)}</div></div>`;
   const ss=aggSetters(recs); const bn=badNumberPct();
   document.getElementById('kpisSetters').innerHTML=`
@@ -5591,7 +5591,7 @@ function renderReps(){
   buildRepFilters();
   const recs=repFiltered();
   const setters={}, closers={};
-  function b(map,name){ if(!map[name]) map[name]={rep:name,days:new Set(),hours:0,newOut:0,fuOut:0,offered:0,set:0,connCalls:0,convos4:0,connected:0,noShows:0,capacity:0,cash:0,deals:0,contract:0}; return map[name]; }
+  function b(map,name){ if(!map[name]) map[name]={rep:name,days:new Set(),hours:0,newOut:0,fuOut:0,offered:0,set:0,connCalls:0,convos4:0,connected:0,newMtg:0,followMtg:0,noShows:0,capacity:0,cash:0,deals:0,contract:0}; return map[name]; }
   recs.forEach(x=>{
     const rep=(x.rep||'').trim(), setter=(x.setter||'').trim();
     // EOD activity, bucketed by the role the rep submitted as
@@ -5599,7 +5599,7 @@ function renderReps(){
       const o=b((x.role==='Setter')?setters:closers, rep);
       if(x.date) o.days.add(x.date.slice(0,10));
       o.hours+=x.hoursDialing||0; o.newOut+=x.newOutreach||0; o.fuOut+=x.followUpOutreach||0; o.offered+=x.callsOffered||0; o.set+=x.callsSet||0; o.connCalls+=x.connectedCalls||0; o.convos4+=x.convos4min||0;
-      o.connected+=x.connectedMeetings||0; o.noShows+=x.noShows||0; o.capacity+=x.callCapacity||0;
+      o.connected+=x.connectedMeetings||0; o.newMtg+=x.newMeetings||0; o.followMtg+=x.followUpMeetings||0; o.noShows+=x.noShows||0; o.capacity+=x.callCapacity||0;
       if(x.role!=='Setter' && countsMoney(x)){ o.cash+=x.cashCollected||0; o.deals+=x.closedDeals||0; o.contract+=x.contractValue||0; } // cash/deals from DEALS only, not EODs (Option A)
     }
     // closed deals + confirmed payments: credit the closer (rep) and attribute cash to the setter who set it
@@ -5612,9 +5612,9 @@ function renderReps(){
   const sum=(arr,k)=>arr.reduce((a,b)=>a+(b[k]||0),0);
   const daysUnion=map=>{const s=new Set();Object.values(map).forEach(o=>o.days.forEach(d=>s.add(d)));return s.size;};
   const setRows=Object.values(setters).map(o=>{ const dials=o.newOut; return {...o,days:o.days.size,dials,connRate:dials?o.connCalls/dials:0,bookRate:o.connCalls?o.set/o.connCalls:0,payout:o.cash*sRate}; }).sort((a,b)=>b.cash-a.cash||b.set-a.set);
-  const cloRows=Object.values(closers).map(o=>({...o,days:o.days.size,dials:o.newOut,closeRate:o.connected?o.deals/o.connected:0,cashPct:o.contract?o.cash/o.contract:0,util:o.capacity?o.connected/o.capacity:0,payout:o.cash*cRate})).sort((a,b)=>b.cash-a.cash);
+  const cloRows=Object.values(closers).map(o=>({...o,days:o.days.size,dials:o.newOut,closeRate:o.connected?o.deals/o.connected:0,cashPct:o.contract?o.cash/o.contract:0,util:o.capacity?(o.newMtg+o.followMtg)/o.capacity:0,payout:o.cash*cRate})).sort((a,b)=>b.cash-a.cash);
   let sT=null; if(setRows.length){ const dl=sum(setRows,'dials'),cc=sum(setRows,'connCalls'),st=sum(setRows,'set'); sT={n:setRows.length,days:daysUnion(setters),hours:sum(setRows,'hours'),dials:dl,connCalls:cc,connRate:dl?cc/dl:0,set:st,bookRate:cc?st/cc:0,convos4:sum(setRows,'convos4'),cash:sum(setRows,'cash'),payout:sum(setRows,'payout')}; }
-  let cT=null; if(cloRows.length){ const c=sum(cloRows,'connected'),cap=sum(cloRows,'capacity'),d=sum(cloRows,'deals'),ct=sum(cloRows,'contract'),ca=sum(cloRows,'cash'); cT={n:cloRows.length,days:daysUnion(closers),hours:sum(cloRows,'hours'),dials:sum(cloRows,'dials'),set:sum(cloRows,'set'),connected:c,capacity:cap,util:cap?c/cap:0,deals:d,contract:ct,cash:ca,closeRate:c?d/c:0,cashPct:ct?ca/ct:0,payout:sum(cloRows,'payout')}; }
+  let cT=null; if(cloRows.length){ const c=sum(cloRows,'connected'),cap=sum(cloRows,'capacity'),d=sum(cloRows,'deals'),ct=sum(cloRows,'contract'),ca=sum(cloRows,'cash'); cT={n:cloRows.length,days:daysUnion(closers),hours:sum(cloRows,'hours'),dials:sum(cloRows,'dials'),set:sum(cloRows,'set'),connected:c,capacity:cap,util:cap?(sum(cloRows,'newMtg')+sum(cloRows,'followMtg'))/cap:0,deals:d,contract:ct,cash:ca,closeRate:c?d/c:0,cashPct:ct?ca/ct:0,payout:sum(cloRows,'payout')}; }
   const hrs=v=>v?(Math.round(v*10)/10):0;
   // payout column hidden from reps (teammates' commission is private); admins/managers see it
   const payH = rm?'':'<th class="num">Est. payout</th>';
