@@ -282,6 +282,43 @@ export default async function handler(req, res) {
       const out = await ghlPush(cfg, rec, b.contactId); // real note + real source; contactId (optional) pushes straight to that contact when the deal has no lead email
       return res.status(200).json(out);
     }
+    // ---------- ONE-SHOT MAINTENANCE: normalize whitespace in person-name fields (rep/setter/by/closer) ----------
+    // Historical records inherited trailing/duplicate spaces from user names (e.g. "Carolina "), because auto-populate
+    // stamps rep/by from the stored user name. We PATCH the row IN PLACE by its DB id so there is NO Slack/GHL side
+    // effect and NO new row (the normal append+dedup path would double-count a deal or drop the fix). Admin only.
+    // Pass dryRun:true to see exactly what WOULD change without writing.
+    if (action === 'normalizeNames') {
+      if (s && s.role !== 'admin') return res.status(200).json({ ok: false, error: 'Admins only' });
+      const ws = callerWs;
+      const filter = ws === DEFAULT_WS
+        ? `or=(data->>ws.eq.${DEFAULT_WS},data->>ws.is.null)`
+        : `data->>ws=eq.${encodeURIComponent(ws)}`;
+      const dryRun = !!b.dryRun;
+      const FIELDS = ['rep', 'setter', 'by', 'closer'];
+      const norm = v => String(v).trim().replace(/\s+/g, ' ');
+      const isDirty = v => typeof v === 'string' && v !== norm(v);
+      const PAGE = 1000; let scanned = 0, changed = 0; const samples = [];
+      for (let from = 0; ; from += PAGE) {
+        const r = await supa(`records?select=id,data&order=id.asc&${filter}`, { headers: { 'Range-Unit': 'items', Range: `${from}-${from + PAGE - 1}` } });
+        if (!r.ok) { const t = await r.text(); return res.status(200).json({ ok: false, error: 'db ' + r.status + ' ' + t.slice(0, 160) }); }
+        const rows = await r.json();
+        for (const row of rows) {
+          scanned++;
+          const d = row.data; if (!d || typeof d !== 'object') continue;
+          let hit = false; const nd = Object.assign({}, d);
+          for (const f of FIELDS) { if (isDirty(d[f])) { nd[f] = norm(d[f]); hit = true; } }
+          if (!hit) continue;
+          changed++;
+          if (samples.length < 30) samples.push({ id: row.id, type: d.type, fix: FIELDS.filter(f => isDirty(d[f])).map(f => f + ': ' + JSON.stringify(d[f]) + ' -> ' + JSON.stringify(norm(d[f]))).join(', ') });
+          if (!dryRun) {
+            const pr = await supa('records?id=eq.' + encodeURIComponent(row.id), { method: 'PATCH', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ data: nd }) });
+            if (!pr.ok) { const t = await pr.text(); return res.status(200).json({ ok: false, error: 'patch id ' + row.id + ': ' + pr.status + ' ' + t.slice(0, 160), changedSoFar: changed - 1 }); }
+          }
+        }
+        if (rows.length < PAGE || from > 500000) break;
+      }
+      return res.status(200).json({ ok: true, dryRun, scanned, changed, samples });
+    }
     if (action === 'accounts') {
       // platform owner only (a TSA admin) - list all client accounts + their seat usage
       if (callerWs !== DEFAULT_WS || (s && s.role !== 'admin')) return res.status(200).json({ ok: false, error: 'not-authorized' });
