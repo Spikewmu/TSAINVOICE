@@ -5918,6 +5918,14 @@ async function graduateClient(ev){
 }
 // collapse the occasional Users-tab panels by default (Add a user / Reassign / Client accounts), keep Team members open. Runs on tab open only, so manual toggles survive re-renders.
 function usersApplySecState(){ const defs={clientAccountsPanel:1, secUsersAdd:1, reassignPanel:1, secUsersTeam:0}; Object.keys(defs).forEach(id=>{ const p=document.getElementById(id); if(p) p.classList.toggle('collapsed', !!defs[id]); }); }
+// when a global company is selected, the Users team list shows only people tied to that company
+function usersScoped(list){
+  if(!GLOBAL_CLIENT) return list||[];
+  return (list||[]).filter(u=>{
+    if(u.role==='manager'||u.role==='director') return managedClientsForUser({username:u.username,role:u.role}).includes(GLOBAL_CLIENT);
+    return teamsFor(u.username).includes(GLOBAL_CLIENT); // setters/closers/founders/webinar/recruiter via their assigned teams
+  });
+}
 async function renderUsers(){
   const isAdmin = SESSION.role==='admin';
   renderClientAccounts(); renderReassignPanel();
@@ -5930,7 +5938,7 @@ async function renderUsers(){
   const nm=document.getElementById('newUserMgr'); if(nm){ const cur=nm.value; nm.innerHTML='<option value="">- select -</option>'+mgrPeople().map(p=>`<option>${esc(p)}</option>`).join(''); if(cur)nm.value=cur; }
   const tbl=document.getElementById('usersGrouped');
   // cache-first: draw whatever we already have instantly, spinner only on a cold load
-  if(USERS_CACHE && USERS_CACHE.length){ renderUsersTable(USERS_CACHE); }
+  if(USERS_CACHE && USERS_CACHE.length){ renderUsersTable(usersScoped(USERS_CACHE)); }
   else if(tbl){ tbl.innerHTML='<p style="padding:22px;color:var(--muted)"><span class="spinner"></span> Loading users...</p>'; }
   // refresh from the backend in the background, then re-render
   let users=[], gotUsers=false;
@@ -5941,7 +5949,7 @@ async function renderUsers(){
   }
   if(!gotUsers && !CFG.endpoint){ users=LOCAL_USERS.map(u=>({username:u.username,name:u.name,role:u.role})); }
   USERS_CACHE=users.slice(); fillLists(); // keep the form dropdowns in sync with accounts
-  renderUsersTable(users);
+  renderUsersTable(usersScoped(users));
 }
 function editTeams(username){
   TEAM_EDIT=username;
