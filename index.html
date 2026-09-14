@@ -5921,10 +5921,8 @@ function usersApplySecState(){ const defs={clientAccountsPanel:1, secUsersAdd:1,
 // when a global company is selected, the Users team list shows only people tied to that company
 function usersScoped(list){
   if(!GLOBAL_CLIENT) return list||[];
-  return (list||[]).filter(u=>{
-    if(u.role==='manager'||u.role==='director') return managedClientsForUser(u).includes(GLOBAL_CLIENT); // pass full user (matched by name)
-    return teamsFor(u.username).includes(GLOBAL_CLIENT); // setters/closers/founders/webinar/recruiter via their assigned teams
-  });
+  // anyone tied to the company: reps/founders via assigned teams, managers via the client's manager fields (matched by name)
+  return (list||[]).filter(u=> teamsFor(u.username).includes(GLOBAL_CLIENT) || managedClientsForUser(u).includes(GLOBAL_CLIENT));
 }
 async function renderUsers(){
   const isAdmin = SESSION.role==='admin';
