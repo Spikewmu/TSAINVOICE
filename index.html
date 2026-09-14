@@ -1284,6 +1284,12 @@
   <section id="tab-reps" hidden>
     <h2 class="section">Rep Breakdown</h2>
     <p class="hint" id="repsHint">Every setter and closer, split out. Click a rep's name to see their day-by-day submissions. Numbers reconcile with the Dashboard leaderboard.</p>
+    <div class="filters" style="align-items:flex-end">
+      <div class="field"><label>Date range</label><div class="rangewrap"><input type="text" id="rRange_txt" readonly placeholder="Click a start day, then an end day" onclick="rpToggle('rRange',event)"><input type="hidden" id="rRange_from"><input type="hidden" id="rRange_to"><div class="rangepop" id="rRange_pop" hidden onclick="event.stopPropagation()"></div></div></div>
+      <div class="field"><label>Quick range</label><div class="row-actions"><button class="btn ghost sm" onclick="repRangePreset('week')">This week</button><button class="btn ghost sm" onclick="repRangePreset('month')">This month</button><button class="btn ghost sm" onclick="repRangePreset('30')">Last 30d</button><button class="btn ghost sm" onclick="repRangePreset('all')">All time</button></div></div>
+      <div class="field"><label>Client</label><select id="rClient" onchange="renderReps()"></select></div>
+      <button class="btn ghost sm" onclick="renderReps()">Refresh</button>
+    </div>
     <div class="panel" id="sodCheckPanel" hidden><h3>Start-of-day projections <span style="font-weight:400;color:var(--muted);font-size:12px">- today's plan + who submitted</span></h3>
       <div style="padding:14px">
         <div class="filters" style="margin:0 0 10px"><div class="field"><label>Day</label><div class="rangewrap"><input type="text" id="sodCheckDate_txt" readonly placeholder="Pick a day" onclick="dayPopToggle('sodCheckDate',event)"><input type="hidden" id="sodCheckDate"><div class="rangepop" id="sodCheckDate_pop" hidden onclick="event.stopPropagation()"></div></div></div><span id="sodCheckSummary" class="tag" style="align-self:flex-end;margin-bottom:2px"></span></div>
@@ -1299,13 +1305,6 @@
         <div style="margin-bottom:12px"><div style="font-size:12px;text-transform:uppercase;color:var(--muted);font-weight:700;letter-spacing:.02em">Setters</div><div class="chiprow" id="eodCheckSetters" style="margin-top:6px"></div></div>
         <div><div style="font-size:12px;text-transform:uppercase;color:var(--muted);font-weight:700;letter-spacing:.02em">Closers</div><div class="chiprow" id="eodCheckClosers" style="margin-top:6px"></div></div>
       </div>
-    </div>
-    <div class="filters" style="align-items:flex-end">
-      <div class="field"><label>From</label><input type="date" id="rFrom" onchange="renderReps()" oninput="renderReps()"></div>
-      <div class="field"><label>To</label><input type="date" id="rTo" onchange="renderReps()" oninput="renderReps()"></div>
-      <div class="field"><label>Quick range</label><div class="row-actions"><button class="btn ghost sm" onclick="rangePreset('rFrom','rTo','week','renderReps')">This week</button><button class="btn ghost sm" onclick="rangePreset('rFrom','rTo','month','renderReps')">This month</button><button class="btn ghost sm" onclick="rangePreset('rFrom','rTo','30','renderReps')">Last 30d</button><button class="btn ghost sm" onclick="rangePreset('rFrom','rTo','all','renderReps')">All time</button></div></div>
-      <div class="field"><label>Client</label><select id="rClient" onchange="renderReps()"></select></div>
-      <button class="btn ghost sm" onclick="renderReps()">Refresh</button>
     </div>
     <div class="panel"><h3>Setters</h3><div class="tablewrap"><table id="setterTable"></table></div></div>
     <div class="panel"><h3>Closers</h3><div class="tablewrap"><table id="closerTable"></table></div></div>
@@ -4228,6 +4227,18 @@ function submittedEod(name, day){
   const n=String(name||'').trim().toLowerCase();
   return RECORDS.some(x=>x.type==='eod' && String(x.rep||'').trim().toLowerCase()===n && String(x.date||'').slice(0,10)===day);
 }
+// reps assigned to a client (strict - no fallback to all), for the submission-check panels
+function repsForClientStrict(role, client){
+  const all=repNames(role); if(!client) return all;
+  return all.filter(name=>{ const u=USERS_CACHE.find(x=>String(x.name||'').trim()===String(name).trim()); return u?teamsFor(u.username).includes(client):false; });
+}
+// who to check for SOD/EOD submission: the selected client's reps, else (manager) the union across their accounts, else all
+function repCheckPool(role){
+  const client=(document.getElementById('rClient')||{}).value||'';
+  if(client) return repsForClientStrict(role,client);
+  if(REP_SCOPE&&REP_SCOPE.length){ const s=new Set(); REP_SCOPE.forEach(c=>repsForClientStrict(role,c).forEach(n=>s.add(n))); return [...s].sort((a,b)=>a.localeCompare(b)); }
+  return repNames(role);
+}
 function renderEodCheck(){
   const panel=document.getElementById('eodCheckPanel'); if(!panel) return;
   if(repMode()){ panel.hidden=true; return; } // managers/admin only
@@ -4243,7 +4254,7 @@ function renderEodCheck(){
     if(accountableDays(n,[day]).length===0) return ''; // not employed that day
     return `<span class="chip" style="background:var(--warn-soft);color:var(--warn);font-weight:600">✗ ${esc(n)}</span>`;
   };
-  const setters=repNames('setter'), closers=repNames('closer');
+  const setters=repCheckPool('setter'), closers=repCheckPool('closer');
   const sChips=setters.map(chip).filter(Boolean).join(''), cChips=closers.map(chip).filter(Boolean).join('');
   document.getElementById('eodCheckSetters').innerHTML=sChips||'<span class="muted" style="font-size:12px">No setters working today.</span>';
   document.getElementById('eodCheckClosers').innerHTML=cChips||'<span class="muted" style="font-size:12px">No closers working today.</span>';
@@ -4270,7 +4281,7 @@ function renderSodCheck(){
     if(offdayStatus(n,day)==='approved') return `<span class="chip" style="background:var(--surface-2);color:var(--muted);font-weight:600" title="Approved day off">○ ${esc(n)} (off)</span>`;
     if(accountableDays(n,[day]).length===0) return '';
     return `<span class="chip" style="background:var(--warn-soft);color:var(--warn);font-weight:600">✗ ${esc(n)}</span>`; };
-  const setters=repNames('setter'), closers=repNames('closer');
+  const setters=repCheckPool('setter'), closers=repCheckPool('closer');
   document.getElementById('sodCheckSetters').innerHTML=setters.map(chip).filter(Boolean).join('')||'<span class="muted" style="font-size:12px">No setters working today.</span>';
   document.getElementById('sodCheckClosers').innerHTML=closers.map(chip).filter(Boolean).join('')||'<span class="muted" style="font-size:12px">No closers working today.</span>';
   const acc=n=>accountableDays(n,[day]).length>0;
@@ -5440,24 +5451,25 @@ function myTeamClients(){
 }
 let REP_RANGE_INIT=false;
 function buildRepFilters(){
-  const rf=document.getElementById('rFrom'), rt=document.getElementById('rTo');
-  if(!REP_RANGE_INIT){ const t=todayLocal(); if(rf&&!rf.value)rf.value=t.slice(0,7)+'-01'; if(rt&&!rt.value)rt.value=t; REP_RANGE_INIT=true; } // default to this month on first open; user can widen or clear to All time
+  if(!REP_RANGE_INIT){ const t=todayLocal(), ff=document.getElementById('rRange_from'), ft=document.getElementById('rRange_to'); if(ff&&!ff.value)ff.value=t.slice(0,7)+'-01'; if(ft&&!ft.value)ft.value=t; REP_RANGE_INIT=true; } // default to this month on first open
+  rpAttach('rRange', renderReps); // one click-start-then-end range calendar (same as the dashboard)
   const fc=document.getElementById('rClient'),cc=fc.value;
   const clients=REP_SCOPE?REP_SCOPE:clientNames();
   fc.innerHTML='<option value="">All'+(REP_SCOPE?' my accounts':' clients')+'</option>'+clients.map(c=>`<option>${esc(c)}</option>`).join('');
   if(cc&&clients.includes(cc))fc.value=cc;
 }
+function repRangePreset(p){ rangePreset('rRange_from','rRange_to',p,''); rpAttach('rRange',renderReps); renderReps(); }
 function repFiltered(){
-  const from=(document.getElementById('rFrom').value||'').slice(0,10), to=(document.getElementById('rTo').value||'').slice(0,10), c=document.getElementById('rClient').value;
+  const from=(document.getElementById('rRange_from').value||'').slice(0,10), to=(document.getElementById('rRange_to').value||'').slice(0,10), c=document.getElementById('rClient').value;
   return activityRecords().filter(x=>((!from&&!to)||inRange(x.date,from,to))&&(!c||x.client===c)&&(!REP_SCOPE||REP_SCOPE.includes(x.client)));
 }
 function renderReps(){
   const rm=repMode();
-  renderSodCheck();
-  renderEodCheck();
   // rep sees their ASSIGNED teams; if none assigned yet, fall back to the accounts they've submitted for
   const assigned = rm ? teamsFor(SESSION&&SESSION.username) : [];
   REP_SCOPE = rm ? (assigned.length?assigned:myTeamClients()) : null;
+  renderSodCheck();   // after REP_SCOPE so the submission panels scope to the selected client / the manager's accounts
+  renderEodCheck();
   const hint=document.getElementById('repsHint');
   if(hint) hint.textContent = rm ? 'Your team’s numbers, filtered to your assigned account(s). See how you stack up against your teammates.' : 'Every setter and closer, split out. Click a rep’s name to see their day-by-day submissions. Numbers reconcile with the Dashboard leaderboard.';
   buildRepFilters();
