@@ -2080,19 +2080,19 @@ let GLOBAL_CLIENT=(function(){ try{ return localStorage.getItem('tsa_global_clie
 function preferGlobal(clients, cur){ if(GLOBAL_CLIENT && clients.includes(GLOBAL_CLIENT)) return GLOBAL_CLIENT; return (cur&&clients.includes(cur))?cur:''; }
 function buildGlobalClientSelect(){
   const sel=document.getElementById('gClient'); if(!sel) return;
-  if(!(SESSION && SESSION.role==='admin')){ sel.style.display='none'; return; } // super admin only
-  const clients=clientNames();
+  const role=SESSION&&SESSION.role, isAdmin=(role==='admin'||role==='director'), isMgr=(role==='manager');
+  if(!(isAdmin||isMgr)){ sel.style.display='none'; return; } // super admin / director see all; managers see the companies they run
+  const clients = isAdmin ? clientNames() : managedClientsForUser(SESSION);
+  if(!clients.length){ sel.style.display='none'; return; }
   if(GLOBAL_CLIENT && !clients.includes(GLOBAL_CLIENT)){ GLOBAL_CLIENT=''; try{ localStorage.removeItem('tsa_global_client'); }catch(e){} }
   sel.style.display='';
-  sel.innerHTML='<option value="">All companies</option>'+clients.map(c=>`<option>${esc(c)}</option>`).join('');
+  sel.innerHTML='<option value="">All'+(isMgr?' my companies':' companies')+'</option>'+clients.map(c=>`<option>${esc(c)}</option>`).join('');
   sel.value=GLOBAL_CLIENT;
 }
 function setGlobalClient(v){
   GLOBAL_CLIENT=v||''; try{ GLOBAL_CLIENT?localStorage.setItem('tsa_global_client',GLOBAL_CLIENT):localStorage.removeItem('tsa_global_client'); }catch(e){}
   const sel=document.getElementById('gClient'); if(sel) sel.value=GLOBAL_CLIENT;
-  const t=currentTab();
-  const render={dash:renderDash, reps:renderReps, clients:renderClientOverview, mgreod:renderMgrEod, calllog:renderCallLog, calendar:renderCalendar, speedtolead:renderSpeedToLead, dailyreport:renderDailyReport, adminreport:renderAdminReport, invoicing:renderInvoicing}[t];
-  if(render) render(); else renderDash();
+  const t=currentTab(); if(t) showTab(t); else renderDash(); // re-render the active tab so its per-tab client filter follows the global scope
   toast(GLOBAL_CLIENT?('Scoped to '+GLOBAL_CLIENT):'Showing all companies');
 }
 
