@@ -3731,33 +3731,62 @@ function myDealsForecast(){
   const win=MYDEALS_FC, today=todayLocal(), cutoff=win==='all'?null:isoOffset(today,+win);
   const dated=p=>(p.date||'').slice(0,10);
   const inWin=p=>{ if(win==='all') return true; const d=dated(p); return d?d<=cutoff:false; };
+  // Does this record credit the viewer, and at what combined commission rate? (data can carry trailing spaces)
+  const rateFor=(client,rep,set)=>{ const r=String(rep||'').trim(), st=String(set||'').trim(); let rate=0;
+    if(oversight){ if(r) rate+=repCommRateFor(client,'closer'); if(st) rate+=repCommRateFor(client,'setter'); return {rate, involved:!!(r||st)}; }
+    if(r===me) return {rate:repCommRateFor(client,'closer'), involved:true};
+    if(st===me) return {rate:repCommRateFor(client,'setter'), involved:true};
+    return {rate:0, involved:false};
+  };
+  // EXPECTED = commission on PENDING payments not yet received (windowed by expected date)
   let cash=0, comm=0, n=0, undated=0;
   paymentsCollapsed().filter(p=>p.status==='pending').forEach(p=>{
     if(GLOBAL_CLIENT && p.client!==GLOBAL_CLIENT) return; // follow the global company scope
-    let c=0, involved=false;
-    const prep=String(p.rep||'').trim(), pset=String(p.setter||'').trim(); // data can carry trailing spaces
-    if(oversight){ involved=!!(prep||pset); if(prep) c+=(p.amount||0)*repCommRateFor(p.client,'closer')/100; if(pset) c+=(p.amount||0)*repCommRateFor(p.client,'setter')/100; }
-    else if(prep===me){ involved=true; c=(p.amount||0)*repCommRateFor(p.client,'closer')/100; }
-    else if(pset===me){ involved=true; c=(p.amount||0)*repCommRateFor(p.client,'setter')/100; }
-    if(!involved) return;
+    const {rate,involved}=rateFor(p.client,p.rep,p.setter); if(!involved) return;
+    let c=(p.amount||0)*rate/100;
     if(!payEarnsCommission(p)) c=0; // front-end-only account, back-end payment -> no commission
     if(inWin(p)){ cash+=p.amount||0; comm+=c; n++; } else if(!dated(p)) undated++;
   });
-  return {cash,comm,n,undated,win,oversight};
+  // EARNED = commission on cash already COLLECTED: confirmed payments + each deal's close-day cash (all-time, not windowed)
+  let earnedCash=0, earnedComm=0;
+  paymentsCollapsed().filter(p=>p.status==='confirmed').forEach(p=>{
+    if(GLOBAL_CLIENT && p.client!==GLOBAL_CLIENT) return;
+    const {rate,involved}=rateFor(p.client,p.rep,p.setter); if(!involved) return;
+    if(!payEarnsCommission(p)) return; // front-end-only + back-end payment -> rep earns nothing
+    earnedCash+=p.amount||0; earnedComm+=(p.amount||0)*rate/100;
+  });
+  const seenD={}; (RECORDS||[]).filter(x=>x.type==='deal').forEach(d=>{ const k=String(d.id||''); if(!k) return; if(!seenD[k]||(d.submittedAt||'')>(seenD[k].submittedAt||'')) seenD[k]=d; }); // latest version per deal
+  Object.values(seenD).forEach(d=>{
+    if(GLOBAL_CLIENT && String(d.client||'')!==GLOBAL_CLIENT) return;
+    const cc=d.cashCollected||0; if(cc<=0) return;
+    const {rate,involved}=rateFor(d.client,d.rep,d.setter); if(!involved) return;
+    earnedCash+=cc; earnedComm+=cc*rate/100; // close-day cash is day-0, always front-end -> always earns
+  });
+  return {cash,comm,n,undated,win,oversight,earnedCash,earnedComm};
 }
 function setMyDealsFC(w){ MYDEALS_FC=w; renderMyDeals(); }
 function myDealsForecastHtml(){
   const f=myDealsForecast();
   const seg=[['7','7 days'],['14','14 days'],['30','30 days'],['all','All pending']].map(([v,l])=>`<button class="${f.win===v?'on':''}" onclick="setMyDealsFC('${v}')">${l}</button>`).join('');
-  const label=f.oversight?'Upcoming rep commission to pay out':'Your upcoming commission';
+  const head=f.oversight?'Rep commission':'Your commission';
+  const winLbl=f.win==='all'?'all pending':('next '+f.win+' days');
+  const expSub=f.oversight?'to pay out':'not yet received';
   return `<div class="panel" style="margin:0 0 14px;padding:14px">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px">
-      <div>
-        <div class="muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.03em">${label}</div>
-        <div style="font-size:26px;font-weight:800;color:var(--gold);font-variant-numeric:tabular-nums">${money(f.comm)}</div>
-        <div class="muted" style="font-size:12px">on ${money(f.cash)} projected to be collected &middot; ${f.n} pending payment${f.n===1?'':'s'}${f.undated?` &middot; ${f.undated} undated`:''}</div>
-      </div>
+      <div class="muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.03em;padding-top:2px">${head}</div>
       <div class="seg">${seg}</div>
+    </div>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:10px">
+      <div style="flex:1 1 200px;min-width:180px;background:rgba(212,175,90,.07);border:1px solid rgba(212,175,90,.25);border-radius:10px;padding:11px 13px">
+        <div class="muted" style="font-size:10px;text-transform:uppercase;letter-spacing:.03em">Expected &middot; pending</div>
+        <div style="font-size:25px;font-weight:800;color:var(--gold);font-variant-numeric:tabular-nums">${money(f.comm)}</div>
+        <div class="muted" style="font-size:12px">on ${money(f.cash)} ${expSub} &middot; ${f.n} payment${f.n===1?'':'s'} (${winLbl})${f.undated?` &middot; ${f.undated} undated`:''}</div>
+      </div>
+      <div style="flex:1 1 200px;min-width:180px;background:rgba(74,160,80,.07);border:1px solid rgba(74,160,80,.25);border-radius:10px;padding:11px 13px">
+        <div class="muted" style="font-size:10px;text-transform:uppercase;letter-spacing:.03em">Earned &middot; collected</div>
+        <div style="font-size:25px;font-weight:800;color:#7bd487;font-variant-numeric:tabular-nums">${money(f.earnedComm)}</div>
+        <div class="muted" style="font-size:12px">on ${money(f.earnedCash)} already collected</div>
+      </div>
     </div>
   </div>`;
 }
