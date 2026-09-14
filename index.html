@@ -3733,6 +3733,7 @@ function myDealsForecast(){
   const inWin=p=>{ if(win==='all') return true; const d=dated(p); return d?d<=cutoff:false; };
   let cash=0, comm=0, n=0, undated=0;
   paymentsCollapsed().filter(p=>p.status==='pending').forEach(p=>{
+    if(GLOBAL_CLIENT && p.client!==GLOBAL_CLIENT) return; // follow the global company scope
     let c=0, involved=false;
     const prep=String(p.rep||'').trim(), pset=String(p.setter||'').trim(); // data can carry trailing spaces
     if(oversight){ involved=!!(prep||pset); if(prep) c+=(p.amount||0)*repCommRateFor(p.client,'closer')/100; if(pset) c+=(p.amount||0)*repCommRateFor(p.client,'setter')/100; }
@@ -3765,7 +3766,7 @@ function renderMyDeals(){
   const oversight=SESSION&&['admin','director','manager'].includes(SESSION.role);
   const me=String((SESSION&&SESSION.name)||'').trim();
   const seen={}, uniq=[];
-  (RECORDS||[]).filter(x=>x.type==='deal').filter(d=>oversight?true:String(d.rep||'').trim()===me)
+  (RECORDS||[]).filter(x=>x.type==='deal').filter(d=>(oversight||String(d.rep||'').trim()===me) && (!GLOBAL_CLIENT||String(d.client||'')===GLOBAL_CLIENT))
     .sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.submittedAt||'').localeCompare(a.submittedAt||''))
     .forEach(d=>{ const k=String(d.id||''); if(k&&!seen[k]){ seen[k]=1; uniq.push(d); } });
   if(!uniq.length){ wrap.innerHTML=`<div class="panel" style="padding:20px"><p class="muted" style="margin:0">${oversight?'No closed deals yet.':'You have no closed deals yet. When you close one it shows here, so you can log wires and later payments against it.'}</p></div>`; return; }
