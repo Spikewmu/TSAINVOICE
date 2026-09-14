@@ -522,7 +522,7 @@
     </div>
     <div id="invComm" hidden>
       <div class="panel" style="padding:16px">
-        <p class="fieldhelp" style="margin:0 0 12px">Commissions owed to <b>setters and closers</b> for a pay cycle. Reps are paid <b>twice a month</b>: the <b>1st&ndash;15th</b> (paid the 15th) and the <b>16th&ndash;end of month</b> (paid the 30th). Commission = each rep's <b>cash collected in the cycle</b> (deals closed in-cycle + wires/payments that cleared in-cycle) &times; their rate: the offer's rep-comp rate if set, otherwise the default closer/setter rate from Settings. Pick a rep's name for a printable statement.</p>
+        <p class="fieldhelp" style="margin:0 0 12px">Commissions owed to <b>setters and closers</b> for a pay cycle. Reps are paid <b>twice a month</b>, in arrears: earnings <b>1st&ndash;15th</b> are paid the <b>30th</b> (same month), and earnings <b>16th&ndash;end of month</b> are paid the <b>15th of the next month</b>. Commission = each rep's <b>cash collected in the cycle</b> (deals closed in-cycle + wires/payments that cleared in-cycle) &times; their rate: the offer's rep-comp rate if set, otherwise the default closer/setter rate from Settings. Pick a rep's name for a printable statement.</p>
         <div class="grid3" style="gap:12px">
           <div class="field"><label>Cycle from</label><input type="date" id="rcmFrom" onchange="repCommReset()"></div>
           <div class="field"><label>Cycle to</label><input type="date" id="rcmTo" onchange="repCommReset()"></div>
@@ -4033,12 +4033,14 @@ function drCopySlack(){
 let REPCOMM_VIEW=null; // null = summary view; {role, rep} = one rep's statement
 // the commission rate for a rep on an offer: the offer's rep-comp rate if set, else the default from Settings
 function repCommRateFor(client, role){ const cfg=clientBillingCfg(client); if(role==='closer') return (cfg&&cfg.closerRate!=null)?cfg.closerRate:(CFG.closerRate||0); return (cfg&&cfg.setterRate!=null)?cfg.setterRate:(CFG.setterRate||0); }
-// semi-monthly rep pay cycles: 1st-15th (paid the 15th) and 16th-end of month (paid the 30th/last day)
+// semi-monthly rep pay cycles, paid in arrears (~15-day lag):
+//   earnings 1st-15th  -> paid the 30th (last day) of the SAME month
+//   earnings 16th-EOM  -> paid the 15th of the NEXT month
 function isoYMD(y,m,d){ return y+'-'+String(m+1).padStart(2,'0')+'-'+String(d).padStart(2,'0'); }
 function payCycle(refIso){
-  const d=refIso?new Date(refIso+'T00:00:00'):new Date(), y=d.getFullYear(), m=d.getMonth();
-  if(d.getDate()<=15) return {from:isoYMD(y,m,1), to:isoYMD(y,m,15), pay:isoYMD(y,m,15)};
-  const last=new Date(y,m+1,0).getDate(); return {from:isoYMD(y,m,16), to:isoYMD(y,m,last), pay:isoYMD(y,m,last)};
+  const d=refIso?new Date(refIso+'T00:00:00'):new Date(), y=d.getFullYear(), m=d.getMonth(), last=new Date(y,m+1,0).getDate();
+  if(d.getDate()<=15) return {from:isoYMD(y,m,1), to:isoYMD(y,m,15), pay:isoYMD(y,m,last)};   // 1-15 -> last day of this month
+  const nm=new Date(y,m+1,15); return {from:isoYMD(y,m,16), to:isoYMD(y,m,last), pay:isoYMD(nm.getFullYear(),nm.getMonth(),15)}; // 16-EOM -> 15th next month
 }
 function payCyclePrev(refIso){ const c=payCycle(refIso), before=new Date(c.from+'T00:00:00'); before.setDate(before.getDate()-1); return payCycle(isoLocal(before)); }
 function payCycleForRange(from,to){ const c=payCycle(from); return (c.from===from&&c.to===to)?c:null; } // is this range a standard pay cycle?
