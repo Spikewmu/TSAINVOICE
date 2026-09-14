@@ -55,6 +55,7 @@ const keepOr = (val, prev) => (val === '') ? '' : ((val && val !== '__keep__') ?
 const pubCfg = d => ({ key: d.key, ws: d.ws, client: d.client || '', eodToSlack: !!d.eodToSlack,
   slack: d.slackWebhook || '', setter: d.eodSetterSlack || '', closer: d.eodCloserSlack || '', mgr: d.eodMgrSlack || '',
   deal: d.dealSlack || '', postcall: d.postcallSlack || '', postcallSetter: d.postcallSetterSlack || '', postcallCloser: d.postcallCloserSlack || '', sod: d.sodSlack || '', sodSetter: d.sodSetterSlack || '', sodCloser: d.sodCloserSlack || '',
+  dailyReport: d.dailyReportSlack || '', dailyReportOn: !!d.dailyReportOn,
   ghl: !!d.ghlApiKey, ghlLocation: d.ghlLocationId || '', ghlEnabled: !!d.ghlEnabled }); // ghlApiKey itself is write-only, never returned
 const pubHook = (d, req) => ({ id: d.id, key: d.key, ws: d.ws, client: d.client || '', name: d.name || 'Webhook', processor: d.processor || 'generic', enabled: d.enabled !== false, template: d.template || DEFAULT_TEMPLATE, hasSlack: !!d.slackWebhook, slack: d.slackWebhook || '', token: d.token, inbound: baseUrl(req) + '/api/hook?t=' + d.token });
 const chanDest = u => (/discord(app)?\.com\/api\/webhooks\//i.test(String(u || '')) && !/\/slack\/?$/i.test(String(u))) ? String(u).replace(/\/+$/, '') + '/slack' : u; // Discord accepts Slack payloads at /slack
@@ -173,6 +174,8 @@ export default async function handler(req, res) {
         sodSlack: keepOr(b.sodSlack, cur && cur.sodSlack),
         sodSetterSlack: keepOr(b.sodSetterSlack, cur && cur.sodSetterSlack),
         sodCloserSlack: keepOr(b.sodCloserSlack, cur && cur.sodCloserSlack),
+        dailyReportSlack: keepOr(b.dailyReportSlack, cur && cur.dailyReportSlack),
+        dailyReportOn: b.dailyReportOn != null ? !!b.dailyReportOn : !!(cur && cur.dailyReportOn),
         ghlApiKey: keepOr(b.ghlApiKey, cur && cur.ghlApiKey),
         ghlLocationId: keepOr(b.ghlLocationId, cur && cur.ghlLocationId),
         ghlEnabled: b.ghlEnabled != null ? !!b.ghlEnabled : !!(cur && cur.ghlEnabled),
@@ -222,7 +225,7 @@ export default async function handler(req, res) {
       const cfgs = await allByType('integration'); const cur = cfgs[key];
       if (!cur) return res.status(200).json({ ok: false, error: 'Save/connect a channel first' });
       if (!mayTouch(cur)) return res.status(200).json({ ok: false, error: 'not your client' });
-      const FIELD_MAP = { slack: 'slackWebhook', setter: 'eodSetterSlack', closer: 'eodCloserSlack', mgr: 'eodMgrSlack', deal: 'dealSlack', postcall: 'postcallSlack', postcallSetter: 'postcallSetterSlack', postcallCloser: 'postcallCloserSlack', sod: 'sodSlack', sodSetter: 'sodSetterSlack', sodCloser: 'sodCloserSlack' };
+      const FIELD_MAP = { slack: 'slackWebhook', setter: 'eodSetterSlack', closer: 'eodCloserSlack', mgr: 'eodMgrSlack', deal: 'dealSlack', postcall: 'postcallSlack', postcallSetter: 'postcallSetterSlack', postcallCloser: 'postcallCloserSlack', sod: 'sodSlack', sodSetter: 'sodSetterSlack', sodCloser: 'sodCloserSlack', dailyReport: 'dailyReportSlack' };
       const dest = cur[FIELD_MAP[String(b.field || 'slack')] || 'slackWebhook'] || '';
       if (!dest) return res.status(200).json({ ok: false, error: 'Nothing connected on this channel yet' });
       const label = String(b.label || 'this feed').slice(0, 80);

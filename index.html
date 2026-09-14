@@ -416,6 +416,7 @@
   <div class="navgroup collapsed">
     <button class="navhead"><svg class="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-8M2 20h20"/></svg><span class="nlabel">Reporting</span><svg class="nchev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
     <div class="navsub">
+      <button data-tab="dailyreport">Daily Report</button>
       <button data-tab="reps">Rep Breakdown</button>
       <button data-tab="mgreod">Manager EOD</button>
       <button data-tab="calllog">Call Log</button>
@@ -486,6 +487,19 @@
   </section>
 
   <!-- ===== INVOICING (admin/director) ===== -->
+  <!-- ===== DAILY REPORT ===== -->
+  <section id="tab-dailyreport" hidden>
+    <h2 class="section">Daily Report</h2>
+    <p class="hint">One compiled report per offer: <b>yesterday's results</b> (from the team's EODs) and <b>today's forecast</b> (from this morning's Start-of-Day projections), setters and closers together. This is the same report that auto-posts to each client's Slack every morning - set the channel under <b>Integrations &rarr; Daily report</b>.</p>
+    <div class="filters">
+      <div class="field"><label>Offer</label><select id="drClient" onchange="renderDailyReport()"></select></div>
+      <div class="field" style="position:relative"><label>Report day</label><div class="rangewrap"><input type="text" id="drDay_txt" readonly placeholder="Pick a day" onclick="dayPopToggle('drDay',event)"><input type="hidden" id="drDay"><div class="rangepop" id="drDay_pop" hidden onclick="event.stopPropagation()"></div></div></div>
+      <button class="btn ghost sm" onclick="renderDailyReport()">Refresh</button>
+      <button class="btn sm" onclick="drCopySlack()">Copy Slack text</button>
+    </div>
+    <div id="dailyReportOut" style="margin-top:14px"></div>
+  </section>
+
   <section id="tab-invoicing" hidden>
     <h2 class="section">Invoicing</h2>
     <p class="hint">Generate each client's <b>founder invoice</b> (they pay TSA weekly), auto-built from closed deals + collected payments. Billing week is <b>Monday to Sunday</b>; invoices go out <b>Wednesday</b> for the last completed week (review Wed, questions Thu, paid Fri). <b>Super Admin only.</b> Set each client's billing rate, invoice stats, and TSA's wire/ACH details under <b>Billing settings</b>.</p>
@@ -1930,9 +1944,9 @@ function startApp(){
 // base tabs a login TIER can see; per-account responsibilities add to this in applyNavAccess()
 function baseAllow(role){
   return ({
-    admin:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','postcall','sod','eod','training','mgreod','webinar','calllog','calendar','speedtolead','adminreport','recruiting','messages','invoicing','data','users','integrations','settings'],
-    director:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','recruiting','messages','adminreport'],
-    manager:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','speedtolead','recruiting','messages'],
+    admin:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','postcall','sod','eod','training','mgreod','webinar','calllog','calendar','speedtolead','dailyreport','adminreport','recruiting','messages','invoicing','data','users','integrations','settings'],
+    director:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','dailyreport','recruiting','messages','adminreport'],
+    manager:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','speedtolead','dailyreport','recruiting','messages'],
     founder:['dash'],
     recruiter:['dash','recruiting','messages','timeoff'],
     webinarteam:['dash','meeting','promises','timeoff','webinar'],
@@ -2031,9 +2045,9 @@ function showTab(t){
   document.querySelectorAll('#tabs button[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
   document.querySelectorAll('#tabs .navgroup').forEach(g=>{ if(g.querySelector('button[data-tab="'+t+'"]')) g.classList.remove('collapsed'); }); // reveal the active tab's group
 
-  ['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','sod','eod','training','mgreod','webinar','calllog','calendar','speedtolead','adminreport','recruiting','messages','invoicing','data','users','integrations','settings'].forEach(x=>{ const el=document.getElementById('tab-'+x); if(el) el.hidden = (x!==t); });
+  ['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','sod','eod','training','mgreod','webinar','calllog','calendar','speedtolead','dailyreport','adminreport','recruiting','messages','invoicing','data','users','integrations','settings'].forEach(x=>{ const el=document.getElementById('tab-'+x); if(el) el.hidden = (x!==t); });
   // stale-while-revalidate: render instantly from the cached records, then refresh in the background
-  const render={dash:renderDash, mydeals:renderMyDeals, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, promises:renderPromisesTab, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, webinar:renderWebinars, calllog:renderCallLog, calendar:renderCalendar, speedtolead:renderSpeedToLead, adminreport:renderAdminReport, recruiting:renderRecruiting, messages:renderMessages, training:renderTraining, invoicing:renderInvoicing, data:renderAll}[t];
+  const render={dash:renderDash, mydeals:renderMyDeals, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, promises:renderPromisesTab, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, webinar:renderWebinars, calllog:renderCallLog, calendar:renderCalendar, speedtolead:renderSpeedToLead, dailyreport:renderDailyReport, adminreport:renderAdminReport, recruiting:renderRecruiting, messages:renderMessages, training:renderTraining, invoicing:renderInvoicing, data:renderAll}[t];
   if(render){ render(); syncRecords().then(()=>{ if(currentTab()===t) render(); updateNavBadges(); renderReminders(); }); }
   updateNavBadges();
   if(t==='data'){ renderDailyEntry(); }
@@ -3851,6 +3865,80 @@ function genFounderInvoice(client,from,to){
       </table></div>
     `)}
   </div>`;
+}
+/* ================= DAILY REPORT (compiled SOD forecast + prior-day EOD results, per offer) ================= */
+function drNum(v){ const n=parseFloat(String(v==null?'':v).replace(/[^0-9.\-]/g,'')); return isFinite(n)?n:0; }
+// "yesterday" for results, skipping weekends (Monday -> Friday)
+function drPrevDay(iso){ const d=new Date((iso||todayCentral())+'T00:00:00'); do{ d.setDate(d.getDate()-1); }while(d.getDay()===0||d.getDay()===6); return isoLocal(d); }
+// latest record per rep+role for a type/client/day (append-only backend, latest wins)
+function drLatestBy(type, client, day){
+  const ck=String(client||'').trim().toLowerCase(), m={};
+  RECORDS.forEach(x=>{ if(x.type!==type) return; if(String(x.client||'').trim().toLowerCase()!==ck) return; if((x.date||'').slice(0,10)!==day) return;
+    const k=(x.rep||'').trim().toLowerCase()+'|'+(x.role||''); if(!m[k]||(x.submittedAt||'')>(m[k].submittedAt||'')) m[k]=x; });
+  return Object.values(m);
+}
+function dailyReportData(client, day){
+  day=(day||todayCentral()).slice(0,10); const prev=drPrevDay(day);
+  const sods=drLatestBy('sod',client,day), eods=drLatestBy('eod',client,prev);
+  const fSet=sods.filter(x=>x.role==='Setter').map(x=>({rep:(x.rep||'').trim(), callsToday:drNum(x.sodCallsToday), confirmed:drNum(x.sodConfirmed), setTotal:drNum(x.sodSetTotal), sameDay:drNum(x.sodSameDay), w24:drNum(x.sod24), w48:drNum(x.sod48), w72:drNum(x.sod72)}));
+  const fClo=sods.filter(x=>x.role!=='Setter').map(x=>({rep:(x.rep||'').trim(), callsToday:drNum(x.sodCallsToday), confirmed:drNum(x.sodConfirmed), projClose:drNum(x.sodProjClose), projCash:drNum(x.sodProjCollectWk)}));
+  const rSet=eods.filter(x=>x.role==='Setter').map(x=>({rep:(x.rep||'').trim(), dials:drNum(x.newOutreach), connects:drNum(x.connectedCalls), sets:drNum(x.callsSet), convos4:drNum(x.convos4min), hours:drNum(x.hoursDialing)}));
+  const rClo=eods.filter(x=>x.role!=='Setter').map(x=>({rep:(x.rep||'').trim(), calls:drNum(x.connectedMeetings), closes:drNum(x.closedDeals), cash:drNum(x.cashCollected), noShows:drNum(x.noShows)}));
+  return {client, day, prev, fSet, fClo, rSet, rClo, has:(sods.length+eods.length)>0};
+}
+function drSum(arr,f){ return arr.reduce((s,o)=>s+(o[f]||0),0); }
+function drOffersForView(){ const sel=(document.getElementById('drClient')||{}).value||''; return sel?[sel]:clientNames(); }
+function renderDailyReport(){
+  const cs=document.getElementById('drClient'); if(cs && !cs.__init){ const cur=cs.value; cs.innerHTML='<option value="">All offers</option>'+clientNames().map(c=>`<option>${esc(c)}</option>`).join(''); if(cur)cs.value=cur; cs.__init=1; }
+  const dd=document.getElementById('drDay'); if(dd && !dd.value) dd.value=todayCentral(); dayPickAttach('drDay', renderDailyReport);
+  const out=document.getElementById('dailyReportOut'); if(!out) return;
+  const day=((document.getElementById('drDay')||{}).value)||todayCentral();
+  const offers=drOffersForView().map(c=>dailyReportData(c,day)).filter(d=>d.has);
+  out.innerHTML=offers.length? offers.map(drPanelHtml).join('')
+    : '<div class="panel" style="padding:20px"><p class="muted" style="margin:0">No Start-of-Day or End-of-Day data for this day yet.</p></div>';
+}
+function drPanelHtml(d){
+  const rc=d.rClo, rs=d.rSet, fc=d.fClo, fs=d.fSet;
+  const rcRows=rc.map(o=>`<tr><td>${esc(o.rep)}</td><td class="num">${o.calls}</td><td class="num">${o.closes}</td><td class="num">${money(o.cash)}</td><td class="num">${o.noShows}</td></tr>`).join('')||`<tr><td colspan="5" class="muted" style="padding:10px">No closer EODs.</td></tr>`;
+  const rcTot=rc.length?`<tr style="font-weight:700;border-top:2px solid var(--border)"><td>Team</td><td class="num">${drSum(rc,'calls')}</td><td class="num">${drSum(rc,'closes')}</td><td class="num">${money(drSum(rc,'cash'))}</td><td class="num">${drSum(rc,'noShows')}</td></tr>`:'';
+  const rsRows=rs.map(o=>`<tr><td>${esc(o.rep)}</td><td class="num">${o.dials}</td><td class="num">${o.connects}</td><td class="num">${o.sets}</td><td class="num">${o.convos4}</td><td class="num">${Math.round(o.hours*10)/10}</td></tr>`).join('')||`<tr><td colspan="6" class="muted" style="padding:10px">No setter EODs.</td></tr>`;
+  const rsTot=rs.length?`<tr style="font-weight:700;border-top:2px solid var(--border)"><td>Team</td><td class="num">${drSum(rs,'dials')}</td><td class="num">${drSum(rs,'connects')}</td><td class="num">${drSum(rs,'sets')}</td><td class="num">${drSum(rs,'convos4')}</td><td class="num">${Math.round(drSum(rs,'hours')*10)/10}</td></tr>`:'';
+  const fcRows=fc.map(o=>`<tr><td>${esc(o.rep)}</td><td class="num">${o.callsToday}</td><td class="num">${o.confirmed}</td><td class="num">${o.projClose}</td><td class="num">${money(o.projCash)}</td></tr>`).join('')||`<tr><td colspan="5" class="muted" style="padding:10px">No closer SODs yet.</td></tr>`;
+  const fcTot=fc.length?`<tr style="font-weight:700;border-top:2px solid var(--border)"><td>Team</td><td class="num">${drSum(fc,'callsToday')}</td><td class="num">${drSum(fc,'confirmed')}</td><td class="num">${drSum(fc,'projClose')}</td><td class="num">${money(drSum(fc,'projCash'))}</td></tr>`:'';
+  const fsRows=fs.map(o=>`<tr><td>${esc(o.rep)}</td><td class="num">${o.callsToday}</td><td class="num">${o.confirmed}</td><td class="num">${o.setTotal}</td><td class="num" style="color:var(--muted)">${o.sameDay}/${o.w24}/${o.w48}/${o.w72}</td></tr>`).join('')||`<tr><td colspan="5" class="muted" style="padding:10px">No setter SODs yet.</td></tr>`;
+  const fsTot=fs.length?`<tr style="font-weight:700;border-top:2px solid var(--border)"><td>Team</td><td class="num">${drSum(fs,'callsToday')}</td><td class="num">${drSum(fs,'confirmed')}</td><td class="num">${drSum(fs,'setTotal')}</td><td class="num" style="color:var(--muted)">${drSum(fs,'sameDay')}/${drSum(fs,'w24')}/${drSum(fs,'w48')}/${drSum(fs,'w72')}</td></tr>`:'';
+  return `<div class="panel" style="margin-bottom:16px"><h3 style="margin:0 0 2px">${esc(d.client)}</h3>
+    <div style="padding:0 2px 8px">
+      <div class="kpisec" style="margin-top:10px">Yesterday's results <span style="font-weight:400;color:var(--muted);font-size:12px">- ${esc(usDate(d.prev))}</span></div>
+      <div style="font-size:12px;color:var(--muted);margin:8px 0 2px">Closers</div>
+      <div class="tablewrap"><table><thead><tr><th>Closer</th><th class="num">Calls taken</th><th class="num">Closes</th><th class="num">Cash</th><th class="num">No-shows</th></tr></thead><tbody>${rcRows}${rcTot}</tbody></table></div>
+      <div style="font-size:12px;color:var(--muted);margin:10px 0 2px">Setters</div>
+      <div class="tablewrap"><table><thead><tr><th>Setter</th><th class="num">Dials</th><th class="num">Connects</th><th class="num">Sets</th><th class="num">4m+</th><th class="num">Hours</th></tr></thead><tbody>${rsRows}${rsTot}</tbody></table></div>
+      <div class="kpisec" style="margin-top:16px">Today's forecast <span style="font-weight:400;color:var(--muted);font-size:12px">- ${esc(usDate(d.day))}</span></div>
+      <div style="font-size:12px;color:var(--muted);margin:8px 0 2px">Closers</div>
+      <div class="tablewrap"><table><thead><tr><th>Closer</th><th class="num">Calls today</th><th class="num">Confirmed</th><th class="num">Proj. closes</th><th class="num">Proj. cash (wk)</th></tr></thead><tbody>${fcRows}${fcTot}</tbody></table></div>
+      <div style="font-size:12px;color:var(--muted);margin:10px 0 2px">Setters <span style="color:var(--muted)">(set commit split = same-day / 24h / 48h / 72h)</span></div>
+      <div class="tablewrap"><table><thead><tr><th>Setter</th><th class="num">Calls today</th><th class="num">Confirmed</th><th class="num">Set commit</th><th class="num">By window</th></tr></thead><tbody>${fsRows}${fsTot}</tbody></table></div>
+    </div></div>`;
+}
+// Slack mrkdwn version (same shape the morning cron posts), used by "Copy Slack text"
+function dailyReportSlackText(d){
+  const L=[`*${d.client} - Daily Report*`, `_Yesterday (${usDate(d.prev)})_`];
+  if(d.rClo.length) L.push(`Closers: ${drSum(d.rClo,'calls')} calls taken, ${drSum(d.rClo,'closes')} closes, ${money(drSum(d.rClo,'cash'))} cash`);
+  if(d.rSet.length) L.push(`Setters: ${drSum(d.rSet,'dials')} dials, ${drSum(d.rSet,'connects')} connects, ${drSum(d.rSet,'sets')} sets`);
+  if(!d.rClo.length&&!d.rSet.length) L.push('No EODs logged.');
+  L.push(`*Today (${usDate(d.day)}) forecast*`);
+  if(d.fClo.length) L.push(`Closers: ${drSum(d.fClo,'callsToday')} calls on calendar, ${drSum(d.fClo,'confirmed')} confirmed, ${drSum(d.fClo,'projClose')} projected closes, ${money(drSum(d.fClo,'projCash'))} projected cash`);
+  if(d.fSet.length) L.push(`Setters: ${drSum(d.fSet,'setTotal')} sets committed (same-day ${drSum(d.fSet,'sameDay')} / 24h ${drSum(d.fSet,'w24')} / 48h ${drSum(d.fSet,'w48')} / 72h ${drSum(d.fSet,'w72')})`);
+  if(!d.fClo.length&&!d.fSet.length) L.push('No SODs submitted yet.');
+  return L.join('\n');
+}
+function drCopySlack(){
+  const day=((document.getElementById('drDay')||{}).value)||todayCentral();
+  const offers=drOffersForView().map(c=>dailyReportData(c,day)).filter(d=>d.has);
+  if(!offers.length){ toast('Nothing to copy',true); return; }
+  const txt=offers.map(dailyReportSlackText).join('\n\n');
+  navigator.clipboard.writeText(txt).then(()=>toast('Slack text copied')).catch(()=>toast('Copy failed',true));
 }
 /* ================= REP COMMISSIONS (setter + closer payout report, same pay cycle as founder invoices) ================= */
 let REPCOMM_VIEW=null; // null = summary view; {role, rep} = one rep's statement
@@ -6491,6 +6579,12 @@ function renderEodRouting(){
       <div class="field"><label>Start-of-day projections (Closers)</label>${slackField('evSodCloser',c.sodCloser,`'config','','sodCloser'`,'sodCloser','Start-of-day projections (Closers)')}</div>
     </div>
     <p class="fieldhelp" style="margin:8px 0 0">Setters' post-call & start-of-day posts route to the Setters channel, closers' to the Closers channel (by the rep's role).</p>
+    <div style="border-top:1px solid var(--border);margin:14px 0 10px"></div>
+    <label style="display:flex;gap:8px;align-items:center;font-weight:500;margin:0 0 8px"><input type="checkbox" id="drOn" ${c.dailyReportOn?'checked':''}> Post the <b style="margin:0 3px">compiled Daily Report</b> to Slack each morning (~9:30am CT)</label>
+    <div class="cards" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr))">
+      <div class="field"><label>Daily report channel</label>${slackField('evDailyReport',c.dailyReport,`'config','','dailyReport'`,'dailyReport','Daily report')}</div>
+    </div>
+    <p class="fieldhelp" style="margin:8px 0 0">One combined report: yesterday's results (from EODs) + today's forecast (from SODs), setters and closers, posted here automatically each morning.</p>
     <div class="row-actions" style="margin-top:12px"><button class="btn gold sm" onclick="integSaveEod()">Save routing</button></div>`;
   const eod=document.getElementById('integEodRep');
   if(eod) eod.innerHTML=`
@@ -6554,7 +6648,8 @@ async function integSaveEod(){
   const t=integTarget(); if(!t) return; const g=id=>((document.getElementById(id)||{}).value||'').trim();
   const body={key:t.key, ws:t.ws, client:t.client, eodToSlack:(document.getElementById('eodOn')||{}).checked,
     eodSetterSlack:g('eodSetter'), eodCloserSlack:g('eodCloser'), eodMgrSlack:g('eodMgr'), slackWebhook:g('eodFallback'),
-    dealSlack:g('evDeal'), postcallSetterSlack:g('evPostcallSetter'), postcallCloserSlack:g('evPostcallCloser'), sodSetterSlack:g('evSodSetter'), sodCloserSlack:g('evSodCloser')};
+    dealSlack:g('evDeal'), postcallSetterSlack:g('evPostcallSetter'), postcallCloserSlack:g('evPostcallCloser'), sodSetterSlack:g('evSodSetter'), sodCloserSlack:g('evSodCloser'),
+    dailyReportSlack:g('evDailyReport'), dailyReportOn:(document.getElementById('drOn')||{}).checked};
   const res=await integApi('save',body);
   if(res&&res.ok){ INTEG_CFGS[t.key]=res.config; toast('Routing saved'); renderEodRouting(); }
   else toast((res&&res.error)||'Could not save',true);
