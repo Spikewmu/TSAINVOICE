@@ -522,17 +522,17 @@
     </div>
     <div id="invComm" hidden>
       <div class="panel" style="padding:16px">
-        <p class="fieldhelp" style="margin:0 0 12px">Commissions owed to <b>setters and closers</b> for a pay period, on the same <b>Monday to Sunday</b> cycle as founder invoices. Commission = each rep's <b>cash collected in the period</b> (deals closed in-period + later wires/payments that cleared in-period) &times; their rate: the offer's rep-comp rate if set, otherwise the default closer/setter rate from Settings. Pick a rep's name for a printable statement.</p>
+        <p class="fieldhelp" style="margin:0 0 12px">Commissions owed to <b>setters and closers</b> for a pay cycle. Reps are paid <b>twice a month</b>: the <b>1st&ndash;15th</b> (paid the 15th) and the <b>16th&ndash;end of month</b> (paid the 30th). Commission = each rep's <b>cash collected in the cycle</b> (deals closed in-cycle + wires/payments that cleared in-cycle) &times; their rate: the offer's rep-comp rate if set, otherwise the default closer/setter rate from Settings. Pick a rep's name for a printable statement.</p>
         <div class="grid3" style="gap:12px">
-          <div class="field"><label>Pay period from</label><input type="date" id="rcmFrom" onchange="repCommReset()"></div>
-          <div class="field"><label>Pay period to</label><input type="date" id="rcmTo" onchange="repCommReset()"></div>
+          <div class="field"><label>Cycle from</label><input type="date" id="rcmFrom" onchange="repCommReset()"></div>
+          <div class="field"><label>Cycle to</label><input type="date" id="rcmTo" onchange="repCommReset()"></div>
           <div class="field"><label>Offer / client</label><select id="rcmClient" onchange="repCommReset()"></select></div>
         </div>
         <div class="row-actions" style="margin-top:10px">
           <button class="btn gold sm" onclick="repCommReset()">Generate report</button>
-          <button class="btn ghost sm" onclick="rcmThisWeek()">Last week (Mon-Sun)</button>
-          <button class="btn ghost sm" onclick="rcmCurrentWeek()">Current week</button>
-          <button class="btn ghost sm" onclick="rcmPrevWeek()">&#8592; Previous week</button>
+          <button class="btn ghost sm" onclick="rcmCurrentCycle()">This pay cycle</button>
+          <button class="btn ghost sm" onclick="rcmLastCycle()">Last pay cycle</button>
+          <button class="btn ghost sm" onclick="rcmPrevCycle()">&#8592; Previous</button>
           <button class="btn ghost sm" onclick="invPrint('repCommDoc')">&#128424; Print / save PDF</button>
         </div>
       </div>
@@ -4033,15 +4033,25 @@ function drCopySlack(){
 let REPCOMM_VIEW=null; // null = summary view; {role, rep} = one rep's statement
 // the commission rate for a rep on an offer: the offer's rep-comp rate if set, else the default from Settings
 function repCommRateFor(client, role){ const cfg=clientBillingCfg(client); if(role==='closer') return (cfg&&cfg.closerRate!=null)?cfg.closerRate:(CFG.closerRate||0); return (cfg&&cfg.setterRate!=null)?cfg.setterRate:(CFG.setterRate||0); }
+// semi-monthly rep pay cycles: 1st-15th (paid the 15th) and 16th-end of month (paid the 30th/last day)
+function isoYMD(y,m,d){ return y+'-'+String(m+1).padStart(2,'0')+'-'+String(d).padStart(2,'0'); }
+function payCycle(refIso){
+  const d=refIso?new Date(refIso+'T00:00:00'):new Date(), y=d.getFullYear(), m=d.getMonth();
+  if(d.getDate()<=15) return {from:isoYMD(y,m,1), to:isoYMD(y,m,15), pay:isoYMD(y,m,15)};
+  const last=new Date(y,m+1,0).getDate(); return {from:isoYMD(y,m,16), to:isoYMD(y,m,last), pay:isoYMD(y,m,last)};
+}
+function payCyclePrev(refIso){ const c=payCycle(refIso), before=new Date(c.from+'T00:00:00'); before.setDate(before.getDate()-1); return payCycle(isoLocal(before)); }
+function payCycleForRange(from,to){ const c=payCycle(from); return (c.from===from&&c.to===to)?c:null; } // is this range a standard pay cycle?
 function repCommInit(){
   const cs=document.getElementById('rcmClient'); if(cs){ const cur=cs.value; cs.innerHTML='<option value="">All offers</option>'+clientNames().map(c=>`<option>${esc(c)}</option>`).join(''); if(cur) cs.value=cur; }
-  const f=document.getElementById('rcmFrom'), t=document.getElementById('rcmTo'), bw=billingWeek();
-  if(f&&!f.value) f.value=bw.from; if(t&&!t.value) t.value=bw.to;
+  const f=document.getElementById('rcmFrom'), t=document.getElementById('rcmTo'), c=payCycle();
+  if(f&&!f.value) f.value=c.from; if(t&&!t.value) t.value=c.to;
   repCommRender();
 }
-function rcmThisWeek(){ const bw=billingWeek(); document.getElementById('rcmFrom').value=bw.from; document.getElementById('rcmTo').value=bw.to; repCommReset(); }
-function rcmCurrentWeek(){ const cw=currentWeek(); document.getElementById('rcmFrom').value=cw.from; document.getElementById('rcmTo').value=cw.to; repCommReset(); }
-function rcmPrevWeek(){ const f=document.getElementById('rcmFrom').value, ref=f?new Date(f+'T00:00:00'):new Date(); ref.setDate(ref.getDate()-7); const bw=billingWeek(ref); document.getElementById('rcmFrom').value=bw.from; document.getElementById('rcmTo').value=bw.to; repCommReset(); }
+function rcmSetCycle(c){ document.getElementById('rcmFrom').value=c.from; document.getElementById('rcmTo').value=c.to; repCommReset(); }
+function rcmCurrentCycle(){ rcmSetCycle(payCycle()); }
+function rcmLastCycle(){ rcmSetCycle(payCyclePrev()); }
+function rcmPrevCycle(){ const f=document.getElementById('rcmFrom').value; rcmSetCycle(payCyclePrev(f||undefined)); }
 function repCommReset(){ REPCOMM_VIEW=null; repCommRender(); }
 function showRepStatement(role,rep){ REPCOMM_VIEW={role,rep:decodeURIComponent(rep)}; repCommRender(); }
 function backRepComm(){ REPCOMM_VIEW=null; repCommRender(); }
@@ -4079,7 +4089,7 @@ function repCommRender(){
 }
 function repCommCard(inner){ return `<div style="background:#fff;border:1px solid #e6e9ef;border-radius:16px;padding:26px 30px;box-shadow:0 1px 3px rgba(20,30,60,.05);margin-bottom:20px">${inner}</div>`; }
 function genRepCommSummary(data,from,to,client){
-  const period=`${esc(usDate(from))} &ndash; ${esc(usDate(to))}`;
+  const pc=payCycleForRange(from,to), period=`${esc(usDate(from))} &ndash; ${esc(usDate(to))}${pc?` &middot; paid ${esc(usDate(pc.pay))}`:''}`;
   const totC=data.closers.reduce((s,o)=>s+o.commission,0), totS=data.setters.reduce((s,o)=>s+o.commission,0);
   const sec=(title,rows,role)=>{
     const body=rows.length?rows.map(o=>`<tr>
@@ -4107,7 +4117,7 @@ function genRepCommSummary(data,from,to,client){
 }
 function genRepStatement(role,rep,from,to,data){
   const list=(role==='closer'?data.closers:data.setters), o=list.find(x=>x.rep===rep);
-  const period=`${esc(usDate(from))} &ndash; ${esc(usDate(to))}`, back=`<div style="margin-bottom:12px"><button class="btn ghost sm" onclick="backRepComm()">&#8592; Back to summary</button></div>`;
+  const pc=payCycleForRange(from,to), period=`${esc(usDate(from))} &ndash; ${esc(usDate(to))}${pc?` &middot; paid ${esc(usDate(pc.pay))}`:''}`, back=`<div style="margin-bottom:12px"><button class="btn ghost sm" onclick="backRepComm()">&#8592; Back to summary</button></div>`;
   if(!o){ return back+`<div id="repCommDoc">${repCommCard('<p style="color:#8a93a6;margin:0">No commission for '+esc(rep)+' in this period.</p>')}</div>`; }
   const rowsHtml=o.items.slice().sort((a,b)=>String(a.date).localeCompare(String(b.date))).map(it=>`<tr>
     <td style="padding:10px 8px;border-bottom:1px solid #eef1f6;color:#6b7488">${esc(usDate(it.date))}</td>
