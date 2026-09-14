@@ -4480,7 +4480,7 @@ function renderAdminRange(range,setters,closers,managers,client){
     `<div class="panel"><h3>Setters <span style="font-weight:400;color:var(--muted);font-size:12px">- ${esc(label)}</span></h3><div class="tablewrap"><table>${setters.length?`<thead><tr><th>Setter</th><th class="num">Days</th><th class="num">Missed</th><th class="num">Hours</th><th class="num">Dials</th><th class="num">Conn%</th><th class="num">Sets</th></tr></thead><tbody>${setRows}</tbody>`:'<tbody><tr><td class="muted" style="padding:14px">No setters.</td></tr></tbody>'}</table></div></div>`
    +`<div class="panel"><h3>Closers <span style="font-weight:400;color:var(--muted);font-size:12px">- ${esc(label)}</span></h3><div class="tablewrap"><table>${closers.length?`<thead><tr><th>Closer</th><th class="num">Days</th><th class="num">Missed</th><th class="num">Hours</th><th class="num">Calls</th><th class="num">Close%</th><th class="num">Deals</th><th class="num">Cash</th></tr></thead><tbody>${cloRows}</tbody>`:'<tbody><tr><td class="muted" style="padding:14px">No closers.</td></tr></tbody>'}</table></div></div>`
    +`<div class="panel"><h3>Managers (Manager EOD) <span style="font-weight:400;color:var(--muted);font-size:12px">- ${esc(label)}</span></h3><div class="tablewrap"><table>${managers.length?`<thead><tr><th>Manager</th><th class="num">Days</th><th class="num">Missed</th><th class="num">EODs</th></tr></thead><tbody>${mgrRows}</tbody>`:'<tbody><tr><td class="muted" style="padding:14px">No managers assigned.</td></tr></tbody>'}</table></div></div>`
-   +churnPanelHTML()
+   +churnPanelHTML(client)
    +dayGridHTML(range,setters,closers,managers,client)
    +(range.single?eodDetailsHTML(range.start):'')
    +`<p class="hint" style="margin-top:8px">We run 7 days a week, so every day counts. "Days" = days submitted out of accountable days in the range. A person's scheduled weekly day(s) off, approved time off, and pre-hire / post-termination days are excluded and never count as missed.</p>`;
@@ -4507,9 +4507,9 @@ function dayGridHTML(range,setters,closers,managers,client){
     <div class="tablewrap"><table>${ghead}<tbody>${body||'<tr><td class="muted" style="padding:14px">No one to show.</td></tr>'}</tbody></table></div></div>`;
 }
 // churn per offer: of the setters/closers assigned to each account, how many have a termination date on file
-function churnPanelHTML(){
+function churnPanelHTML(client){
   const reps=(USERS_CACHE||[]).filter(u=>['setter','closer'].includes(u.role));
-  const rows=clientNames().map(c=>{
+  const rows=(client?[client]:clientNames()).map(c=>{
     const team=reps.filter(u=>teamsFor(u.username).includes(c));
     const left=team.filter(repLeft);
     return {c,total:team.length,left:left.length,rate:team.length?left.length/team.length:0};
