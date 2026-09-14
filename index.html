@@ -491,7 +491,23 @@
     <p class="hint">Generate each client's <b>founder invoice</b> (they pay TSA weekly), auto-built from closed deals + collected payments. Billing week is <b>Monday to Sunday</b>; invoices go out <b>Wednesday</b> for the last completed week (review Wed, questions Thu, paid Fri). <b>Super Admin only.</b> Set each client's billing rate, invoice stats, and TSA's wire/ACH details under <b>Billing settings</b>.</p>
     <div class="seg" id="invSeg" style="margin-bottom:16px">
       <button class="on" data-inv="gen" onclick="invTab('gen')">Founder invoices</button>
+      <button data-inv="verify" onclick="invTab('verify')">$1 verification wire</button>
       <button data-inv="settings" onclick="invTab('settings')">Billing settings</button>
+    </div>
+    <div id="invVerify" hidden>
+      <div class="panel" style="padding:16px">
+        <p class="fieldhelp" style="margin:0 0 12px">Send a client a <b>$1.00 verification wire</b> request so they can confirm the transfer path before their first weekly payout. Uses TSA's wire details from <b>Billing settings</b>. Print/save the PDF or draft the email.</p>
+        <div class="grid3" style="gap:12px">
+          <div class="field"><label>Client / account</label><select id="invVClient" data-list="clients" onchange="invVerifyPreview()"></select></div>
+          <div class="field"><label>Send to (email)</label><input type="email" id="invVEmail" placeholder="founder@client.com"></div>
+        </div>
+        <div class="row-actions" style="margin-top:10px">
+          <button class="btn gold sm" onclick="invVerifyPreview()">Generate $1 invoice</button>
+          <button class="btn ghost sm" onclick="invPrint('verifyInvoiceDoc')">&#128424; Print / save PDF</button>
+          <button class="btn ghost sm" onclick="invEmailVerify()">&#9993; Draft email</button>
+        </div>
+      </div>
+      <div id="invVerifyOut" style="margin-top:18px"></div>
     </div>
     <div id="invGen">
       <div class="panel" style="padding:16px">
@@ -535,9 +551,11 @@
           <div class="field"><label>Bank name</label><input type="text" id="biBank"></div>
           <div class="field"><label>Bank address</label><input type="text" id="biBankAddr" placeholder="street, city, state ZIP"></div>
           <div class="field"><label>Account number</label><input type="text" id="biAcct"></div>
+          <div class="field"><label>Account type</label><input type="text" id="biAcctType" placeholder="Business Checking"></div>
           <div class="field"><label>Routing number (ABA / ACH / wire)</label><input type="text" id="biRouting"></div>
           <div class="field"><label>SWIFT / BIC (international, optional)</label><input type="text" id="biSwift"></div>
-          <div class="field full"><label>Extra instructions (optional)</label><input type="text" id="biNotes" placeholder="e.g. reference the invoice # in the memo"></div>
+          <div class="field full"><label>Reference / wire memo</label><input type="text" id="biReference" placeholder="Weekly Performance Payout - The Sales Agency"><span class="fieldhelp">Clients put this in the wire's reference line so we can match the payment.</span></div>
+          <div class="field full"><label>Extra instructions (optional)</label><input type="text" id="biNotes" placeholder="e.g. send a $1 test wire first to verify the transfer path"></div>
         </div>
         <div class="row-actions" style="margin-top:10px"><button class="btn gold sm" onclick="saveBillingInfo()">Save payment details</button></div>
       </div>
@@ -3532,7 +3550,11 @@ function renderPaymentsModal(){
         act=(p.status==='pending'?`<button class="btn sm gold" onclick="confirmPayment('${pid}')">Confirm</button>`:`<button class="btn sm ghost" onclick="revertPayment('${pid}')" title="Back to pending">Undo</button>`)+` <button class="btn sm ghost" onclick="removePayment('${pid}')" title="Remove this payment">&times;</button>`;
       }
     }
-    rows+=`<tr><td>${esc(usDate(p.date))}</td><td class="num">${money(p.amount)}</td><td>${esc(p.method||'')}${p.notes?`<div class="muted" style="font-size:11px">${esc(p.notes)}</div>`:''}</td><td>${pill(p.status)}</td><td>${act}</td></tr>`;
+    // pending payments: let a manager/closer edit the expected date the money is coming in, inline
+    const dateCell=(canMng && p.status==='pending')
+      ? `<input type="date" value="${esc((p.date||'').slice(0,10))}" onchange="editPaymentDate('${pid}',this.value)" style="width:150px" title="Edit the expected date this payment lands">`
+      : esc(usDate(p.date));
+    rows+=`<tr><td>${dateCell}</td><td class="num">${money(p.amount)}</td><td>${esc(p.method||'')}${p.notes?`<div class="muted" style="font-size:11px">${esc(p.notes)}</div>`:''}</td><td>${pill(p.status)}</td><td>${act}</td></tr>`;
   });
   const table=`<table style="margin-bottom:14px"><thead><tr><th>Date</th><th class="num">Amount</th><th>Method</th><th>Status</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
   const form=canMng?`<div style="border:1px solid var(--border);border-radius:10px;padding:12px;background:var(--surface-2)">
@@ -3562,6 +3584,14 @@ async function addPayment(){
     date:document.getElementById('payDate').value||todayCentral(), notes:(document.getElementById('payNotes').value||'').trim()};
   await addRecord(rec);
   toast(rec.status==='confirmed'?'Payment added':'Pending payment logged');
+  renderPaymentsModal(); try{ const md=document.getElementById('tab-mydeals'); if(md&&!md.hidden) renderMyDeals(); }catch(_){}; if(!repMode()) renderDash();
+}
+// edit the expected date on a pending payment (append-only: write a fresh version, latest-wins)
+async function editPaymentDate(pid,val){
+  const p=paymentsCollapsed().find(x=>String(x.pid||x.id)===String(pid)); if(!p) return;
+  const rec={...p}; delete rec.id; delete rec.submittedAt; delete rec.submittedET; rec.pid=p.pid||p.id; rec.date=val||'';
+  await addRecord(rec);
+  toast('Expected date updated');
   renderPaymentsModal(); try{ const md=document.getElementById('tab-mydeals'); if(md&&!md.hidden) renderMyDeals(); }catch(_){}; if(!repMode()) renderDash();
 }
 async function setPaymentStatus(pid,status,del,dateOverride){
@@ -3627,9 +3657,11 @@ const INV_STAT_CATALOG=[['closedDeals','Closed deals'],['cashCollected','Cash co
 function invStatOn(key){ const bi=billingInfo(); return (bi&&bi.invStats&&typeof bi.invStats[key]==='boolean') ? bi.invStats[key] : true; } // default on
 function invTab(which){
   document.getElementById('invGen').hidden = which!=='gen';
+  document.getElementById('invVerify').hidden = which!=='verify';
   document.getElementById('invSettings').hidden = which!=='settings';
   document.querySelectorAll('#invSeg button').forEach(b=>b.classList.toggle('on', b.dataset.inv===which));
   if(which==='settings') invLoadCfg();
+  if(which==='verify') invVerifyPreview();
 }
 function renderInvoicing(){
   if(!invAllowed()){ const s=document.getElementById('tab-invoicing'); if(s) s.querySelectorAll('#invGen,#invSettings').forEach(e=>e.hidden=true); return; }
@@ -3641,7 +3673,7 @@ function renderInvoicing(){
   // load workspace wire/ACH details into the settings form
   const bi=billingInfo()||{};
   const setv=(id,v)=>{ const el=document.getElementById(id); if(el) el.value=v||''; };
-  setv('biName',bi.name); setv('biEmail',bi.email); setv('biBank',bi.bank); setv('biBankAddr',bi.bankAddr); setv('biAcct',bi.acct); setv('biRouting',bi.routing); setv('biSwift',bi.swift); setv('biNotes',bi.notes);
+  setv('biName',bi.name); setv('biEmail',bi.email); setv('biBank',bi.bank); setv('biBankAddr',bi.bankAddr); setv('biAcct',bi.acct); setv('biAcctType',bi.acctType); setv('biRouting',bi.routing); setv('biSwift',bi.swift); setv('biReference',bi.reference); setv('biNotes',bi.notes);
   renderInvStatsBoxes();
   invLoadCfg();
   invPreview();
@@ -3677,7 +3709,7 @@ async function saveClientBilling(){
 async function saveBillingInfo(){
   if(!invAllowed()){ toast('Super Admin only',true); return; }
   const g=id=>document.getElementById(id).value.trim(), bi0=billingInfo()||{};
-  const rec={type:'billinginfo',name:g('biName'),email:g('biEmail'),bank:g('biBank'),bankAddr:g('biBankAddr'),acct:g('biAcct'),routing:g('biRouting'),swift:g('biSwift'),notes:g('biNotes'),invStats:bi0.invStats||undefined,by:(SESSION&&SESSION.name)||''};
+  const rec={type:'billinginfo',name:g('biName'),email:g('biEmail'),bank:g('biBank'),bankAddr:g('biBankAddr'),acct:g('biAcct'),acctType:g('biAcctType'),routing:g('biRouting'),swift:g('biSwift'),reference:g('biReference'),notes:g('biNotes'),invStats:bi0.invStats||undefined,by:(SESSION&&SESSION.name)||''};
   try{ await addRecord(rec); toast('Payment details saved'); invPreview(); }
   catch(e){ toast('Save failed: '+(e&&e.message||e),true); }
 }
@@ -3687,7 +3719,7 @@ async function saveInvStats(){
   if(!invAllowed()){ toast('Super Admin only',true); return; }
   const bi=billingInfo()||{}, invStats={};
   document.querySelectorAll('#invStatsBoxes .invStatBox').forEach(c=>{ invStats[c.dataset.k]=c.checked; });
-  const rec={type:'billinginfo',name:bi.name||'',email:bi.email||'',bank:bi.bank||'',bankAddr:bi.bankAddr||'',acct:bi.acct||'',routing:bi.routing||'',swift:bi.swift||'',notes:bi.notes||'',invStats,by:(SESSION&&SESSION.name)||''};
+  const rec={type:'billinginfo',name:bi.name||'',email:bi.email||'',bank:bi.bank||'',bankAddr:bi.bankAddr||'',acct:bi.acct||'',acctType:bi.acctType||'',routing:bi.routing||'',swift:bi.swift||'',reference:bi.reference||'',notes:bi.notes||'',invStats,by:(SESSION&&SESSION.name)||''};
   try{ await addRecord(rec); toast('Invoice stats saved'); invPreview(); }
   catch(e){ toast('Save failed: '+(e&&e.message||e),true); }
 }
@@ -3743,7 +3775,7 @@ function genFounderInvoice(client,from,to){
   const dealRowHtml=uniqDeals.map(d=>rowHtml(esc(usDate(d.date)),esc(d.rep||'-'),esc(d.lead||'-'),esc(d.product||'-'),money(d.cashCollected||0),money(d.contractValue||0)));
   const payRowHtml=recPays.map(p=>rowHtml(esc(usDate(p.date)),esc(p.rep||'-'),esc(p.lead||'-'),(p.method?esc(p.method)+' payment':'Recurring payment'),money(p.amount||0),'&ndash;'));
   const allRows=dealRowHtml.concat(payRowHtml).join('') || `<tr><td colspan="6" style="text-align:center;color:#8a93a6;padding:18px">No deals or payments in this billing period.</td></tr>`;
-  const wireLine = bi && (bi.bank||bi.acct||bi.routing) ? `<div style="margin-top:8px;font-size:12px;color:#6b7488">Remit to: <b style="color:#2b3242">${esc(bi.name||'')}</b>${bi.bank?' &middot; '+esc(bi.bank):''}${bi.acct?' &middot; Acct '+esc(bi.acct):''}${bi.routing?' &middot; Routing '+esc(bi.routing):''}${bi.bankAddr?'<br>'+esc(bi.bankAddr):''}</div>` : '';
+  const wireLine = bi && (bi.bank||bi.acct||bi.routing) ? remitBlockHtml(bi) : '';
   const card=inner=>`<div style="background:#fff;border:1px solid #e6e9ef;border-radius:16px;padding:26px 30px;box-shadow:0 1px 3px rgba(20,30,60,.05);margin-bottom:20px">${inner}</div>`;
   return `<div id="invoiceDoc" style="background:#eef1f6;padding:22px;border-radius:14px;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.5;color:#2b3242;max-width:900px;margin:0 auto">
     <style>#invoiceDoc tbody tr:hover td{background:#f7f9fc}</style>
@@ -3799,14 +3831,80 @@ function genFounderInvoice(client,from,to){
     `)}
   </div>`;
 }
-function invPrint(){
-  const doc=document.getElementById('invoiceDoc'); if(!doc){ toast('Generate an invoice first',true); return; }
+function invPrint(docId){
+  docId=docId||'invoiceDoc';
+  const doc=document.getElementById(docId); if(!doc){ toast('Generate an invoice first',true); return; }
   const w=window.open('','_blank'); if(!w){ toast('Allow pop-ups to print',true); return; }
   // full standard letter page: strip the gray canvas + rounded frame so it prints edge-to-edge on a clean white page
-  w.document.write(`<!doctype html><html><head><title>${esc(invNoLabel())}</title><meta charset="utf-8"><style>@page{size:letter;margin:0.5in}body{margin:0;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}#invoiceDoc{background:#fff!important;padding:0!important;max-width:none!important;border-radius:0!important}</style></head><body>${doc.outerHTML}</body></html>`);
+  w.document.write(`<!doctype html><html><head><title>${esc(invNoLabel(docId))}</title><meta charset="utf-8"><style>@page{size:letter;margin:0.5in}body{margin:0;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}#${docId}{background:#fff!important;padding:0!important;max-width:none!important;border-radius:0!important}</style></head><body>${doc.outerHTML}</body></html>`);
   w.document.close(); w.focus(); setTimeout(()=>{ try{ w.print(); }catch(e){} }, 350);
 }
-function invNoLabel(){ const c=(document.getElementById('invClient')||{}).value||'Invoice'; return 'Invoice - '+c; }
+function invNoLabel(docId){ const c=(document.getElementById(docId==='verifyInvoiceDoc'?'invVClient':'invClient')||{}).value||'Invoice'; return (docId==='verifyInvoiceDoc'?'Verification wire - ':'Invoice - ')+c; }
+/* ---- $1 verification wire: a simple invoice asking the client to send $1 to confirm the wire path ---- */
+function invVerifyPreview(){
+  const out=document.getElementById('invVerifyOut'); if(!out) return;
+  const client=(document.getElementById('invVClient')||{}).value||'';
+  if(!client){ out.innerHTML='<div class="panel" style="padding:20px"><p class="muted" style="margin:0">Pick a client, then Generate the $1 invoice.</p></div>'; return; }
+  out.innerHTML=genVerifyInvoice(client);
+}
+function genVerifyInvoice(client){
+  const bi=billingInfo()||{};
+  const initials=((client||'').match(/[A-Za-z0-9]+/g)||[]).map(w=>w[0]).join('').toUpperCase().slice(0,3)||'IN';
+  const invNo='INV-VERIFY-'+todayLocal().replace(/-/g,'');
+  const card=inner=>`<div style="background:#fff;border:1px solid #e6e9ef;border-radius:16px;padding:26px 30px;box-shadow:0 1px 3px rgba(20,30,60,.05);margin-bottom:20px">${inner}</div>`;
+  const remit=remitBlockHtml(bi) || '<div style="color:#b4632a;font-size:13px">No TSA payment details on file - add them under Billing settings first.</div>';
+  return `<div id="verifyInvoiceDoc" style="background:#eef1f6;padding:22px;border-radius:14px;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.5;color:#2b3242;max-width:900px;margin:0 auto">
+    ${card(`
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px">
+        <div style="display:flex;gap:14px;align-items:center">
+          <div style="width:52px;height:52px;border-radius:11px;background:#c9a227;color:#241c08;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:18px">${esc(initials)}</div>
+          <div><div style="font-size:19px;font-weight:800;color:#1a2b4a">${esc(client||'Client')}</div><div style="font-size:13px;color:#8a93a6">Verification wire</div></div>
+        </div>
+        <div style="text-align:right"><div style="font-size:22px;font-weight:800;color:#1a2b4a;font-variant-numeric:tabular-nums">#${esc(invNo)}</div><div style="display:inline-block;margin-top:5px;font-size:11px;color:#6b7488;border:1px solid #e6e9ef;border-radius:20px;padding:2px 10px">${esc(usDate(todayLocal()))}</div></div>
+      </div>
+      <div style="border-top:1px solid #eef1f6;margin:18px 0"></div>
+      <div style="font-size:13px;color:#2b3242">Please send a <b>$1.00 test wire</b> using the details below to confirm the transfer path before your first weekly performance payout. Once we confirm the $1 lands, all future payouts run to these same details. Please include the reference on the wire so we can match it.</div>
+      <table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:18px">
+        <thead><tr style="text-align:left;color:#8a93a6;border-bottom:1px solid #e6e9ef">
+          <th style="padding:8px;font-weight:600;letter-spacing:.04em">DESCRIPTION</th><th style="padding:8px;font-weight:600;text-align:right;letter-spacing:.04em">AMOUNT</th>
+        </tr></thead>
+        <tbody><tr>
+          <td style="padding:12px 8px;color:#2b3242;border-bottom:1px solid #eef1f6">Verification wire &mdash; confirms the transfer path</td>
+          <td style="padding:12px 8px;text-align:right;font-weight:700;color:#1a2b4a;border-bottom:1px solid #eef1f6;font-variant-numeric:tabular-nums">$1.00</td>
+        </tr></tbody>
+      </table>
+      <div style="display:flex;justify-content:flex-end;align-items:baseline;gap:18px;margin-top:14px">
+        <div style="font-size:13px;font-weight:700;color:#c9a227;text-transform:uppercase;letter-spacing:.04em">Total</div>
+        <div style="font-size:26px;font-weight:900;color:#c9a227;font-variant-numeric:tabular-nums">$1.00</div>
+      </div>
+      <div style="border-top:1px solid #eef1f6;margin:18px 0 12px"></div>
+      ${remit}
+    `)}
+  </div>`;
+}
+// draft the verification-wire email in the user's mail client (no send backend needed - opens their composer prefilled)
+function invEmailVerify(){
+  const client=(document.getElementById('invVClient')||{}).value||'';
+  if(!client){ toast('Pick a client first',true); return; }
+  const to=(document.getElementById('invVEmail')||{}).value||'';
+  const bi=billingInfo()||{};
+  const L=(l,v)=> v?`${l}: ${v}\n`:'';
+  const body=`Hi,\n\nBefore your first weekly performance payout, please send a $1.00 test wire to confirm the transfer path. Once we see the $1 land, all future payouts run to these same details.\n\n`
+    +L('Beneficiary',bi.name)+L('Bank',bi.bank)+L('Bank address',bi.bankAddr)+L('Routing (ABA / wire)',bi.routing)+L('Account number',bi.acct)+L('Account type',bi.acctType)+L('SWIFT / BIC',bi.swift)+L('Reference',bi.reference)+L('Amount','$1.00')
+    +(bi.notes?`\n${bi.notes}\n`:'')
+    +`\nReply here once it's sent and we'll confirm receipt.\n\nThank you,\nThe Sales Agency`;
+  const subject=`$1 verification wire - ${client}`;
+  window.location.href=`mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+// TSA's wire/ACH remit details as a labeled block (shared by the founder invoice + the $1 verification wire)
+function remitBlockHtml(bi){
+  bi=bi||{};
+  const row=(l,v)=> v?`<tr><td style="padding:2px 16px 2px 0;color:#8a93a6;white-space:nowrap;vertical-align:top">${esc(l)}</td><td style="padding:2px 0;color:#2b3242;font-weight:600">${esc(v)}</td></tr>`:'';
+  const rows=row('Beneficiary',bi.name)+row('Bank',bi.bank)+row('Bank address',bi.bankAddr)+row('Routing (ABA / wire)',bi.routing)+row('Account number',bi.acct)+row('Account type',bi.acctType)+row('SWIFT / BIC',bi.swift)+row('Reference',bi.reference);
+  if(!rows) return '';
+  return `<div style="margin-top:12px"><div style="font-size:12px;color:#8a93a6;margin-bottom:5px;text-transform:uppercase;letter-spacing:.04em;font-weight:600">Remit payment to</div>
+    <table style="border-collapse:collapse;font-size:12.5px">${rows}</table></div>`;
+}
 
 /* ---------------- rep breakdown tab ---------------- */
 let REP_SEL=null, REP_SCOPE=null;
