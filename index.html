@@ -939,9 +939,9 @@
     <h2 class="section">Admin Report</h2>
     <p class="hint">Leadership-only. See who submitted their reports (Setter / Closer / Manager EOD) AND their performance over any date range. Pick a <b>From</b> and <b>To</b> date (or a quick range). Tables cover the whole range; a day-by-day grid shows for ranges of 16 days or fewer.</p>
     <div class="filters" style="margin:0 0 8px;align-items:flex-end">
-      <div class="field"><label>From</label><input type="date" id="arFrom" onchange="renderAdminReport()" oninput="renderAdminReport()"></div>
-      <div class="field"><label>To</label><input type="date" id="arTo" onchange="renderAdminReport()" oninput="renderAdminReport()"></div>
+      <div class="field"><label>Date range</label><div class="rangewrap"><input type="text" id="arRange_txt" readonly placeholder="Click a start day, then an end day" onclick="rpToggle('arRange',event)"><input type="hidden" id="arRange_from"><input type="hidden" id="arRange_to"><div class="rangepop" id="arRange_pop" hidden onclick="event.stopPropagation()"></div></div></div>
       <div class="field"><label>Quick range</label><div class="row-actions"><button class="btn ghost sm" onclick="setArPreset('yesterday')">Yesterday</button><button class="btn ghost sm" onclick="setArPreset('week')">This week</button><button class="btn ghost sm" onclick="setArPreset('7')">Past 7 days</button><button class="btn ghost sm" onclick="setArPreset('month')">This month</button><button class="btn ghost sm" onclick="setArPreset('30')">Last 30d</button></div></div>
+      <div class="field"><label>Client</label><select id="arClient" onchange="renderAdminReport()"></select></div>
       <span id="arSummary" class="tag" style="align-self:flex-end;margin-bottom:2px"></span>
       <button class="btn ghost sm" style="align-self:flex-end" onclick="renderAdminReport()">Refresh</button>
     </div>
@@ -4223,9 +4223,9 @@ let REP_ACTAS=null;
 function isHybridRep(){ return !!(SESSION && hasRole(SESSION.username,'closer') && hasRole(SESSION.username,'setter')); }
 function myRepRole(){ if(isHybridRep()) return REP_ACTAS||'Closer'; return SESSION&&SESSION.role==='setter'?'Setter':'Closer'; }
 // EOD compliance: who submitted an End-of-Day for a given day
-function submittedEod(name, day){
-  const n=String(name||'').trim().toLowerCase();
-  return RECORDS.some(x=>x.type==='eod' && String(x.rep||'').trim().toLowerCase()===n && String(x.date||'').slice(0,10)===day);
+function submittedEod(name, day, client){
+  const n=String(name||'').trim().toLowerCase(), c=(client||'').trim().toLowerCase();
+  return RECORDS.some(x=>x.type==='eod' && String(x.rep||'').trim().toLowerCase()===n && String(x.date||'').slice(0,10)===day && (!c||String(x.client||'').trim().toLowerCase()===c));
 }
 // reps assigned to a client (strict - no fallback to all), for the submission-check panels
 function repsForClientStrict(role, client){
@@ -4319,9 +4319,9 @@ function periodRange(view,date){
   const today=todayLocal(), elapsed=days.filter(d=>d<today); // 7-day operation: all past days count; per-person scheduled offs removed in accountableDays
   return {view,start,end,days,weekdays:days.slice(),elapsed};
 }
-function repPeriodStats(name, role, range){
-  const n=String(name||'').trim().toLowerCase(), inR=new Set(range.days);
-  const recs=activityRecords().filter(x=>(x.type==='eod'||!x.type) && String(x.rep||'').trim().toLowerCase()===n && (x.role||'Closer')===role && inR.has((x.date||'').slice(0,10)));
+function repPeriodStats(name, role, range, client){
+  const n=String(name||'').trim().toLowerCase(), inR=new Set(range.days), c=(client||'').trim().toLowerCase();
+  const recs=activityRecords().filter(x=>(x.type==='eod'||!x.type) && String(x.rep||'').trim().toLowerCase()===n && (x.role||'Closer')===role && inR.has((x.date||'').slice(0,10)) && (!c||String(x.client||'').trim().toLowerCase()===c));
   const sub=new Set(recs.map(x=>(x.date||'').slice(0,10)));
   let hours=0,dials=0,connected=0,sets=0,connMeet=0,deals=0,cash=0;
   recs.forEach(x=>{ hours+=x.hoursDialing||0; dials+=x.newOutreach||0; connected+=x.connectedCalls||0; sets+=x.callsSet||0; connMeet+=x.connectedMeetings||0; deals+=x.closedDeals||0; cash+=x.cashCollected||0; });
@@ -4336,15 +4336,23 @@ function mgrPeriodStats(name, range){
   return {sub:elapsed.filter(d=>sub.has(d)).length, exp:elapsed.length, missed:elapsed.filter(d=>!sub.has(d)).length, count:recs.length};
 }
 function arSummaryBar(txt,miss){ const sum=document.getElementById('arSummary'); if(!sum)return; sum.textContent=txt; sum.style.color=miss?'var(--warn)':'var(--good)'; sum.style.borderColor=miss?'var(--warn)':'var(--good)'; }
+// managers assigned to a client (from that client's webinar/setter/closer manager fields)
+function managersForClient(client){ const c=latestClients().find(x=>String(x.name||'')===client); if(!c) return []; return [...new Set(['webinarMgr','setterMgr','closerMgr'].map(f=>(c[f]||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b)); }
 function renderAdminReport(){
-  const fi=document.getElementById('arFrom'), ti=document.getElementById('arTo'); if(!fi||!ti) return;
+  const fi=document.getElementById('arRange_from'), ti=document.getElementById('arRange_to'); if(!fi||!ti) return;
   if(!ti.value) ti.value=isoOffset(todayLocal(),-1);   // default To = yesterday
   if(!fi.value) fi.value=ti.value;                     // default = single day (yesterday)
+  rpAttach('arRange', renderAdminReport);
   let start=fi.value.slice(0,10), end=ti.value.slice(0,10);
-  if(end<start){ const t=start; start=end; end=t; fi.value=start; ti.value=end; } // keep From <= To
+  if(end<start){ const t=start; start=end; end=t; fi.value=start; ti.value=end; rpAttach('arRange', renderAdminReport); }
   const range=rangeFromTo(start,end);
-  const setters=repNames('setter'), closers=repNames('closer'), managers=managerNames();
-  renderAdminRange(range,setters,closers,managers);
+  // client filter
+  const cs=document.getElementById('arClient'); const client=(cs&&cs.value)||'';
+  if(cs){ cs.innerHTML='<option value="">All clients</option>'+clientNames().map(c=>`<option>${esc(c)}</option>`).join(''); if(client&&clientNames().includes(client))cs.value=client; }
+  const setters = client?repsForClientStrict('setter',client):repNames('setter');
+  const closers = client?repsForClientStrict('closer',client):repNames('closer');
+  const managers = client?managersForClient(client):managerNames();
+  renderAdminRange(range,setters,closers,managers,client);
   renderOffdayApprovals();
 }
 // build a range from an explicit start/end (inclusive). 7-day operation: every day is a candidate accountable day;
@@ -4362,7 +4370,8 @@ function setArPreset(p){
   else if(p==='7'){ from=isoOffset(t,-6); to=t; } // last 7 days incl. today
   else if(p==='month'){ from=t.slice(0,7)+'-01'; to=t; }
   else { from=isoOffset(t,-29); to=t; } // last 30 days
-  const fi=document.getElementById('arFrom'), ti=document.getElementById('arTo'); if(fi)fi.value=from; if(ti)ti.value=to;
+  const fi=document.getElementById('arRange_from'), ti=document.getElementById('arRange_to'); if(fi)fi.value=from; if(ti)ti.value=to;
+  rpAttach('arRange', renderAdminReport);
   renderAdminReport();
 }
 // generic date-range helpers reused by the Call Log + Rep Breakdown filters
@@ -4431,9 +4440,9 @@ function eodDetailsHTML(day){
   const inner=(eodCards+mgrCards)||'<p class="muted" style="padding:10px">No reports submitted this day.</p>';
   return `<div class="panel"><h3>Report details <span style="font-weight:400;color:var(--muted);font-size:12px">- what each person actually reported ${usDate(day)}</span></h3><div style="padding:4px 2px">${inner}</div></div>`;
 }
-function renderAdminRange(range,setters,closers,managers){
+function renderAdminRange(range,setters,closers,managers,client){
   const label=range.single?usDate(range.start):`${usDate(range.start)} to ${usDate(range.end)}`;
-  const setS=setters.map(n=>({n,s:repPeriodStats(n,'Setter',range)})), cloS=closers.map(n=>({n,s:repPeriodStats(n,'Closer',range)})), mgrS=managers.map(n=>({n,s:mgrPeriodStats(n,range)}));
+  const setS=setters.map(n=>({n,s:repPeriodStats(n,'Setter',range,client)})), cloS=closers.map(n=>({n,s:repPeriodStats(n,'Closer',range,client)})), mgrS=managers.map(n=>({n,s:mgrPeriodStats(n,range)}));
   const totMiss=[...setS,...cloS,...mgrS].reduce((a,x)=>a+x.s.missed,0);
   arSummaryBar(`${label} - ${range.elapsed.length}/${range.weekdays.length} days · ${totMiss} missed report${totMiss===1?'':'s'}`, totMiss);
   const mc=s=>`<td class="num">${s.sub}/${s.exp}</td><td class="num" style="${s.missed?'color:var(--bad);font-weight:700':''}">${s.missed}</td>`;
@@ -4445,20 +4454,20 @@ function renderAdminRange(range,setters,closers,managers){
    +`<div class="panel"><h3>Closers <span style="font-weight:400;color:var(--muted);font-size:12px">- ${esc(label)}</span></h3><div class="tablewrap"><table>${closers.length?`<thead><tr><th>Closer</th><th class="num">Days</th><th class="num">Missed</th><th class="num">Hours</th><th class="num">Calls</th><th class="num">Close%</th><th class="num">Deals</th><th class="num">Cash</th></tr></thead><tbody>${cloRows}</tbody>`:'<tbody><tr><td class="muted" style="padding:14px">No closers.</td></tr></tbody>'}</table></div></div>`
    +`<div class="panel"><h3>Managers (Manager EOD) <span style="font-weight:400;color:var(--muted);font-size:12px">- ${esc(label)}</span></h3><div class="tablewrap"><table>${managers.length?`<thead><tr><th>Manager</th><th class="num">Days</th><th class="num">Missed</th><th class="num">EODs</th></tr></thead><tbody>${mgrRows}</tbody>`:'<tbody><tr><td class="muted" style="padding:14px">No managers assigned.</td></tr></tbody>'}</table></div></div>`
    +churnPanelHTML()
-   +dayGridHTML(range,setters,closers,managers)
+   +dayGridHTML(range,setters,closers,managers,client)
    +(range.single?eodDetailsHTML(range.start):'')
    +`<p class="hint" style="margin-top:8px">We run 7 days a week, so every day counts. "Days" = days submitted out of accountable days in the range. A person's scheduled weekly day(s) off, approved time off, and pre-hire / post-termination days are excluded and never count as missed.</p>`;
 }
 // day-by-day grid across the selected range (only for ranges of 16 days or fewer, so it stays readable)
-function dayGridHTML(range,setters,closers,managers){
+function dayGridHTML(range,setters,closers,managers,client){
   const gd=range.days;
   if(gd.length>16) return `<div class="panel"><h3>Day-by-day</h3><p class="muted" style="padding:12px">Range is ${gd.length} days - choose 16 days or fewer to see the day-by-day grid. The tables above already cover the whole range.</p></div>`;
   const dow=d=>['Su','Mo','Tu','We','Th','Fr','Sa'][new Date(d+'T00:00:00').getDay()];
   const grows=(names,role,cell)=>names.map(n=>`<tr><td>${esc(n)}</td><td class="muted" style="font-size:11px">${role}</td>`+gd.map(d=>cell(n,d)).join('')+`</tr>`).join('');
   const ghead=`<thead><tr><th>Person</th><th>Role</th>`+gd.map(d=>`<th class="num" style="white-space:nowrap">${dow(d)} ${(+d.slice(5,7))}-${(+d.slice(8,10))}</th>`).join('')+`</tr></thead>`;
   const ggrp=l=>`<tr><td colspan="${2+gd.length}" style="background:var(--surface-2);font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--gold)">${l}</td></tr>`;
-  const body=(setters.length?ggrp('Setters')+grows(setters,'Setter',(n,d)=>dayCell(n,d,submittedEod(n,d))):'')
-    +(closers.length?ggrp('Closers')+grows(closers,'Closer',(n,d)=>dayCell(n,d,submittedEod(n,d))):'')
+  const body=(setters.length?ggrp('Setters')+grows(setters,'Setter',(n,d)=>dayCell(n,d,submittedEod(n,d,client))):'')
+    +(closers.length?ggrp('Closers')+grows(closers,'Closer',(n,d)=>dayCell(n,d,submittedEod(n,d,client))):'')
     +(managers.length?ggrp('Managers')+grows(managers,'Manager',(n,d)=>dayCell(n,d,submittedMgrEod(n,d))):'');
   return `<div class="panel"><h3>Day-by-day <span style="font-weight:400;color:var(--muted);font-size:12px">quick glance , who reported each day</span></h3>
     <div style="display:flex;gap:16px;flex-wrap:wrap;margin:0 0 10px;font-size:12px">
