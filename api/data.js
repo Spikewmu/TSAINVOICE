@@ -223,10 +223,18 @@ export default async function handler(req, res) {
       const filter = ws === DEFAULT_WS
         ? `or=(data->>ws.eq.${DEFAULT_WS},data->>ws.is.null)`
         : `data->>ws=eq.${encodeURIComponent(ws)}`;
-      const r = await supa(`records?select=data&order=id.asc&limit=100000&${filter}`);
-      if (!r.ok) { const t = await r.text(); return res.status(200).json({ ok: false, error: 'db ' + r.status + ' ' + t.slice(0, 160) }); }
-      const rows = await r.json();
-      return res.status(200).json({ ok: true, ws, records: rows.map(x => x.data).filter(Boolean) });
+      // PostgREST caps every response at db-max-rows (1000) regardless of the limit param, so we page
+      // through with Range headers until a short page comes back. Without this only the oldest 1000 rows
+      // loaded (order=id.asc) and everything newer silently vanished from the app once the table passed 1000.
+      const PAGE = 1000, out = [];
+      for (let from = 0; ; from += PAGE) {
+        const r = await supa(`records?select=data&order=id.asc&${filter}`, { headers: { 'Range-Unit': 'items', Range: `${from}-${from + PAGE - 1}` } });
+        if (!r.ok) { const t = await r.text(); return res.status(200).json({ ok: false, error: 'db ' + r.status + ' ' + t.slice(0, 160) }); }
+        const rows = await r.json();
+        for (const x of rows) if (x && x.data) out.push(x.data);
+        if (rows.length < PAGE || from > 500000) break;
+      }
+      return res.status(200).json({ ok: true, ws, records: out });
     }
     if (action === 'write') {
       const rec = b.record || {};

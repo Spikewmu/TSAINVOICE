@@ -1618,10 +1618,18 @@ async function remoteGet(){
   // Primary: Supabase (records live here now). Falls back to the Apps Script sheet.
   if(supaOn()){
     try{
-      const r=await fetch(CFG.supaUrl+'/rest/v1/records?select=data&order=id.asc&limit=100000',{headers:supaHeaders()});
-      if(!r.ok) throw new Error('supa '+r.status);
-      const rows=await r.json();
-      return rows.map(x=>x.data).filter(Boolean);
+      // PostgREST caps each response at 1000 rows no matter the limit param, so page through with
+      // Range headers until a short page returns. (The old limit=100000 silently loaded only the
+      // oldest 1000 rows, hiding everything newer once the table grew past 1000.)
+      const PAGE=1000, out=[];
+      for(let from=0;;from+=PAGE){
+        const r=await fetch(CFG.supaUrl+'/rest/v1/records?select=data&order=id.asc',{headers:supaHeaders({'Range-Unit':'items','Range':from+'-'+(from+PAGE-1)})});
+        if(!r.ok) throw new Error('supa '+r.status);
+        const rows=await r.json();
+        rows.forEach(x=>{ if(x&&x.data) out.push(x.data); });
+        if(rows.length<PAGE || from>500000) break;
+      }
+      return out;
     }catch(e){ console.warn('supa read fail, trying sheet',e); }
   }
   if(!CFG.endpoint) return null;
