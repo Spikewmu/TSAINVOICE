@@ -5730,7 +5730,7 @@ function repOnboardFor(username){ return repOnboardMap()[nrmName(username)]||nul
 function onboardDone(ob){ return !!(ob&&ob.contract&&ob.slack&&ob.ghl&&ob.training); }
 function renderRepOnboarding(){
   const panel=document.getElementById('usersOnboardPanel'), box=document.getElementById('usersOnboard'); if(!panel||!box) return;
-  const reps=(USERS_CACHE||[]).filter(u=>['setter','closer'].includes(u.role) && !u.archived);
+  const reps=(USERS_CACHE||[]).filter(u=>['setter','closer'].includes(u.role) && !u.archived && (!GLOBAL_CLIENT || teamsFor(u.username).includes(GLOBAL_CLIENT))); // follow the global company scope
   const recentHire=u=>{ const m=repMetaFor(u.username); if(!m||!m.startDate||m.endDate) return false; const days=(Date.now()-Date.parse(m.startDate))/86400000; return days>=0&&days<=21; };
   const list=reps.filter(u=>{ const m=repMetaFor(u.username); if(m&&m.endDate) return false; const ob=repOnboardFor(u.username); if(onboardDone(ob)) return false; return !!ob || recentHire(u); })
     .sort((a,b)=>String(a.name||a.username).localeCompare(String(b.name||b.username)));
