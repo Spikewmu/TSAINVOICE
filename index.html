@@ -924,9 +924,8 @@
     <h2 class="section">Call Log</h2>
     <p class="hint">Every post-call checkout, newest first, from closers and setters. Review any call's outcome and open the recording. Reps see their own account; managers and admins see everything.</p>
     <div class="filters">
-      <div class="field"><label>From</label><input type="date" id="clFrom" onchange="renderCallLog()" oninput="renderCallLog()"></div>
-      <div class="field"><label>To</label><input type="date" id="clTo" onchange="renderCallLog()" oninput="renderCallLog()"></div>
-      <div class="field"><label>Quick range</label><div class="row-actions"><button class="btn ghost sm" onclick="rangePreset('clFrom','clTo','week','renderCallLog')">This week</button><button class="btn ghost sm" onclick="rangePreset('clFrom','clTo','month','renderCallLog')">This month</button><button class="btn ghost sm" onclick="rangePreset('clFrom','clTo','30','renderCallLog')">Last 30d</button><button class="btn ghost sm" onclick="rangePreset('clFrom','clTo','all','renderCallLog')">All time</button></div></div>
+      <div class="field"><label>Date range</label><div class="rangewrap"><input type="text" id="clRange_txt" readonly placeholder="Click a start day, then an end day" onclick="rpToggle('clRange',event)"><input type="hidden" id="clRange_from"><input type="hidden" id="clRange_to"><div class="rangepop" id="clRange_pop" hidden onclick="event.stopPropagation()"></div></div></div>
+      <div class="field"><label>Quick range</label><div class="row-actions"><button class="btn ghost sm" onclick="clRangePreset('week')">This week</button><button class="btn ghost sm" onclick="clRangePreset('month')">This month</button><button class="btn ghost sm" onclick="clRangePreset('30')">Last 30d</button><button class="btn ghost sm" onclick="clRangePreset('all')">All time</button></div></div>
       <div class="field"><label>Client</label><select id="clClient" onchange="renderCallLog()"></select></div>
       <div class="field"><label>Type</label><select id="clRole" onchange="renderCallLog()"><option value="">All calls</option><option value="Closer">Closing calls</option><option value="Setter">Conversations</option></select></div>
       <div class="field"><label>Rep</label><select id="clRep" onchange="renderCallLog()"></select></div>
@@ -1959,7 +1958,7 @@ function baseAllow(role){
   return ({
     admin:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','postcall','sod','eod','training','mgreod','webinar','calllog','calendar','speedtolead','dailyreport','adminreport','recruiting','messages','invoicing','data','users','integrations','settings'],
     director:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','dailyreport','recruiting','messages','adminreport'],
-    manager:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','speedtolead','dailyreport','recruiting','messages'],
+    manager:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','speedtolead','dailyreport','adminreport','recruiting','messages'],
     founder:['dash'],
     recruiter:['dash','recruiting','messages','timeoff'],
     webinarteam:['dash','meeting','promises','timeoff','webinar'],
@@ -2505,7 +2504,8 @@ function collapsePostcall(list){
 /* ---------------- call log ---------------- */
 function fillCallLogFilters(recs){
   const sc=dashScopeClients(), clist=sc?sc.filter(c=>c!==' none'):clientNames();
-  const fc=document.getElementById('clClient'); if(fc){ const cc=fc.value; fc.innerHTML='<option value="">'+(sc?('My account'+(clist.length>1?'s':'')):'All clients')+'</option>'+clist.map(c=>`<option>${esc(c)}</option>`).join(''); if(cc)fc.value=cc; }
+  rpAttach('clRange', renderCallLog);
+  const fc=document.getElementById('clClient'); if(fc){ const cc=fc.value; fc.innerHTML='<option value="">'+(sc?('My account'+(clist.length>1?'s':'')):'All clients')+'</option>'+clist.map(c=>`<option>${esc(c)}</option>`).join(''); fc.value=preferGlobal(clist, cc); }
   const fr=document.getElementById('clRep'); if(fr){ const cur=fr.value, reps=[...new Set(recs.map(x=>String(x.rep||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b)); fr.innerHTML='<option value="">All reps</option>'+reps.map(n=>`<option>${esc(n)}</option>`).join(''); if(reps.includes(cur))fr.value=cur; }
   const oc=document.getElementById('clOutcome'); if(oc){ const cur=oc.value, outs=[...new Set([...PC_OUTCOMES.Closer,...PC_OUTCOMES.Setter])]; oc.innerHTML='<option value="">All outcomes</option>'+outs.map(o=>`<option>${esc(o)}</option>`).join(''); if(cur)oc.value=cur; }
 }
@@ -2570,7 +2570,7 @@ async function renderCalendar(force){
       const j=await res.json();
       if(!j.ok){ if(grid) grid.innerHTML='<p class="hint">Could not load calendar: '+esc(j.error||'error')+'</p>'; return; }
       window.__calEvents=j.events||[]; window.__calWeekKey=key; window.__calSkipped=j.skipped||[];
-      const sel=document.getElementById('calClient'); if(sel){ const cur=sel.value; const names=[...new Set(window.__calEvents.map(e=>e.client))].sort(); sel.innerHTML='<option value="">All clients</option>'+names.map(n=>'<option>'+esc(n)+'</option>').join(''); sel.value=cur; }
+      const sel=document.getElementById('calClient'); if(sel){ const cur=sel.value; const names=[...new Set(window.__calEvents.map(e=>e.client))].sort(); sel.innerHTML='<option value="">All clients</option>'+names.map(n=>'<option>'+esc(n)+'</option>').join(''); sel.value=preferGlobal(names, cur); }
       calPopulateCalendars(); calPopulateReps();
       const meta=document.getElementById('calMeta'); if(meta){ const a=calYmd(start),b=calYmd(endIncl); const nm=(window.__calEvents||[]).filter(e=>{ const k=calLocalDate(e.start); return k>=a&&k<=b; }).length; let m=nm+' meeting'+(nm===1?'':'s'); const tz=calTzLabel(); if(tz) m+=' · times in '+tz; const v1=[...new Set((window.__calSkipped||[]).map(s=>s.client))]; if(v1.length) m+=' · '+v1.length+' client'+(v1.length===1?'':'s')+' not yet connected'; meta.textContent=m; }
     }catch(e){ if(grid) grid.innerHTML='<p class="hint">Calendar error: '+esc(String(e))+'</p>'; return; }
@@ -2639,10 +2639,11 @@ function renderCalendarGrid(){
     +'</div>'+colsHtml+'</div>';
 }
 
+function clRangePreset(p){ rangePreset('clRange_from','clRange_to',p,''); rpAttach('clRange',renderCallLog); renderCallLog(); }
 function renderCallLog(){
   const recs=collapsePostcall(RECORDS); fillCallLogFilters(recs);
   const gv=id=>{ const e=document.getElementById(id); return e?e.value:''; };
-  const from=gv('clFrom').slice(0,10),to=gv('clTo').slice(0,10),c=gv('clClient'),r=gv('clRole'),rep=gv('clRep'),oc=gv('clOutcome'),sc=dashScopeClients();
+  const from=gv('clRange_from').slice(0,10),to=gv('clRange_to').slice(0,10),c=gv('clClient'),r=gv('clRole'),rep=gv('clRep'),oc=gv('clOutcome'),sc=dashScopeClients();
   const rows=recs.filter(x=>((!from&&!to)||inRange(x.date,from,to))&&(!c||x.client===c)&&(!r||(x.role||'')===r)&&(!rep||String(x.rep||'').trim()===rep)&&(!oc||(x.outcome||'')===oc)&&(!sc||sc.includes(x.client)))
     .sort((a,b)=>((b.date||'')+(b.submittedAt||'')).localeCompare((a.date||'')+(a.submittedAt||'')));
   const cols=`<colgroup><col style="width:9%"><col style="width:15%"><col style="width:13%"><col style="width:12%"><col style="width:23%"><col style="width:10%"><col style="width:11%"><col style="width:7%"></colgroup>`;
@@ -3399,7 +3400,8 @@ async function renderSpeedToLead(){
     const res=await splApi({action:'speedToLeadClients'}); __splClients=(res&&res.clients)||[];
     sel.innerHTML = __splClients.length ? __splClients.map(c=>`<option value="${esc(c.locationId)}">${esc(c.client)}</option>`).join('') : '<option value="">No connected GHL accounts</option>';
   }
-  if(sel && GLOBAL_CLIENT){ const m=(__splClients||[]).find(c=>String(c.client)===GLOBAL_CLIENT); if(m) sel.value=m.locationId; } // follow the global company scope
+  // follow the global company scope: select that client + auto-load its speed-to-lead data
+  if(sel && GLOBAL_CLIENT){ const m=(__splClients||[]).find(c=>String(c.client||'').trim().toLowerCase()===GLOBAL_CLIENT.trim().toLowerCase()); if(m && sel.value!==m.locationId){ sel.value=m.locationId; if(typeof splLoad==='function') splLoad(); } }
 }
 function splQuick(p){ const t=todayLocal(); let from,to=t; if(p==='yesterday'){ from=to=isoOffset(t,-1); } else if(p==='7'){ from=isoOffset(t,-6); } else { from=isoOffset(t,-29); }
   const ff=document.getElementById('spl_from'), ft=document.getElementById('spl_to'); if(ff)ff.value=from; if(ft)ft.value=to; rpAttach('spl', function(){}); splLoad(false); }
@@ -3827,6 +3829,7 @@ function renderInvoicing(){
   const bi=billingInfo()||{};
   const setv=(id,v)=>{ const el=document.getElementById(id); if(el) el.value=v||''; };
   setv('biName',bi.name); setv('biEmail',bi.email); setv('biBank',bi.bank); setv('biBankAddr',bi.bankAddr); setv('biAcct',bi.acct); setv('biAcctType',bi.acctType); setv('biRouting',bi.routing); setv('biSwift',bi.swift); setv('biReference',bi.reference); setv('biNotes',bi.notes);
+  const ic=document.getElementById('invClient'); if(ic) ic.value=preferGlobal(clientNames(), ic.value); // follow the global company
   renderInvStatsBoxes();
   invLoadCfg();
   invPreview();
@@ -3997,6 +4000,7 @@ function renderArForecast(){
   const inWin=p=>{ if(win==='all') return true; const d=dated(p); return d?d<=cutoff:false; };
   const byClient={}; let undated=0;
   paymentsCollapsed().filter(p=>p.status==='pending').forEach(p=>{
+    if(GLOBAL_CLIENT && p.client!==GLOBAL_CLIENT) return; // follow the global company scope
     if(!inWin(p)){ if(!dated(p)) undated+=(p.amount||0); return; }
     const c=(p.client||'(no offer)'), o=byClient[c]||(byClient[c]={client:c,cash:0,n:0}); o.cash+=p.amount||0; o.n++;
   });
@@ -4406,13 +4410,17 @@ function renderAdminReport(){
   let start=fi.value.slice(0,10), end=ti.value.slice(0,10);
   if(end<start){ const t=start; start=end; end=t; fi.value=start; ti.value=end; rpAttach('arRange', renderAdminReport); }
   const range=rangeFromTo(start,end);
-  // client filter
+  // managers see only the accounts they run; admins/directors see all
+  const isMgr = SESSION && SESSION.role==='manager';
+  const scopeClients = isMgr ? managedClientsForUser(SESSION) : null; // null = all
+  const clientOpts = scopeClients || clientNames();
   const cs=document.getElementById('arClient'); let client=(cs&&cs.value)||'';
-  if(cs){ cs.innerHTML='<option value="">All clients</option>'+clientNames().map(c=>`<option>${esc(c)}</option>`).join(''); cs.value=preferGlobal(clientNames(), client); client=cs.value; }
-  const setters = client?repsForClientStrict('setter',client):repNames('setter');
-  const closers = client?repsForClientStrict('closer',client):repNames('closer');
-  const managers = client?managersForClient(client):managerNames();
-  renderAdminRange(range,setters,closers,managers,client);
+  if(cs){ cs.innerHTML='<option value="">'+(scopeClients?'All my companies':'All clients')+'</option>'+clientOpts.map(c=>`<option>${esc(c)}</option>`).join(''); cs.value=preferGlobal(clientOpts, client); client=cs.value; }
+  const poolClients = client?[client]:(scopeClients||null); // null = every client (admin, no filter)
+  const gather=role=>{ if(!poolClients) return repNames(role); const s=new Set(); poolClients.forEach(c=>repsForClientStrict(role,c).forEach(n=>s.add(n))); return [...s].sort((a,b)=>a.localeCompare(b)); };
+  const setters=gather('setter'), closers=gather('closer');
+  const managers = poolClients ? [...new Set(poolClients.flatMap(managersForClient))].sort((a,b)=>a.localeCompare(b)) : managerNames();
+  renderAdminRange(range,setters,closers,managers,client,poolClients);
   renderOffdayApprovals();
 }
 // build a range from an explicit start/end (inclusive). 7-day operation: every day is a candidate accountable day;
@@ -4500,7 +4508,7 @@ function eodDetailsHTML(day){
   const inner=(eodCards+mgrCards)||'<p class="muted" style="padding:10px">No reports submitted this day.</p>';
   return `<div class="panel"><h3>Report details <span style="font-weight:400;color:var(--muted);font-size:12px">- what each person actually reported ${usDate(day)}</span></h3><div style="padding:4px 2px">${inner}</div></div>`;
 }
-function renderAdminRange(range,setters,closers,managers,client){
+function renderAdminRange(range,setters,closers,managers,client,poolClients){
   const label=range.single?usDate(range.start):`${usDate(range.start)} to ${usDate(range.end)}`;
   const setS=setters.map(n=>({n,s:repPeriodStats(n,'Setter',range,client)})), cloS=closers.map(n=>({n,s:repPeriodStats(n,'Closer',range,client)})), mgrS=managers.map(n=>({n,s:mgrPeriodStats(n,range)}));
   const totMiss=[...setS,...cloS,...mgrS].reduce((a,x)=>a+x.s.missed,0);
@@ -4513,7 +4521,7 @@ function renderAdminRange(range,setters,closers,managers,client){
     `<div class="panel"><h3>Setters <span style="font-weight:400;color:var(--muted);font-size:12px">- ${esc(label)}</span></h3><div class="tablewrap"><table>${setters.length?`<thead><tr><th>Setter</th><th class="num">Days</th><th class="num">Missed</th><th class="num">Hours</th><th class="num">Dials</th><th class="num">Conn%</th><th class="num">Sets</th></tr></thead><tbody>${setRows}</tbody>`:'<tbody><tr><td class="muted" style="padding:14px">No setters.</td></tr></tbody>'}</table></div></div>`
    +`<div class="panel"><h3>Closers <span style="font-weight:400;color:var(--muted);font-size:12px">- ${esc(label)}</span></h3><div class="tablewrap"><table>${closers.length?`<thead><tr><th>Closer</th><th class="num">Days</th><th class="num">Missed</th><th class="num">Hours</th><th class="num">Calls</th><th class="num">Close%</th><th class="num">Deals</th><th class="num">Cash</th></tr></thead><tbody>${cloRows}</tbody>`:'<tbody><tr><td class="muted" style="padding:14px">No closers.</td></tr></tbody>'}</table></div></div>`
    +`<div class="panel"><h3>Managers (Manager EOD) <span style="font-weight:400;color:var(--muted);font-size:12px">- ${esc(label)}</span></h3><div class="tablewrap"><table>${managers.length?`<thead><tr><th>Manager</th><th class="num">Days</th><th class="num">Missed</th><th class="num">EODs</th></tr></thead><tbody>${mgrRows}</tbody>`:'<tbody><tr><td class="muted" style="padding:14px">No managers assigned.</td></tr></tbody>'}</table></div></div>`
-   +churnPanelHTML(client)
+   +churnPanelHTML(poolClients)
    +dayGridHTML(range,setters,closers,managers,client)
    +(range.single?eodDetailsHTML(range.start):'')
    +`<p class="hint" style="margin-top:8px">We run 7 days a week, so every day counts. "Days" = days submitted out of accountable days in the range. A person's scheduled weekly day(s) off, approved time off, and pre-hire / post-termination days are excluded and never count as missed.</p>`;
@@ -4540,9 +4548,9 @@ function dayGridHTML(range,setters,closers,managers,client){
     <div class="tablewrap"><table>${ghead}<tbody>${body||'<tr><td class="muted" style="padding:14px">No one to show.</td></tr>'}</tbody></table></div></div>`;
 }
 // churn per offer: of the setters/closers assigned to each account, how many have a termination date on file
-function churnPanelHTML(client){
+function churnPanelHTML(clients){
   const reps=(USERS_CACHE||[]).filter(u=>['setter','closer'].includes(u.role));
-  const rows=(client?[client]:clientNames()).map(c=>{
+  const rows=((clients&&clients.length)?clients:clientNames()).map(c=>{
     const team=reps.filter(u=>teamsFor(u.username).includes(c));
     const left=team.filter(repLeft);
     return {c,total:team.length,left:left.length,rate:team.length?left.length/team.length:0};
