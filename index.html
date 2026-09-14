@@ -3734,9 +3734,10 @@ function myDealsForecast(){
   let cash=0, comm=0, n=0, undated=0;
   paymentsCollapsed().filter(p=>p.status==='pending').forEach(p=>{
     let c=0, involved=false;
-    if(oversight){ involved=!!(p.rep||p.setter); if(p.rep) c+=(p.amount||0)*repCommRateFor(p.client,'closer')/100; if(p.setter) c+=(p.amount||0)*repCommRateFor(p.client,'setter')/100; }
-    else if(p.rep===me){ involved=true; c=(p.amount||0)*repCommRateFor(p.client,'closer')/100; }
-    else if(p.setter===me){ involved=true; c=(p.amount||0)*repCommRateFor(p.client,'setter')/100; }
+    const prep=String(p.rep||'').trim(), pset=String(p.setter||'').trim(); // data can carry trailing spaces
+    if(oversight){ involved=!!(prep||pset); if(prep) c+=(p.amount||0)*repCommRateFor(p.client,'closer')/100; if(pset) c+=(p.amount||0)*repCommRateFor(p.client,'setter')/100; }
+    else if(prep===me){ involved=true; c=(p.amount||0)*repCommRateFor(p.client,'closer')/100; }
+    else if(pset===me){ involved=true; c=(p.amount||0)*repCommRateFor(p.client,'setter')/100; }
     if(!involved) return;
     if(!payEarnsCommission(p)) c=0; // front-end-only account, back-end payment -> no commission
     if(inWin(p)){ cash+=p.amount||0; comm+=c; n++; } else if(!dated(p)) undated++;
