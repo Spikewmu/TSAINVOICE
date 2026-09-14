@@ -453,7 +453,7 @@
     <p class="hint" id="dashHint">Live view of everything submitted. Filter by date range, client, and role.</p>
     <div class="filters" id="dashFilters">
       <div class="field"><label>Date range</label><div class="rangewrap"><input type="text" id="fRange" placeholder="Click a start day, then an end day" readonly onclick="rangePopToggle(event)"><input type="hidden" id="fFrom"><input type="hidden" id="fTo"><div class="rangepop" id="fRangePop" hidden onclick="event.stopPropagation()"></div></div></div>
-      <div class="field"><label>Quick range</label><div class="row-actions"><button class="btn ghost sm" onclick="dashRange('today')">Today</button><button class="btn ghost sm" onclick="dashRange('yesterday')">Yesterday</button><button class="btn ghost sm" onclick="dashRange('week')">This week</button><button class="btn ghost sm" onclick="dashRange('month')">This month</button><button class="btn ghost sm" onclick="dashRange('30')">Last 30d</button><button class="btn ghost sm" onclick="dashRange('all')">All time</button></div></div>
+      <div class="field"><label>Quick range</label><div class="row-actions"><button class="btn ghost sm" onclick="dashRange('today')">Today</button><button class="btn ghost sm" onclick="dashRange('yesterday')">Yesterday</button><button class="btn ghost sm" onclick="dashRange('week')">This week</button><button class="btn ghost sm" onclick="dashRange('lastweek')">Last week</button><button class="btn ghost sm" onclick="dashRange('month')">This month</button><button class="btn ghost sm" onclick="dashRange('30')">Last 30d</button><button class="btn ghost sm" onclick="dashRange('all')">All time</button></div></div>
       <div class="field"><label>Client</label><select id="fClient" onchange="renderDash()"></select></div>
       <div class="field"><label>Role</label><select id="fRole" onchange="renderDash()"><option value="">All</option><option>Closer</option><option>Setter</option></select></div>
       <button class="btn ghost sm" onclick="renderDash()">Refresh</button>
@@ -3105,6 +3105,7 @@ function dashRange(preset){
   if(preset==='today'){ from=to=t; }
   else if(preset==='yesterday'){ from=to=isoOffset(t,-1); }
   else if(preset==='week'){ const dow=new Date(t+'T00:00:00').getDay(); from=isoOffset(t,dow===0?-6:1-dow); to=t; }
+  else if(preset==='lastweek'){ const bw=billingWeek(); from=bw.from; to=bw.to; } // the prior completed Monday-Sunday
   else if(preset==='month'){ from=t.slice(0,7)+'-01'; to=t; }
   else if(preset==='30'){ from=isoOffset(t,-29); to=t; }
   // 'all' -> both blank (no date filter)
@@ -5803,17 +5804,19 @@ function renderUsersGrouped(){
   const showG=(gf||{}).value||'', team=(tf||{}).value||'';
   const qn=((document.getElementById('usersSearch')||{}).value||'').trim().toLowerCase();
   const GROUPS=[
-    ['staff','TSA Staff','Robb, Steve and the internal team - full operator access across accounts.'],
-    ['reps','Reps','Closers and setters working on client accounts.'],
-    ['clients','Client accounts','Account Admins (founders). Dashboard-only while managed by TSA; full access once graduated to their own account.']
+    ['staff','TSA Staff','Robb, Steve and the internal team - full operator access across accounts.',null],
+    ['setters','Setters','Setters working on client accounts.','setter'],
+    ['closers','Closers','Closers working on client accounts.','closer'],
+    ['clients','Client accounts','Account Admins (founders). Dashboard-only while managed by TSA; full access once graduated to their own account.',null]
   ];
   const head='<div class="tablewrap"><table><thead><tr><th>Name</th><th>Username</th><th>Roles</th><th>Accounts</th><th></th></tr></thead><tbody>';
   let any=false;
-  const html=GROUPS.map(([gid,label,desc])=>{
-    if(showG && showG!==gid) return '';
-    let members=(USERS_LIST||[]).filter(u=>userGroup(u)===gid).filter(canViewUser).filter(u=>!u.archived);
+  const html=GROUPS.map(([gid,label,desc,roleKey])=>{
+    if(showG){ if(roleKey ? showG!=='reps' : showG!==gid) return ''; } // the "Reps" filter still shows both Setters + Closers
+    let members=(USERS_LIST||[]).filter(u=> roleKey ? (userGroup(u)==='reps' && u.role===roleKey) : userGroup(u)===gid).filter(canViewUser).filter(u=>!u.archived);
     if(team) members=members.filter(u=>userOnTeam(u,team));
     if(qn) members=members.filter(u=>((u.name||'')+' '+(u.username||'')).toLowerCase().includes(qn));
+    members.sort((a,b)=>String(a.name||a.username).localeCompare(String(b.name||b.username))); // A-Z
     if(!members.length) return '';
     any=true;
     const collapsed = !USER_GROUP_OPEN[gid] && !qn && !team; // collapsed by default; a search or account filter opens matching groups
