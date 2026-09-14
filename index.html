@@ -5922,7 +5922,7 @@ function usersApplySecState(){ const defs={clientAccountsPanel:1, secUsersAdd:1,
 function usersScoped(list){
   if(!GLOBAL_CLIENT) return list||[];
   return (list||[]).filter(u=>{
-    if(u.role==='manager'||u.role==='director') return managedClientsForUser({username:u.username,role:u.role}).includes(GLOBAL_CLIENT);
+    if(u.role==='manager'||u.role==='director') return managedClientsForUser(u).includes(GLOBAL_CLIENT); // pass full user (matched by name)
     return teamsFor(u.username).includes(GLOBAL_CLIENT); // setters/closers/founders/webinar/recruiter via their assigned teams
   });
 }
