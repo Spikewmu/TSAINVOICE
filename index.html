@@ -2666,7 +2666,7 @@ async function enrichCallLogAppointments(){
   try{
     if(!document.querySelector('#callLogTable .clappt')) return;
     const gv=id=>{ const e=document.getElementById(id); return e?e.value:''; };
-    const fromD=new Date((gv('clFrom').slice(0,10))||todayLocal()); fromD.setDate(fromD.getDate()-7);
+    const fromD=new Date((gv('clRange_from').slice(0,10))||todayLocal()); fromD.setDate(fromD.getDate()-7);
     const toD=new Date(); toD.setDate(toD.getDate()+60);
     const fromS=calYmd(fromD), toS=calYmd(toD), key=fromS+'|'+toS;
     if(window.__clApptKey!==key || !window.__clApptMap){
