@@ -2085,7 +2085,7 @@ function toggleNav(e){ if(e)e.stopPropagation(); const n=document.getElementById
 function closeNav(){ const n=document.getElementById('tabs'); if(n) n.classList.remove('navopen'); }
 function showTab(t){
   closeNav();
-  buildGlobalClientSelect(); buildViewAsUserSelect();
+  buildGlobalClientSelect(); buildViewAsUserSelect(); hideRedundantClientFilters();
   document.querySelectorAll('#tabs button[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
   document.querySelectorAll('#tabs .navgroup').forEach(g=>{ if(g.querySelector('button[data-tab="'+t+'"]')) g.classList.remove('collapsed'); }); // reveal the active tab's group
 
@@ -2119,6 +2119,14 @@ function buildGlobalClientSelect(){
   sel.style.display='';
   sel.innerHTML='<option value="">All'+(isMgr?' my companies':' companies')+'</option>'+clients.map(c=>`<option>${esc(c)}</option>`).join('');
   sel.value=GLOBAL_CLIENT;
+}
+// with the header company selector driving scope, the per-tab client dropdowns are redundant for
+// anyone who has that selector (super admin / director / manager) - hide them. Reps (no selector) keep theirs.
+function hideRedundantClientFilters(){
+  const hasGlobal = SESSION && ['admin','director','manager'].includes(SESSION.role);
+  ['fClient','rClient','arClient','drClient','rcmClient','clClient','calClient'].forEach(id=>{
+    const el=document.getElementById(id); if(!el) return; const f=el.closest('.field'); if(f) f.style.display = hasGlobal?'none':'';
+  });
 }
 function setGlobalClient(v){
   GLOBAL_CLIENT=v||''; try{ GLOBAL_CLIENT?localStorage.setItem('tsa_global_client',GLOBAL_CLIENT):localStorage.removeItem('tsa_global_client'); }catch(e){}
@@ -6703,7 +6711,7 @@ function integPick(){
 }
 function slackAppKeyForField(f){ return (f==='deal')?f:(f==='postcall'||f==='postcallSetter'||f==='postcallCloser')?'postcall':(f==='sod'||f==='sodSetter'||f==='sodCloser')?'sod':(f==='setter'||f==='closer'||f==='mgr')?'eod':'default'; }
 function canConnectField(field){ return !!(INTEG_SLACK_APPS[slackAppKeyForField(field)] || INTEG_SLACK_APPS['default']); }
-function slackField(id,value,connectExpr,field,label){ const showConnect = connectExpr && canConnectField(field||'slack'); const connected = !!(value && String(value).trim()); const badge = connected ? `<span class="pill good" style="white-space:nowrap">&#10003; Connected</span>` : `<span class="pill" style="opacity:.55;white-space:nowrap">Not connected</span>`; const connectLabel = connected ? 'Reconnect' : 'Connect Slack'; const testBtn = (connected && label) ? `<button type="button" class="btn sm ghost" onclick="integTestChannel('${field}','${String(label).replace(/'/g,"\\'")}')">Test</button>` : ''; return `<span style="display:flex;flex-direction:column;gap:6px;align-items:stretch"><span>${badge}</span><input id="${id}" type="password" autocomplete="off" value="${esc(value||'')}" placeholder="https://hooks.slack.com/services/..." style="width:100%"><span style="display:flex;gap:6px;flex-wrap:wrap"><button type="button" class="btn sm ghost" onclick="integReveal('${id}',this)">Show</button>${testBtn}${showConnect?`<button type="button" class="btn sm ghost" onclick="integConnectSlack(${connectExpr})">${connectLabel}</button>`:''}</span></span>`; }
+function slackField(id,value,connectExpr,field,label,chan){ const showConnect = connectExpr && canConnectField(field||'slack'); const connected = !!(value && String(value).trim()); const badge = connected ? `<span class="pill good" style="white-space:nowrap">&#10003; ${chan?esc(chan):'Connected'}</span>` : `<span class="pill" style="opacity:.55;white-space:nowrap">Not connected</span>`; const connectLabel = connected ? 'Reconnect' : 'Connect Slack'; const testBtn = (connected && label) ? `<button type="button" class="btn sm ghost" onclick="integTestChannel('${field}','${String(label).replace(/'/g,"\\'")}')">Test</button>` : ''; return `<span style="display:flex;flex-direction:column;gap:6px;align-items:stretch"><span>${badge}</span><input id="${id}" type="password" autocomplete="off" value="${esc(value||'')}" placeholder="https://hooks.slack.com/services/..." style="width:100%"><span style="display:flex;gap:6px;flex-wrap:wrap"><button type="button" class="btn sm ghost" onclick="integReveal('${id}',this)">Show</button>${testBtn}${showConnect?`<button type="button" class="btn sm ghost" onclick="integConnectSlack(${connectExpr})">${connectLabel}</button>`:''}</span></span>`; }
 async function integTestChannel(field,label){ const t=integTarget(); if(!t) return; toast('Sending test to '+label+'...'); const res=await integApi('testChannel',{key:t.key, ws:t.ws, field, label}); if(res&&res.ok) toast('Test sent - check that it landed in the '+label+' channel'); else toast((res&&res.error)||'Could not send test',true); }
 function integReveal(id,btn){ const el=document.getElementById(id); if(!el) return; const hidden=el.type==='password'; el.type=hidden?'text':'password'; if(btn) btn.textContent=hidden?'Hide':'Show'; }
 async function integConnectSlack(t,id,field){
@@ -6774,17 +6782,18 @@ function renderEodRouting(){
   const feeds=document.getElementById('integFeeds');
   if(feeds) feeds.innerHTML=`
     <div class="cards" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr))">
-      <div class="field"><label>New closed deal channel</label>${slackField('evDeal',c.deal,`'config','','deal'`,'deal','New closed deal')}</div>
-      <div class="field"><label>Post-call checkout (Setters)</label>${slackField('evPostcallSetter',c.postcallSetter,`'config','','postcallSetter'`,'postcallSetter','Post-call checkout (Setters)')}</div>
-      <div class="field"><label>Post-call checkout (Closers)</label>${slackField('evPostcallCloser',c.postcallCloser,`'config','','postcallCloser'`,'postcallCloser','Post-call checkout (Closers)')}</div>
-      <div class="field"><label>Start-of-day projections (Setters)</label>${slackField('evSodSetter',c.sodSetter,`'config','','sodSetter'`,'sodSetter','Start-of-day projections (Setters)')}</div>
-      <div class="field"><label>Start-of-day projections (Closers)</label>${slackField('evSodCloser',c.sodCloser,`'config','','sodCloser'`,'sodCloser','Start-of-day projections (Closers)')}</div>
+      <div class="field"><label>New closed deal channel</label>${slackField('evDeal',c.deal,`'config','','deal'`,'deal','New closed deal',(c.chan||{}).deal)}</div>
+      <div class="field"><label>Post-call checkout (Setters)</label>${slackField('evPostcallSetter',c.postcallSetter,`'config','','postcallSetter'`,'postcallSetter','Post-call checkout (Setters)',(c.chan||{}).postcallSetter)}</div>
+      <div class="field"><label>Post-call checkout (Closers)</label>${slackField('evPostcallCloser',c.postcallCloser,`'config','','postcallCloser'`,'postcallCloser','Post-call checkout (Closers)',(c.chan||{}).postcallCloser)}</div>
+      <div class="field"><label>Start-of-day projections (Setters)</label>${slackField('evSodSetter',c.sodSetter,`'config','','sodSetter'`,'sodSetter','Start-of-day projections (Setters)',(c.chan||{}).sodSetter)}</div>
+      <div class="field"><label>Start-of-day projections (Closers)</label>${slackField('evSodCloser',c.sodCloser,`'config','','sodCloser'`,'sodCloser','Start-of-day projections (Closers)',(c.chan||{}).sodCloser)}</div>
     </div>
     <p class="fieldhelp" style="margin:8px 0 0">Setters' post-call & start-of-day posts route to the Setters channel, closers' to the Closers channel (by the rep's role).</p>
     <div style="border-top:1px solid var(--border);margin:14px 0 10px"></div>
-    <label style="display:flex;gap:8px;align-items:center;font-weight:500;margin:0 0 8px"><input type="checkbox" id="drOn" ${c.dailyReportOn?'checked':''}> Post the <b style="margin:0 3px">compiled Daily Report</b> to Slack each morning (~9:30am CT)</label>
+    <label style="display:flex;gap:8px;align-items:center;font-weight:500;margin:0 0 8px"><input type="checkbox" id="drOn" ${c.dailyReportOn?'checked':''}> Post the <b>compiled Daily Report</b> to Slack each morning</label>
     <div class="cards" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr))">
-      <div class="field"><label>Daily report channel</label>${slackField('evDailyReport',c.dailyReport,`'config','','dailyReport'`,'dailyReport','Daily report')}</div>
+      <div class="field"><label>Daily report channel</label>${slackField('evDailyReport',c.dailyReport,`'config','','dailyReport'`,'dailyReport','Daily report',(c.chan||{}).dailyReport)}</div>
+      <div class="field"><label>Send time (Central)</label><input type="time" id="drTime" step="1800" value="${esc(c.dailyReportTime||'09:30')}"><span class="fieldhelp">When it posts each morning (30-min steps). SODs are due 9am CT.</span></div>
     </div>
     <p class="fieldhelp" style="margin:8px 0 0">One combined report: yesterday's results (from EODs) + today's forecast (from SODs), setters and closers, posted here automatically each morning.</p>
     <div class="row-actions" style="margin-top:12px"><button class="btn gold sm" onclick="integSaveEod()">Save routing</button></div>`;
@@ -6792,10 +6801,10 @@ function renderEodRouting(){
   if(eod) eod.innerHTML=`
     <label style="display:flex;gap:8px;align-items:center;font-weight:500;margin:0 0 8px"><input type="checkbox" id="eodOn" ${c.eodToSlack?'checked':''}> Post submitted <b style="margin:0 3px">EOD reports</b> to Slack</label>
     <div class="cards" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr))">
-      <div class="field"><label>Setter EOD channel</label>${slackField('eodSetter',c.setter,`'config','','setter'`,'setter','Setter EOD')}</div>
-      <div class="field"><label>Closer EOD channel</label>${slackField('eodCloser',c.closer,`'config','','closer'`,'closer','Closer EOD')}</div>
-      <div class="field"><label>Manager EOD channel</label>${slackField('eodMgr',c.mgr,`'config','','mgr'`,'mgr','Manager EOD')}</div>
-      <div class="field"><label>Fallback channel</label>${slackField('eodFallback',c.slack,`'config','','slack'`,'slack','Fallback')}</div>
+      <div class="field"><label>Setter EOD channel</label>${slackField('eodSetter',c.setter,`'config','','setter'`,'setter','Setter EOD',(c.chan||{}).setter)}</div>
+      <div class="field"><label>Closer EOD channel</label>${slackField('eodCloser',c.closer,`'config','','closer'`,'closer','Closer EOD',(c.chan||{}).closer)}</div>
+      <div class="field"><label>Manager EOD channel</label>${slackField('eodMgr',c.mgr,`'config','','mgr'`,'mgr','Manager EOD',(c.chan||{}).mgr)}</div>
+      <div class="field"><label>Fallback channel</label>${slackField('eodFallback',c.slack,`'config','','slack'`,'slack','Fallback',(c.chan||{}).slack)}</div>
     </div>
     <p class="fieldhelp" style="margin:8px 0 0">Blank EOD channels fall back to the fallback channel, which also covers any payment webhook with no channel set. Check the box above to turn EOD posting on.</p>
     <div class="row-actions" style="margin-top:12px"><button class="btn gold sm" onclick="integSaveEod()">Save routing</button></div>`;
@@ -6851,7 +6860,7 @@ async function integSaveEod(){
   const body={key:t.key, ws:t.ws, client:t.client, eodToSlack:(document.getElementById('eodOn')||{}).checked,
     eodSetterSlack:g('eodSetter'), eodCloserSlack:g('eodCloser'), eodMgrSlack:g('eodMgr'), slackWebhook:g('eodFallback'),
     dealSlack:g('evDeal'), postcallSetterSlack:g('evPostcallSetter'), postcallCloserSlack:g('evPostcallCloser'), sodSetterSlack:g('evSodSetter'), sodCloserSlack:g('evSodCloser'),
-    dailyReportSlack:g('evDailyReport'), dailyReportOn:(document.getElementById('drOn')||{}).checked};
+    dailyReportSlack:g('evDailyReport'), dailyReportOn:(document.getElementById('drOn')||{}).checked, dailyReportTime:((document.getElementById('drTime')||{}).value||'09:30')};
   const res=await integApi('save',body);
   if(res&&res.ok){ INTEG_CFGS[t.key]=res.config; toast('Routing saved'); renderEodRouting(); }
   else toast((res&&res.error)||'Could not save',true);

@@ -53,11 +53,16 @@ export default async function handler(req, res) {
   if (!authed) return res.status(401).json({ ok: false, error: 'unauthorized' });
 
   try {
+    const manual = !!(process.env.BOT_ADMIN_TOKEN && key === process.env.BOT_ADMIN_TOKEN); // ?key= run: post now, ignore the time gate
     const day = iso(ctParts(0)), prev = iso(prevBiz(ctParts(0)));
+    // current Central time, floored to a 30-min slot (matches the UI's 30-min send-time steps)
+    const ctNow = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date());
+    const slot = hm => { const p = String(hm || '09:30').split(':'); const h = +p[0] || 0, mi = +p[1] || 0; return String(h).padStart(2, '0') + ':' + (mi >= 30 ? '30' : '00'); };
+    const curSlot = slot(ctNow);
     // latest integration config per key (order by db submitted_at, first per key wins)
     const cfgRows = (await (await supa('records?select=data&data->>type=eq.integration&order=submitted_at.desc')).json()).map(x => x.data);
     const latest = {}; cfgRows.forEach(x => { if (x && x.key && !latest[x.key]) latest[x.key] = x; });
-    const targets = Object.values(latest).filter(c => c.dailyReportOn && c.dailyReportSlack && c.client);
+    const targets = Object.values(latest).filter(c => c.dailyReportOn && c.dailyReportSlack && c.client && (manual || slot(c.dailyReportTime || '09:30') === curSlot));
 
     const results = [];
     for (const t of targets) {

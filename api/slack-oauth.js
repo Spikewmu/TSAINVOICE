@@ -49,13 +49,13 @@ export default async function handler(req, res) {
     if (st.t === 'webhook') {
       const cur = await latest('webhook', 'id', st.id);
       if (!cur) return res.status(200).send(page('Not connected', 'The webhook to attach this to was not found.'));
-      const rec = Object.assign({}, cur, { slackWebhook: url, updatedAt: now });
+      const rec = Object.assign({}, cur, { slackWebhook: url, slackWebhookChan: channel, updatedAt: now });
       await supa('records', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ rid: crypto.randomUUID(), type: 'webhook', submitted_at: now, data: rec }) });
     } else {
-      const map = { slack: 'slackWebhook', setter: 'eodSetterSlack', closer: 'eodCloserSlack', mgr: 'eodMgrSlack', deal: 'dealSlack', postcall: 'postcallSlack', postcallSetter: 'postcallSetterSlack', postcallCloser: 'postcallCloserSlack', sod: 'sodSlack', sodSetter: 'sodSetterSlack', sodCloser: 'sodCloserSlack' };
+      const map = { slack: 'slackWebhook', setter: 'eodSetterSlack', closer: 'eodCloserSlack', mgr: 'eodMgrSlack', deal: 'dealSlack', postcall: 'postcallSlack', postcallSetter: 'postcallSetterSlack', postcallCloser: 'postcallCloserSlack', sod: 'sodSlack', sodSetter: 'sodSetterSlack', sodCloser: 'sodCloserSlack', dailyReport: 'dailyReportSlack' };
       const f = map[st.field] || 'slackWebhook';
       const cur = (await latest('integration', 'key', st.key)) || { id: crypto.randomUUID(), type: 'integration', key: st.key, ws: st.ws || 'tsa', client: '' };
-      const rec = Object.assign({}, cur, { [f]: url, updatedAt: now });
+      const rec = Object.assign({}, cur, { [f]: url, [f + 'Chan']: channel, updatedAt: now });
       await supa('records', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ rid: crypto.randomUUID(), type: 'integration', submitted_at: now, data: rec }) });
     }
     return res.status(200).send(page('Connected to ' + channel, 'Sales HQ will post here.'));

@@ -55,7 +55,9 @@ const keepOr = (val, prev) => (val === '') ? '' : ((val && val !== '__keep__') ?
 const pubCfg = d => ({ key: d.key, ws: d.ws, client: d.client || '', eodToSlack: !!d.eodToSlack,
   slack: d.slackWebhook || '', setter: d.eodSetterSlack || '', closer: d.eodCloserSlack || '', mgr: d.eodMgrSlack || '',
   deal: d.dealSlack || '', postcall: d.postcallSlack || '', postcallSetter: d.postcallSetterSlack || '', postcallCloser: d.postcallCloserSlack || '', sod: d.sodSlack || '', sodSetter: d.sodSetterSlack || '', sodCloser: d.sodCloserSlack || '',
-  dailyReport: d.dailyReportSlack || '', dailyReportOn: !!d.dailyReportOn,
+  dailyReport: d.dailyReportSlack || '', dailyReportOn: !!d.dailyReportOn, dailyReportTime: d.dailyReportTime || '09:30',
+  // the connected Slack channel name per source (captured at OAuth connect), for display
+  chan: { slack: d.slackWebhookChan||'', setter: d.eodSetterSlackChan||'', closer: d.eodCloserSlackChan||'', mgr: d.eodMgrSlackChan||'', deal: d.dealSlackChan||'', postcall: d.postcallSlackChan||'', postcallSetter: d.postcallSetterSlackChan||'', postcallCloser: d.postcallCloserSlackChan||'', sod: d.sodSlackChan||'', sodSetter: d.sodSetterSlackChan||'', sodCloser: d.sodCloserSlackChan||'', dailyReport: d.dailyReportSlackChan||'' },
   ghl: !!d.ghlApiKey, ghlLocation: d.ghlLocationId || '', ghlEnabled: !!d.ghlEnabled }); // ghlApiKey itself is write-only, never returned
 const pubHook = (d, req) => ({ id: d.id, key: d.key, ws: d.ws, client: d.client || '', name: d.name || 'Webhook', processor: d.processor || 'generic', enabled: d.enabled !== false, template: d.template || DEFAULT_TEMPLATE, hasSlack: !!d.slackWebhook, slack: d.slackWebhook || '', token: d.token, inbound: baseUrl(req) + '/api/hook?t=' + d.token });
 const chanDest = u => (/discord(app)?\.com\/api\/webhooks\//i.test(String(u || '')) && !/\/slack\/?$/i.test(String(u))) ? String(u).replace(/\/+$/, '') + '/slack' : u; // Discord accepts Slack payloads at /slack
@@ -176,6 +178,7 @@ export default async function handler(req, res) {
         sodCloserSlack: keepOr(b.sodCloserSlack, cur && cur.sodCloserSlack),
         dailyReportSlack: keepOr(b.dailyReportSlack, cur && cur.dailyReportSlack),
         dailyReportOn: b.dailyReportOn != null ? !!b.dailyReportOn : !!(cur && cur.dailyReportOn),
+        dailyReportTime: keepOr(b.dailyReportTime, cur && cur.dailyReportTime) || '09:30',
         ghlApiKey: keepOr(b.ghlApiKey, cur && cur.ghlApiKey),
         ghlLocationId: keepOr(b.ghlLocationId, cur && cur.ghlLocationId),
         ghlEnabled: b.ghlEnabled != null ? !!b.ghlEnabled : !!(cur && cur.ghlEnabled),
