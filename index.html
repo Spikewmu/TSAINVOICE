@@ -379,6 +379,7 @@
     <option value="setter">Setter</option>
     <option value="founder">Client Admin (Founder)</option>
   </select>
+  <select id="viewAsUser" onchange="viewAsUser(this.value)" style="display:none;max-width:230px;margin-left:8px" title="See exactly what a specific user sees (read-only)"></select>
   <div class="who" id="whoTag" onclick="openChangePw()" style="cursor:pointer" title="Change your password"></div>
   <button class="logout" onclick="logout()">Sign out</button>
 </header>
@@ -1814,8 +1815,8 @@ function renderBilling(){
 }
 function updateWsBrand(){ const el=document.getElementById('storeTag'); if(el) el.textContent=currentWsName(); renderPlanBanner(); }
 async function addRecord(rec){
-  // "View as" is a read-only preview: never let a previewed action write real data (it would save under YOUR account)
-  if(typeof VIEW_AS_REAL!=='undefined' && VIEW_AS_REAL){ toast('Preview mode - changes are not saved. Exit preview to make real changes.',true); return; }
+  // "View as" / "Investigate as user" is a read-only preview: never let a previewed action write real data
+  if((typeof VIEW_AS_REAL!=='undefined' && VIEW_AS_REAL) || (typeof VIEW_AS_USER!=='undefined' && VIEW_AS_USER)){ toast('Preview mode - changes are not saved. Exit preview to make real changes.',true); return; }
   rec.id=rec.id||uid(); rec.submittedAt=new Date().toISOString(); rec.submittedET=nowET(); // respect a pre-minted id (e.g. a deal whose scheduled payments must reference it before it's written)
   if(rec.ws==null) rec.ws=currentWs(); // stamp the tenant so data is walled off by workspace
   RECORDS.push(rec); save(LS.data,RECORDS);
@@ -2021,6 +2022,37 @@ function viewAs(role){
   applyNavAccess(); showTab('dash');
 }
 function exitViewAs(){ viewAs(''); }
+/* ---- Investigate AS a specific user (super admin): see exactly what they see, read-only ---- */
+let REAL_SESSION=null, VIEW_AS_USER=null;
+function investigating(){ return !!VIEW_AS_USER; }
+function buildViewAsUserSelect(){
+  const sel=document.getElementById('viewAsUser'); if(!sel) return;
+  const real=REAL_SESSION||SESSION;
+  if(!(real && real.role==='admin')){ sel.style.display='none'; return; } // super admin only
+  sel.style.display='';
+  if(!(USERS_CACHE&&USERS_CACHE.length)){ sel.innerHTML='<option value="">Investigate as user…</option>'; if(typeof loadUsers==='function') loadUsers().then(()=>buildViewAsUserSelect()); return; }
+  const users=(USERS_CACHE||[]).filter(u=>!u.archived && u.username).slice().sort((a,b)=>String(a.name||a.username).localeCompare(String(b.name||b.username)));
+  sel.innerHTML='<option value="">Investigate as user…</option>'+users.map(u=>`<option value="${esc(u.username)}">${esc(u.name||u.username)} - ${esc(roleLabel(u.role))}</option>`).join('');
+  sel.value=VIEW_AS_USER||'';
+}
+function viewAsUser(username){
+  if(!username){ exitViewAsUser(); return; }
+  const u=(USERS_CACHE||[]).find(x=>x.username===username); if(!u){ toast('User not found',true); return; }
+  if(!REAL_SESSION) REAL_SESSION={username:SESSION.username, name:SESSION.name, role:SESSION.role};
+  if(VIEW_AS_REAL){ VIEW_AS_REAL=null; const rs=document.getElementById('viewAsSel'); if(rs) rs.value=''; } // drop any role-only preview
+  SESSION.username=u.username; SESSION.name=u.name||u.username; SESSION.role=u.role; // keep the real token/supaKey so data still loads
+  VIEW_AS_USER=username;
+  const b=document.getElementById('viewAsBanner'); if(b){ b.hidden=false; b.innerHTML='&#128269; Investigating as <b>'+esc(u.name||u.username)+'</b> ('+esc(roleLabel(u.role))+') - read-only, showing exactly what they see. <span style="text-decoration:underline;cursor:pointer" onclick="exitViewAsUser()">Exit</span>'; }
+  applyNavAccess(); try{ if(SESSION.role==='closer'||SESSION.role==='setter') applyIdentity(); }catch(e){} showTab('dash');
+}
+function exitViewAsUser(){
+  if(!REAL_SESSION){ const sel=document.getElementById('viewAsUser'); if(sel) sel.value=''; return; }
+  SESSION.username=REAL_SESSION.username; SESSION.name=REAL_SESSION.name; SESSION.role=REAL_SESSION.role;
+  REAL_SESSION=null; VIEW_AS_USER=null;
+  const sel=document.getElementById('viewAsUser'); if(sel) sel.value='';
+  const b=document.getElementById('viewAsBanner'); if(b) b.hidden=true;
+  applyNavAccess(); showTab('dash');
+}
 // hide a nav group whose tabs are all hidden for this role
 function pruneNavGroups(){ document.querySelectorAll('#tabs .navgroup').forEach(g=>{ g.hidden = ![...g.querySelectorAll('button[data-tab]')].some(b=>!b.hidden); }); }
 // lock a rep's identity into the forms
@@ -2054,14 +2086,14 @@ function toggleNav(e){ if(e)e.stopPropagation(); const n=document.getElementById
 function closeNav(){ const n=document.getElementById('tabs'); if(n) n.classList.remove('navopen'); }
 function showTab(t){
   closeNav();
-  buildGlobalClientSelect();
+  buildGlobalClientSelect(); buildViewAsUserSelect();
   document.querySelectorAll('#tabs button[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
   document.querySelectorAll('#tabs .navgroup').forEach(g=>{ if(g.querySelector('button[data-tab="'+t+'"]')) g.classList.remove('collapsed'); }); // reveal the active tab's group
 
   ['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','sod','eod','training','mgreod','webinar','calllog','calendar','speedtolead','dailyreport','adminreport','recruiting','messages','invoicing','data','users','integrations','settings'].forEach(x=>{ const el=document.getElementById('tab-'+x); if(el) el.hidden = (x!==t); });
   // stale-while-revalidate: render instantly from the cached records, then refresh in the background
   const render={dash:renderDash, mydeals:renderMyDeals, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, promises:renderPromisesTab, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, webinar:renderWebinars, calllog:renderCallLog, calendar:renderCalendar, speedtolead:renderSpeedToLead, dailyreport:renderDailyReport, adminreport:renderAdminReport, recruiting:renderRecruiting, messages:renderMessages, training:renderTraining, invoicing:renderInvoicing, data:renderAll}[t];
-  if(render){ render(); syncRecords().then(()=>{ if(currentTab()===t) render(); buildGlobalClientSelect(); updateNavBadges(); renderReminders(); }); }
+  if(render){ render(); syncRecords().then(()=>{ if(currentTab()===t) render(); buildGlobalClientSelect(); buildViewAsUserSelect(); updateNavBadges(); renderReminders(); }); }
   updateNavBadges();
   if(t==='data'){ renderDailyEntry(); }
   if(t==='users'){ renderUsers(); usersApplySecState(); }
@@ -6600,7 +6632,9 @@ async function renderIntegrations(){
   if(takeover.length) opts+=`<optgroup label="Take Over Sales">`+takeover.map(t=>`<option value="${esc(t.key)}">${esc(t.label)}</option>`).join('')+`</optgroup>`;
   if(unmanaged.length) opts+=`<optgroup label="Unmanaged">`+unmanaged.map(t=>`<option value="${esc(t.key)}">${esc(t.label)}</option>`).join('')+`</optgroup>`;
   sel.innerHTML=opts;
-  if(cur&&targets.some(t=>t.key===cur)) sel.value=cur;
+  const gkey = GLOBAL_CLIENT ? 'tsa:'+GLOBAL_CLIENT : '';
+  if(gkey && targets.some(t=>t.key===gkey)) sel.value=gkey;            // follow the global company scope
+  else if(cur && targets.some(t=>t.key===cur)) sel.value=cur;
   renderAllWebhooks(); renderTemplateLib(); integPick(); integApplySecState();
 }
 function integToggleSec(id){ const p=document.getElementById(id); if(!p) return; p.classList.toggle('collapsed'); }
