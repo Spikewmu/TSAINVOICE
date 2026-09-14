@@ -359,6 +359,7 @@
   <button class="hamburger" id="hamburger" onclick="toggleNav(event)" aria-label="Menu" title="Menu">&#9776;</button>
   <div class="brand"><span class="dot"></span> Sales HQ</div>
   <div class="sub" id="storeTag"></div>
+  <select id="gClient" onchange="setGlobalClient(this.value)" title="Scope the whole dashboard to one company" style="display:none;max-width:230px;margin-left:14px"></select>
   <div class="spacer"></div>
   <a class="reminderpill" id="reminderPill" onclick="reminderGo(event)"></a>
   <div class="notifwrap">
@@ -2053,13 +2054,14 @@ function toggleNav(e){ if(e)e.stopPropagation(); const n=document.getElementById
 function closeNav(){ const n=document.getElementById('tabs'); if(n) n.classList.remove('navopen'); }
 function showTab(t){
   closeNav();
+  buildGlobalClientSelect();
   document.querySelectorAll('#tabs button[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
   document.querySelectorAll('#tabs .navgroup').forEach(g=>{ if(g.querySelector('button[data-tab="'+t+'"]')) g.classList.remove('collapsed'); }); // reveal the active tab's group
 
   ['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','sod','eod','training','mgreod','webinar','calllog','calendar','speedtolead','dailyreport','adminreport','recruiting','messages','invoicing','data','users','integrations','settings'].forEach(x=>{ const el=document.getElementById('tab-'+x); if(el) el.hidden = (x!==t); });
   // stale-while-revalidate: render instantly from the cached records, then refresh in the background
   const render={dash:renderDash, mydeals:renderMyDeals, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, promises:renderPromisesTab, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, webinar:renderWebinars, calllog:renderCallLog, calendar:renderCalendar, speedtolead:renderSpeedToLead, dailyreport:renderDailyReport, adminreport:renderAdminReport, recruiting:renderRecruiting, messages:renderMessages, training:renderTraining, invoicing:renderInvoicing, data:renderAll}[t];
-  if(render){ render(); syncRecords().then(()=>{ if(currentTab()===t) render(); updateNavBadges(); renderReminders(); }); }
+  if(render){ render(); syncRecords().then(()=>{ if(currentTab()===t) render(); buildGlobalClientSelect(); updateNavBadges(); renderReminders(); }); }
   updateNavBadges();
   if(t==='data'){ renderDailyEntry(); }
   if(t==='users'){ renderUsers(); usersApplySecState(); }
@@ -2069,6 +2071,30 @@ function showTab(t){
   renderReminders();
 }
 function currentTab(){ const b=document.querySelector('#tabs button.active'); return b?b.dataset.tab:''; }
+
+/* ---------------- global company scope (super admin) ---------------- */
+// One company selector in the header that scopes EVERY tab, so an admin debugging one client
+// doesn't have to re-pick it on each page. Empty = all companies (normal behavior).
+let GLOBAL_CLIENT=(function(){ try{ return localStorage.getItem('tsa_global_client')||''; }catch(e){ return ''; } })();
+// the client value a per-tab dropdown should show: the global company wins if set + valid, else keep the local pick
+function preferGlobal(clients, cur){ if(GLOBAL_CLIENT && clients.includes(GLOBAL_CLIENT)) return GLOBAL_CLIENT; return (cur&&clients.includes(cur))?cur:''; }
+function buildGlobalClientSelect(){
+  const sel=document.getElementById('gClient'); if(!sel) return;
+  if(!(SESSION && SESSION.role==='admin')){ sel.style.display='none'; return; } // super admin only
+  const clients=clientNames();
+  if(GLOBAL_CLIENT && !clients.includes(GLOBAL_CLIENT)){ GLOBAL_CLIENT=''; try{ localStorage.removeItem('tsa_global_client'); }catch(e){} }
+  sel.style.display='';
+  sel.innerHTML='<option value="">All companies</option>'+clients.map(c=>`<option>${esc(c)}</option>`).join('');
+  sel.value=GLOBAL_CLIENT;
+}
+function setGlobalClient(v){
+  GLOBAL_CLIENT=v||''; try{ GLOBAL_CLIENT?localStorage.setItem('tsa_global_client',GLOBAL_CLIENT):localStorage.removeItem('tsa_global_client'); }catch(e){}
+  const sel=document.getElementById('gClient'); if(sel) sel.value=GLOBAL_CLIENT;
+  const t=currentTab();
+  const render={dash:renderDash, reps:renderReps, clients:renderClientOverview, mgreod:renderMgrEod, calllog:renderCallLog, calendar:renderCalendar, speedtolead:renderSpeedToLead, dailyreport:renderDailyReport, adminreport:renderAdminReport, invoicing:renderInvoicing}[t];
+  if(render) render(); else renderDash();
+  toast(GLOBAL_CLIENT?('Scoped to '+GLOBAL_CLIENT):'Showing all companies');
+}
 
 /* ---------------- selects ---------------- */
 // Rep dropdowns come from the actual user accounts (Users tab), so there's no separate list to maintain.
@@ -3031,7 +3057,7 @@ function buildFilterOptions(){
   const fc=document.getElementById('fClient'),cc=fc.value;
   const sc=dashScopeClients(), clist=sc?sc.filter(c=>c!==' none'):clientNames();
   fc.innerHTML='<option value="">'+(sc?('My account'+(clist.length>1?'s':'')):'All clients')+'</option>'+clist.map(c=>`<option>${esc(c)}</option>`).join('');
-  if(cc)fc.value=cc;
+  fc.value=preferGlobal(clist, cc);
   initDashRangePicker();
 }
 // self-contained click-start-then-end range picker (no external lib). Writes the hidden fFrom/fTo the dashboard reads.
@@ -3340,6 +3366,7 @@ async function renderSpeedToLead(){
     const res=await splApi({action:'speedToLeadClients'}); __splClients=(res&&res.clients)||[];
     sel.innerHTML = __splClients.length ? __splClients.map(c=>`<option value="${esc(c.locationId)}">${esc(c.client)}</option>`).join('') : '<option value="">No connected GHL accounts</option>';
   }
+  if(sel && GLOBAL_CLIENT){ const m=(__splClients||[]).find(c=>String(c.client)===GLOBAL_CLIENT); if(m) sel.value=m.locationId; } // follow the global company scope
 }
 function splQuick(p){ const t=todayLocal(); let from,to=t; if(p==='yesterday'){ from=to=isoOffset(t,-1); } else if(p==='7'){ from=isoOffset(t,-6); } else { from=isoOffset(t,-29); }
   const ff=document.getElementById('spl_from'), ft=document.getElementById('spl_to'); if(ff)ff.value=from; if(ft)ft.value=to; rpAttach('spl', function(){}); splLoad(false); }
@@ -3977,7 +4004,7 @@ function dailyReportData(client, day){
 function drSum(arr,f){ return arr.reduce((s,o)=>s+(o[f]||0),0); }
 function drOffersForView(){ const sel=(document.getElementById('drClient')||{}).value||''; return sel?[sel]:clientNames(); }
 function renderDailyReport(){
-  const cs=document.getElementById('drClient'); if(cs && !cs.__init){ const cur=cs.value; cs.innerHTML='<option value="">All offers</option>'+clientNames().map(c=>`<option>${esc(c)}</option>`).join(''); if(cur)cs.value=cur; cs.__init=1; }
+  const cs=document.getElementById('drClient'); if(cs){ const cur=cs.value; cs.innerHTML='<option value="">All offers</option>'+clientNames().map(c=>`<option>${esc(c)}</option>`).join(''); cs.value=preferGlobal(clientNames(), cur); }
   const dd=document.getElementById('drDay'); if(dd && !dd.value) dd.value=todayCentral(); dayPickAttach('drDay', renderDailyReport);
   const out=document.getElementById('dailyReportOut'); if(!out) return;
   const day=((document.getElementById('drDay')||{}).value)||todayCentral();
@@ -4044,7 +4071,7 @@ function payCycle(refIso){
 function payCyclePrev(refIso){ const c=payCycle(refIso), before=new Date(c.from+'T00:00:00'); before.setDate(before.getDate()-1); return payCycle(isoLocal(before)); }
 function payCycleForRange(from,to){ const c=payCycle(from); return (c.from===from&&c.to===to)?c:null; } // is this range a standard pay cycle?
 function repCommInit(){
-  const cs=document.getElementById('rcmClient'); if(cs){ const cur=cs.value; cs.innerHTML='<option value="">All offers</option>'+clientNames().map(c=>`<option>${esc(c)}</option>`).join(''); if(cur) cs.value=cur; }
+  const cs=document.getElementById('rcmClient'); if(cs){ const cur=cs.value; cs.innerHTML='<option value="">All offers</option>'+clientNames().map(c=>`<option>${esc(c)}</option>`).join(''); cs.value=preferGlobal(clientNames(), cur); }
   const f=document.getElementById('rcmFrom'), t=document.getElementById('rcmTo'), c=payCycle();
   if(f&&!f.value) f.value=c.from; if(t&&!t.value) t.value=c.to;
   repCommRender();
@@ -4347,8 +4374,8 @@ function renderAdminReport(){
   if(end<start){ const t=start; start=end; end=t; fi.value=start; ti.value=end; rpAttach('arRange', renderAdminReport); }
   const range=rangeFromTo(start,end);
   // client filter
-  const cs=document.getElementById('arClient'); const client=(cs&&cs.value)||'';
-  if(cs){ cs.innerHTML='<option value="">All clients</option>'+clientNames().map(c=>`<option>${esc(c)}</option>`).join(''); if(client&&clientNames().includes(client))cs.value=client; }
+  const cs=document.getElementById('arClient'); let client=(cs&&cs.value)||'';
+  if(cs){ cs.innerHTML='<option value="">All clients</option>'+clientNames().map(c=>`<option>${esc(c)}</option>`).join(''); cs.value=preferGlobal(clientNames(), client); client=cs.value; }
   const setters = client?repsForClientStrict('setter',client):repNames('setter');
   const closers = client?repsForClientStrict('closer',client):repNames('closer');
   const managers = client?managersForClient(client):managerNames();
@@ -5465,7 +5492,7 @@ function buildRepFilters(){
   const fc=document.getElementById('rClient'),cc=fc.value;
   const clients=REP_SCOPE?REP_SCOPE:clientNames();
   fc.innerHTML='<option value="">All'+(REP_SCOPE?' my accounts':' clients')+'</option>'+clients.map(c=>`<option>${esc(c)}</option>`).join('');
-  if(cc&&clients.includes(cc))fc.value=cc;
+  fc.value=preferGlobal(clients, cc);
 }
 function repRangePreset(p){ rangePreset('rRange_from','rRange_to',p,''); rpAttach('rRange',renderReps); renderReps(); }
 function repFiltered(){
