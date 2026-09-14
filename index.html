@@ -491,8 +491,27 @@
     <p class="hint">Generate each client's <b>founder invoice</b> (they pay TSA weekly), auto-built from closed deals + collected payments. Billing week is <b>Monday to Sunday</b>; invoices go out <b>Wednesday</b> for the last completed week (review Wed, questions Thu, paid Fri). <b>Super Admin only.</b> Set each client's billing rate, invoice stats, and TSA's wire/ACH details under <b>Billing settings</b>.</p>
     <div class="seg" id="invSeg" style="margin-bottom:16px">
       <button class="on" data-inv="gen" onclick="invTab('gen')">Founder invoices</button>
+      <button data-inv="comm" onclick="invTab('comm')">Rep commissions</button>
       <button data-inv="verify" onclick="invTab('verify')">$1 verification wire</button>
       <button data-inv="settings" onclick="invTab('settings')">Billing settings</button>
+    </div>
+    <div id="invComm" hidden>
+      <div class="panel" style="padding:16px">
+        <p class="fieldhelp" style="margin:0 0 12px">Commissions owed to <b>setters and closers</b> for a pay period, on the same <b>Monday to Sunday</b> cycle as founder invoices. Commission = each rep's <b>cash collected in the period</b> (deals closed in-period + later wires/payments that cleared in-period) &times; their rate: the offer's rep-comp rate if set, otherwise the default closer/setter rate from Settings. Pick a rep's name for a printable statement.</p>
+        <div class="grid3" style="gap:12px">
+          <div class="field"><label>Pay period from</label><input type="date" id="rcmFrom" onchange="repCommReset()"></div>
+          <div class="field"><label>Pay period to</label><input type="date" id="rcmTo" onchange="repCommReset()"></div>
+          <div class="field"><label>Offer / client</label><select id="rcmClient" onchange="repCommReset()"></select></div>
+        </div>
+        <div class="row-actions" style="margin-top:10px">
+          <button class="btn gold sm" onclick="repCommReset()">Generate report</button>
+          <button class="btn ghost sm" onclick="rcmThisWeek()">Last week (Mon-Sun)</button>
+          <button class="btn ghost sm" onclick="rcmCurrentWeek()">Current week</button>
+          <button class="btn ghost sm" onclick="rcmPrevWeek()">&#8592; Previous week</button>
+          <button class="btn ghost sm" onclick="invPrint('repCommDoc')">&#128424; Print / save PDF</button>
+        </div>
+      </div>
+      <div id="repCommOut" style="margin-top:18px"></div>
     </div>
     <div id="invVerify" hidden>
       <div class="panel" style="padding:16px">
@@ -3657,14 +3676,16 @@ const INV_STAT_CATALOG=[['closedDeals','Closed deals'],['cashCollected','Cash co
 function invStatOn(key){ const bi=billingInfo(); return (bi&&bi.invStats&&typeof bi.invStats[key]==='boolean') ? bi.invStats[key] : true; } // default on
 function invTab(which){
   document.getElementById('invGen').hidden = which!=='gen';
+  document.getElementById('invComm').hidden = which!=='comm';
   document.getElementById('invVerify').hidden = which!=='verify';
   document.getElementById('invSettings').hidden = which!=='settings';
   document.querySelectorAll('#invSeg button').forEach(b=>b.classList.toggle('on', b.dataset.inv===which));
   if(which==='settings') invLoadCfg();
   if(which==='verify') invVerifyPreview();
+  if(which==='comm') repCommInit();
 }
 function renderInvoicing(){
-  if(!invAllowed()){ const s=document.getElementById('tab-invoicing'); if(s) s.querySelectorAll('#invGen,#invSettings').forEach(e=>e.hidden=true); return; }
+  if(!invAllowed()){ const s=document.getElementById('tab-invoicing'); if(s) s.querySelectorAll('#invGen,#invComm,#invVerify,#invSettings').forEach(e=>e.hidden=true); return; }
   fillLists();
   const f=document.getElementById('invFrom'), t=document.getElementById('invTo');
   const bw=billingWeek();
@@ -3831,6 +3852,104 @@ function genFounderInvoice(client,from,to){
     `)}
   </div>`;
 }
+/* ================= REP COMMISSIONS (setter + closer payout report, same pay cycle as founder invoices) ================= */
+let REPCOMM_VIEW=null; // null = summary view; {role, rep} = one rep's statement
+// the commission rate for a rep on an offer: the offer's rep-comp rate if set, else the default from Settings
+function repCommRateFor(client, role){ const cfg=clientBillingCfg(client); if(role==='closer') return (cfg&&cfg.closerRate!=null)?cfg.closerRate:(CFG.closerRate||0); return (cfg&&cfg.setterRate!=null)?cfg.setterRate:(CFG.setterRate||0); }
+function repCommInit(){
+  const cs=document.getElementById('rcmClient'); if(cs){ const cur=cs.value; cs.innerHTML='<option value="">All offers</option>'+clientNames().map(c=>`<option>${esc(c)}</option>`).join(''); if(cur) cs.value=cur; }
+  const f=document.getElementById('rcmFrom'), t=document.getElementById('rcmTo'), bw=billingWeek();
+  if(f&&!f.value) f.value=bw.from; if(t&&!t.value) t.value=bw.to;
+  repCommRender();
+}
+function rcmThisWeek(){ const bw=billingWeek(); document.getElementById('rcmFrom').value=bw.from; document.getElementById('rcmTo').value=bw.to; repCommReset(); }
+function rcmCurrentWeek(){ const cw=currentWeek(); document.getElementById('rcmFrom').value=cw.from; document.getElementById('rcmTo').value=cw.to; repCommReset(); }
+function rcmPrevWeek(){ const f=document.getElementById('rcmFrom').value, ref=f?new Date(f+'T00:00:00'):new Date(); ref.setDate(ref.getDate()-7); const bw=billingWeek(ref); document.getElementById('rcmFrom').value=bw.from; document.getElementById('rcmTo').value=bw.to; repCommReset(); }
+function repCommReset(){ REPCOMM_VIEW=null; repCommRender(); }
+function showRepStatement(role,rep){ REPCOMM_VIEW={role,rep:decodeURIComponent(rep)}; repCommRender(); }
+function backRepComm(){ REPCOMM_VIEW=null; repCommRender(); }
+// cash collected in [from,to] attributed per rep, split by role, with the deals/payments behind each rep.
+// Mirrors the founder invoice: a deal's at-close cash counts on its close date, later payments count when they CLEAR.
+function repCommData(from,to,client){
+  const inP=d=>{ d=String(d||'').slice(0,10); return d && d>=from && d<=to; };
+  const ck=client?String(client).trim().toLowerCase():'', mc=c=> !ck || String(c||'').trim().toLowerCase()===ck;
+  const closers={}, setters={};
+  const add=(map,name,role,it)=>{ name=String(name||'').trim(); if(!name) return; const o=map[name]||(map[name]={rep:name,role,cash:0,byClient:{},items:[]}); o.cash+=it.cash; o.byClient[it.client]=(o.byClient[it.client]||0)+it.cash; o.items.push(it); };
+  const seen={};
+  (RECORDS||[]).filter(x=>x.type==='deal' && inP(x.date) && mc(x.client)).forEach(d=>{
+    const id=String(d.id||''); if(id&&seen[id])return; if(id)seen[id]=1;
+    const cash=d.cashCollected||0; if(!cash) return;
+    if(d.rep) add(closers,d.rep,'closer',{date:d.date,client:d.client||'',lead:d.lead||'',kind:'Deal',cash,rate:repCommRateFor(d.client,'closer')});
+    if(d.setter) add(setters,d.setter,'setter',{date:d.date,client:d.client||'',lead:d.lead||'',kind:'Deal',cash,rate:repCommRateFor(d.client,'setter')});
+  });
+  paymentsCollapsed().filter(p=>p.status==='confirmed' && inP(p.date) && mc(p.client)).forEach(p=>{
+    const cash=p.amount||0; if(!cash) return; const kind=(p.method?p.method+' payment':'Payment');
+    if(p.rep) add(closers,p.rep,'closer',{date:p.date,client:p.client||'',lead:p.lead||'',kind,cash,rate:repCommRateFor(p.client,'closer')});
+    if(p.setter) add(setters,p.setter,'setter',{date:p.date,client:p.client||'',lead:p.lead||'',kind,cash,rate:repCommRateFor(p.client,'setter')});
+  });
+  const commOf=o=>{ let c=0; for(const cl in o.byClient) c+=o.byClient[cl]*repCommRateFor(cl,o.role)/100; return c; };
+  const finish=map=>Object.values(map).map(o=>{ const commission=commOf(o); return {...o,commission,effRate:o.cash?commission/o.cash*100:0}; }).sort((a,b)=>b.commission-a.commission);
+  return {closers:finish(closers), setters:finish(setters)};
+}
+function repCommRender(){
+  const out=document.getElementById('repCommOut'); if(!out) return;
+  const from=(document.getElementById('rcmFrom')||{}).value||'', to=(document.getElementById('rcmTo')||{}).value||'';
+  if(!from||!to){ out.innerHTML='<div class="panel" style="padding:20px"><p class="muted" style="margin:0">Pick a pay period.</p></div>'; return; }
+  const client=(document.getElementById('rcmClient')||{}).value||'', data=repCommData(from,to,client);
+  out.innerHTML = REPCOMM_VIEW ? genRepStatement(REPCOMM_VIEW.role,REPCOMM_VIEW.rep,from,to,data) : genRepCommSummary(data,from,to,client);
+}
+function repCommCard(inner){ return `<div style="background:#fff;border:1px solid #e6e9ef;border-radius:16px;padding:26px 30px;box-shadow:0 1px 3px rgba(20,30,60,.05);margin-bottom:20px">${inner}</div>`; }
+function genRepCommSummary(data,from,to,client){
+  const period=`${esc(usDate(from))} &ndash; ${esc(usDate(to))}`;
+  const totC=data.closers.reduce((s,o)=>s+o.commission,0), totS=data.setters.reduce((s,o)=>s+o.commission,0);
+  const sec=(title,rows,role)=>{
+    const body=rows.length?rows.map(o=>`<tr>
+      <td style="padding:11px 8px;border-bottom:1px solid #eef1f6"><button onclick="showRepStatement('${role}','${encodeURIComponent(o.rep)}')" style="background:none;border:0;color:#1a2b4a;font-weight:700;cursor:pointer;padding:0;text-decoration:underline;font-size:13px">${esc(o.rep)}</button></td>
+      <td style="padding:11px 8px;border-bottom:1px solid #eef1f6;text-align:right;color:#6b7488">${o.items.filter(i=>i.kind==='Deal').length}</td>
+      <td style="padding:11px 8px;border-bottom:1px solid #eef1f6;text-align:right;font-variant-numeric:tabular-nums">${money(o.cash)}</td>
+      <td style="padding:11px 8px;border-bottom:1px solid #eef1f6;text-align:right;color:#6b7488">${Math.round(o.effRate*10)/10}%</td>
+      <td style="padding:11px 8px;border-bottom:1px solid #eef1f6;text-align:right;font-weight:800;color:#1a2b4a;font-variant-numeric:tabular-nums">${money(o.commission)}</td>
+    </tr>`).join(''):`<tr><td colspan="5" style="text-align:center;color:#8a93a6;padding:16px">No ${role} commissions in this period.</td></tr>`;
+    const tot=rows.reduce((s,o)=>s+o.commission,0);
+    return repCommCard(`<div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px"><div style="font-weight:800;color:#1a2b4a;font-size:16px">${title}</div><div style="font-size:13px;color:#6b7488">Total: <b style="color:#1a2b4a">${money(tot)}</b></div></div>
+      <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:12px;min-width:520px">
+        <thead><tr style="text-align:left;color:#8a93a6;border-bottom:1px solid #e6e9ef">
+          <th style="padding:8px;font-weight:600">REP</th><th style="padding:8px;font-weight:600;text-align:right">DEALS</th><th style="padding:8px;font-weight:600;text-align:right">CASH COLLECTED</th><th style="padding:8px;font-weight:600;text-align:right">RATE</th><th style="padding:8px;font-weight:600;text-align:right">COMMISSION</th>
+        </tr></thead><tbody>${body}</tbody></table></div>`);
+  };
+  return `<div id="repCommDoc" style="background:#eef1f6;padding:22px;border-radius:14px;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.5;color:#2b3242;max-width:900px;margin:0 auto">
+    ${repCommCard(`<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px">
+        <div><div style="font-size:19px;font-weight:800;color:#1a2b4a">Rep commissions</div><div style="font-size:13px;color:#8a93a6">${client?esc(client)+' &middot; ':''}Pay period ${period}</div></div>
+        <div style="text-align:right"><div style="font-size:12px;color:#8a93a6">Total commission owed</div><div style="font-size:26px;font-weight:900;color:#c9a227;font-variant-numeric:tabular-nums">${money(totC+totS)}</div><div style="font-size:12px;color:#6b7488">Closers ${money(totC)} &middot; Setters ${money(totS)}</div></div>
+      </div>`)}
+    ${sec('Closers',data.closers,'closer')}
+    ${sec('Setters',data.setters,'setter')}
+  </div>`;
+}
+function genRepStatement(role,rep,from,to,data){
+  const list=(role==='closer'?data.closers:data.setters), o=list.find(x=>x.rep===rep);
+  const period=`${esc(usDate(from))} &ndash; ${esc(usDate(to))}`, back=`<div style="margin-bottom:12px"><button class="btn ghost sm" onclick="backRepComm()">&#8592; Back to summary</button></div>`;
+  if(!o){ return back+`<div id="repCommDoc">${repCommCard('<p style="color:#8a93a6;margin:0">No commission for '+esc(rep)+' in this period.</p>')}</div>`; }
+  const rowsHtml=o.items.slice().sort((a,b)=>String(a.date).localeCompare(String(b.date))).map(it=>`<tr>
+    <td style="padding:10px 8px;border-bottom:1px solid #eef1f6;color:#6b7488">${esc(usDate(it.date))}</td>
+    <td style="padding:10px 8px;border-bottom:1px solid #eef1f6">${esc(it.client||'-')}</td>
+    <td style="padding:10px 8px;border-bottom:1px solid #eef1f6;color:#1a2b4a;font-weight:600">${esc(it.lead||'-')}</td>
+    <td style="padding:10px 8px;border-bottom:1px solid #eef1f6;color:#6b7488">${esc(it.kind)}</td>
+    <td style="padding:10px 8px;border-bottom:1px solid #eef1f6;text-align:right;font-variant-numeric:tabular-nums">${money(it.cash)}</td>
+    <td style="padding:10px 8px;border-bottom:1px solid #eef1f6;text-align:right;color:#6b7488">${it.rate}%</td>
+    <td style="padding:10px 8px;border-bottom:1px solid #eef1f6;text-align:right;font-weight:700;color:#1a2b4a;font-variant-numeric:tabular-nums">${money(it.cash*it.rate/100)}</td>
+  </tr>`).join('');
+  return back+`<div id="repCommDoc" style="background:#eef1f6;padding:22px;border-radius:14px;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.5;color:#2b3242;max-width:900px;margin:0 auto">
+    ${repCommCard(`<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px">
+        <div><div style="font-size:19px;font-weight:800;color:#1a2b4a">${esc(rep)}</div><div style="font-size:13px;color:#8a93a6">${role==='closer'?'Closer':'Setter'} commission statement &middot; ${period}</div></div>
+        <div style="text-align:right"><div style="font-size:12px;color:#8a93a6">Commission owed</div><div style="font-size:26px;font-weight:900;color:#c9a227;font-variant-numeric:tabular-nums">${money(o.commission)}</div><div style="font-size:12px;color:#6b7488">on ${money(o.cash)} cash collected</div></div>
+      </div>
+      <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:16px;min-width:620px">
+        <thead><tr style="text-align:left;color:#8a93a6;border-bottom:1px solid #e6e9ef">
+          <th style="padding:8px;font-weight:600">DATE</th><th style="padding:8px;font-weight:600">OFFER</th><th style="padding:8px;font-weight:600">CONTACT</th><th style="padding:8px;font-weight:600">TYPE</th><th style="padding:8px;font-weight:600;text-align:right">CASH</th><th style="padding:8px;font-weight:600;text-align:right">RATE</th><th style="padding:8px;font-weight:600;text-align:right">COMMISSION</th>
+        </tr></thead><tbody>${rowsHtml}</tbody></table></div>`)}
+  </div>`;
+}
 function invPrint(docId){
   docId=docId||'invoiceDoc';
   const doc=document.getElementById(docId); if(!doc){ toast('Generate an invoice first',true); return; }
@@ -3839,7 +3958,7 @@ function invPrint(docId){
   w.document.write(`<!doctype html><html><head><title>${esc(invNoLabel(docId))}</title><meta charset="utf-8"><style>@page{size:letter;margin:0.5in}body{margin:0;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}#${docId}{background:#fff!important;padding:0!important;max-width:none!important;border-radius:0!important}</style></head><body>${doc.outerHTML}</body></html>`);
   w.document.close(); w.focus(); setTimeout(()=>{ try{ w.print(); }catch(e){} }, 350);
 }
-function invNoLabel(docId){ const c=(document.getElementById(docId==='verifyInvoiceDoc'?'invVClient':'invClient')||{}).value||'Invoice'; return (docId==='verifyInvoiceDoc'?'Verification wire - ':'Invoice - ')+c; }
+function invNoLabel(docId){ if(docId==='repCommDoc') return 'Rep commissions'; const c=(document.getElementById(docId==='verifyInvoiceDoc'?'invVClient':'invClient')||{}).value||'Invoice'; return (docId==='verifyInvoiceDoc'?'Verification wire - ':'Invoice - ')+c; }
 /* ---- $1 verification wire: a simple invoice asking the client to send $1 to confirm the wire path ---- */
 function invVerifyPreview(){
   const out=document.getElementById('invVerifyOut'); if(!out) return;
