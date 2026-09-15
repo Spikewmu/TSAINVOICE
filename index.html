@@ -6981,9 +6981,9 @@ function renderEodRouting(){
     <p class="fieldhelp" style="margin:8px 0 0">Setters' post-call & start-of-day posts route to the Setters channel, closers' to the Closers channel (by the rep's role).</p>
     <div style="border-top:1px solid var(--border);margin:14px 0 10px"></div>
     <label style="display:flex;gap:8px;align-items:center;font-weight:500;margin:0 0 8px"><input type="checkbox" id="drOn" ${c.dailyReportOn?'checked':''}> Post the <b>compiled Daily Report</b> to Slack each morning</label>
-    <div class="cards" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr))">
+    <div class="cards" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start;max-width:640px">
       <div class="field"><label>Daily report channel</label>${slackField('evDailyReport',c.dailyReport,`'config','','dailyReport'`,'dailyReport','Daily report',(c.chan||{}).dailyReport)}</div>
-      <div class="field"><label>Send time (Central)</label><input type="time" id="drTime" step="1800" value="${esc(c.dailyReportTime||'09:30')}"><span class="fieldhelp">When it posts each morning (30-min steps). SODs are due 9am CT.</span></div>
+      <div class="field"><label>Send time (Central)</label><input type="time" id="drTime" step="1800" value="${esc(c.dailyReportTime||'09:30')}" style="width:100%"><span class="fieldhelp">When it posts each morning (30-min steps). SODs are due 9am CT.</span></div>
     </div>
     <p class="fieldhelp" style="margin:8px 0 0">One combined report: yesterday's results (from EODs) + today's forecast (from SODs), setters and closers, posted here automatically each morning.</p>
     <div class="row-actions" style="margin-top:12px"><button class="btn gold sm" onclick="integSaveEod()">Save routing</button></div>`;
