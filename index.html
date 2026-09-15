@@ -1970,7 +1970,7 @@ function startApp(){
     else if(role==='founder'){ Promise.all([syncRecords(),loadUsers()]).then(()=>{ renderDash(); }); showTab('dash'); } // founder: their company only, dashboard-only, read-only, no filters
     else if(role==='webinarteam'){ Promise.all([syncRecords(),loadUsers()]).then(()=>{ fillLists(); applyNavAccess(); renderDash(); }); showTab('dash'); } // webinar team: dashboard + webinar tab, all clients
     else if(role==='recruiter'){ Promise.all([syncRecords(),loadUsers()]).then(()=>{ fillLists(); applyNavAccess(); renderDash(); }); showTab('recruiting'); } // recruiter: dashboard scoped to their client + Recruiting + Time Off
-    else { applyIdentity(); syncRecords().then(()=>{ applyNavAccess(); applyIdentity(); }); showTab(allow[0]); }
+    else { applyIdentity(); syncRecords().then(()=>{ reconcileSessionRole(); applyNavAccess(); applyIdentity(); }); showTab(allow[0]); }
     startMsgPolling(); // background unread-message polling for the badge + notifications (self-gates by role)
     if(window.__justLoggedIn){ window.__justLoggedIn=false; // real sign-in (not a page-reload session restore): stamp last-login + force a password change if an admin reset it
       syncRecords().then(()=>{ try{ addRecord({type:'login', username:SESSION.username, at:new Date().toISOString()}); }catch(_){} try{ if(pwForced(SESSION.username)) forcePwChange(); }catch(_){} });
@@ -2014,6 +2014,18 @@ function canViewUser(u){ if(!u) return false; if(u.master) return SESSION&&SESSI
 function rolesFor(username){ let best=null,bt=''; RECORDS.forEach(x=>{ if(x.type==='userroles' && nrm(x.username)===nrm(username)){ if((x.submittedAt||'')>=bt){ bt=x.submittedAt||''; best=x; } } }); if(best&&Array.isArray(best.roles)&&best.roles.length) return best.roles.slice(); const u=(USERS_CACHE||[]).find(z=>nrm(z.username)===nrm(username)); return u?[u.role]:[]; }
 function hasRole(username,r){ return rolesFor(username).includes(r); }
 function primaryRole(roles){ return (roles||[]).slice().sort((a,b)=>(ROLE_RANK[b]||0)-(ROLE_RANK[a]||0))[0]||'closer'; }
+// A rep's login role is captured at sign-in and cached; if their role was changed in HQ since (e.g. Setter->Closer),
+// pull the current primary role from the backend on load so a page refresh applies it - no forced sign-out needed.
+function reconcileSessionRole(){
+  if(!SESSION || !SESSION.username || VIEW_AS_REAL || (typeof VIEW_AS_USER!=='undefined' && VIEW_AS_USER)) return;
+  const roles=rolesFor(SESSION.username); if(!roles.length) return; // no authoritative role data loaded yet - keep the login role
+  const cur=primaryRole(roles); if(!cur || cur===SESSION.role) return;
+  SESSION.role=cur; save(LS.auth,SESSION);
+  try{ document.getElementById('whoTag').textContent=SESSION.name+' ('+roleLabel(cur)+')'; }catch(_){}
+  try{ const va=document.getElementById('viewAsSel'); if(va) va.style.display=(cur==='admin')?'':'none'; }catch(_){}
+  try{ document.querySelectorAll('#tabs button[data-tab]').forEach(b=>{ b.hidden=!baseAllow(cur).includes(b.dataset.tab); }); pruneNavGroups(); }catch(_){}
+  try{ if(cur==='closer'||cur==='setter'){ const rc=cur==='setter'?'Setter':'Closer'; setPcRole(rc); setEodRole(rc); } }catch(_){}
+}
 function isTsaStaff(username){ return rolesFor(username).some(r=>OPERATOR_ROLES.includes(r)); }
 // access follows responsibilities + the UNION of all assigned roles.
 function applyNavAccess(){

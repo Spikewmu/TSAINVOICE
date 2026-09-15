@@ -53,7 +53,9 @@ function buildText(client, day, prev, sods, eods) {
   if (fClo.length || rClo.length) {
     const taken = S(rClo, 'connectedMeetings'), noShow = S(rClo, 'noShows'), held = S(rClo, 'newMeetings') + S(rClo, 'followUpMeetings'), spots = S(rClo, 'callCapacity');
     const show = (taken + noShow) ? taken / (taken + noShow) : null, util = spots ? held / spots : null;
+    const onCal = taken + noShow; // calls that were on the calendar = taken + no-shows
     L.push('', 'CLOSERS', '', `Yesterday (${usDate(prev)})`);
+    L.push(b(`${onCal} on the calendar`));
     L.push(b(`${taken} calls taken`));
     L.push(b(`${pct(show)} show rate`));
     L.push(b(`${pct(util)} call utilization`));
@@ -66,7 +68,10 @@ function buildText(client, day, prev, sods, eods) {
   }
 
   if (!fClo.length && !rClo.length && !fSet.length && !rSet.length) L.push('', 'No SOD or EOD data logged.');
-  return L.join('\n');
+  // blank line between consecutive bullets so each metric breathes (Robb's 9-15 ask); section spacing untouched
+  const out = [];
+  for (let i = 0; i < L.length; i++) { out.push(L[i]); if (L[i].startsWith(' • ') && L[i + 1] && L[i + 1].startsWith(' • ')) out.push(''); }
+  return out.join('\n');
 }
 
 export default async function handler(req, res) {
