@@ -2355,7 +2355,9 @@ async function loadUsers(){
   return USERS_CACHE;
 }
 function repNames(role){
-  const fromUsers=[...new Set(USERS_CACHE.filter(u=>u.role===role && !u.archived).map(u=>String(u.name||'').trim()).filter(Boolean))];
+  // include hybrids: a user whose multi-role set has this role even if it isn't their PRIMARY role
+  // (a closer+setter with primary "closer" must still appear in the setter pickers, and vice versa)
+  const fromUsers=[...new Set(USERS_CACHE.filter(u=> !u.archived && (u.role===role || hasRole(u.username, role))).map(u=>String(u.name||'').trim()).filter(Boolean))];
   if(fromUsers.length) return fromUsers.sort((a,b)=>a.localeCompare(b));
   return (role==='closer'?CFG.closers:CFG.setters)||[]; // fallback until accounts exist
 }
