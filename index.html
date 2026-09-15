@@ -5723,21 +5723,35 @@ function renderCallReports(){
   const rows=Object.values(latest).sort((a,b)=>(b.date||'').localeCompare(a.date||'')||String(a.rep||'').localeCompare(String(b.rep||'')));
   const n=v=>v||0;
   const notesCell=x=>{ const s=String(x.notes||x.bottleneck||'').trim(); return s?`<span title="${esc(s)}">${esc(s.length>40?s.slice(0,40)+'…':s)}</span>`:'<span class="muted">-</span>'; };
+  const editBtn=x=>`<td><button class="btn sm ghost" data-role="${role}" data-rep="${esc(x.rep||'')}" data-client="${esc(x.client||'')}" data-date="${(x.date||'').slice(0,10)}" onclick="crEditRow(this)">Edit</button></td>`;
   const sum=document.getElementById('crSummary'); if(sum) sum.textContent=rows.length?`${rows.length} report${rows.length>1?'s':''}`:'';
   if(role==='Closer'){
-    tbl.innerHTML=`<thead><tr><th>Date</th><th>Rep</th><th>Client</th><th class="num" title="First-time meetings held">New</th><th class="num" title="Follow-up meetings held">Follow-up</th><th class="num" title="Calls where they reached the person">Conn.</th><th class="num">No shows</th><th class="num" title="Calendar spots opened for sales calls">Spots</th><th class="num" title="(New + Follow-up meetings) / Spots opened">Util %</th><th class="num" title="Calls moved forward toward a close">Adv.</th><th class="num">Deals</th><th class="num">Contract</th><th class="num">Cash</th><th>Notes</th></tr></thead><tbody>`+
+    tbl.innerHTML=`<thead><tr><th>Date</th><th>Rep</th><th>Client</th><th class="num" title="First-time meetings held">New</th><th class="num" title="Follow-up meetings held">Follow-up</th><th class="num" title="Calls where they reached the person">Conn.</th><th class="num">No shows</th><th class="num" title="Calendar spots opened for sales calls">Spots</th><th class="num" title="(New + Follow-up meetings) / Spots opened">Util %</th><th class="num" title="Calls moved forward toward a close">Adv.</th><th class="num">Deals</th><th class="num">Contract</th><th class="num">Cash</th><th>Notes</th><th></th></tr></thead><tbody>`+
       (rows.length?rows.map(x=>{ const cap=n(x.callCapacity), held=n(x.newMeetings)+n(x.followUpMeetings), util=cap?pct(held/cap):'-';
-        return `<tr><td>${esc(usDate(x.date))}</td><td>${esc(x.rep||'')}</td><td>${esc(x.client||'')}</td><td class="num">${n(x.newMeetings)}</td><td class="num">${n(x.followUpMeetings)}</td><td class="num">${n(x.connectedMeetings)}</td><td class="num">${n(x.noShows)}</td><td class="num">${cap||'-'}</td><td class="num">${util}</td><td class="num">${n(x.advancedCalls)}</td><td class="num">${n(x.closedDeals)}</td><td class="num">${money(x.contractValue)}</td><td class="num">${money(x.cashCollected)}</td><td>${notesCell(x)}</td></tr>`; }).join('')
-       :`<tr><td colspan="14" class="muted" style="padding:16px">No closer reports match these filters.</td></tr>`)+`</tbody>`;
+        return `<tr><td>${esc(usDate(x.date))}</td><td>${esc(x.rep||'')}</td><td>${esc(x.client||'')}</td><td class="num">${n(x.newMeetings)}</td><td class="num">${n(x.followUpMeetings)}</td><td class="num">${n(x.connectedMeetings)}</td><td class="num">${n(x.noShows)}</td><td class="num">${cap||'-'}</td><td class="num">${util}</td><td class="num">${n(x.advancedCalls)}</td><td class="num">${n(x.closedDeals)}</td><td class="num">${money(x.contractValue)}</td><td class="num">${money(x.cashCollected)}</td><td>${notesCell(x)}</td>${editBtn(x)}</tr>`; }).join('')
+       :`<tr><td colspan="15" class="muted" style="padding:16px">No closer reports match these filters.</td></tr>`)+`</tbody>`;
   } else {
-    tbl.innerHTML=`<thead><tr><th>Date</th><th>Rep</th><th>Client</th><th class="num">Hours</th><th class="num">Dials</th><th class="num" title="People actually reached on dials">Conn.</th><th class="num">Set</th><th class="num" title="Disqualified">DQ</th><th class="num" title="Conversations 4 min+">4m+</th><th class="num" title="Avg minutes from lead arriving to first dial">Speed</th><th>Notes</th></tr></thead><tbody>`+
-      (rows.length?rows.map(x=>`<tr><td>${esc(usDate(x.date))}</td><td>${esc(x.rep||'')}</td><td>${esc(x.client||'')}</td><td class="num">${n(x.hoursDialing)}</td><td class="num">${n(x.newOutreach)}</td><td class="num">${n(x.connectedCalls)}</td><td class="num">${n(x.callsSet)}</td><td class="num">${n(x.dqs)}</td><td class="num">${n(x.convos4min)}</td><td class="num">${n(x.speedToLead)}</td><td>${notesCell(x)}</td></tr>`).join('')
-       :`<tr><td colspan="11" class="muted" style="padding:16px">No setter reports match these filters.</td></tr>`)+`</tbody>`;
+    tbl.innerHTML=`<thead><tr><th>Date</th><th>Rep</th><th>Client</th><th class="num">Hours</th><th class="num">Dials</th><th class="num" title="People actually reached on dials">Conn.</th><th class="num">Set</th><th class="num" title="Disqualified">DQ</th><th class="num" title="Conversations 4 min+">4m+</th><th class="num" title="Avg minutes from lead arriving to first dial">Speed</th><th>Notes</th><th></th></tr></thead><tbody>`+
+      (rows.length?rows.map(x=>`<tr><td>${esc(usDate(x.date))}</td><td>${esc(x.rep||'')}</td><td>${esc(x.client||'')}</td><td class="num">${n(x.hoursDialing)}</td><td class="num">${n(x.newOutreach)}</td><td class="num">${n(x.connectedCalls)}</td><td class="num">${n(x.callsSet)}</td><td class="num">${n(x.dqs)}</td><td class="num">${n(x.convos4min)}</td><td class="num">${n(x.speedToLead)}</td><td>${notesCell(x)}</td>${editBtn(x)}</tr>`).join('')
+       :`<tr><td colspan="12" class="muted" style="padding:16px">No setter reports match these filters.</td></tr>`)+`</tbody>`;
   }
+}
+// jump from a Call reports row straight into the Daily edit grid, pre-filled to that rep/client/month, and highlight the day
+function crEditRow(btn){
+  const role=btn.dataset.role||'Closer', rep=btn.dataset.rep||'', client=btn.dataset.client||'', date=(btn.dataset.date||'').slice(0,10);
+  deSetRole(role); // sets the Closer/Setter toggle + repopulates the rep dropdown for that role
+  const repSel=document.getElementById('deRep'); if(repSel){ if(![...repSel.options].some(o=>o.value===rep)) repSel.add(new Option(rep,rep)); repSel.value=rep; }
+  const clSel=document.getElementById('deClient'); if(clSel){ if(![...clSel.options].some(o=>o.value===client)) clSel.add(new Option(client,client)); clSel.value=client; }
+  const mk=date.slice(0,7), moSel=document.getElementById('deMonth'); if(moSel){ if(![...moSel.options].some(o=>o.value===mk)) moSel.add(new Option(usMonth(mk),mk)); moSel.value=mk; }
+  loadDailyGrid();
+  const wrap=document.getElementById('dailyWrap'); if(wrap){ (wrap.closest('.panel')||wrap).scrollIntoView({behavior:'smooth',block:'start'}); }
+  setTimeout(()=>{ const tr=document.querySelector('#dailyGrid tbody tr[data-date="'+date+'"]'); if(tr){ tr.style.outline='2px solid var(--gold)'; tr.style.outlineOffset='-2px'; tr.scrollIntoView({block:'center'}); const inp=tr.querySelector('input'); if(inp) inp.focus(); } }, 120);
+  toast('Editing '+usDate(date)+' - change the day, then hit Save changes');
 }
 
 /* ---------------- daily edit grid (admin: correct a rep's numbers by day) ---------------- */
-const DE_COLS_CLOSER=[['hoursDialing','Hours','Hours on the phones today'],['newOutreach','Dials','Total dials / calls made today'],['connectedCalls','Conn. calls','People actually reached on outbound dials'],['callCapacity','Utilization','Sales calls they had room to take today (not dials); compared to how many they took'],['connectedMeetings','Conn. meetings','Booked calls where they reached the person (calls taken)'],['advancedCalls','Advanced','Calls moved forward toward a close'],['noShows','No shows','Booked calls where the lead did not show'],['closedDeals','Closed','Deals closed today'],['contractsSigned','Contracts','Agreements signed today'],['contractValue','Contract $','Total contract value (before payment)'],['cashCollected','Cash $','Actual money collected today'],['depositCollected','Deposit $','Partial / deposit payments collected']];
+const DE_COLS_CLOSER=[['hoursDialing','Hours','Hours on the phones today'],['newOutreach','Dials','Total dials / calls made today'],['connectedCalls','Conn. calls','People actually reached on outbound dials'],['callCapacity','Spots','Calendar spots opened for sales calls (4 hours of 30-min meetings = 8); compared to meetings held'],['newMeetings','New mtgs','First-time meetings that took place today'],['followUpMeetings','Follow-up mtgs','Repeat / second meetings that took place today'],['connectedMeetings','Conn. meetings','Booked calls where they reached the person (calls taken)'],['advancedCalls','Advanced','Calls moved forward toward a close'],['noShows','No shows','Booked calls where the lead did not show'],['closedDeals','Closed','Deals closed today'],['contractsSigned','Contracts','Agreements signed today'],['contractValue','Contract $','Total contract value (before payment)'],['cashCollected','Cash $','Actual money collected today'],['depositCollected','Deposit $','Partial / deposit payments collected']];
+let DE_EFF={}; // effective (latest) EOD record per day for the currently-loaded grid, so a save MERGES onto it instead of wiping fields the grid does not show
 const DE_COLS_SETTER=[['hoursDialing','Hours','Hours on the phones today'],['newOutreach','Total dials','Total dials / calls made today'],['followUpOutreach','Follow-ups','Leads flagged to call back later'],['connectedCalls','Conn. calls','People actually reached / talked to'],['callsSet','Calls set','Appointments actually booked'],['dqs','DQ','Connected calls disqualified today'],['convos4min','4m+ convos','Conversations longer than 4 minutes'],['speedToLead','Speed (min)','Avg minutes from a lead arriving to first dial']];
 function deRole(){ const b=document.querySelector('#deSeg .on'); return b?b.dataset.role:'Closer'; }
 function deCols(){ return deRole()==='Setter'?DE_COLS_SETTER:DE_COLS_CLOSER; }
@@ -5764,7 +5778,7 @@ function loadDailyGrid(){
   const g=document.getElementById('dailyGrid'); if(!g) return;
   const rep=(document.getElementById('deRep').value||'').trim(),client=document.getElementById('deClient').value||'',ym=document.getElementById('deMonth').value||'',role=deRole(),cols=deCols();
   if(!rep||!client||!ym){ g.innerHTML='<tbody><tr><td class="muted" style="padding:14px">Pick a rep, client, and month above.</td></tr></tbody>'; return; }
-  const eff={}; activityRecords().forEach(x=>{ if((x.type==='eod'||!x.type) && (x.rep||'').trim()===rep && (x.client||'')===client && (x.role||'')===role){ eff[(x.date||'').slice(0,10)]=x; } });
+  const eff={}; activityRecords().forEach(x=>{ if((x.type==='eod'||!x.type) && (x.rep||'').trim()===rep && (x.client||'')===client && (x.role||'')===role){ eff[(x.date||'').slice(0,10)]=x; } }); DE_EFF=eff;
   const dim=daysInMonth(ym);
   let h='<thead><tr><th>Day</th>'+cols.map(c=>`<th${c[2]?` title="${esc(c[2])}" style="cursor:help"`:''}>${esc(c[1])}</th>`).join('')+'</tr></thead><tbody>';
   for(let d=1;d<=dim;d++){ const date=ym+'-'+String(d).padStart(2,'0'),rec=eff[date]||{};
@@ -5777,7 +5791,7 @@ async function saveDailyGrid(){
   const rows=[...document.querySelectorAll('#dailyGrid tbody tr')].filter(tr=>tr.dataset.dirty==='1');
   if(!rows.length){ toast('No changes to save'); return; }
   if(!rep||!client){ toast('Pick a rep and client',true); return; }
-  for(const tr of rows){ const o={type:'eod',rep,role,client,date:tr.dataset.date}; tr.querySelectorAll('input[data-f]').forEach(i=>{ o[i.dataset.f]=parseFloat(i.value)||0; }); await addRecord(o); }
+  for(const tr of rows){ const o=Object.assign({}, DE_EFF[tr.dataset.date]||{}); delete o.id; delete o.submittedAt; o.type='eod'; o.rep=rep; o.role=role; o.client=client; o.date=tr.dataset.date; tr.querySelectorAll('input[data-f]').forEach(i=>{ o[i.dataset.f]=parseFloat(i.value)||0; }); await addRecord(o); } // merge onto the existing day so untouched fields (notes, meetings, etc.) survive
   rows.forEach(tr=>{ tr.dataset.dirty=''; });
   toast(`Saved ${rows.length} day${rows.length>1?'s':''} - corrected numbers now apply.`); loadDailyGrid();
 }
