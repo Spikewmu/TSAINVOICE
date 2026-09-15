@@ -6767,7 +6767,7 @@ async function renderIntegrations(){
   const gkey = GLOBAL_CLIENT ? 'tsa:'+GLOBAL_CLIENT : '';
   if(gkey && targets.some(t=>t.key===gkey)) sel.value=gkey;            // follow the global company scope
   else if(cur && targets.some(t=>t.key===cur)) sel.value=cur;
-  renderAllWebhooks(); renderTemplateLib(); integPick(); integApplySecState();
+  renderAllWebhooks(); renderTemplateLib(); integPick(); if(!window.__integSecInit){ integApplySecState(); window.__integSecInit=1; } // default-collapse only on first open; preserve the user's open sections on later re-renders (e.g. the refresh after a Slack reconnect)
 }
 function integToggleSec(id){ const p=document.getElementById(id); if(!p) return; p.classList.toggle('collapsed'); }
 function integApplySecState(){ ['secAll','secPay','secFeeds','secEod','secGhl','integTplLib'].forEach(id=>{ const p=document.getElementById(id); if(p) p.classList.add('collapsed'); }); }

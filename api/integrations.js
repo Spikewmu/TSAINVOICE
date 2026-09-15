@@ -183,6 +183,8 @@ export default async function handler(req, res) {
         ghlLocationId: keepOr(b.ghlLocationId, cur && cur.ghlLocationId),
         ghlEnabled: b.ghlEnabled != null ? !!b.ghlEnabled : !!(cur && cur.ghlEnabled),
         eodToSlack: b.eodToSlack != null ? !!b.eodToSlack : !!(cur && cur.eodToSlack), updatedAt: now };
+      // preserve the connected Slack CHANNEL NAMES (captured at OAuth connect, not part of this save form) - otherwise Save routing wipes them
+      ['slackWebhookChan', 'eodSetterSlackChan', 'eodCloserSlackChan', 'eodMgrSlackChan', 'dealSlackChan', 'postcallSlackChan', 'postcallSetterSlackChan', 'postcallCloserSlackChan', 'sodSlackChan', 'sodSetterSlackChan', 'sodCloserSlackChan', 'dailyReportSlackChan'].forEach(k => { if (cur && cur[k] != null) rec[k] = cur[k]; });
       const r = await supa('records', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ rid: rec.id, type: 'integration', submitted_at: now, data: rec }) });
       if (!r || !r.ok) return res.status(200).json({ ok: false, error: 'db write failed' });
       return res.status(200).json({ ok: true, config: pubCfg(rec) });
