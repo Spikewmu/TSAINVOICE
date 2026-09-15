@@ -477,7 +477,7 @@
         <h3 style="margin:0">Call outcomes <span style="font-weight:400;color:var(--muted);font-size:12px">- mix of post-call checkout results, this view</span></h3>
         <button class="btn ghost sm" id="omRepsBtn" onclick="omToggleReps()">Show per-rep</button>
       </div>
-      <div id="dashOutcomeDonuts" style="display:flex;gap:26px;flex-wrap:wrap"></div>
+      <div id="dashOutcomeDonuts" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:22px"></div>
       <div id="dashOutcomeReps" hidden style="margin-top:18px;border-top:1px solid var(--glass-brd);padding-top:16px"></div>
     </div>
     <div class="panel" id="dashSpeedPanel" style="margin:0 0 16px" hidden>
@@ -3438,11 +3438,11 @@ function outcomeMixData(pcs, role){
   return {total, rows:outRows, reps, order:names};
 }
 function omDonut(title, m){
-  if(!m.total) return `<div style="flex:1;min-width:250px"><div style="font-weight:700;margin-bottom:8px">${title}</div><div class="muted" style="padding:20px 4px;font-size:13px">No ${title.toLowerCase()} logged in this view yet.</div></div>`;
+  if(!m.total) return `<div style="min-width:0"><div style="font-weight:700;margin-bottom:8px">${title}</div><div class="muted" style="padding:20px 4px;font-size:13px">No ${title.toLowerCase()} logged in this view yet.</div></div>`;
   let start=0;
-  const segs=m.rows.map(r=>{ const pct=r.count/m.total*100; const s=`<circle cx="21" cy="21" r="15.915" fill="none" stroke="${r.color}" stroke-width="5.5" stroke-dasharray="${pct.toFixed(3)} ${(100-pct).toFixed(3)}" transform="rotate(${(-90+start*3.6).toFixed(3)} 21 21)"><title>${esc(r.name)}: ${r.count} (${Math.round(pct)}%)</title></circle>`; start+=pct; return s; }).join('');
-  const legend=m.rows.map(r=>`<div style="display:flex;align-items:center;gap:7px;padding:2px 0;font-size:12.5px"><span style="width:10px;height:10px;border-radius:2px;background:${r.color};flex:none"></span><span style="flex:1;color:var(--ink)">${esc(r.name)}</span><span style="font-weight:700;color:var(--ink)">${Math.round(r.count/m.total*100)}%</span><span class="muted" style="min-width:26px;text-align:right">${r.count}</span></div>`).join('');
-  return `<div style="flex:1;min-width:250px">
+  const segs=m.rows.map(r=>{ const pct=r.count/m.total*100; const tt=`${r.name} - ${r.count} (${Math.round(pct)}%)`; const s=`<circle cx="21" cy="21" r="15.915" fill="none" stroke="${r.color}" stroke-width="5.5" stroke-dasharray="${pct.toFixed(3)} ${(100-pct).toFixed(3)}" transform="rotate(${(-90+start*3.6).toFixed(3)} 21 21)" data-tt="${esc(tt)}" style="cursor:default"><title>${esc(tt)}</title></circle>`; start+=pct; return s; }).join('');
+  const legend=m.rows.map(r=>`<div data-tt="${esc(r.name+' - '+r.count+' ('+Math.round(r.count/m.total*100)+'%)')}" style="display:flex;align-items:center;gap:7px;padding:2px 0;font-size:12.5px;cursor:default"><span style="width:10px;height:10px;border-radius:2px;background:${r.color};flex:none"></span><span style="flex:1;min-width:0;color:var(--ink)">${esc(r.name)}</span><span style="font-weight:700;color:var(--ink)">${Math.round(r.count/m.total*100)}%</span><span class="muted" style="min-width:26px;text-align:right">${r.count}</span></div>`).join('');
+  return `<div style="min-width:0">
     <div style="font-weight:700;margin-bottom:10px">${title} <span class="muted" style="font-weight:400;font-size:12px">- ${m.total} call${m.total>1?'s':''}</span></div>
     <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
       <div style="position:relative;width:118px;height:118px;flex:none">
@@ -3454,12 +3454,24 @@ function omDonut(title, m){
 }
 function omRepBars(title, m){
   if(!m.reps.length) return '';
-  const bar=rp=>{ const seg=m.order.map(o=>{ const cnt=rp.c[o]||0; if(!cnt) return ''; const pct=cnt/rp.total*100; return `<div title="${esc(o)}: ${cnt} (${Math.round(pct)}%)" style="width:${pct}%;background:${omColor(o)}"></div>`; }).join('');
-    return `<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span style="font-weight:600;color:var(--ink)">${esc(rp.rep)}</span><span class="muted">${rp.total} call${rp.total>1?'s':''}</span></div><div style="display:flex;height:13px;border-radius:4px;overflow:hidden;background:var(--gold-soft)">${seg}</div></div>`; };
-  return `<div style="flex:1;min-width:270px"><div style="font-weight:700;margin-bottom:10px;font-size:13px">${title}</div>${m.reps.map(bar).join('')}</div>`;
+  const bar=rp=>{ const seg=m.order.map(o=>{ const cnt=rp.c[o]||0; if(!cnt) return ''; const pct=cnt/rp.total*100; const tt=`${rp.rep} - ${o}: ${cnt} (${Math.round(pct)}%)`; return `<div data-tt="${esc(tt)}" title="${esc(tt)}" style="width:${pct}%;background:${omColor(o)};cursor:default"></div>`; }).join('');
+    return `<div style="margin-bottom:11px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span style="font-weight:600;color:var(--ink)">${esc(rp.rep)}</span><span class="muted">${rp.total} call${rp.total>1?'s':''}</span></div><div style="display:flex;height:16px;border-radius:4px;overflow:hidden;background:var(--gold-soft)">${seg}</div></div>`; };
+  return `<div style="min-width:0"><div style="font-weight:700;margin-bottom:10px;font-size:13px">${title}</div>${m.reps.map(bar).join('')}</div>`;
+}
+// shared hover tooltip for donut slices + per-rep bar segments (data-tt carries the label)
+function omTipInit(){
+  if(window.__omTipInit) return; window.__omTipInit=true;
+  const t=document.createElement('div'); t.id='omTooltip';
+  t.style.cssText='position:fixed;z-index:9999;pointer-events:none;background:#15110B;color:#ECE5D7;border:1px solid var(--gold);border-radius:8px;padding:6px 10px;font:600 12.5px system-ui,-apple-system,sans-serif;box-shadow:0 6px 20px rgba(0,0,0,.55);display:none;white-space:nowrap';
+  document.body.appendChild(t);
+  const show=el=>{ t.textContent=el.getAttribute('data-tt'); t.style.display='block'; };
+  document.addEventListener('mouseover',e=>{ const el=e.target&&e.target.closest&&e.target.closest('[data-tt]'); if(el) show(el); });
+  document.addEventListener('mouseout',e=>{ const el=e.target&&e.target.closest&&e.target.closest('[data-tt]'); if(el) t.style.display='none'; });
+  document.addEventListener('mousemove',e=>{ if(t.style.display!=='block') return; let x=e.clientX+14,y=e.clientY+16; const w=t.offsetWidth,h=t.offsetHeight; if(x+w>window.innerWidth-8)x=e.clientX-w-14; if(y+h>window.innerHeight-8)y=e.clientY-h-16; t.style.left=x+'px'; t.style.top=y+'px'; });
 }
 function renderOutcomeMix(){
   const panel=document.getElementById('dashOutcomePanel'); if(!panel) return;
+  omTipInit();
   const from=((document.getElementById('fFrom')||{}).value||'').slice(0,10), to=((document.getElementById('fTo')||{}).value||'').slice(0,10);
   const c=(document.getElementById('fClient')||{}).value||'', sc=dashScopeClients();
   const pcs=collapsePostcall(RECORDS).filter(x=> ((!from&&!to)||inRange(x.date,from,to)) && (!c||x.client===c) && (!sc||sc.includes(x.client)) );
@@ -3467,7 +3479,7 @@ function renderOutcomeMix(){
   if(!setter.total && !closer.total){ panel.hidden=true; return; }
   panel.hidden=false;
   document.getElementById('dashOutcomeDonuts').innerHTML=omDonut('Setters',setter)+omDonut('Closers',closer);
-  document.getElementById('dashOutcomeReps').innerHTML=`<div style="display:flex;gap:26px;flex-wrap:wrap">${omRepBars('Setters - per rep',setter)}${omRepBars('Closers - per rep',closer)}</div>`;
+  document.getElementById('dashOutcomeReps').innerHTML=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:26px">${omRepBars('Setters - per rep',setter)}${omRepBars('Closers - per rep',closer)}</div>`;
 }
 function omToggleReps(){ const el=document.getElementById('dashOutcomeReps'), btn=document.getElementById('omRepsBtn'); if(!el) return; el.hidden=!el.hidden; if(btn) btn.textContent=el.hidden?'Show per-rep':'Hide per-rep'; }
 // daily dials trend for the current dashboard scope (last ~14 days with activity)
