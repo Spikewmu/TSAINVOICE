@@ -2428,11 +2428,14 @@ function renderReminders(){
   if(!SESSION || !SESSION.name) return;
   const role=SESSION.role, name=SESSION.name, day=todayLocal(), h=etHour();
   let msg='', tab='';
-  if(role==='closer'||role==='setter'){
-    if(h>=EOD_START_HOUR){ if(!submittedEod(name,day)){ msg='Submit your End of Day report'; tab='eod'; } }
-    else if(h>=SOD_START_HOUR){ if(!submittedSod(name,day)){ msg='Submit your Start of Day report'; tab='sod'; } }
-  } else if(role==='manager'||role==='director'){
-    if(h>=EOD_START_HOUR && !submittedMgrEod(name,day)){ msg='Submit your Manager EOD report'; tab='mgreod'; }
+  // no nudge on an approved day off, a scheduled weekly day off, or outside the employment window
+  if(accountableDays(name,[day]).length>0){
+    if(role==='closer'||role==='setter'){
+      if(h>=EOD_START_HOUR){ if(!submittedEod(name,day)){ msg='Submit your End of Day report'; tab='eod'; } }
+      else if(h>=SOD_START_HOUR){ if(!submittedSod(name,day)){ msg='Submit your Start of Day report'; tab='sod'; } }
+    } else if(role==='manager'||role==='director'){
+      if(h>=EOD_START_HOUR && !submittedMgrEod(name,day)){ msg='Submit your Manager EOD report'; tab='mgreod'; }
+    }
   }
   if(msg && tab){ pill.innerHTML='&#9200; <span class="rlabel-long">'+esc(msg)+'</span><span class="rgo">&#8594;</span>'; window.__reminderTab=tab; pill.classList.add('show'); }
 }
@@ -4992,7 +4995,7 @@ function renderTimeOff(){
   // rep sees the manager's note to them (decisionNote), never the internal staff note
   const mgrNote=r=> r.decisionNote ? `<div style="font-size:12px;color:var(--muted);margin-top:2px">Manager: ${esc(r.decisionNote)}</div>` : '';
   document.getElementById('offReqList').innerHTML = mine.length
-    ? `<div class="tablewrap"><table><thead><tr><th>Day</th><th>Reason</th><th>Status</th></tr></thead><tbody>${mine.map(r=>`<tr><td style="white-space:nowrap">${esc(usDate(r.date))}</td><td>${esc(r.reason||'')}</td><td>${offdayPill(r.status)}${newTag(r)}${mgrNote(r)}</td></tr>`).join('')}</tbody></table></div>`
+    ? `<div class="tablewrap"><table><thead><tr><th>Day</th><th>Reason</th><th>Status</th></tr></thead><tbody>${mine.map(r=>`<tr><td style="white-space:nowrap">${esc(usDate(r.date))}</td><td>${esc(r.reason||'')}</td><td>${offdayPill(r.status)}${newTag(r)}${offdayDecisionStamp(r)}${mgrNote(r)}</td></tr>`).join('')}</tbody></table></div>`
     : '<span class="muted" style="font-size:12px">No time-off requests yet.</span>';
   markMyDecisionsSeen(); // opening the tab clears the "new" indicator
 }
@@ -5005,6 +5008,9 @@ async function requestOffday(){
 }
 // ---- Manager / admin: approve or deny day-off requests ----
 function offdayPill(s){ const c=s==='approved'?'var(--good)':s==='denied'?'var(--bad)':'var(--warn)'; return `<span class="pill" style="color:${c};border-color:${c}">${esc(s||'')}</span>`; }
+// "Approved by <name> on <M-D-YYYY, h:mm AM>" stamp for a decided request (blank for pending or legacy records)
+function offdayWhen(iso){ try{ const d=new Date(iso); if(isNaN(d)) return usDate(iso); let hh=d.getHours(); const mm=String(d.getMinutes()).padStart(2,'0'), ap=hh>=12?'PM':'AM'; hh=hh%12||12; return (d.getMonth()+1)+'-'+d.getDate()+'-'+d.getFullYear()+', '+hh+':'+mm+' '+ap; }catch(_){ return usDate(iso); } }
+function offdayDecisionStamp(r){ if(!r || r.status==='pending' || !(r.decidedBy||r.decidedAt)) return ''; const v=r.status==='approved'?'Approved':(r.status==='denied'?'Denied':'Decided'); return `<div class="muted" style="font-size:11px;margin-top:2px">${v} by ${esc(r.decidedBy||'a manager')}${r.decidedAt?' on '+esc(offdayWhen(r.decidedAt)):''}</div>`; }
 function offdayReqsVisible(){
   const all=collapseOffdays(RECORDS).sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')));
   if(SESSION&&SESSION.role==='admin') return all;
@@ -5036,7 +5042,7 @@ function offdayApprovalsHTML(){
       <div><b>${esc(r.rep)}</b> <span class="muted">- ${esc(usDate(r.date))}</span> ${offdayPill(r.status)}</div>
       ${r.reason?`<div style="font-size:13px;margin-top:2px">Reason: ${esc(r.reason)}</div>`:''}
       <div class="muted" style="font-size:11px;margin-top:2px">Approver (manager): ${esc(r.mgr || (repMetaForName(r.rep)||{}).mgr || 'unassigned - set a manager on the Users tab')}</div>
-      ${decNote}${intNote}${actions}
+      ${offdayDecisionStamp(r)}${decNote}${intNote}${actions}
     </div>`;
   };
   return `<div style="padding:4px 2px">`
@@ -5083,7 +5089,7 @@ async function actOffday(rep,date,status){
   const pick=cls=>{ const els=[...document.querySelectorAll(cls+'[data-k="'+k+'"]')], w=els.find(e=>(e.value||'').trim()); return ((w||els[0]||{}).value||'').trim(); };
   const decisionNote=pick('.odnote'), internalNote=pick('.odint');
   const cur=collapseOffdays(RECORDS).find(x=>nrmName(x.rep)===nrmName(rep)&&String(x.date||'').slice(0,10)===date)||{};
-  await addRecord({type:'offday',rep,date,reason:cur.reason||'',mgr:cur.mgr||'',status,decisionNote,internalNote,by:(SESSION&&SESSION.name)||''});
+  await addRecord({type:'offday',rep,date,reason:cur.reason||'',mgr:cur.mgr||'',status,decisionNote,internalNote,decidedBy:(SESSION&&SESSION.name)||'',decidedAt:new Date().toISOString(),by:(SESSION&&SESSION.name)||''});
   toast('Day off '+status); renderOffdayApprovals();
   if(document.getElementById('arBody')&&!document.getElementById('tab-adminreport').hidden) renderAdminReport();
 }
