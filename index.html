@@ -3479,7 +3479,11 @@ function renderOutcomeMix(){
   if(!setter.total && !closer.total){ panel.hidden=true; return; }
   panel.hidden=false;
   document.getElementById('dashOutcomeDonuts').innerHTML=omDonut('Setters',setter)+omDonut('Closers',closer);
-  document.getElementById('dashOutcomeReps').innerHTML=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:26px">${omRepBars('Setters - per rep',setter)}${omRepBars('Closers - per rep',closer)}</div>`;
+  // Founders (clients) see the aggregate donuts only - no per-rep breakdown by name.
+  const founder=SESSION && SESSION.role==='founder';
+  const repsEl=document.getElementById('dashOutcomeReps'), btn=document.getElementById('omRepsBtn');
+  if(founder){ if(btn) btn.style.display='none'; if(repsEl){ repsEl.hidden=true; repsEl.innerHTML=''; } }
+  else { if(btn) btn.style.display=''; if(repsEl) repsEl.innerHTML=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:26px">${omRepBars('Setters - per rep',setter)}${omRepBars('Closers - per rep',closer)}</div>`; }
 }
 function omToggleReps(){ const el=document.getElementById('dashOutcomeReps'), btn=document.getElementById('omRepsBtn'); if(!el) return; el.hidden=!el.hidden; if(btn) btn.textContent=el.hidden?'Show per-rep':'Hide per-rep'; }
 // daily dials trend for the current dashboard scope (last ~14 days with activity)
