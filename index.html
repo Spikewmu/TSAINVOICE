@@ -1170,7 +1170,7 @@
     <div class="panel" id="usersOnboardPanel" hidden><h3>Rep onboarding <span style="font-weight:400;color:var(--muted);font-size:12px">- new setters/closers being set up. Work down each step so no one stalls.</span></h3><div style="padding:6px 2px" id="usersOnboard"></div></div>
     <div class="panel" id="secUsersAdd">
       <h3 class="csec" onclick="integToggleSec('secUsersAdd')"><span class="chev">&#9662;</span>Add a user</h3>
-      <p class="hint" style="margin:-4px 0 10px">Create a new login here. Fill everything - manager, hire date and account are captured up front so nothing is missed. To change someone who already exists, hit <b>Edit</b> on their row below (one window for roles, offers, manager, dates and responsibilities).</p>
+      <p class="hint" style="margin:-4px 0 10px">Create a new login here. Fill the basics - name, role, manager, hire date and account. When you hit <b>Save user</b> the <b>full editor opens automatically</b> so you can finish setup in the same window as Edit: stack extra roles, set scheduled days off, and (for managers) assign responsibilities. Nothing gets missed.</p>
       <form class="grid" id="userForm" onsubmit="saveUser(event)" style="box-shadow:none;border:none">
         <div class="field"><label>Full name *</label><input name="name" required placeholder="Bree Smith" oninput="suggestUsername()"></div>
         <div class="field"><label>Username *</label><input name="username" required placeholder="smithb" autocomplete="off" oninput="this.dataset.touched='1'"><span class="fieldhelp">Format: last name + first initial. <b>John Smith &rarr; smithj</b>. Auto-fills from the name; edit if you like.</span></div>
@@ -1179,7 +1179,7 @@
         <div class="field"><label>Reporting manager *</label><select name="mgr" id="newUserMgr" required></select><span class="fieldhelp">Who they report to and who approves their time off.</span></div>
         <div class="field"><label>Hire date *</label><input name="startDate" type="date" required><span class="fieldhelp">Keeps pre-hire days from counting as missed reports; drives retention lifespan.</span></div>
         <div class="field full"><label>Teams / accounts (assign one or more) *</label><div id="newUserTeams" class="teamboxes"></div></div>
-        <div class="full row-actions"><button class="btn gold" type="submit">Save user</button><span class="tag">Creating a new login. Existing users: change them with Edit on their row below (no need to re-enter a password).</span></div>
+        <div class="full row-actions"><button class="btn gold" type="submit">Save user</button><span class="tag">Saving creates the login and opens the full editor to finish setup. Existing users: change them with Edit on their row below (no password needed).</span></div>
       </form>
     </div>
     <div class="panel" id="reassignPanel" style="display:none"><h3 class="csec" onclick="integToggleSec('reassignPanel')"><span class="chev">&#9662;</span>Reassign a departed staffer</h3>
@@ -6271,7 +6271,10 @@ async function saveUser(e){
   if(o.password){ try{ await addRecord({type:'pwreset', username:o.username, at:new Date().toISOString(), by:(SESSION&&SESSION.name)||'admin'}); }catch(_){} } // admin-set password -> force them to set their own on first login
   if((o.role==='setter'||o.role==='closer') && !repOnboardFor(o.username)){ await addRecord({type:'reponboard', username:o.username, name:o.name, contract:false, slack:false, ghl:false, training:false}); } // start their onboarding checklist
   const unEl=e.target.querySelector('[name=username]'); if(unEl) delete unEl.dataset.touched;
-  e.target.reset(); toast(o.password?'User saved - they\'ll set their own password on first login':'User saved'); renderUsers(); setTimeout(renderUsers, 2500);
+  e.target.reset(); toast(o.password?'User created - they\'ll set their own password on first login':'User created');
+  await loadUsers(); renderUsers(); // refresh the cache so the unified editor can load the brand-new user
+  try{ userEditOpen(o.username); }catch(_){} // open the SAME editor as Edit so extra roles, scheduled days off + manager responsibilities are set in one window (nothing missed)
+  setTimeout(renderUsers, 2500);
 }
 async function importUsers(){
   if(!(SESSION && SESSION.token)){ toast('Sign in through the new login first (needed to import).',true); return; }
