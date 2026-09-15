@@ -33,15 +33,39 @@ function latestByRep(list) {
 function buildText(client, day, prev, sods, eods) {
   const fSet = sods.filter(x => x.role === 'Setter'), fClo = sods.filter(x => x.role !== 'Setter');
   const rSet = eods.filter(x => x.role === 'Setter'), rClo = eods.filter(x => x.role !== 'Setter');
-  const map = (a, fn) => a.map(fn);
-  const L = [`*${client} — Daily Report*`, `_Yesterday (${usDate(prev)})_`];
-  if (rClo.length) L.push(`Closers: ${sum(map(rClo, x => ({ v: num(x.connectedMeetings) })), 'v')} calls taken, ${sum(map(rClo, x => ({ v: num(x.closedDeals) })), 'v')} closes, ${money(sum(map(rClo, x => ({ v: num(x.cashCollected) })), 'v'))} cash`);
-  if (rSet.length) L.push(`Setters: ${sum(map(rSet, x => ({ v: num(x.newOutreach) })), 'v')} dials, ${sum(map(rSet, x => ({ v: num(x.connectedCalls) })), 'v')} connects, ${sum(map(rSet, x => ({ v: num(x.callsSet) })), 'v')} sets`);
-  if (!rClo.length && !rSet.length) L.push('No EODs logged.');
-  L.push(`*Today (${usDate(day)}) forecast*`);
-  if (fClo.length) L.push(`Closers: ${sum(map(fClo, x => ({ v: num(x.sodCallsToday) })), 'v')} calls on calendar, ${sum(map(fClo, x => ({ v: num(x.sodConfirmed) })), 'v')} confirmed, ${sum(map(fClo, x => ({ v: num(x.sodProjClose) })), 'v')} projected closes, ${money(sum(map(fClo, x => ({ v: num(x.sodProjCollectWk) })), 'v'))} projected cash`);
-  if (fSet.length) L.push(`Setters: ${sum(map(fSet, x => ({ v: num(x.sodSetTotal) })), 'v')} sets committed (same-day ${sum(map(fSet, x => ({ v: num(x.sodSameDay) })), 'v')} / 24h ${sum(map(fSet, x => ({ v: num(x.sod24) })), 'v')} / 48h ${sum(map(fSet, x => ({ v: num(x.sod48) })), 'v')} / 72h ${sum(map(fSet, x => ({ v: num(x.sod72) })), 'v')})`);
-  if (!fClo.length && !fSet.length) L.push('No SODs submitted yet.');
+  const S = (a, f) => a.reduce((s, x) => s + num(x[f]), 0);
+  const pct = n => n == null ? '—' : Math.round(n * 100) + '%';
+  const b = s => ' • ' + s; // one metric per line (stacked), no emoji, plain text
+  const L = [`${client} — Daily Report`];
+
+  // SETTERS first: yesterday's activity, then today's commitment
+  if (fSet.length || rSet.length) {
+    L.push('SETTERS', '', `Yesterday (${usDate(prev)})`);
+    L.push(b(`${S(rSet, 'newOutreach')} dials`));
+    L.push(b(`${S(rSet, 'connectedCalls')} connects`));
+    L.push(b(`${S(rSet, 'callsSet')} sets`));
+    L.push('', `Today (${usDate(day)})`);
+    L.push(b(`${S(fSet, 'sodSetTotal')} sets committed`));
+    L.push(b(`same-day ${S(fSet, 'sodSameDay')} · 24h ${S(fSet, 'sod24')} · 48h ${S(fSet, 'sod48')} · 72h ${S(fSet, 'sod72')}`));
+  }
+
+  // CLOSERS below: yesterday's results, then today's forecast
+  if (fClo.length || rClo.length) {
+    const taken = S(rClo, 'connectedMeetings'), noShow = S(rClo, 'noShows'), held = S(rClo, 'newMeetings') + S(rClo, 'followUpMeetings'), spots = S(rClo, 'callCapacity');
+    const show = (taken + noShow) ? taken / (taken + noShow) : null, util = spots ? held / spots : null;
+    L.push('', 'CLOSERS', '', `Yesterday (${usDate(prev)})`);
+    L.push(b(`${taken} calls taken`));
+    L.push(b(`${pct(show)} show rate`));
+    L.push(b(`${pct(util)} call utilization`));
+    L.push(b(`${S(rClo, 'closedDeals')} closes`));
+    L.push(b(`${money(S(rClo, 'cashCollected'))} cash`));
+    L.push('', `Today (${usDate(day)})`);
+    L.push(b(`${S(fClo, 'sodCallsToday')} on the calendar`));
+    L.push(b(`${S(fClo, 'sodConfirmed')} confirmed`));
+    L.push(b(`projecting ${S(fClo, 'sodProjClose')} closes / ${money(S(fClo, 'sodProjCollectWk'))}`));
+  }
+
+  if (!fClo.length && !rClo.length && !fSet.length && !rSet.length) L.push('', 'No SOD or EOD data logged.');
   return L.join('\n');
 }
 
