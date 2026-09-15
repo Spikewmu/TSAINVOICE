@@ -2115,6 +2115,7 @@ function startApp(){
   document.getElementById('gate').hidden=true;
   document.getElementById('app').hidden=false;
   const role=SESSION.role;
+  const wantHash=(location.hash||'').replace(/^#/,''); // capture the requested tab BEFORE any showTab rewrites the hash
   document.getElementById('whoTag').textContent = SESSION.name+' ('+roleLabel(role)+')';
   const va=document.getElementById('viewAsSel'); if(va) va.style.display=(role==='admin')?'':'none'; // super-admin role preview
   document.getElementById('storeTag').textContent = '';
@@ -2129,8 +2130,8 @@ function startApp(){
     else if(role==='webinarteam'){ Promise.all([syncRecords(),loadUsers()]).then(()=>{ fillLists(); applyNavAccess(); renderDash(); }); showTab('dash'); } // webinar team: dashboard + webinar tab, all clients
     else if(role==='recruiter'){ Promise.all([syncRecords(),loadUsers()]).then(()=>{ fillLists(); applyNavAccess(); renderDash(); }); showTab('recruiting'); } // recruiter: dashboard scoped to their client + Recruiting + Time Off
     else { applyIdentity(); syncRecords().then(()=>{ reconcileSessionRole(); applyNavAccess(); applyIdentity(); }); showTab(allow[0]); }
-    // deep-link: if the URL has a #tab this role can see, open it instead of the default landing tab
-    try{ const ht=(location.hash||'').replace(/^#/,''); if(ht && document.getElementById('tab-'+ht) && baseAllow(role).includes(ht)) showTab(ht); }catch(_){}
+    // deep-link: if the URL had a #tab this role can see, open it instead of the default landing tab
+    try{ if(wantHash && document.getElementById('tab-'+wantHash) && baseAllow(role).includes(wantHash)) showTab(wantHash); }catch(_){}
     // let a pasted/edited #hash switch pages in-session (only to a tab whose nav button is visible)
     if(!window.__hashNav){ window.__hashNav=true; window.addEventListener('hashchange',()=>{ const ht=(location.hash||'').replace(/^#/,''); if(!ht||ht===currentTab()||!document.getElementById('tab-'+ht)) return; const b=document.querySelector('#tabs button[data-tab="'+ht+'"]'); if(b && !b.hidden) showTab(ht); }); }
     startMsgPolling(); // background unread-message polling for the badge + notifications (self-gates by role)
