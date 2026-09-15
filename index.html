@@ -438,6 +438,7 @@
     <button class="navhead"><svg class="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4-3 7-7 8-4-1-7-4-7-8V6z"/></svg><span class="nlabel">Admin</span><svg class="nchev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
     <div class="navsub">
       <button data-tab="invoicing">Invoicing</button>
+      <button data-tab="onbaudit">Onboarding Audit</button>
       <button data-tab="data">Data + Export</button>
       <button data-tab="users">Users</button>
       <button data-tab="integrations">Integrations</button>
@@ -933,6 +934,13 @@
       <button class="btn ghost sm" onclick="renderCallLog()">Refresh</button>
     </div>
     <div class="panel" style="margin-top:6px"><div class="tablewrap"><table id="callLogTable"></table></div></div>
+  </section>
+
+  <!-- ===== ONBOARDING AUDIT ===== -->
+  <section id="tab-onbaudit" hidden>
+    <h2 class="section">Onboarding Audit</h2>
+    <p class="hint">Per-client onboarding health check: team headcount, the account manager, every Slack integration (event feeds + EOD reports), and whether the CRM key is connected. Anything red still needs setup before the client is fully live.</p>
+    <div id="onbAuditBody"><p class="muted" style="padding:14px">Loading...</p></div>
   </section>
 
   <!-- ===== ADMIN REPORT ===== -->
@@ -1969,8 +1977,8 @@ function startApp(){
 // base tabs a login TIER can see; per-account responsibilities add to this in applyNavAccess()
 function baseAllow(role){
   return ({
-    admin:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','postcall','sod','eod','training','mgreod','webinar','calllog','calendar','speedtolead','dailyreport','adminreport','recruiting','messages','invoicing','data','users','integrations','settings'],
-    director:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','dailyreport','recruiting','messages','adminreport'],
+    admin:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','postcall','sod','eod','training','mgreod','webinar','calllog','calendar','speedtolead','dailyreport','adminreport','recruiting','messages','invoicing','onbaudit','data','users','integrations','settings'],
+    director:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','dailyreport','recruiting','messages','adminreport','onbaudit'],
     manager:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','speedtolead','dailyreport','adminreport','recruiting','messages'],
     founder:['dash'],
     recruiter:['dash','recruiting','messages','timeoff'],
@@ -2102,7 +2110,7 @@ function showTab(t){
   document.querySelectorAll('#tabs button[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
   document.querySelectorAll('#tabs .navgroup').forEach(g=>{ if(g.querySelector('button[data-tab="'+t+'"]')) g.classList.remove('collapsed'); }); // reveal the active tab's group
 
-  ['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','sod','eod','training','mgreod','webinar','calllog','calendar','speedtolead','dailyreport','adminreport','recruiting','messages','invoicing','data','users','integrations','settings'].forEach(x=>{ const el=document.getElementById('tab-'+x); if(el) el.hidden = (x!==t); });
+  ['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','sod','eod','training','mgreod','webinar','calllog','calendar','speedtolead','dailyreport','adminreport','recruiting','messages','invoicing','onbaudit','data','users','integrations','settings'].forEach(x=>{ const el=document.getElementById('tab-'+x); if(el) el.hidden = (x!==t); });
   // stale-while-revalidate: render instantly from the cached records, then refresh in the background
   const render={dash:renderDash, mydeals:renderMyDeals, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, promises:renderPromisesTab, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, webinar:renderWebinars, calllog:renderCallLog, calendar:renderCalendar, speedtolead:renderSpeedToLead, dailyreport:renderDailyReport, adminreport:renderAdminReport, recruiting:renderRecruiting, messages:renderMessages, training:renderTraining, invoicing:renderInvoicing, data:renderAll}[t];
   if(render){ render(); syncRecords().then(()=>{ if(currentTab()===t) render(); buildGlobalClientSelect(); buildViewAsUserSelect(); updateNavBadges(); renderReminders(); }); }
@@ -2111,6 +2119,7 @@ function showTab(t){
   if(t==='users'){ renderUsers(); usersApplySecState(); }
   if(t==='settings'){ loadSettingsForm(); }
   if(t==='integrations'){ renderIntegrations(); }
+  if(t==='onbaudit'){ renderOnbAudit(); }
   if(t==='sod'){ renderSodTab(); }
   renderReminders();
 }
@@ -4458,6 +4467,48 @@ function mgrPeriodStats(name, range){
 function arSummaryBar(txt,miss){ const sum=document.getElementById('arSummary'); if(!sum)return; sum.textContent=txt; sum.style.color=miss?'var(--warn)':'var(--good)'; sum.style.borderColor=miss?'var(--warn)':'var(--good)'; }
 // managers assigned to a client (from that client's webinar/setter/closer manager fields)
 function managersForClient(client){ const c=latestClients().find(x=>String(x.name||'')===client); if(!c) return []; return [...new Set(['webinarMgr','setterMgr','closerMgr'].map(f=>(c[f]||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b)); }
+
+// ---------------- ONBOARDING AUDIT (admin/director): per-client onboarding health check ----------------
+async function renderOnbAudit(){
+  const wrap=document.getElementById('onbAuditBody'); if(!wrap) return;
+  if(!(SESSION && (SESSION.role==='admin'||SESSION.role==='director'))){ wrap.innerHTML='<p class="muted" style="padding:14px">Admins only.</p>'; return; }
+  await loadUsers(); // fresh roster for the headcounts
+  const res=await integApi('get',{}); const cfgs={}; ((res&&res.configs)||[]).forEach(c=>cfgs[c.key]=c);
+  let clients=clientNames();
+  if(GLOBAL_CLIENT && clients.includes(GLOBAL_CLIENT)) clients=[GLOBAL_CLIENT]; // follow the global company if one is picked
+  if(!clients.length){ wrap.innerHTML='<p class="muted" style="padding:14px">No clients yet. Add clients on the Client Overview tab.</p>'; return; }
+  const onTeam=(u,client)=>{ try{ return teamsFor(u.username).includes(client); }catch(e){ return false; } };
+  const chn=(c,f)=>((c&&c.chan&&c.chan[f])||'');
+  const dot=(ok,label,extra)=>`<div style="display:flex;align-items:baseline;gap:8px;padding:3px 0;font-size:13px"><span style="flex:0 0 14px;color:${ok?'#7bd487':'var(--warn)'};font-weight:700">${ok?'✓':'✗'}</span><span>${esc(label)}${extra?` <span class="muted" style="font-size:11.5px">${esc(extra)}</span>`:''}</span></div>`;
+  const feeds=[['deal','New closed deal'],['postcallSetter','Post-call (Setters)'],['postcallCloser','Post-call (Closers)'],['sodSetter','SOD (Setters)'],['sodCloser','SOD (Closers)'],['dailyReport','Daily report']];
+  const eods=[['setter','Setter EOD'],['closer','Closer EOD'],['mgr','Manager EOD'],['slack','Fallback']];
+  wrap.innerHTML='<div class="cards" style="grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:14px">'+clients.map(client=>{
+    const c=cfgs['tsa:'+client]||null, conn=f=>!!(c && String(c[f]||'').trim());
+    const setters=USERS_CACHE.filter(u=>u.role==='setter' && !u.archived && onTeam(u,client));
+    const closers=USERS_CACHE.filter(u=>u.role==='closer' && !u.archived && onTeam(u,client));
+    const mgrs=managersForClient(client);
+    const eodOn=!!(c&&c.eodToSlack), crm=!!(c&&c.ghl);
+    const feedRows=feeds.map(([f,l])=>dot(conn(f),l,conn(f)?chn(c,f):'')).join('');
+    const eodRows=eods.map(([f,l])=>dot(conn(f),l,conn(f)?chn(c,f):'')).join('');
+    const missing=[]; if(!setters.length) missing.push('setters'); if(!closers.length) missing.push('closers'); if(!mgrs.length) missing.push('manager');
+    feeds.forEach(([f,l])=>{ if(!conn(f)) missing.push(l); }); eods.forEach(([f,l])=>{ if(!conn(f)) missing.push(l); }); if(!crm) missing.push('CRM key');
+    const ready=missing.length===0;
+    const badge=ready?'<span class="pill good">Ready</span>':`<span class="pill" style="background:rgba(214,140,90,.15);color:var(--warn);white-space:nowrap">${missing.length} to finish</span>`;
+    return `<div class="panel" style="margin:0;padding:14px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:10px"><div style="font-weight:700;font-size:15px">${esc(client)}</div>${badge}</div>
+      <div style="display:flex;gap:18px;flex-wrap:wrap;margin-bottom:12px;font-variant-numeric:tabular-nums">
+        <div><div class="muted" style="font-size:10px;text-transform:uppercase;letter-spacing:.03em">Setters</div><div style="font-size:18px;font-weight:700;color:${setters.length?'inherit':'var(--warn)'}">${setters.length}</div></div>
+        <div><div class="muted" style="font-size:10px;text-transform:uppercase;letter-spacing:.03em">Closers</div><div style="font-size:18px;font-weight:700;color:${closers.length?'inherit':'var(--warn)'}">${closers.length}</div></div>
+        <div style="flex:1 1 130px"><div class="muted" style="font-size:10px;text-transform:uppercase;letter-spacing:.03em">Manager</div><div style="font-size:13px;font-weight:600;${mgrs.length?'':'color:var(--warn)'}">${mgrs.length?esc(mgrs.join(', ')):'None set'}</div></div>
+      </div>
+      <div style="display:flex;gap:18px;flex-wrap:wrap">
+        <div style="flex:1 1 150px"><div class="muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.03em;margin-bottom:3px">Event feeds</div>${feedRows}</div>
+        <div style="flex:1 1 150px"><div class="muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.03em;margin-bottom:3px">EOD reports${eodOn?'':' <span class="pill" style="background:rgba(214,140,90,.15);color:var(--warn);font-size:9.5px;padding:1px 6px">alerts OFF</span>'}</div>${eodRows}</div>
+      </div>
+      <div style="margin-top:10px;border-top:1px solid rgba(255,255,255,.08);padding-top:8px">${dot(crm,'CRM key (GHL)',crm?((c&&c.ghlEnabled)?'push ON':'push OFF'):'not added')}${(crm && c && !c.ghlLocation)?'<div class="muted" style="font-size:11px;padding-left:22px;color:var(--warn)">Location ID missing (needed for v2 tokens)</div>':''}</div>
+    </div>`;
+  }).join('')+'</div>';
+}
 function renderAdminReport(){
   const fi=document.getElementById('arRange_from'), ti=document.getElementById('arRange_to'); if(!fi||!ti) return;
   if(!ti.value) ti.value=isoOffset(todayLocal(),-1);   // default To = yesterday
