@@ -6983,7 +6983,7 @@ function renderEodRouting(){
     <label style="display:flex;gap:8px;align-items:center;font-weight:500;margin:0 0 8px"><input type="checkbox" id="drOn" ${c.dailyReportOn?'checked':''}> Post the <b>compiled Daily Report</b> to Slack each morning</label>
     <div class="cards" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start;max-width:640px">
       <div class="field"><label>Daily report channel</label>${slackField('evDailyReport',c.dailyReport,`'config','','dailyReport'`,'dailyReport','Daily report',(c.chan||{}).dailyReport)}</div>
-      <div class="field"><label>Send time (Central)</label><input type="time" id="drTime" step="1800" value="${esc(c.dailyReportTime||'09:30')}" style="width:100%"><span class="fieldhelp">When it posts each morning (30-min steps). SODs are due 9am CT.</span></div>
+      <div class="field"><label>Send time (Central)</label><span style="display:flex;flex-direction:column;gap:6px;align-items:stretch"><span aria-hidden="true"><span class="pill" style="visibility:hidden;white-space:nowrap">&#10003; connected</span></span><input type="time" id="drTime" step="1800" value="${esc(c.dailyReportTime||'09:30')}" style="width:100%"></span><span class="fieldhelp">When it posts each morning (30-min steps). SODs are due 9am CT.</span></div>
     </div>
     <p class="fieldhelp" style="margin:8px 0 0">One combined report: yesterday's results (from EODs) + today's forecast (from SODs), setters and closers, posted here automatically each morning.</p>
     <div class="row-actions" style="margin-top:12px"><button class="btn gold sm" onclick="integSaveEod()">Save routing</button></div>`;
