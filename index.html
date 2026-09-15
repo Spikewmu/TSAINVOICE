@@ -2129,6 +2129,10 @@ function startApp(){
     else if(role==='webinarteam'){ Promise.all([syncRecords(),loadUsers()]).then(()=>{ fillLists(); applyNavAccess(); renderDash(); }); showTab('dash'); } // webinar team: dashboard + webinar tab, all clients
     else if(role==='recruiter'){ Promise.all([syncRecords(),loadUsers()]).then(()=>{ fillLists(); applyNavAccess(); renderDash(); }); showTab('recruiting'); } // recruiter: dashboard scoped to their client + Recruiting + Time Off
     else { applyIdentity(); syncRecords().then(()=>{ reconcileSessionRole(); applyNavAccess(); applyIdentity(); }); showTab(allow[0]); }
+    // deep-link: if the URL has a #tab this role can see, open it instead of the default landing tab
+    try{ const ht=(location.hash||'').replace(/^#/,''); if(ht && document.getElementById('tab-'+ht) && baseAllow(role).includes(ht)) showTab(ht); }catch(_){}
+    // let a pasted/edited #hash switch pages in-session (only to a tab whose nav button is visible)
+    if(!window.__hashNav){ window.__hashNav=true; window.addEventListener('hashchange',()=>{ const ht=(location.hash||'').replace(/^#/,''); if(!ht||ht===currentTab()||!document.getElementById('tab-'+ht)) return; const b=document.querySelector('#tabs button[data-tab="'+ht+'"]'); if(b && !b.hidden) showTab(ht); }); }
     startMsgPolling(); // background unread-message polling for the badge + notifications (self-gates by role)
     if(window.__justLoggedIn){ window.__justLoggedIn=false; // real sign-in (not a page-reload session restore): stamp last-login + force a password change if an admin reset it
       syncRecords().then(()=>{ try{ addRecord({type:'login', username:SESSION.username, at:new Date().toISOString()}); }catch(_){} try{ if(pwForced(SESSION.username)) forcePwChange(); }catch(_){} });
@@ -2279,6 +2283,7 @@ function toggleNav(e){ if(e)e.stopPropagation(); const n=document.getElementById
 function closeNav(){ const n=document.getElementById('tabs'); if(n) n.classList.remove('navopen'); }
 function showTab(t){
   closeNav();
+  try{ if(t) history.replaceState(null,'',location.pathname+location.search+'#'+t); }catch(_){} // deep-link: keep the URL in sync so each page has a shareable link
   buildGlobalClientSelect(); buildViewAsUserSelect(); hideRedundantClientFilters();
   document.querySelectorAll('#tabs button[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
   document.querySelectorAll('#tabs .navgroup').forEach(g=>{ if(g.querySelector('button[data-tab="'+t+'"]')) g.classList.remove('collapsed'); }); // reveal the active tab's group
