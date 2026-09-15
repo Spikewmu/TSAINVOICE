@@ -728,7 +728,7 @@
       <div class="field closerOnly"><label>Follow-up meetings today</label><input type="number" name="followUpMeetings" min="0" step="1"><span class="fieldhelp">Repeat / second calls that took place today.</span></div>
       <div class="field closerOnly"><label>Connected meetings</label><input type="number" name="connectedMeetings" min="0" step="1"><span class="fieldhelp">Calls where you actually reached the person (calls taken).</span></div>
       <div class="field closerOnly"><label>No shows</label><input type="number" name="noShows" min="0" step="1"><span class="fieldhelp">Booked calls where they didn't show up.</span></div>
-      <div class="field closerOnly"><label title="How many calendar spots you opened for sales calls today (e.g. 4 hours of 30-min meetings = 8 spots). Not dials. We compare it to how many you actually took to get your utilization.">Call utilization</label><input type="number" name="callCapacity" min="0" step="1"><span class="fieldhelp">How many <b>calendar spots</b> you opened for sales calls today (e.g. 4 hours of 30-min meetings = <b>8</b> spots). Not dials. We compare it to how many you actually took.</span></div>
+      <div class="field closerOnly"><label title="How many calendar spots you opened for sales calls today (e.g. 4 hours of 30-min meetings = 8 spots). Not dials. We compare it to how many you actually took to get your utilization.">Call utilization *</label><input type="number" name="callCapacity" min="0" step="1"><span class="fieldhelp">How many <b>calendar spots</b> you opened for sales calls today (e.g. 4 hours of 30-min meetings = <b>8</b> spots). Not dials. We compare it to how many you actually took.</span></div>
       <div class="field closerOnly"><label>Advanced sales calls</label><input type="number" name="advancedCalls" min="0" step="1"><span class="fieldhelp">Calls you moved forward toward a close.</span></div>
 
       <div class="formhead closerOnly"><b>Closing numbers</b><span class="sub">closers only - also log each deal on the "Log Closed Deal" tab</span></div>
@@ -2291,6 +2291,7 @@ async function submitEod(e){ e.preventDefault(); const btn=e.target.querySelecto
   try{ const o=num(formObj(e.target)); o.type='eod'; if(repMode()){ o.rep=SESSION.name; o.role=myRepRole(); }
     const csel=e.target.querySelector('[name=client]'); if(csel && !(o.client||'').trim()) o.client=csel.value; // locked/disabled selects drop out of FormData
     if(!(o.client||'').trim()){ toast('Choose a client / account first.',true); return; }
+    if(o.role==='Closer'){ const capEl=e.target.querySelector('[name=callCapacity]'); if(capEl && String(capEl.value).trim()===''){ toast('Fill in Call utilization - how many calendar spots you opened for sales calls today (4 hours of 30-min meetings = 8). Enter 0 if you had none.',true); try{capEl.focus();}catch(_){}; return; } } // required so the utilization metric has full coverage
     const units={}; document.querySelectorAll('#eodProducts input[data-prod]').forEach(i=>{ const v=parseFloat(i.value)||0; if(v) units[i.dataset.prod]=v; }); if(Object.keys(units).length) o.productUnits=JSON.stringify(units);
     await addRecord(o); e.target.reset(); presetDates(); setEodRole(o.role); if(repMode()) applyIdentity(); renderReminders(); toast('End of day submitted.'); if(!repMode()) renderDash(); ok=true; }
   catch(err){ toast('Submit failed - try again',true); }
@@ -2352,7 +2353,7 @@ async function submitSod(e){ e.preventDefault(); const btn=e.target.querySelecto
   finally{ if(ok) btnDone(btn,'Submitted!'); else btnBusy(btn,false); } }
 /* ---- End of Day: one page, one section per account, for reps who work 2+ accounts ---- */
 const EOD_SETTER=[['hoursDialing','Hours dialing','0.25'],['newOutreach','Total dials','1'],['followUpOutreach','Follow-up outreach','1'],['connectedCalls','Connected calls','1'],['convos4min','Convos 4 min+','1'],['callsSet','Sales calls set','1'],['dqs','Disqualified (DQ)','1']];
-const EOD_CLOSER=[['hoursDialing','Hours dialing','0.25'],['newOutreach','Total dials','1'],['connectedCalls','Connected calls','1'],['newMeetings','New meetings','1'],['connectedMeetings','Connected meetings (calls taken)','1'],['followUpMeetings','Follow-up meetings','1'],['noShows','No shows','1'],['callCapacity','Call utilization (capacity)','1'],['advancedCalls','Advanced sales calls','1'],['closedDeals','Closed deals','1'],['contractsSigned','Contracts signed','1'],['contractValue','Contract value ($)','0.01'],['cashCollected','Cash collected ($)','0.01'],['depositCollected','Deposits collected ($)','0.01']];
+const EOD_CLOSER=[['hoursDialing','Hours dialing','0.25'],['newOutreach','Total dials','1'],['connectedCalls','Connected calls','1'],['newMeetings','New meetings','1'],['connectedMeetings','Connected meetings (calls taken)','1'],['followUpMeetings','Follow-up meetings','1'],['noShows','No shows','1'],['callCapacity','Call utilization (capacity) *','1'],['advancedCalls','Advanced sales calls','1'],['closedDeals','Closed deals','1'],['contractsSigned','Contracts signed','1'],['contractValue','Contract value ($)','0.01'],['cashCollected','Cash collected ($)','0.01'],['depositCollected','Deposits collected ($)','0.01']];
 function renderEodTab(){
   const multi = repMode() && teamsFor(SESSION&&SESSION.username).length>1;
   const f=document.getElementById('eodForm'), mw=document.getElementById('eodMulti'), seg=document.getElementById('roleSegWrap');
@@ -2393,18 +2394,21 @@ async function submitEodMulti(){
     const buckets={};
     document.querySelectorAll('#eodSections [data-acct]').forEach(el=>{ const b=(buckets[el.dataset.acct]=buckets[el.dataset.acct]||{f:{},u:{}}); if(el.dataset.prod!==undefined) b.u[el.dataset.prod]=el.value; else b.f[el.dataset.f]=el.value; });
     const defs = role==='Setter'?EOD_SETTER:EOD_CLOSER;
-    const jobs=[]; let filled=0;
+    const toSubmit=[], missingCap=[]; // validate first so nothing is half-saved
     Object.keys(buckets).forEach(acct=>{
       const b=buckets[acct], f=b.f;
       const hasData = defs.some(d=>String(f[d[0]]==null?'':f[d[0]]).trim()!=='') || Object.values(b.u).some(x=>String(x||'').trim()!=='') || String(f.notes||'').trim()!=='';
       if(!hasData) return;
+      if(role==='Closer' && String(f.callCapacity==null?'':f.callCapacity).trim()===''){ missingCap.push(acct); return; } // Call utilization required for closers (utilization coverage)
       const o={type:'eod',rep:me,role,client:acct,date,notes:(f.notes||'').trim()};
       defs.forEach(d=>{ o[d[0]]=parseFloat(f[d[0]])||0; });
       const units={}; Object.keys(b.u).forEach(k=>{ const val=parseFloat(b.u[k])||0; if(val) units[k]=val; });
       if(Object.keys(units).length) o.productUnits=JSON.stringify(units);
-      jobs.push(addRecord(o)); filled++;
+      toSubmit.push(o);
     });
-    if(!filled){ toast('Enter numbers for at least one account first.',true); btnBusy(btn,false); return; }
+    if(missingCap.length){ toast('Fill in Call utilization (calendar spots you opened) for: '+missingCap.join(', ')+'. Enter 0 if you had none.',true); btnBusy(btn,false); return; }
+    if(!toSubmit.length){ toast('Enter numbers for at least one account first.',true); btnBusy(btn,false); return; }
+    const jobs=toSubmit.map(o=>addRecord(o)); const filled=toSubmit.length;
     await Promise.all(jobs); renderEodSections(); renderReminders(); toast(`End of day submitted for ${filled} account${filled>1?'s':''}.`); ok=true;
   }catch(err){ toast('Submit failed - try again',true); }
   finally{ if(ok) btnDone(btn,'Submitted!'); else btnBusy(btn,false); }
@@ -6379,14 +6383,8 @@ async function archiveUser(username, archive){
   else { LOCAL_USERS=LOCAL_USERS.map(x=>x.username===username?{...x,archived:archive}:x); save(LS.users,LOCAL_USERS); }
   toast(archive?'Offboarded - login deactivated':'Reactivated - login restored'); renderUsers();
 }
-async function delUser(username){
-  if(!canManageUser(username)){ toast('You can only remove Sales Managers and below',true); return; }
-  if(!confirm('Remove user '+username+'?')) return;
-  if(SESSION && SESSION.token){ const res=await authApi({action:'deleteUser', token:SESSION.token, username}); if(!res||!res.ok){ toast('Delete failed',true); return; } }
-  else if(CFG.endpoint){ const res=await api({action:'deleteUser', ...authFields(), username}); if(!res||!res.ok){ toast('Delete failed',true); return; } }
-  else { LOCAL_USERS=LOCAL_USERS.filter(x=>x.username!==username); save(LS.users,LOCAL_USERS); }
-  toast('Removed'); renderUsers();
-}
+// delUser (hard delete of a user + all their data) removed [T-479] - it was dangerous and no longer wired to any button.
+// Offboarding (archiveUser) is the reversible path: deactivates the login + hides them, keeps all history.
 
 /* ---------------- client overview ---------------- */
 function latestClients(){
