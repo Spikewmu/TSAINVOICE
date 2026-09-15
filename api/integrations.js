@@ -48,7 +48,7 @@ const SLACK_APPS = {
   sod: { id: 'SLACK_CLIENT_ID_SOD', secret: 'SLACK_CLIENT_SECRET_SOD' },
   eod: { id: 'SLACK_CLIENT_ID_EOD', secret: 'SLACK_CLIENT_SECRET_EOD' }
 };
-const appKeyForField = f => (f === 'deal') ? f : (f === 'postcall' || f === 'postcallSetter' || f === 'postcallCloser') ? 'postcall' : (f === 'sod' || f === 'sodSetter' || f === 'sodCloser') ? 'sod' : (f === 'setter' || f === 'closer' || f === 'mgr') ? 'eod' : 'default';
+const appKeyForField = f => (f === 'deal') ? f : (f === 'postcall' || f === 'postcallSetter' || f === 'postcallCloser') ? 'postcall' : (f === 'sod' || f === 'sodSetter' || f === 'sodCloser') ? 'sod' : (f === 'setter' || f === 'closer' || f === 'mgr' || f === 'slack' || f === 'dailyReport') ? 'eod' : 'default'; // dailyReport + fallback use the EOD app ('default' app isn't configured)
 const slackAppId = k => { const a = SLACK_APPS[k]; return a && process.env[a.id]; };
 const slackApps = () => Object.fromEntries(Object.keys(SLACK_APPS).map(k => [k, !!slackAppId(k)]));
 const keepOr = (val, prev) => (val === '') ? '' : ((val && val !== '__keep__') ? String(val) : (prev || ''));
