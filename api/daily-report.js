@@ -1,4 +1,4 @@
-// /api/daily-report — each morning, compile every offer's SOD forecast (today) + prior-day EOD results
+// /api/daily-report - each morning, compile every offer's SOD forecast (today) + prior-day EOD results
 // into ONE report and post it to that offer's configured Daily-report Slack webhook.
 // Only offers with { dailyReportOn: true, dailyReportSlack: <webhook> } are posted.
 // Runs via Vercel Cron; manual test with ?key=<BOT_ADMIN_TOKEN>.
@@ -34,9 +34,9 @@ function buildText(client, day, prev, sods, eods) {
   const fSet = sods.filter(x => x.role === 'Setter'), fClo = sods.filter(x => x.role !== 'Setter');
   const rSet = eods.filter(x => x.role === 'Setter'), rClo = eods.filter(x => x.role !== 'Setter');
   const S = (a, f) => a.reduce((s, x) => s + num(x[f]), 0);
-  const pct = n => n == null ? '—' : Math.round(n * 100) + '%';
+  const pct = n => n == null ? '-' : Math.round(n * 100) + '%';
   const b = s => ' • ' + s; // one metric per line (stacked), no emoji, plain text
-  const L = [`${client} — Daily Report`];
+  const L = [`${client} - Daily Report`];
 
   // SETTERS first: yesterday's activity, then today's commitment
   if (fSet.length || rSet.length) {
