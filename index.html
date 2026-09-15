@@ -379,7 +379,7 @@
     <option value="setter">Setter</option>
     <option value="founder">Client Admin (Founder)</option>
   </select>
-  <select id="viewAsUser" onchange="viewAsUser(this.value)" style="display:none;max-width:230px;margin-left:8px" title="See exactly what a specific user sees (read-only)"></select>
+  <select id="viewAsUser" onchange="viewAsUser(this.value)" style="display:none;max-width:230px;margin-left:8px" title="Act as a specific user - see what they see and submit reports/notes saved as them"></select>
   <div class="who" id="whoTag" onclick="openChangePw()" style="cursor:pointer" title="Change your password"></div>
   <button class="logout" onclick="logout()">Sign out</button>
 </header>
@@ -1835,8 +1835,8 @@ function renderBilling(){
 }
 function updateWsBrand(){ const el=document.getElementById('storeTag'); if(el) el.textContent=currentWsName(); renderPlanBanner(); }
 async function addRecord(rec){
-  // "View as" / "Investigate as user" is a read-only preview: never let a previewed action write real data
-  if((typeof VIEW_AS_REAL!=='undefined' && VIEW_AS_REAL) || (typeof VIEW_AS_USER!=='undefined' && VIEW_AS_USER)){ toast('Preview mode - changes are not saved. Exit preview to make real changes.',true); return; }
+  // "View as" (role-only preview) stays read-only. "Investigate as user" now WRITES as that user - records are attributed to them (by/rep = their name), submitted via the admin's real token.
+  if(typeof VIEW_AS_REAL!=='undefined' && VIEW_AS_REAL){ toast('View-as-role is a read-only preview - changes are not saved. Exit it to make real changes.',true); return; }
   rec.id=rec.id||uid(); rec.submittedAt=new Date().toISOString(); rec.submittedET=nowET(); // respect a pre-minted id (e.g. a deal whose scheduled payments must reference it before it's written)
   if(rec.ws==null) rec.ws=currentWs(); // stamp the tenant so data is walled off by workspace
   RECORDS.push(rec); save(LS.data,RECORDS);
@@ -2045,7 +2045,7 @@ function viewAs(role){
   applyNavAccess(); showTab('dash');
 }
 function exitViewAs(){ viewAs(''); }
-/* ---- Investigate AS a specific user (super admin): see exactly what they see, read-only ---- */
+/* ---- Act AS a specific user (super admin): see exactly what they see, and submit reports/notes saved as them ---- */
 let REAL_SESSION=null, VIEW_AS_USER=null;
 function investigating(){ return !!VIEW_AS_USER; }
 function buildViewAsUserSelect(){
@@ -2065,7 +2065,7 @@ function viewAsUser(username){
   if(VIEW_AS_REAL){ VIEW_AS_REAL=null; const rs=document.getElementById('viewAsSel'); if(rs) rs.value=''; } // drop any role-only preview
   SESSION.username=u.username; SESSION.name=u.name||u.username; SESSION.role=u.role; // keep the real token/supaKey so data still loads
   VIEW_AS_USER=username;
-  const b=document.getElementById('viewAsBanner'); if(b){ b.hidden=false; b.innerHTML='&#128269; Investigating as <b>'+esc(u.name||u.username)+'</b> ('+esc(roleLabel(u.role))+') - read-only, showing exactly what they see. <span style="text-decoration:underline;cursor:pointer" onclick="exitViewAsUser()">Exit</span>'; }
+  const b=document.getElementById('viewAsBanner'); if(b){ b.hidden=false; b.innerHTML='&#9997;&#65039; Acting as <b>'+esc(u.name||u.username)+'</b> ('+esc(roleLabel(u.role))+') - you see what they see, and anything you submit is <b>saved as them</b>. <span style="text-decoration:underline;cursor:pointer" onclick="exitViewAsUser()">Exit</span>'; }
   applyNavAccess(); try{ if(SESSION.role==='closer'||SESSION.role==='setter') applyIdentity(); }catch(e){} showTab('dash');
 }
 function exitViewAsUser(){
@@ -2891,7 +2891,7 @@ function renderFillGrid(){
 // field to its last-SAVED value - so saving one section wiped whatever you'd typed in the other but not yet saved.
 // This collects the account grid AND the whole-team note together, saves once, then re-renders once.
 function saveMeeting(){
-  if((typeof VIEW_AS_REAL!=='undefined'&&VIEW_AS_REAL)||(typeof VIEW_AS_USER!=='undefined'&&VIEW_AS_USER)){ toast('You are in "Investigate as user" (read-only preview) - exit it to make real changes. Nothing was saved.',true); return; }
+  if(typeof VIEW_AS_REAL!=='undefined'&&VIEW_AS_REAL){ toast('View-as-role is read-only - exit it to make real changes. Nothing was saved.',true); return; }
   const date=(document.getElementById('mtgDate').value)||todayLocal(), by=(SESSION&&SESSION.name)||'';
   const jobs=[];
   [...document.querySelectorAll('#fillGrid [data-client]')].forEach(e=>{ const text=(e.value||'').trim(), orig=(e.dataset.orig||'').trim(); if(text!==orig) jobs.push(addRecord({type:'agenda',date,section:e.dataset.section,client:e.dataset.client,text,by})); });
