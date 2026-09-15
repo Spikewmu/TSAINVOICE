@@ -1107,6 +1107,19 @@
       <label class="btn sm ghost" style="cursor:pointer">Import JSON<input type="file" accept="application/json" hidden onchange="importJSON(event)"></label>
       <button class="btn sm ghost" onclick="wipe()" style="color:var(--warn);border-color:var(--warn)">Clear all</button>
     </div>
+    <div class="panel deWide"><h3>Call reports <span style="font-weight:400;color:var(--muted);font-size:12px">- view submitted End-of-Day reports right here, no export needed</span></h3>
+      <div style="padding:14px">
+        <div class="filters" style="margin:0 0 12px;align-items:flex-end">
+          <div class="field"><label>Date range</label><div class="rangewrap"><input type="text" id="crRange_txt" readonly placeholder="Click a start day, then an end day" onclick="rpToggle('crRange',event)"><input type="hidden" id="crRange_from"><input type="hidden" id="crRange_to"><div class="rangepop" id="crRange_pop" hidden onclick="event.stopPropagation()"></div></div></div>
+          <div class="field"><label>Quick range</label><div class="row-actions"><button class="btn ghost sm" onclick="setCrPreset('7')">Past 7 days</button><button class="btn ghost sm" onclick="setCrPreset('month')">This month</button><button class="btn ghost sm" onclick="setCrPreset('30')">Last 30d</button><button class="btn ghost sm" onclick="setCrPreset('all')">All time</button></div></div>
+          <div class="field"><label>Role</label><div class="seg" id="crSeg"><button class="on" data-role="Closer" onclick="crSetRole('Closer')">Closers</button><button data-role="Setter" onclick="crSetRole('Setter')">Setters</button></div></div>
+          <div class="field"><label>Client / account</label><select id="crClient" onchange="renderCallReports()"></select></div>
+          <div class="field"><label>Rep</label><select id="crRep" onchange="renderCallReports()"></select></div>
+          <span id="crSummary" class="tag" style="align-self:flex-end;margin-bottom:2px"></span>
+        </div>
+        <div class="tablewrap"><table id="crTable"></table></div>
+      </div>
+    </div>
     <div class="panel deWide"><h3>Daily edit <span style="font-weight:400;color:var(--muted);font-size:12px">- fix a rep's numbers by day if they entered them wrong</span></h3>
       <div style="padding:14px">
         <div class="filters" style="margin:0 0 12px;align-items:end">
@@ -2094,7 +2107,7 @@ function showTab(t){
   const render={dash:renderDash, mydeals:renderMyDeals, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, promises:renderPromisesTab, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, webinar:renderWebinars, calllog:renderCallLog, calendar:renderCalendar, speedtolead:renderSpeedToLead, dailyreport:renderDailyReport, adminreport:renderAdminReport, recruiting:renderRecruiting, messages:renderMessages, training:renderTraining, invoicing:renderInvoicing, data:renderAll}[t];
   if(render){ render(); syncRecords().then(()=>{ if(currentTab()===t) render(); buildGlobalClientSelect(); buildViewAsUserSelect(); updateNavBadges(); renderReminders(); }); }
   updateNavBadges();
-  if(t==='data'){ renderDailyEntry(); }
+  if(t==='data'){ renderDailyEntry(); crInit(); }
   if(t==='users'){ renderUsers(); usersApplySecState(); }
   if(t==='settings'){ loadSettingsForm(); }
   if(t==='integrations'){ renderIntegrations(); }
@@ -5665,6 +5678,63 @@ function renderAll(){
      :`<tr><td colspan="9" class="muted" style="padding:16px">No records.</td></tr>`)+`</tbody>`;
 }
 function delRec(id){ RECORDS=RECORDS.filter(r=>r.id!==id); save(LS.data,RECORDS); renderAll(); renderDash(); toast('Deleted'); }
+
+/* ---------------- call reports viewer: read-only, on-screen End-of-Day reports (no CSV export needed) ---------------- */
+let CR_ROLE='Closer';
+function crInit(){
+  const f=document.getElementById('crRange_from'), t=document.getElementById('crRange_to');
+  if(f&&t&&!f.value&&!t.value){ t.value=todayLocal(); f.value=isoOffset(todayLocal(),-29); } // default: last 30 days
+  rpAttach('crRange', ()=>renderCallReports()); rpSync('crRange');
+  const cl=document.getElementById('crClient');
+  if(cl){ const names=clientNames(); cl.innerHTML='<option value="">All companies</option>'+names.map(c=>`<option>${esc(c)}</option>`).join(''); cl.value=preferGlobal(names, cl.value)||''; } // follows the global company when one is picked
+  crFillReps(); renderCallReports();
+}
+function crFillReps(){
+  const sel=document.getElementById('crRep'); if(!sel) return;
+  const cur=sel.value, reps=repsForDE(CR_ROLE);
+  sel.innerHTML='<option value="">All reps</option>'+reps.map(r=>`<option>${esc(r)}</option>`).join('');
+  if(cur&&[...sel.options].some(o=>o.value===cur)) sel.value=cur;
+}
+function crSetRole(r){ CR_ROLE=r; document.querySelectorAll('#crSeg button').forEach(b=>b.classList.toggle('on',b.dataset.role===r)); crFillReps(); renderCallReports(); }
+function setCrPreset(p){
+  const f=document.getElementById('crRange_from'), t=document.getElementById('crRange_to'); if(!f||!t) return;
+  const today=todayLocal();
+  if(p==='all'){ f.value=''; t.value=''; }
+  else if(p==='7'){ t.value=today; f.value=isoOffset(today,-6); }
+  else if(p==='30'){ t.value=today; f.value=isoOffset(today,-29); }
+  else if(p==='month'){ f.value=today.slice(0,8)+'01'; t.value=today; }
+  rpAttach('crRange', ()=>renderCallReports()); rpSync('crRange'); renderCallReports();
+}
+function renderCallReports(){
+  const tbl=document.getElementById('crTable'); if(!tbl) return;
+  const from=(document.getElementById('crRange_from')||{}).value||'', to=(document.getElementById('crRange_to')||{}).value||'';
+  const client=(document.getElementById('crClient')||{}).value||'', rep=((document.getElementById('crRep')||{}).value||'').trim(), role=CR_ROLE;
+  const latest={}; // collapse to the LATEST submission per rep|client|day (so corrections replace the original)
+  (activityRecords()||[]).forEach(x=>{
+    if(!(x.type==='eod'||!x.type)) return;
+    if((x.role||'')!==role) return;
+    const d=(x.date||'').slice(0,10); if(!d) return;
+    if(from&&d<from) return; if(to&&d>to) return;
+    if(client&&(x.client||'')!==client) return;
+    if(rep&&(x.rep||'').trim()!==rep) return;
+    const k=d+'|'+(x.client||'')+'|'+(x.rep||'').trim();
+    if(!latest[k]||(x.submittedAt||'')>(latest[k].submittedAt||'')) latest[k]=x;
+  });
+  const rows=Object.values(latest).sort((a,b)=>(b.date||'').localeCompare(a.date||'')||String(a.rep||'').localeCompare(String(b.rep||'')));
+  const n=v=>v||0;
+  const notesCell=x=>{ const s=String(x.notes||x.bottleneck||'').trim(); return s?`<span title="${esc(s)}">${esc(s.length>40?s.slice(0,40)+'…':s)}</span>`:'<span class="muted">-</span>'; };
+  const sum=document.getElementById('crSummary'); if(sum) sum.textContent=rows.length?`${rows.length} report${rows.length>1?'s':''}`:'';
+  if(role==='Closer'){
+    tbl.innerHTML=`<thead><tr><th>Date</th><th>Rep</th><th>Client</th><th class="num" title="First-time meetings held">New</th><th class="num" title="Follow-up meetings held">Follow-up</th><th class="num" title="Calls where they reached the person">Conn.</th><th class="num">No shows</th><th class="num" title="Calendar spots opened for sales calls">Spots</th><th class="num" title="(New + Follow-up meetings) / Spots opened">Util %</th><th class="num" title="Calls moved forward toward a close">Adv.</th><th class="num">Deals</th><th class="num">Contract</th><th class="num">Cash</th><th>Notes</th></tr></thead><tbody>`+
+      (rows.length?rows.map(x=>{ const cap=n(x.callCapacity), held=n(x.newMeetings)+n(x.followUpMeetings), util=cap?pct(held/cap):'-';
+        return `<tr><td>${esc(usDate(x.date))}</td><td>${esc(x.rep||'')}</td><td>${esc(x.client||'')}</td><td class="num">${n(x.newMeetings)}</td><td class="num">${n(x.followUpMeetings)}</td><td class="num">${n(x.connectedMeetings)}</td><td class="num">${n(x.noShows)}</td><td class="num">${cap||'-'}</td><td class="num">${util}</td><td class="num">${n(x.advancedCalls)}</td><td class="num">${n(x.closedDeals)}</td><td class="num">${money(x.contractValue)}</td><td class="num">${money(x.cashCollected)}</td><td>${notesCell(x)}</td></tr>`; }).join('')
+       :`<tr><td colspan="14" class="muted" style="padding:16px">No closer reports match these filters.</td></tr>`)+`</tbody>`;
+  } else {
+    tbl.innerHTML=`<thead><tr><th>Date</th><th>Rep</th><th>Client</th><th class="num">Hours</th><th class="num">Dials</th><th class="num" title="People actually reached on dials">Conn.</th><th class="num">Set</th><th class="num" title="Disqualified">DQ</th><th class="num" title="Conversations 4 min+">4m+</th><th class="num" title="Avg minutes from lead arriving to first dial">Speed</th><th>Notes</th></tr></thead><tbody>`+
+      (rows.length?rows.map(x=>`<tr><td>${esc(usDate(x.date))}</td><td>${esc(x.rep||'')}</td><td>${esc(x.client||'')}</td><td class="num">${n(x.hoursDialing)}</td><td class="num">${n(x.newOutreach)}</td><td class="num">${n(x.connectedCalls)}</td><td class="num">${n(x.callsSet)}</td><td class="num">${n(x.dqs)}</td><td class="num">${n(x.convos4min)}</td><td class="num">${n(x.speedToLead)}</td><td>${notesCell(x)}</td></tr>`).join('')
+       :`<tr><td colspan="11" class="muted" style="padding:16px">No setter reports match these filters.</td></tr>`)+`</tbody>`;
+  }
+}
 
 /* ---------------- daily edit grid (admin: correct a rep's numbers by day) ---------------- */
 const DE_COLS_CLOSER=[['hoursDialing','Hours','Hours on the phones today'],['newOutreach','Dials','Total dials / calls made today'],['connectedCalls','Conn. calls','People actually reached on outbound dials'],['callCapacity','Utilization','Sales calls they had room to take today (not dials); compared to how many they took'],['connectedMeetings','Conn. meetings','Booked calls where they reached the person (calls taken)'],['advancedCalls','Advanced','Calls moved forward toward a close'],['noShows','No shows','Booked calls where the lead did not show'],['closedDeals','Closed','Deals closed today'],['contractsSigned','Contracts','Agreements signed today'],['contractValue','Contract $','Total contract value (before payment)'],['cashCollected','Cash $','Actual money collected today'],['depositCollected','Deposit $','Partial / deposit payments collected']];
