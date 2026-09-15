@@ -408,6 +408,12 @@
     </div>
   </div>
   <div class="navgroup collapsed">
+    <button class="navhead"><svg class="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5A2.5 2.5 0 016.5 3H20v15H6.5A2.5 2.5 0 004 20.5z"/><path d="M4 20.5A2.5 2.5 0 016.5 18H20v3H6.5A2.5 2.5 0 014 20.5z"/></svg><span class="nlabel">Resources &amp; Guides</span><svg class="nchev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
+    <div class="navsub">
+      <button data-tab="resources">Show-Up &amp; Handoff Cadence</button>
+    </div>
+  </div>
+  <div class="navgroup collapsed">
     <button class="navhead"><svg class="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="1"/><path d="M9 7h.01M15 7h.01M9 11h.01M15 11h.01M9 15h6"/></svg><span class="nlabel">Clients</span><svg class="nchev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
     <div class="navsub">
       <button data-tab="clients">Client Overview</button>
@@ -495,6 +501,150 @@
     <div class="panel"><h3>Closers <span style="font-weight:400;color:var(--muted);font-size:12px">- activity + output, ranked</span></h3><div class="tablewrap"><table id="dashCloserTable"></table></div></div>
     <div class="panel"><h3>By client (invoicing view)</h3><div class="tablewrap"><table id="clientTable"></table></div></div>
     <div class="panel"><h3>Closed deals</h3><div class="tablewrap"><table id="dealTable"></table></div></div>
+  </section>
+
+  <!-- ===== RESOURCES & GUIDES ===== -->
+  <section id="tab-resources" hidden>
+    <style>
+      #tab-resources .rflow{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:12px;margin:2px 0 10px}
+      #tab-resources .rstep{background:var(--glass);border:1px solid var(--glass-brd);border-radius:12px;padding:15px 16px}
+      #tab-resources .rstep .rn{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;background:var(--gold-soft);color:var(--gold-2);border:1px solid var(--border);margin-bottom:10px}
+      #tab-resources .rstep .rwhen{color:var(--gold);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin:0 0 4px}
+      #tab-resources .rstep h4{margin:0 0 4px;font-size:15px}
+      #tab-resources .rstep p{margin:0;color:var(--muted);font-size:13px}
+      #tab-resources .rchip{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;padding:3px 9px;border-radius:999px;border:1px solid}
+      #tab-resources .rchip.setter{color:var(--good);background:var(--good-soft);border-color:#274a3e}
+      #tab-resources .rchip.closer{color:var(--gold-2);background:var(--gold-soft);border-color:#4a3c1d}
+      #tab-resources .rchip .rd{width:7px;height:7px;border-radius:50%;background:currentColor}
+      #tab-resources .rmsgcard{background:var(--glass);border:1px solid var(--glass-brd);border-radius:12px;padding:14px 16px;margin-top:12px}
+      #tab-resources .rmhead{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+      #tab-resources .rmhead .rlabel{font-weight:700;font-size:14.5px}
+      #tab-resources .rmhead .rnote{color:var(--muted);font-size:12.5px}
+      #tab-resources .rmsg{background:var(--bg,#100D09);border:1px solid var(--border);border-radius:9px;padding:12px 14px;font-size:14.5px;white-space:pre-wrap;line-height:1.5}
+      #tab-resources .rmsg .ph{color:var(--gold-2);font-weight:600}
+      #tab-resources .rmfoot{display:flex;justify-content:flex-end;margin-top:9px}
+      #tab-resources .rcopy{cursor:pointer;font:inherit;font-size:12.5px;font-weight:700;color:#241c08;background:var(--gold);border:none;border-radius:7px;padding:6px 15px}
+      #tab-resources .rcopy:hover{background:var(--gold-2)}
+      #tab-resources .rcopy.done{background:var(--good);color:#0c1a15}
+      #tab-resources .rthen{display:flex;gap:9px;align-items:flex-start;margin-top:11px}
+      #tab-resources .rthen .rtag{flex:none;margin-top:2px;font-size:10.5px;font-weight:800;letter-spacing:.03em;text-transform:uppercase;color:var(--gold);background:var(--gold-soft);border:1px solid var(--border);border-radius:6px;padding:3px 8px}
+      #tab-resources .rcols{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+      #tab-resources .rown h4{margin:0 0 12px;font-size:15px}
+      #tab-resources .rown ul{margin:0;padding-left:0;list-style:none}
+      #tab-resources .rown li{position:relative;padding-left:20px;margin-bottom:9px;font-size:14px}
+      #tab-resources .rown li::before{content:"";position:absolute;left:0;top:7px;width:8px;height:8px;border-radius:2px;background:var(--gold)}
+      #tab-resources .rown.setter li::before{background:var(--good)}
+      #tab-resources .rown.closer li::before{background:var(--gold-2)}
+      #tab-resources .rem{color:var(--gold-2);font-weight:600}
+      #tab-resources .rrule{display:flex;gap:12px;align-items:flex-start;margin-bottom:10px}
+      #tab-resources .rrule .rk{flex:none;width:24px;height:24px;border-radius:7px;background:var(--gold-soft);border:1px solid var(--border);color:var(--gold-2);font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center}
+      #tab-resources .rrule p{margin:0;font-size:14px}
+      @media(max-width:640px){#tab-resources .rcols{grid-template-columns:1fr}}
+    </style>
+    <h2 class="section">Show-Up &amp; Handoff Cadence</h2>
+    <p class="hint">The standard way we confirm every booked call and hand a prospect from setter to closer &mdash; so they actually show up. Same process, every prospect, every time. Replace every <span style="color:var(--gold-2)">[bracket]</span> before you send; tap <b>Copy</b> on any message to grab it.</p>
+
+    <div class="panel">
+      <p style="margin:0 0 4px;color:var(--gold-2);font-weight:600">Why this matters</p>
+      <p style="margin:0;color:var(--ink)">A full calendar means nothing if they don't show. Humanize every touch, and <b>own the no-show</b> &mdash; if a call slips, you don't complain about it, you go into the thread and do something about it.</p>
+    </div>
+
+    <div class="panel">
+      <h3>The flow</h3>
+      <div class="rflow">
+        <div class="rstep"><div class="rn">1</div><p class="rwhen">At booking</p><h4>Setter hands off</h4><p>Setter sends the video + introduces the closer, then the closer jumps into the same thread.</p></div>
+        <div class="rstep"><div class="rn">2</div><p class="rwhen">Night before</p><h4>Closer confirms</h4><p>End of day, the closer confirms the call &mdash; and gives up the spot if the prospect goes quiet.</p></div>
+        <div class="rstep"><div class="rn">3</div><p class="rwhen">~9am CT, day of</p><h4>Setter reminds</h4><p>Morning of, the setter asks for the link, nudges the video, and bumps anyone who hasn't replied.</p></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>1 &middot; At booking</h3>
+      <p class="hint" style="margin-top:0">Fire these two messages back-to-back the moment the call is set &mdash; don't wait for a reply. Then the closer steps in.</p>
+      <div class="rmsgcard">
+        <div class="rmhead"><span class="rchip setter"><span class="rd"></span>Setter</span><span class="rlabel">Message 1 &mdash; the video</span></div>
+        <div class="rmsg">Hey <span class="ph">[Name]</span>, it's <span class="ph">[Setter]</span>. Here's that short video I mentioned &mdash; watch it before your call with <span class="ph">[Closer]</span> tomorrow at <span class="ph">[time]</span>.
+
+<span class="ph">[VSL link]</span></div>
+        <div class="rmfoot"><button class="rcopy" onclick="resCopy(this)">Copy</button></div>
+      </div>
+      <div class="rmsgcard">
+        <div class="rmhead"><span class="rchip setter"><span class="rd"></span>Setter</span><span class="rlabel">Message 2 &mdash; the handoff</span></div>
+        <div class="rmsg">Hey <span class="ph">[Name]</span>, I want to introduce you to <span class="ph">[Closer]</span>. They're one of the top advisors on this team, and I've already got them up to speed on everything we talked about &mdash; so we don't lose a beat before you two meet.</div>
+        <div class="rmfoot"><button class="rcopy" onclick="resCopy(this)">Copy</button></div>
+      </div>
+      <div class="rmsgcard">
+        <div class="rmhead"><span class="rchip closer"><span class="rd"></span>Closer</span><span class="rlabel">Jumps into the same thread</span><span class="rnote">make it personal from the start</span></div>
+        <div class="rmsg">Hey <span class="ph">[Name]</span>, great to meet you &mdash; <span class="ph">[Closer]</span> here. I already started reviewing what <span class="ph">[Setter]</span> put down from your conversation, and I'll have everything customized for our call by tomorrow.</div>
+        <div class="rmfoot"><button class="rcopy" onclick="resCopy(this)">Copy</button></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>2 &middot; End of day (night before)</h3>
+      <p class="hint" style="margin-top:0">The closer confirms the call. Use the direct version for flaky lists &mdash; giving up the spot creates urgency.</p>
+      <div class="rmsgcard">
+        <div class="rmhead"><span class="rchip closer"><span class="rd"></span>Closer</span><span class="rlabel">Standard confirmation</span></div>
+        <div class="rmsg">Hey <span class="ph">[Name]</span>, just confirming we're good for our call tomorrow before I start customizing all your material.</div>
+        <div class="rmfoot"><button class="rcopy" onclick="resCopy(this)">Copy</button></div>
+      </div>
+      <div class="rmsgcard">
+        <div class="rmhead"><span class="rchip closer"><span class="rd"></span>Closer</span><span class="rlabel">Direct version</span><span class="rnote">for flaky lists / BizOp offers</span></div>
+        <div class="rmsg">Hey <span class="ph">[Name]</span>, I've got to cancel your call tomorrow if I don't hear back from you &mdash; we have a handful of other people asking to use that spot. Just let me know tonight so I know whether to hold it.</div>
+        <div class="rmfoot"><button class="rcopy" onclick="resCopy(this)">Copy</button></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>3 &middot; Morning of (~9am CT)</h3>
+      <p class="hint" style="margin-top:0">The setter opens with a question that gets a reply &mdash; then branches on the answer.</p>
+      <div class="rmsgcard">
+        <div class="rmhead"><span class="rchip setter"><span class="rd"></span>Setter</span><span class="rlabel">Opener</span><span class="rnote">goal: get a reply</span></div>
+        <div class="rmsg">Hey <span class="ph">[Name]</span>, do you have the link for our call today?</div>
+        <div class="rmfoot"><button class="rcopy" onclick="resCopy(this)">Copy</button></div>
+      </div>
+      <div class="rthen"><span class="rtag">If they reply</span><div class="rmsgcard" style="flex:1;margin-top:0">
+        <div class="rmsg">Perfect. Did you get a chance to watch the short video <span class="ph">[Setter]</span> sent? That way we make the most of your time on the call.</div>
+        <div class="rmfoot"><button class="rcopy" onclick="resCopy(this)">Copy</button></div>
+      </div></div>
+      <div class="rthen"><span class="rtag">If not watched</span><div class="rmsgcard" style="flex:1;margin-top:0">
+        <div class="rmsg">No worries &mdash; here's the link. Do me a favor and give it a watch before the call, then shoot me a note when you've finished.</div>
+        <div class="rmfoot"><button class="rcopy" onclick="resCopy(this)">Copy</button></div>
+      </div></div>
+      <div class="rthen"><span class="rtag">No reply in ~1 hr</span><p class="hint" style="margin:6px 0 0;flex:1">Bump the opener with a simple <b style="color:var(--gold-2)">?</b> &mdash; that's your job. We annoy a little because we care.</p></div>
+    </div>
+
+    <div class="panel">
+      <h3>Who owns what</h3>
+      <div class="rcols">
+        <div class="rown setter">
+          <h4><span class="rchip setter"><span class="rd"></span>Setter</span></h4>
+          <ul>
+            <li>Books the call</li>
+            <li>Sends the <span class="rem">video</span> + <span class="rem">handoff intro</span> at booking</li>
+            <li>Sends the <span class="rem">9am opener</span> and the <span class="rem">bump</span></li>
+            <li>Copies the calls onto their own calendar so they're ready the moment one no-shows</li>
+          </ul>
+        </div>
+        <div class="rown closer">
+          <h4><span class="rchip closer"><span class="rd"></span>Closer</span></h4>
+          <ul>
+            <li>Jumps into the thread right after the handoff</li>
+            <li>Owns the <span class="rem">end-of-day confirmation</span></li>
+            <li><span class="rem">Extreme ownership of no-shows</span> &mdash; if a call doesn't show, go into the thread and act, right then</li>
+            <li>Treats every booked call like money on the table &mdash; because it is</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>The rules</h3>
+      <div class="rrule"><span class="rk">1</span><p><b class="rem">Keep it in GHL.</b> Every message stays in the GHL thread so the team can see it and nothing gets lost. No moving prospects to WhatsApp or iMessage.</p></div>
+      <div class="rrule"><span class="rk">2</span><p><b class="rem">Send the first one yourself.</b> Initiate manually so you keep a pulse on your prospects; only the follow-up if/thens get automated.</p></div>
+      <div class="rrule"><span class="rk">3</span><p><b class="rem">Match the tone to the offer.</b> Casual and warm for B2C; buttoned-up and punctual for accredited or high-level B2B. Same steps, different voice.</p></div>
+      <div class="rrule" style="margin-bottom:0"><span class="rk">4</span><p><b class="rem">After 9pm is fine.</b> If a message needs to go out at night, send it. Don't let the clock be the reason a call doesn't show.</p></div>
+    </div>
   </section>
 
   <!-- ===== INVOICING (admin/director) ===== -->
@@ -1988,14 +2138,14 @@ function startApp(){
 // base tabs a login TIER can see; per-account responsibilities add to this in applyNavAccess()
 function baseAllow(role){
   return ({
-    admin:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','postcall','sod','eod','training','mgreod','webinar','calllog','calendar','speedtolead','dailyreport','adminreport','recruiting','messages','invoicing','onbaudit','data','users','integrations','settings'],
-    director:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','dailyreport','recruiting','messages','adminreport','onbaudit'],
-    manager:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','speedtolead','dailyreport','adminreport','recruiting','messages'],
+    admin:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','postcall','sod','eod','training','mgreod','webinar','calllog','calendar','speedtolead','dailyreport','adminreport','recruiting','messages','invoicing','onbaudit','data','users','integrations','settings','resources'],
+    director:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','dailyreport','recruiting','messages','adminreport','onbaudit','resources'],
+    manager:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','speedtolead','dailyreport','adminreport','recruiting','messages','resources'],
     founder:['dash'],
-    recruiter:['dash','recruiting','messages','timeoff'],
-    webinarteam:['dash','meeting','promises','timeoff','webinar'],
-    closer:['dash','mydeals','postcall','sod','eod','training','timeoff','calllog','reps'],
-    setter:['dash','mydeals','postcall','sod','eod','training','timeoff','calllog','reps']
+    recruiter:['dash','recruiting','messages','timeoff','resources'],
+    webinarteam:['dash','meeting','promises','timeoff','webinar','resources'],
+    closer:['dash','mydeals','postcall','sod','eod','training','timeoff','calllog','reps','resources'],
+    setter:['dash','mydeals','postcall','sod','eod','training','timeoff','calllog','reps','resources']
   })[role] || ['eod'];
 }
 // ---- multi-role: a user can hold several roles (stored as a 'userroles' record); access = the union ----
@@ -2133,7 +2283,7 @@ function showTab(t){
   document.querySelectorAll('#tabs button[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
   document.querySelectorAll('#tabs .navgroup').forEach(g=>{ if(g.querySelector('button[data-tab="'+t+'"]')) g.classList.remove('collapsed'); }); // reveal the active tab's group
 
-  ['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','sod','eod','training','mgreod','webinar','calllog','calendar','speedtolead','dailyreport','adminreport','recruiting','messages','invoicing','onbaudit','data','users','integrations','settings'].forEach(x=>{ const el=document.getElementById('tab-'+x); if(el) el.hidden = (x!==t); });
+  ['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','sod','eod','training','mgreod','webinar','calllog','calendar','speedtolead','dailyreport','adminreport','recruiting','messages','invoicing','onbaudit','data','users','integrations','settings','resources'].forEach(x=>{ const el=document.getElementById('tab-'+x); if(el) el.hidden = (x!==t); });
   // stale-while-revalidate: render instantly from the cached records, then refresh in the background
   const render={dash:renderDash, mydeals:renderMyDeals, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, promises:renderPromisesTab, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, webinar:renderWebinars, calllog:renderCallLog, calendar:renderCalendar, speedtolead:renderSpeedToLead, dailyreport:renderDailyReport, adminreport:renderAdminReport, recruiting:renderRecruiting, messages:renderMessages, training:renderTraining, invoicing:renderInvoicing, data:renderAll}[t];
   if(render){ render(); syncRecords().then(()=>{ if(currentTab()===t) render(); buildGlobalClientSelect(); buildViewAsUserSelect(); updateNavBadges(); renderReminders(); }); }
@@ -2147,6 +2297,15 @@ function showTab(t){
   renderReminders();
 }
 function currentTab(){ const b=document.querySelector('#tabs button.active'); return b?b.dataset.tab:''; }
+// Resources & Guides: copy a message template to the clipboard
+function resCopy(btn){
+  const card=btn.closest('.rmsgcard'), m=card&&card.querySelector('.rmsg'); if(!m) return;
+  const text=(m.innerText||m.textContent||'').trim();
+  const ok=()=>{ btn.textContent='Copied'; btn.classList.add('done'); setTimeout(()=>{ btn.textContent='Copy'; btn.classList.remove('done'); },1400); };
+  const no=()=>{ btn.textContent='Copy failed'; setTimeout(()=>{ btn.textContent='Copy'; },1400); };
+  if(navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(text).then(ok).catch(no); }
+  else { try{ const ta=document.createElement('textarea'); ta.value=text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); ok(); }catch(e){ no(); } }
+}
 
 /* ---------------- global company scope (super admin) ---------------- */
 // One company selector in the header that scopes EVERY tab, so an admin debugging one client
