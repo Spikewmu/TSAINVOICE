@@ -5781,7 +5781,7 @@ function renderCallReports(){
   });
   const rows=Object.values(latest).sort((a,b)=>(b.date||'').localeCompare(a.date||'')||String(a.rep||'').localeCompare(String(b.rep||'')));
   const n=v=>v||0;
-  const notesCell=x=>{ const s=String(x.notes||x.bottleneck||'').trim(); return s?`<span title="${esc(s)}">${esc(s.length>40?s.slice(0,40)+'…':s)}</span>`:'<span class="muted">-</span>'; };
+  const notesCell=x=>{ const s=String(x.notes||x.bottleneck||'').trim(); return s?`<div style="white-space:normal;word-break:break-word;min-width:220px;max-width:420px">${esc(s)}</div>`:'<span class="muted">-</span>'; };
   const editBtn=x=>`<td><button class="btn sm ghost" data-role="${role}" data-rep="${esc(x.rep||'')}" data-client="${esc(x.client||'')}" data-date="${(x.date||'').slice(0,10)}" onclick="crEditRow(this)">Edit</button></td>`;
   const sum=document.getElementById('crSummary'); if(sum) sum.textContent=rows.length?`${rows.length} report${rows.length>1?'s':''}`:'';
   if(role==='Closer'){
