@@ -1842,17 +1842,20 @@ async function addRecord(rec){
   RECORDS.push(rec); save(LS.data,RECORDS);
   // primary: write through the server so it stamps the workspace authoritatively (write-side isolation)
   if(SESSION && (SESSION.token || SESSION.pw)){
-    try{
-      const hdr={'Content-Type':'application/json'};
-      if(SESSION.token) hdr['x-session-token']=SESSION.token; else if(SESSION.pw) hdr['x-admin-pass']=SESSION.pw;
-      const r=await fetch('/api/data?action=write',{method:'POST',headers:hdr,body:JSON.stringify({record:rec})});
-      if(r.ok){ const j=await r.json(); if(j && j.ok) return; }
-    }catch(e){ console.warn('server write unavailable, falling back to direct write', e); }
+    const hdr={'Content-Type':'application/json'};
+    if(SESSION.token) hdr['x-session-token']=SESSION.token; else if(SESSION.pw) hdr['x-admin-pass']=SESSION.pw;
+    for(let attempt=0; attempt<2; attempt++){ // one retry: mobile networks drop the request mid-flight; a thrown fetch didn't reach the server, so retrying won't duplicate
+      try{
+        const r=await fetch('/api/data?action=write',{method:'POST',headers:hdr,body:JSON.stringify({record:rec})});
+        if(r.ok){ const j=await r.json(); if(j && j.ok) return; }
+        break; // server reachable but rejected -> fall through to the fallback below
+      }catch(e){ if(attempt===0){ await new Promise(res=>setTimeout(res,700)); continue; } console.warn('server write unavailable after retry, falling back to direct write', e); }
+    }
   }
   // fallback: direct write (kept until the anon-insert lock is applied)
   if(supaOn()){
     const r=await fetch(CFG.supaUrl+'/rest/v1/records',{method:'POST',headers:supaHeaders({'Content-Type':'application/json','Prefer':'return=minimal'}),body:JSON.stringify({rid:rec.id,type:rec.type,submitted_at:rec.submittedAt,data:rec})});
-    if(!r.ok) throw new Error('supa write '+r.status);
+    if(!r.ok) throw new Error((r.status===401||r.status===403) ? 'Your session expired. Sign out and sign back in, then save again.' : 'Save did not go through (server '+r.status+'). Check your connection and try again.');
     return;
   }
   if(CFG.endpoint) await api(rec); // records have no "action" key -> backend appends
@@ -2894,7 +2897,7 @@ function saveMeeting(){
   const at=document.getElementById('agTeam'); if(at){ const text=(at.value||'').trim(), orig=(at.dataset.orig||'').trim(); if(text!==orig) jobs.push(addRecord({type:'agenda',date,section:'Whole team',client:'',text,by})); }
   if(!jobs.length){ toast('No changes to save'); return; }
   Promise.all(jobs).then(()=>{ toast('Saved '+jobs.length+' update'+(jobs.length>1?'s':'')+' for '+usDate(date)); renderMeeting(); })
-    .catch(()=>toast('Save failed - try again',true));
+    .catch(err=>toast((err&&err.message)||'Save failed - try again',true));
 }
 function fmtEntry(x){ return `<div class="agentry">${esc(x.text||'')} <span class="agby">- ${esc(x.by||'')}</span></div>`; }
 // The activity days a meeting reviews: the PRIOR day, except a Monday meeting reviews Fri+Sat+Sun
@@ -4774,7 +4777,7 @@ function offdayApprovalsHTML(){
     return `<div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px">
       <div><b>${esc(r.rep)}</b> <span class="muted">- ${esc(usDate(r.date))}</span> ${offdayPill(r.status)}</div>
       ${r.reason?`<div style="font-size:13px;margin-top:2px">Reason: ${esc(r.reason)}</div>`:''}
-      <div class="muted" style="font-size:11px;margin-top:2px">Assigned mgr: ${esc(r.mgr||'-')}</div>
+      <div class="muted" style="font-size:11px;margin-top:2px">Approver (manager): ${esc(r.mgr || (repMetaForName(r.rep)||{}).mgr || 'unassigned - set a manager on the Users tab')}</div>
       ${decNote}${intNote}${actions}
     </div>`;
   };
