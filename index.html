@@ -6883,10 +6883,33 @@ async function integTestChannel(field,label){ const t=integTarget(); if(!t) retu
 function integReveal(id,btn){ const el=document.getElementById(id); if(!el) return; const hidden=el.type==='password'; el.type=hidden?'text':'password'; if(btn) btn.textContent=hidden?'Hide':'Show'; }
 async function integConnectSlack(t,id,field){
   if(!INTEG_SLACK_OAUTH){ toast('Slack Connect is not set up yet - paste the webhook URL manually',true); return; }
-  let body; if(t==='webhook'){ body={t:'webhook', id}; } else { const tt=integTarget(); if(!tt) return; body={t:'config', key:tt.key, field:field||'slack', ws:tt.ws}; }
+  const tt=integTarget();
+  let body; if(t==='webhook'){ body={t:'webhook', id}; } else { if(!tt) return; body={t:'config', key:tt.key, field:field||'slack', ws:tt.ws}; }
   const res=await integApi('connectUrl',body);
-  if(res&&res.ok&&res.url){ window.__integAwaitConnect=Date.now(); window.open(res.url,'_blank','noopener'); toast('Pick a channel in the Slack tab, then switch back here'); }
+  if(res&&res.ok&&res.url){
+    window.__integAwaitConnect=Date.now();
+    // snapshot the current state so the poll can detect when the connection actually lands (the Slack popup opens with noopener, so its postMessage can't reach us - don't rely on it)
+    const baseline=JSON.stringify({c: tt?INTEG_CFGS[tt.key]||null:null, h:(INTEG_HOOKS||[]).filter(w=>tt&&w.key===tt.key)});
+    window.open(res.url,'_blank','noopener'); toast('Pick a channel in the Slack tab, then switch back here');
+    integPollConnect(tt, baseline);
+  }
   else toast((res&&res.error)||'Could not start Slack connect',true);
+}
+// After starting a Slack connect, poll the config until it actually changes, then refresh the page once. Race-proof (doesn't depend on window focus or the popup's postMessage).
+function integPollConnect(tt, baseline){
+  if(window.__integPoll){ clearInterval(window.__integPoll); }
+  let tries=0;
+  window.__integPoll=setInterval(async()=>{
+    tries++;
+    const res=await integApi('get',{});
+    const map={}; ((res&&res.configs)||[]).forEach(c=>map[c.key]=c);
+    const now=JSON.stringify({c: tt?map[tt.key]||null:null, h:((res&&res.webhooks)||[]).filter(w=>tt&&w.key===tt.key)});
+    const changed = now!==baseline;
+    if(changed || tries>=24){ // detected the connection, or gave up after ~60s
+      clearInterval(window.__integPoll); window.__integPoll=0; window.__integAwaitConnect=0;
+      if(changed && currentTab()==='integrations'){ renderIntegrations(); toast('Channel connected'); }
+    }
+  }, 2500);
 }
 if(typeof window!=='undefined' && !window.__integMsgWired){ window.__integMsgWired=1;
   const integRefreshAfterConnect=()=>{ if(window.__integAwaitConnect){ window.__integAwaitConnect=0; try{ renderIntegrations(); toast('Channels refreshed'); }catch(_){} } };
