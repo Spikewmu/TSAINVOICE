@@ -2891,6 +2891,7 @@ function renderFillGrid(){
 // field to its last-SAVED value - so saving one section wiped whatever you'd typed in the other but not yet saved.
 // This collects the account grid AND the whole-team note together, saves once, then re-renders once.
 function saveMeeting(){
+  if((typeof VIEW_AS_REAL!=='undefined'&&VIEW_AS_REAL)||(typeof VIEW_AS_USER!=='undefined'&&VIEW_AS_USER)){ toast('You are in "Investigate as user" (read-only preview) - exit it to make real changes. Nothing was saved.',true); return; }
   const date=(document.getElementById('mtgDate').value)||todayLocal(), by=(SESSION&&SESSION.name)||'';
   const jobs=[];
   [...document.querySelectorAll('#fillGrid [data-client]')].forEach(e=>{ const text=(e.value||'').trim(), orig=(e.dataset.orig||'').trim(); if(text!==orig) jobs.push(addRecord({type:'agenda',date,section:e.dataset.section,client:e.dataset.client,text,by})); });
