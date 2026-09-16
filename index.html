@@ -6859,13 +6859,16 @@ async function importUsers(){
 async function archiveUser(username, archive){
   if(!canManageUser(username)){ toast('You can only offboard Sales Managers and below',true); return; }
   const act=archive?'archiveUser':'unarchiveUser';
-  if(!confirm(archive
-      ? 'Offboard '+username+'?\n\nThey will be signed out and can no longer log in, and drop off the active roster + all pickers. All their reports, deals and history stay. You can reactivate them anytime.'
-      : 'Reactivate '+username+'?\n\nRestores their login and puts them back on the active roster.')) return;
+  const msg = archive
+    ? 'Offboard '+username+'?\n\nSales HQ will automatically:\n  • Deactivate their login (signed out, can’t log back in)\n  • Set their termination date to today\n  • Drop them from the active roster + all pickers\n\nYou still need to do these manually:\n  • Reassign their leads + calendar events to an active rep\n  • Remove their GHL access\n  • Remove them from Slack channels + any founder-specific programs\n\nAll their reports, deals and history stay. You can reactivate them anytime.'
+    : 'Reactivate '+username+'?\n\nRestores their login and puts them back on the active roster.';
+  if(!confirm(msg)) return;
   if(SESSION && SESSION.token){ const res=await authApi({action:act, token:SESSION.token, username}); if(!res||!res.ok){ toast((res&&res.error)||'Could not update',true); return; } }
   else if(CFG.endpoint){ const res=await api({action:act, ...authFields(), username}); if(!res||!res.ok){ toast('Could not update',true); return; } }
   else { LOCAL_USERS=LOCAL_USERS.map(x=>x.username===username?{...x,archived:archive}:x); save(LS.users,LOCAL_USERS); }
-  toast(archive?'Offboarded - login deactivated':'Reactivated - login restored'); renderUsers();
+  // auto-stamp the termination date on offboard (so retention/accountability treat today as their end date) - only if none set yet
+  if(archive){ try{ const m=repMetaFor(username)||{}, u=userByName(username); if(!m.endDate){ await addRecord({type:'repmeta', username, name:(u&&u.name)||username, startDate:m.startDate||'', endDate:todayLocal(), mgr:m.mgr||'', daysOff:Array.isArray(m.daysOff)?m.daysOff:[], reason:m.reason||''}); } }catch(_){} }
+  toast(archive?'Offboarded - login deactivated, termination date set to today':'Reactivated - login restored'); renderUsers();
 }
 // delUser (hard delete of a user + all their data) removed [T-479] - it was dangerous and no longer wired to any button.
 // Offboarding (archiveUser) is the reversible path: deactivates the login + hides them, keeps all history.
