@@ -436,6 +436,7 @@
   <div class="navgroup collapsed">
     <button class="navhead"><svg class="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0112 0M19 8v6M22 11h-6"/></svg><span class="nlabel">Recruiting</span><svg class="nchev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
     <div class="navsub">
+      <button data-tab="reprequests">Rep Requests</button>
       <button data-tab="recruiting">Recruiting</button>
       <button data-tab="messages">Messages</button>
     </div>
@@ -1155,9 +1156,28 @@
   </section>
 
   <!-- ===== RECRUITING ===== -->
+  <!-- ===== REP REQUESTS (hiring queue) ===== -->
+  <section id="tab-reprequests" hidden>
+    <h2 class="section">Rep Requests</h2>
+    <p class="hint">Request the setters and closers you need. <b>Founders and setter-managers submit</b>; recruiters and admins see the queue and mark each one filled when the hire is onboarded.</p>
+    <div class="panel" id="rrqForm" hidden>
+      <h3>New request</h3>
+      <div class="grid3" style="gap:12px">
+        <div class="field"><label>Account / offer</label><select id="rrqClient"></select></div>
+        <div class="field"><label>Role</label><select id="rrqRole"><option value="setter">Setter</option><option value="closer">Closer</option></select></div>
+        <div class="field"><label>How many</label><input type="number" id="rrqCount" min="1" step="1" value="1"></div>
+        <div class="field" style="position:relative"><label>Needed by <span class="muted" style="font-weight:400">- optional</span></label><div class="rangewrap"><input type="text" id="rrqBy_txt" readonly placeholder="Pick a day" onclick="dayPopToggle('rrqBy',event)"><input type="hidden" id="rrqBy"><div class="rangepop" id="rrqBy_pop" hidden onclick="event.stopPropagation()"></div></div></div>
+      </div>
+      <div class="field"><label>Notes <span class="muted" style="font-weight:400">- optional</span></label><input id="rrqNotes" placeholder="e.g. high-volume dialer, M&A experience, specific timezone..."></div>
+      <div class="row-actions" style="margin-top:8px"><button class="btn gold" id="rrqSubmit" onclick="submitRepReq()">Submit request</button></div>
+    </div>
+    <div id="rrqBody" style="margin-top:16px"></div>
+  </section>
+
   <section id="tab-recruiting" hidden>
     <h2 class="section">Recruiting</h2>
     <p class="hint">Search the candidate pool, let AI rank best fit, then tag a group for a GHL SMS/email blast. Tags write to the recruiting Airtable ("Campaign Tags"); the GHL send is wired off those tags.</p>
+    <div id="recReqQueue" style="margin-bottom:16px"></div>
     <div id="rcNotice"></div>
     <div class="seg" id="rcViewSeg" style="margin:0 0 12px"><button class="on" data-view="search" onclick="recSetView('search')">Search</button><button data-view="pipeline" onclick="recSetView('pipeline')">Pipeline</button><button data-view="interview" onclick="recSetView('interview')">Interview panel</button></div>
     <div class="panel">
@@ -2147,11 +2167,11 @@ function startApp(){
 // base tabs a login TIER can see; per-account responsibilities add to this in applyNavAccess()
 function baseAllow(role){
   return ({
-    admin:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','postcall','sod','eod','training','mgreod','webinar','calllog','calendar','speedtolead','dailyreport','adminreport','recruiting','messages','invoicing','onbaudit','data','users','integrations','settings','resources'],
-    director:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','dailyreport','recruiting','messages','adminreport','onbaudit','resources'],
-    manager:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','speedtolead','dailyreport','adminreport','recruiting','messages','resources'],
-    founder:['dash'],
-    recruiter:['dash','recruiting','messages','timeoff','resources'],
+    admin:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','postcall','sod','eod','training','mgreod','webinar','calllog','calendar','speedtolead','dailyreport','adminreport','recruiting','messages','invoicing','onbaudit','data','users','integrations','settings','reprequests','resources'],
+    director:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','dailyreport','recruiting','messages','adminreport','onbaudit','reprequests','resources'],
+    manager:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','speedtolead','dailyreport','adminreport','recruiting','messages','reprequests','resources'],
+    founder:['dash','reprequests'],
+    recruiter:['dash','recruiting','messages','timeoff','reprequests','resources'],
     webinarteam:['dash','meeting','promises','timeoff','webinar','resources'],
     closer:['dash','mydeals','postcall','sod','eod','training','timeoff','calllog','reps','resources'],
     setter:['dash','mydeals','postcall','sod','eod','training','timeoff','calllog','reps','resources']
@@ -2293,9 +2313,9 @@ function showTab(t){
   document.querySelectorAll('#tabs button[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
   document.querySelectorAll('#tabs .navgroup').forEach(g=>{ if(g.querySelector('button[data-tab="'+t+'"]')) g.classList.remove('collapsed'); }); // reveal the active tab's group
 
-  ['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','sod','eod','training','mgreod','webinar','calllog','calendar','speedtolead','dailyreport','adminreport','recruiting','messages','invoicing','onbaudit','data','users','integrations','settings','resources'].forEach(x=>{ const el=document.getElementById('tab-'+x); if(el) el.hidden = (x!==t); });
+  ['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','sod','eod','training','mgreod','webinar','calllog','calendar','speedtolead','dailyreport','adminreport','reprequests','recruiting','messages','invoicing','onbaudit','data','users','integrations','settings','resources'].forEach(x=>{ const el=document.getElementById('tab-'+x); if(el) el.hidden = (x!==t); });
   // stale-while-revalidate: render instantly from the cached records, then refresh in the background
-  const render={dash:renderDash, mydeals:renderMyDeals, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, promises:renderPromisesTab, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, webinar:renderWebinars, calllog:renderCallLog, calendar:renderCalendar, speedtolead:renderSpeedToLead, dailyreport:renderDailyReport, adminreport:renderAdminReport, recruiting:renderRecruiting, messages:renderMessages, training:renderTraining, invoicing:renderInvoicing, data:renderAll}[t];
+  const render={dash:renderDash, mydeals:renderMyDeals, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, promises:renderPromisesTab, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, webinar:renderWebinars, calllog:renderCallLog, calendar:renderCalendar, speedtolead:renderSpeedToLead, dailyreport:renderDailyReport, adminreport:renderAdminReport, reprequests:renderRepRequests, recruiting:renderRecruiting, messages:renderMessages, training:renderTraining, invoicing:renderInvoicing, data:renderAll}[t];
   if(render){ render(); syncRecords().then(()=>{ if(currentTab()===t) render(); buildGlobalClientSelect(); buildViewAsUserSelect(); updateNavBadges(); renderReminders(); }); }
   updateNavBadges();
   if(t==='data'){ renderDailyEntry(); crInit(); }
@@ -5130,7 +5150,95 @@ function poolClaimNote(res){
 function recArr(v){ return Array.isArray(v)?v:(v?[v]:[]); }
 function recCacheSave(){ try{ localStorage.setItem('tsarec_cache', JSON.stringify({t:Date.now(), c:REC_ALL})); }catch(e){} }
 function recCacheLoad(){ try{ const o=JSON.parse(localStorage.getItem('tsarec_cache')||'null'); return (o&&Array.isArray(o.c))?o:null; }catch(e){ return null; } }
+/* ---------------- Rep Requests: hiring queue [T-490] ---------------- */
+// founders + setter-managers submit "we need N setters/closers for <account> by <date>"; recruiters/admins
+// see the queue across every account and mark each one filled (who + when). Same append+collapse-by-id pattern.
+function collapseRepReq(){ const m={}; (RECORDS||[]).forEach(x=>{ if(x.type!=='reprequest'||!x.id)return; if(!m[x.id]||(x.submittedAt||'')>(m[x.id].submittedAt||'')) m[x.id]=x; }); return Object.values(m).filter(r=>!r.deleted); }
+function rrqSeeAll(){ const r=SESSION&&SESSION.role; return r==='admin'||r==='director'||r==='recruiter'; }       // recruiters fulfill across all accounts
+function rrqCanSubmit(){ const r=SESSION&&SESSION.role; return r==='admin'||r==='director'||r==='manager'||r==='founder'; }
+function rrqCanFill(){ const r=SESSION&&SESSION.role; return r==='admin'||r==='director'||r==='recruiter'||r==='manager'; }
+function rrqMyClients(){ const r=SESSION&&SESSION.role;
+  if(r==='admin'||r==='director') return clientNames();
+  if(r==='manager') return managedClientsForUser(SESSION);
+  if(r==='founder'){ const t=teamsFor(SESSION.username); return t.length?t:(SESSION.name?[SESSION.name]:[]); }
+  return []; }
+function rrqVisible(){ const all=collapseRepReq();
+  if(rrqSeeAll()) return all;
+  const mine=rrqMyClients().map(c=>String(c||'').trim().toLowerCase());
+  return all.filter(r=>mine.includes(String(r.client||'').trim().toLowerCase())); }
+async function submitRepReq(){
+  const client=(document.getElementById('rrqClient')||{}).value||'', role=(document.getElementById('rrqRole')||{}).value||'setter';
+  const count=Math.max(1,Math.round(+((document.getElementById('rrqCount')||{}).value)||1));
+  const neededBy=((document.getElementById('rrqBy')||{}).value||'').slice(0,10), notes=((document.getElementById('rrqNotes')||{}).value||'').trim();
+  if(!String(client).trim()){ toast('Pick an account first.',true); return; }
+  const btn=document.getElementById('rrqSubmit'); if(btn&&btn.disabled) return; btnBusy(btn,true);
+  try{ await addRecord({type:'reprequest', id:uid(), client:String(client).trim(), role, count, neededBy, notes, status:'open', by:(SESSION&&SESSION.name)||''});
+    const n=document.getElementById('rrqNotes'); if(n)n.value=''; const cc=document.getElementById('rrqCount'); if(cc)cc.value='1'; const bt=document.getElementById('rrqBy'); if(bt)bt.value=''; const btx=document.getElementById('rrqBy_txt'); if(btx)btx.value='';
+    toast('Rep request submitted'); renderRepRequests(); }
+  catch(e){ toast('Could not submit: '+((e&&e.message)||e),true); }
+  finally{ btnBusy(btn,false); } }
+async function fillRepReq(id){ const cur=collapseRepReq().find(r=>r.id===id); if(!cur) return;
+  const who=prompt(`Who did you place for this ${cur.role} request on ${cur.client}? (name)`); if(who===null) return;
+  await addRecord(Object.assign({},cur,{status:'filled', filledBy:(SESSION&&SESSION.name)||'', filledInfo:String(who||'').trim(), filledAt:new Date().toISOString()}));
+  toast('Marked filled'); renderRepRequests(); if(currentTab()==='recruiting') renderRepReqQueue(); }
+async function reopenRepReq(id){ const cur=collapseRepReq().find(r=>r.id===id); if(!cur) return;
+  await addRecord(Object.assign({},cur,{status:'open', filledInfo:'', filledAt:'', filledBy:''}));
+  toast('Reopened'); renderRepRequests(); if(currentTab()==='recruiting') renderRepReqQueue(); }
+async function cancelRepReq(id){ const cur=collapseRepReq().find(r=>r.id===id); if(!cur) return; if(!confirm('Remove this rep request?')) return;
+  await addRecord(Object.assign({},cur,{deleted:true}));
+  toast('Removed'); renderRepRequests(); if(currentTab()==='recruiting') renderRepReqQueue(); }
+function rrqCard(r){
+  const overdue = r.status!=='filled' && r.neededBy && r.neededBy<todayLocal();
+  const dl = r.neededBy?`<span style="color:${overdue?'var(--bad)':'var(--muted)'}">needed by ${usDate(r.neededBy)}${overdue?' · overdue':''}</span>`:'<span class="muted">no deadline</span>';
+  const roleLbl = esc(r.role==='closer'?'closer':'setter');
+  const acts=[]; const meName=nrmName((SESSION&&SESSION.name)||'');
+  if(r.status!=='filled' && rrqCanFill()) acts.push(`<button class="btn gold sm" onclick="fillRepReq('${r.id}')">Mark filled</button>`);
+  if(r.status==='filled' && rrqCanFill()) acts.push(`<button class="btn ghost sm" onclick="reopenRepReq('${r.id}')">Reopen</button>`);
+  if(rrqCanFill() || nrmName(r.by)===meName) acts.push(`<button class="btn ghost sm" onclick="cancelRepReq('${r.id}')">Remove</button>`);
+  const filled = r.status==='filled'?`<div class="pill good" style="margin-top:8px;display:inline-block">Filled${r.filledInfo?': '+esc(r.filledInfo):''}${r.filledAt?' · '+usDate(r.filledAt):''}${r.filledBy?' by '+esc(r.filledBy):''}</div>`:'';
+  return `<div class="panel" style="margin:0 0 10px;padding:14px 16px${overdue?';border-color:var(--bad)':''}">
+    <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:baseline">
+      <div style="font-weight:700;font-size:15px">${r.count} ${roleLbl}${r.count>1?'s':''} <span class="muted" style="font-weight:400">· ${esc(r.client)}</span></div>
+      <div style="font-size:12.5px">${dl}</div>
+    </div>
+    ${r.notes?`<div style="font-size:13px;margin-top:5px;color:var(--ink)">${esc(r.notes)}</div>`:''}
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-top:9px">
+      <span class="muted" style="font-size:12px">requested by ${esc(r.by||'-')}</span>
+      <div class="row-actions">${acts.join('')}</div>
+    </div>${filled}</div>`;
+}
+function renderRepRequests(){
+  const form=document.getElementById('rrqForm');
+  if(form){
+    if(rrqCanSubmit()){ form.hidden=false;
+      const cs=document.getElementById('rrqClient'); if(cs){ const cur=cs.value, cl=rrqMyClients(); cs.innerHTML=cl.map(c=>`<option>${esc(c)}</option>`).join(''); cs.value=cl.includes(cur)?cur:preferGlobal(cl,cur); cs.disabled=(SESSION&&SESSION.role==='founder')&&cl.length<=1; }
+      try{ dayPickAttach('rrqBy', ()=>{}); }catch(_){}
+    } else form.hidden=true;
+  }
+  const box=document.getElementById('rrqBody'); if(!box) return;
+  const reqs=rrqVisible();
+  const open=reqs.filter(r=>r.status!=='filled').sort((a,b)=>((a.neededBy||'9999-99-99')<(b.neededBy||'9999-99-99')?-1:1));
+  const filled=reqs.filter(r=>r.status==='filled').sort((a,b)=>String(b.filledAt||'').localeCompare(String(a.filledAt||''))).slice(0,25);
+  box.innerHTML = `<h3 style="margin:0 0 10px">Open requests <span class="tag">${open.length}</span></h3>`
+    + (open.length?open.map(rrqCard).join(''):'<p class="muted" style="padding:2px 2px 10px">No open rep requests.</p>')
+    + (filled.length?`<h3 style="margin:20px 0 10px">Recently filled <span class="tag">${filled.length}</span></h3>`+filled.map(rrqCard).join(''):'');
+}
+// folded into the Recruiting tab: the open-requests queue across every account, with the total need
+function renderRepReqQueue(){
+  const el=document.getElementById('recReqQueue'); if(!el) return;
+  const open=collapseRepReq().filter(r=>r.status!=='filled');
+  if(!open.length){ el.innerHTML=''; return; }
+  const nSet=open.filter(r=>r.role!=='closer').reduce((s,r)=>s+(+r.count||0),0), nClo=open.filter(r=>r.role==='closer').reduce((s,r)=>s+(+r.count||0),0);
+  el.innerHTML=`<div class="panel">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+      <h3 style="margin:0">Open rep requests <span class="tag">${open.length}</span></h3>
+      <span class="muted" style="font-size:13px">Total need: <b>${nSet}</b> setter${nSet===1?'':'s'} · <b>${nClo}</b> closer${nClo===1?'':'s'}</span>
+    </div>
+    ${open.sort((a,b)=>((a.neededBy||'9999-99-99')<(b.neededBy||'9999-99-99')?-1:1)).map(rrqCard).join('')}
+  </div>`;
+}
 function renderRecruiting(){
+  renderRepReqQueue(); // fold the open hiring queue in above the candidate search
   if(REC_LOADED){ recRender(); return; }
   const cache=recCacheLoad();
   if(cache && cache.c.length){ // show cached candidates instantly, refresh in the background if stale
