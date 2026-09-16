@@ -41,6 +41,7 @@ function buildText(client, day, prev, sods, eods) {
   // SETTERS first: yesterday's activity, then today's commitment
   if (fSet.length || rSet.length) {
     L.push('SETTERS', '', `Yesterday (${usDate(prev)})`);
+    L.push(b(`${rSet.length} setter${rSet.length === 1 ? '' : 's'} working`)); // headcount context (reports submitted) so a low number from few reps isn't a false red flag
     L.push(b(`${S(rSet, 'newOutreach')} dials`));
     L.push(b(`${S(rSet, 'connectedCalls')} connects`));
     L.push(b(`${S(rSet, 'callsSet')} sets`));
@@ -55,14 +56,15 @@ function buildText(client, day, prev, sods, eods) {
     const show = (taken + noShow) ? taken / (taken + noShow) : null, util = spots ? held / spots : null;
     const onCal = taken + noShow; // calls that were on the calendar = taken + no-shows
     L.push('', 'CLOSERS', '', `Yesterday (${usDate(prev)})`);
-    L.push(b(`${onCal} on the calendar`));
+    L.push(b(`${rClo.length} closer${rClo.length === 1 ? '' : 's'} working`)); // headcount context (reports submitted)
+    L.push(b(`${onCal} calls on the calendar`));
     L.push(b(`${taken} calls taken`));
     L.push(b(`${pct(show)} show rate`));
     L.push(b(`${pct(util)} call utilization`));
     L.push(b(`${S(rClo, 'closedDeals')} closes`));
     L.push(b(`${money(S(rClo, 'cashCollected'))} cash`));
     L.push('', `Today (${usDate(day)})`);
-    L.push(b(`${S(fClo, 'sodCallsToday')} on the calendar`));
+    L.push(b(`${S(fClo, 'sodCallsToday')} calls on the calendar`));
     L.push(b(`${S(fClo, 'sodConfirmed')} confirmed`));
     L.push(b(`projecting ${S(fClo, 'sodProjClose')} closes / ${money(S(fClo, 'sodProjCollectWk'))}`));
   }
