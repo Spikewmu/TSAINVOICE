@@ -2993,17 +2993,25 @@ function mgrEodSuggest(client, date){
     _s:setterEods.length, _c:closerEods.length, _n:setterEods.length+closerEods.length
   };
 }
-// overwrite one account's inputs with the team-derived numbers (the "Refresh from team" button)
-function mgrEodFill(acct){
+// overwrite one account's inputs with the team-derived numbers (the "Refresh from team" button).
+// mgrEodFillCore does the local fill; mgrEodFill re-pulls from the server FIRST so a just-submitted
+// rep EOD shows up without a full page reload (that's what a "Refresh from team" button should do).
+function mgrEodFillCore(acct){
   const date=((document.getElementById('mgrEodDate')||{}).value||todayLocal()).slice(0,10);
   const sug=mgrEodSuggest(acct,date);
   document.querySelectorAll(`#mgrEodSections [data-acct="${cssAttr(acct)}"][data-f]`).forEach(el=>{
     const f=el.dataset.f; if(f==='bottleneck') return;
     if(f in sug) el.value=(sug[f]===0?'0':sug[f]);
   });
+  return sug;
+}
+async function mgrEodFill(acct){
+  const date=((document.getElementById('mgrEodDate')||{}).value||todayLocal()).slice(0,10);
+  try{ await syncRecords(); }catch(_){}
+  const sug=mgrEodFillCore(acct);
   toast(sug._n?`Pulled ${acct} from ${sug._s} setter · ${sug._c} closer EODs`:`No team EODs submitted yet for ${acct} on ${usDate(date)}`, !sug._n);
 }
-function mgrEodFillAll(){ mgrEodClients().forEach(mgrEodFill); }
+async function mgrEodFillAll(){ try{ await syncRecords(); }catch(_){} mgrEodClients().forEach(mgrEodFillCore); toast('Refreshed all offers from the team'); }
 function cssAttr(s){ return String(s||'').replace(/["\\]/g,'\\$&'); }
 function jsStr(s){ return String(s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
 function renderMgrEod(){
@@ -3022,7 +3030,7 @@ function renderMgrEod(){
     const hint = sug._n
       ? `<span class="sub">Auto-filled from <b>${sug._s}</b> setter &middot; <b>${sug._c}</b> closer EOD${sug._n>1?'s':''}${saved?' - showing your saved numbers':''}</span>`
       : `<span class="sub" style="opacity:.7">No team EODs submitted for ${usDate(date)} yet - reps submit at end of day. Enter numbers manually, or pick the day you're reporting on.</span>`;
-    return `<div class="panel mgrsec"><h3><span class="mgrnum">${i+1}</span> ${esc(c)}${p.submittedAt?' <span class="pill good" style="font-weight:600;margin-left:6px">saved today</span>':''}<button type="button" class="btn ghost sm" style="margin-left:auto;font-weight:600" onclick="mgrEodFill('${jsStr(c)}')"${sug._n?'':' disabled'}>&#8635; Refresh from team</button></h3><div style="padding:0 14px 14px">
+    return `<div class="panel mgrsec"><h3><span class="mgrnum">${i+1}</span> ${esc(c)}${p.submittedAt?' <span class="pill good" style="font-weight:600;margin-left:6px">saved today</span>':''}<button type="button" class="btn ghost sm" style="margin-left:auto;font-weight:600" onclick="mgrEodFill('${jsStr(c)}')" title="Pull the latest submitted EODs from your team">&#8635; Refresh from team</button></h3><div style="padding:0 14px 14px">
       <div style="margin:2px 0 10px">${hint}</div>
       <div class="formhead" style="margin-top:4px"><b>Setters</b></div>
       <div class="grid3">${MGR_SET_FIELDS.map(f=>inp(c,f[0],f[1],f[2],v(f[0]),!saved)).join('')}</div>
