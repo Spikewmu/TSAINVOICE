@@ -7426,7 +7426,13 @@ const DEFAULT_ONB_STEPS=[
 const ONB_STATUSES=['Not started','In progress','Done'];
 // steps are editable by admins; the latest saved order is stored as an 'onbconfig' record
 function latestOnbConfig(){ let best=null; RECORDS.filter(x=>x.type==='onbconfig').forEach(x=>{ if(!best||(x.submittedAt||'')>(best.submittedAt||'')) best=x; }); if(best&&best.steps){ try{ var a=JSON.parse(best.steps); if(Array.isArray(a)&&a.length && a.some(s=>s&&s.days!=null)) return a; }catch(e){} } return null; } // old-format configs (no deadlines) are ignored so the new SOP default takes over until re-saved
-function onbSteps(){ return latestOnbConfig() || DEFAULT_ONB_STEPS; }
+function onbSteps(){
+  const saved=latestOnbConfig(); if(!saved) return DEFAULT_ONB_STEPS; // default already carries stages
+  if(saved.every(s=>s&&s.stage)) return saved; // a config saved after stages shipped
+  // older saved config (no stage field): backfill each step's stage from the default by name so grouping still works
+  const byName={}; DEFAULT_ONB_STEPS.forEach(s=>{ byName[nrmName(s.step)]=s.stage; });
+  return saved.map(s=> (s&&s.stage)?s:Object.assign({},s,{stage: byName[nrmName(s.step)]||'Other steps'}));
+}
 function latestOnb(client){ const m={}; RECORDS.filter(x=>x.type==='onboard'&&x.client===client).forEach(x=>{ if(!m[x.step]||(x.submittedAt||'')>(m[x.step].submittedAt||'')) m[x.step]=x; }); return m; }
 function onbProgress(client){ const steps=onbSteps(); const st=latestOnb(client); let done=0,bn=null,overdue=0; steps.forEach(s=>{ const r=st[s.step]; if(r&&r.status==='Done') done++; else { if(!bn) bn=s.step; const dl=daysLeft(stepDue(client,s.step)); if(dl!=null&&dl<0) overdue++; } }); return {done,total:steps.length,pct:steps.length?Math.round(done/steps.length*100):0,bottleneck:bn,overdue}; }
 // T-491 "Pizza Hut" stages: group the flat steps into ordered umbrella stages + per-stage progress
