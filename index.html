@@ -3120,7 +3120,7 @@ function micDictate(btn){
   const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
   if(!SR){ toast('Voice input needs Chrome or Edge on this device.',true); return; }
   if(__micRec){ try{ __micRec.stop(); }catch(_){} return; } // already listening -> stop
-  const ta=btn.parentElement&&btn.parentElement.querySelector('textarea'); if(!ta) return;
+  const ta=btn.parentElement&&btn.parentElement.querySelector('textarea, input[type=text], input:not([type])'); if(!ta) return;
   const base=ta.value?ta.value.replace(/\s*$/,'')+' ':'';
   const rec=new SR(); rec.lang='en-US'; rec.interimResults=true; rec.continuous=true;
   rec.onresult=e=>{ let txt=''; for(let i=0;i<e.results.length;i++) txt+=e.results[i][0].transcript; ta.value=base+txt; ta.dispatchEvent(new Event('input',{bubbles:true})); };
@@ -3317,9 +3317,9 @@ function renderFillGrid(){
     return `<div style="margin-bottom:14px;border-bottom:1px solid var(--border);padding-bottom:12px">
       <div style="font-weight:600;margin-bottom:6px">${esc(c)}</div>
       ${metricsLineHTML(clientDayMetrics(c,date))}
-      <input data-client="${esc(c)}" data-section="Win" data-orig="${win}" style="width:100%" placeholder="Win for ${esc(c)} (optional)" value="${win}">
+      <div style="position:relative"><input data-client="${esc(c)}" data-section="Win" data-orig="${win}" style="width:100%;padding-right:92px" placeholder="Win for ${esc(c)} (optional)" value="${win}"><button type="button" class="btn ghost sm" onclick="micDictate(this)" title="Dictate this win" style="position:absolute;top:5px;right:6px">&#127908; Speak</button></div>
       <div style="position:relative;margin-top:6px"><textarea data-client="${esc(c)}" data-section="Account update" data-orig="${up}" rows="2" style="width:100%;padding-right:92px" placeholder="Update for ${esc(c)} (blank = nothing to report)">${up}</textarea><button type="button" class="btn ghost sm" onclick="micDictate(this)" title="Dictate this update" style="position:absolute;top:6px;right:6px">&#127908; Speak</button></div>
-      <input data-client="${esc(c)}" data-section="Need" data-orig="${need}" style="width:100%;margin-top:6px" placeholder="Need for ${esc(c)} (what you need from the team - reps, assets, access, a decision)" value="${need}">
+      <div style="position:relative;margin-top:6px"><input data-client="${esc(c)}" data-section="Need" data-orig="${need}" style="width:100%;padding-right:92px" placeholder="Need for ${esc(c)} (what you need from the team - reps, assets, access, a decision)" value="${need}"><button type="button" class="btn ghost sm" onclick="micDictate(this)" title="Dictate this need" style="position:absolute;top:5px;right:6px">&#127908; Speak</button></div>
     </div>`; }).join('')
     : '<p class="muted">Add clients on the Client Overview tab first.</p>';
 }
