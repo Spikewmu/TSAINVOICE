@@ -4996,7 +4996,7 @@ async function renderOnbAudit(){
   const onTeam=(u,client)=>{ try{ return teamsFor(u.username).includes(client); }catch(e){ return false; } };
   const chn=(c,f)=>((c&&c.chan&&c.chan[f])||'');
   const dot=(ok,label,extra)=>`<div style="display:flex;align-items:baseline;gap:8px;padding:3px 0;font-size:13px"><span style="flex:0 0 14px;color:${ok?'#7bd487':'var(--warn)'};font-weight:700">${ok?'✓':'✗'}</span><span>${esc(label)}${extra?` <span class="muted" style="font-size:11.5px">${esc(extra)}</span>`:''}</span></div>`;
-  const feeds=[['deal','New closed deal'],['postcallSetter','Post-call (Setters)'],['postcallCloser','Post-call (Closers)'],['sodSetter','SOD (Setters)'],['sodCloser','SOD (Closers)'],['dailyReport','Daily report'],['invoicing','Invoicing / billing']];
+  const feeds=[['deal','New closed deal'],['postcallSetter','Post-call (Setters)'],['postcallCloser','Post-call (Closers)'],['sodSetter','SOD (Setters)'],['sodCloser','SOD (Closers)'],['dailyReport','Daily report']];
   const eods=[['setter','Setter EOD'],['closer','Closer EOD'],['mgr','Manager EOD'],['slack','Fallback']];
   wrap.innerHTML='<div class="cards" style="grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:14px">'+clients.map(client=>{
     const c=cfgs['tsa:'+client]||null, conn=f=>!!(c && String(c[f]||'').trim());
@@ -5007,7 +5007,7 @@ async function renderOnbAudit(){
     const feedRows=feeds.map(([f,l])=>dot(conn(f),l,conn(f)?chn(c,f):'')).join('');
     const eodRows=eods.map(([f,l])=>dot(conn(f),l,conn(f)?chn(c,f):'')).join('');
     const missing=[]; if(!setters.length) missing.push('setters'); if(!closers.length) missing.push('closers'); if(!mgrs.length) missing.push('manager');
-    feeds.forEach(([f,l])=>{ if(!conn(f)) missing.push(l); }); eods.forEach(([f,l])=>{ if(!conn(f)) missing.push(l); }); if(!crm) missing.push('CRM key');
+    feeds.forEach(([f,l])=>{ if(!conn(f)) missing.push(l); }); eods.forEach(([f,l])=>{ if(!conn(f)) missing.push(l); }); if(!crm) missing.push('CRM key'); if(!conn('invoicing')) missing.push('Invoicing / billing');
     const ready=missing.length===0;
     const badge=ready?'<span class="pill good">Ready</span>':`<span class="pill" style="background:rgba(214,140,90,.15);color:var(--warn);white-space:nowrap">${missing.length} to finish</span>`;
     return `<div class="panel" style="margin:0;padding:14px">
@@ -5021,7 +5021,7 @@ async function renderOnbAudit(){
         <div style="flex:1 1 150px"><div class="muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.03em;margin-bottom:3px">Event feeds</div>${feedRows}</div>
         <div style="flex:1 1 150px"><div class="muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.03em;margin-bottom:3px">EOD reports${eodOn?'':' <span class="pill" style="background:rgba(214,140,90,.15);color:var(--warn);font-size:9.5px;padding:1px 6px">alerts OFF</span>'}</div>${eodRows}</div>
       </div>
-      <div style="margin-top:10px;border-top:1px solid rgba(255,255,255,.08);padding-top:8px">${dot(crm,'CRM key (GHL)',crm?((c&&c.ghlEnabled)?'push ON':'push OFF'):'not added')}${(crm && c && !c.ghlLocation)?'<div class="muted" style="font-size:11px;padding-left:22px;color:var(--warn)">Location ID missing (needed for v2 tokens)</div>':''}</div>
+      <div style="margin-top:10px;border-top:1px solid rgba(255,255,255,.08);padding-top:8px"><div class="muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.03em;margin-bottom:3px">Critical systems</div>${dot(crm,'CRM key (GHL)',crm?((c&&c.ghlEnabled)?'push ON':'push OFF'):'not added')}${(crm && c && !c.ghlLocation)?'<div class="muted" style="font-size:11px;padding-left:22px;color:var(--warn)">Location ID missing (needed for v2 tokens)</div>':''}${dot(conn('invoicing'),'Invoicing / billing',conn('invoicing')?chn(c,'invoicing'):'not connected')}</div>
     </div>`;
   }).join('')+'</div>';
 }
