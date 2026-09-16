@@ -1816,6 +1816,10 @@ let LOCAL_USERS = load(LS.users, []); // used only when no backend endpoint
 
 function load(k,f){ try{return JSON.parse(localStorage.getItem(k)) ?? f}catch(e){return f} }
 function save(k,v){ localStorage.setItem(k, JSON.stringify(v)); }
+// Cache the records array for instant reload. This cache is ONLY a speed optimization - the server is the
+// source of truth - so if the browser storage quota is exceeded (large workspaces / mobile Safari's ~5MB cap)
+// drop the stale cache and carry on, never aborting the save in progress with a QuotaExceededError.
+function cacheRecords(){ try{ save(LS.data, RECORDS); return true; }catch(e){ try{ localStorage.removeItem(LS.data); }catch(_){}; return false; } }
 function toast(m,err){ const t=document.getElementById('toast'); t.textContent=m; t.className='toast show'+(err?' err':''); setTimeout(()=>t.className='toast',2400); }
 function money(n){ return (n||0).toLocaleString('en-US',{style:'currency',currency:'USD',maximumFractionDigits:0}); }
 function pct(n){ return (isFinite(n)?Math.round(n*100):0)+'%'; }
@@ -1881,7 +1885,7 @@ async function remoteGet(){
 
 /* ---------------- records ---------------- */
 let RECORDS = load(LS.data, []);
-async function syncRecords(){ const r=await remoteGet(); if(r){ RECORDS=dedupeRecords(r); save(LS.data,RECORDS); } applyWsConfig(); updateWsBrand(); }
+async function syncRecords(){ const r=await remoteGet(); if(r){ RECORDS=dedupeRecords(r); cacheRecords(); } applyWsConfig(); updateWsBrand(); }
 // Collapse accidental double-submits: same rep/client/date/role and identical values,
 // submitted within 2 minutes of each other, count once. (Physical rows stay in the sheet.)
 function recSig(r){
@@ -1997,7 +2001,7 @@ async function addRecord(rec){
   if(typeof VIEW_AS_REAL!=='undefined' && VIEW_AS_REAL){ toast('View-as-role is a read-only preview - changes are not saved. Exit it to make real changes.',true); return; }
   rec.id=rec.id||uid(); rec.submittedAt=new Date().toISOString(); rec.submittedET=nowET(); // respect a pre-minted id (e.g. a deal whose scheduled payments must reference it before it's written)
   if(rec.ws==null) rec.ws=currentWs(); // stamp the tenant so data is walled off by workspace
-  RECORDS.push(rec); save(LS.data,RECORDS);
+  RECORDS.push(rec); cacheRecords();
   // primary: write through the server so it stamps the workspace authoritatively (write-side isolation)
   if(SESSION && (SESSION.token || SESSION.pw)){
     const hdr={'Content-Type':'application/json'};
@@ -6001,7 +6005,7 @@ function renderAll(){
     (rows.length?rows.map(r=>`<tr><td>${esc(usDate(r.date))}</td><td style="font-size:12px;color:var(--muted)">${esc(usDateTime(submittedETof(r)))}</td><td><span class="pill ${r.type==='deal'?'good':(r.type==='postcall'?'warn':'')}">${esc(r.type)}</span></td><td>${esc(r.role)}</td><td>${esc(r.client)}</td><td>${esc(r.rep)}</td><td>${r.type==='postcall'?esc(r.outcome||'-')+(r.lead?' <span class="muted">('+esc(r.lead)+')</span>':''):money(r.cashCollected)}</td><td class="num">${r.closedDeals||0}</td><td><button class="btn sm ghost" style="color:var(--warn);border-color:var(--warn)" onclick="delRec('${r.id}')">Delete</button></td></tr>`).join('')
      :`<tr><td colspan="9" class="muted" style="padding:16px">No records.</td></tr>`)+`</tbody>`;
 }
-function delRec(id){ RECORDS=RECORDS.filter(r=>r.id!==id); save(LS.data,RECORDS); renderAll(); renderDash(); toast('Deleted'); }
+function delRec(id){ RECORDS=RECORDS.filter(r=>r.id!==id); cacheRecords(); renderAll(); renderDash(); toast('Deleted'); }
 
 /* ---------------- call reports viewer: read-only, on-screen End-of-Day reports (no CSV export needed) ---------------- */
 let CR_ROLE='Closer';
@@ -6129,8 +6133,8 @@ function exportCSV(type){ const cols=type==='deal'?DEAL_COLS:(type==='postcall'?
 function csvCell(v){ if(v==null)return ''; const s=String(v); return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; }
 function exportJSON(){ download('tsa_invoice_backup.json',JSON.stringify(RECORDS,null,2),'application/json'); }
 function download(name,text,mime){ const b=new Blob([text],{type:mime}),u=URL.createObjectURL(b),a=document.createElement('a'); a.href=u;a.download=name;a.click();URL.revokeObjectURL(u); }
-function importJSON(e){ const f=e.target.files[0]; if(!f)return; const rd=new FileReader(); rd.onload=()=>{ try{ const arr=JSON.parse(rd.result); if(!Array.isArray(arr))throw 0; const ids=new Set(RECORDS.map(r=>r.id)); arr.forEach(r=>{ if(!ids.has(r.id))RECORDS.push(r); }); save(LS.data,RECORDS); renderAll(); renderDash(); toast('Imported '+arr.length); }catch(x){ toast('Bad JSON',true); } }; rd.readAsText(f); e.target.value=''; }
-function wipe(){ if(confirm('Clear ALL local records? Export a backup first. This does not touch shared data.')){ RECORDS=[]; save(LS.data,RECORDS); renderAll(); renderDash(); toast('Cleared'); } }
+function importJSON(e){ const f=e.target.files[0]; if(!f)return; const rd=new FileReader(); rd.onload=()=>{ try{ const arr=JSON.parse(rd.result); if(!Array.isArray(arr))throw 0; const ids=new Set(RECORDS.map(r=>r.id)); arr.forEach(r=>{ if(!ids.has(r.id))RECORDS.push(r); }); cacheRecords(); renderAll(); renderDash(); toast('Imported '+arr.length); }catch(x){ toast('Bad JSON',true); } }; rd.readAsText(f); e.target.value=''; }
+function wipe(){ if(confirm('Clear ALL local records? Export a backup first. This does not touch shared data.')){ RECORDS=[]; cacheRecords(); renderAll(); renderDash(); toast('Cleared'); } }
 
 /* ---------------- users ---------------- */
 function mgmtPass(){ return (SESSION && SESSION.role==='manager') ? CFG.managerCode : CFG.adminCode; }
