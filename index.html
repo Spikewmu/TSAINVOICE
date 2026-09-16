@@ -675,9 +675,20 @@
     <div id="invForecast" hidden>
       <div class="panel" style="padding:16px">
         <p class="fieldhelp" style="margin:0 0 12px">Accounts receivable / <b>projected incoming payments</b> - every <b>pending</b> wire &amp; installment across all offers, so you can walk into the month knowing what's projected to come in and what TSA is projected to bill. Payments count toward the window by their expected date.</p>
-        <div class="row-actions" style="margin-top:2px">
-          <span class="muted" style="font-size:12px;align-self:center;margin-right:6px">Window:</span>
-          <div class="seg" id="arSeg"><button class="on" onclick="setArWin('7')">7 days</button><button onclick="setArWin('14')">14 days</button><button onclick="setArWin('30')">30 days</button><button onclick="setArWin('60')">60 days</button><button onclick="setArWin('all')">All pending</button></div>
+        <div class="filters" style="align-items:flex-end;gap:12px;margin-top:2px">
+          <div class="field" style="flex:0 0 auto"><label>Window</label>
+            <div class="seg" id="arSeg" style="flex-wrap:wrap">
+              <button data-af="lastweek" onclick="setArPreset('lastweek')">Last week</button>
+              <button data-af="thisweek" onclick="setArPreset('thisweek')">This week</button>
+              <button data-af="nextweek" onclick="setArPreset('nextweek')">Next week</button>
+              <button data-af="thismonth" class="on" onclick="setArPreset('thismonth')">This month</button>
+              <button data-af="nextmonth" onclick="setArPreset('nextmonth')">Next month</button>
+              <button data-af="quarter" onclick="setArPreset('quarter')">This quarter</button>
+              <button data-af="all" onclick="setArPreset('all')">All pending</button>
+              <button data-af="custom" onclick="setArPreset('custom')">Custom</button>
+            </div>
+          </div>
+          <div class="field" id="arCustomWrap" hidden style="position:relative;flex:0 0 auto;min-width:240px"><label>Custom range</label><div class="rangewrap"><input type="text" id="afRange_txt" readonly placeholder="Click a start day, then an end day" onclick="rpToggle('afRange',event)"><input type="hidden" id="afRange_from"><input type="hidden" id="afRange_to"><div class="rangepop" id="afRange_pop" hidden onclick="event.stopPropagation()"></div></div></div>
         </div>
       </div>
       <div id="arForecastOut" style="margin-top:18px"></div>
@@ -4351,13 +4362,27 @@ function genFounderInvoice(client,from,to){
 /* ================= REVENUE FORECAST / ACCOUNTS RECEIVABLE (projected incoming payments) ================= */
 // what TSA bills a client = flat rate, or the summed rep-comp + override rate
 function tsaBillRate(client){ const c=clientBillingCfg(client); if(!c) return 0; return (c.mode||'flat')==='repcomp' ? ((c.closerRate||0)+(c.setterRate||0)+(c.overrideRate||0)) : (c.flatRate||0); }
-let AR_WIN='30';
-function setArWin(w){ AR_WIN=w; const map={'7':'7 days','14':'14 days','30':'30 days','60':'60 days','all':'All pending'}; document.querySelectorAll('#arSeg button').forEach(b=>b.classList.toggle('on', b.textContent.trim()===map[w])); renderArForecast(); }
+let AR_RANGE=null; // {from,to,label} - named calendar windows (Robb 9-16)
+function arRanges(){
+  const wk=off=>{ const d=new Date(); d.setHours(0,0,0,0); const dow=(d.getDay()+6)%7; const mon=new Date(d); mon.setDate(d.getDate()-dow+off*7); const sun=new Date(mon); sun.setDate(mon.getDate()+6); return {from:isoLocal(mon),to:isoLocal(sun)}; };
+  const mo=off=>{ const d=new Date(); const first=new Date(d.getFullYear(),d.getMonth()+off,1), last=new Date(d.getFullYear(),d.getMonth()+off+1,0); return {from:isoLocal(first),to:isoLocal(last)}; };
+  const qtr=()=>{ const d=new Date(); const q=Math.floor(d.getMonth()/3); const first=new Date(d.getFullYear(),q*3,1), last=new Date(d.getFullYear(),q*3+3,0); return {from:isoLocal(first),to:isoLocal(last)}; };
+  return { lastweek:{...wk(-1),label:'last week'}, thisweek:{...wk(0),label:'this week'}, nextweek:{...wk(1),label:'next week'}, thismonth:{...mo(0),label:'this month'}, nextmonth:{...mo(1),label:'next month'}, quarter:{...qtr(),label:'this quarter'}, all:{from:'',to:'',label:'all pending'} };
+}
+function setArPreset(name){
+  document.querySelectorAll('#arSeg button').forEach(b=>b.classList.toggle('on', b.dataset.af===name));
+  const cw=document.getElementById('arCustomWrap');
+  if(name==='custom'){ if(cw)cw.hidden=false; try{ rpAttach('afRange', arApplyCustom); }catch(_){}; arApplyCustom(); return; }
+  if(cw)cw.hidden=true;
+  const r=arRanges()[name]||arRanges().thismonth; AR_RANGE={from:r.from,to:r.to,label:r.label}; renderArForecast();
+}
+function arApplyCustom(){ const f=((document.getElementById('afRange_from')||{}).value||'').slice(0,10), t=((document.getElementById('afRange_to')||{}).value||'').slice(0,10); AR_RANGE={from:f,to:t,label:(f&&t)?`${usDate(f)} - ${usDate(t)}`:'custom range'}; renderArForecast(); }
 function renderArForecast(){
   const out=document.getElementById('arForecastOut'); if(!out) return;
-  const win=AR_WIN, today=todayLocal(), cutoff=win==='all'?null:isoOffset(today,+win);
+  if(!AR_RANGE){ const r=arRanges().thismonth; AR_RANGE={from:r.from,to:r.to,label:r.label}; }
+  const from=AR_RANGE.from, to=AR_RANGE.to;
   const dated=p=>(p.date||'').slice(0,10);
-  const inWin=p=>{ if(win==='all') return true; const d=dated(p); return d?d<=cutoff:false; };
+  const inWin=p=>{ const d=dated(p); if(!d) return false; if(from && d<from) return false; if(to && d>to) return false; return true; };
   const byClient={}; let undated=0;
   paymentsCollapsed().filter(p=>p.status==='pending').forEach(p=>{
     if(GLOBAL_CLIENT && p.client!==GLOBAL_CLIENT) return; // follow the global company scope
@@ -4366,7 +4391,7 @@ function renderArForecast(){
   });
   const rows=Object.values(byClient).map(o=>({...o,rate:tsaBillRate(o.client),tsa:o.cash*tsaBillRate(o.client)/100})).sort((a,b)=>b.cash-a.cash);
   const totCash=rows.reduce((s,o)=>s+o.cash,0), totTsa=rows.reduce((s,o)=>s+o.tsa,0), totN=rows.reduce((s,o)=>s+o.n,0);
-  const winLbl={'7':'next 7 days','14':'next 14 days','30':'next 30 days','60':'next 60 days','all':'all pending'}[win];
+  const winLbl=AR_RANGE.label;
   out.innerHTML=`<div class="panel" style="padding:0;overflow:hidden">
     <div style="display:flex;gap:26px;flex-wrap:wrap;padding:16px 18px;border-bottom:1px solid var(--border)">
       <div><div class="muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.03em">Projected cash in (${esc(winLbl)})</div><div style="font-size:24px;font-weight:800;color:#7bd487;font-variant-numeric:tabular-nums">${money(totCash)}</div></div>
