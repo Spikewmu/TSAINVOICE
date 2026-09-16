@@ -445,6 +445,7 @@
     <button class="navhead"><svg class="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4-3 7-7 8-4-1-7-4-7-8V6z"/></svg><span class="nlabel">Admin</span><svg class="nchev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
     <div class="navsub">
       <button data-tab="invoicing">Invoicing</button>
+      <button data-tab="mgreodview">Manager EODs</button>
       <button data-tab="onbaudit">Onboarding Audit</button>
       <button data-tab="data">Data + Export</button>
       <button data-tab="users">Users</button>
@@ -1056,6 +1057,12 @@
     </div>
     <div id="mgrEodSections"></div>
     <div class="row-actions" style="margin:8px 0 2px"><button class="btn gold" id="mgrEodSubmit" onclick="submitMgrEod()">Submit manager EOD</button></div>
+  </section>
+
+  <!-- ===== MANAGER EOD REVIEW (leadership view) ===== -->
+  <section id="tab-mgreodview" hidden>
+    <h2 class="section">Manager EODs</h2>
+    <p class="hint">Every manager's submitted end-of-day report - the numbers they reported for each offer plus their constraint note. Shows the latest per manager, account and day, and follows the company selector at the top of the page.</p>
     <div class="panel"><div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px"><h3 style="margin:0">Manager EOD review <span style="font-weight:400;color:var(--muted);font-size:12px">- what each manager reported + their constraint note (latest per manager, account &amp; day)</span></h3><div class="seg" id="mgrVSeg"><button onclick="setMgrVDay('')">All recent</button><button onclick="setMgrVDay('today')">Today</button><button onclick="setMgrVDay('yesterday')">Yesterday</button></div></div><div class="tablewrap" style="margin-top:10px"><table id="mgrEodTable"></table></div></div>
   </section>
 
@@ -2179,8 +2186,8 @@ function startApp(){
 // base tabs a login TIER can see; per-account responsibilities add to this in applyNavAccess()
 function baseAllow(role){
   return ({
-    admin:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','postcall','sod','eod','training','mgreod','webinar','calllog','calendar','speedtolead','dailyreport','adminreport','recruiting','messages','invoicing','onbaudit','data','users','integrations','settings','reprequests','resources'],
-    director:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','dailyreport','recruiting','messages','adminreport','onbaudit','reprequests','resources'],
+    admin:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','adminreport','recruiting','messages','invoicing','onbaudit','data','users','integrations','settings','reprequests','resources'],
+    director:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','dailyreport','recruiting','messages','adminreport','onbaudit','reprequests','resources'],
     manager:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','speedtolead','dailyreport','adminreport','recruiting','messages','reprequests','resources'],
     founder:['dash','reprequests'],
     recruiter:['dash','recruiting','messages','timeoff','reprequests','resources'],
@@ -2325,9 +2332,9 @@ function showTab(t){
   document.querySelectorAll('#tabs button[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
   document.querySelectorAll('#tabs .navgroup').forEach(g=>{ if(g.querySelector('button[data-tab="'+t+'"]')) g.classList.remove('collapsed'); }); // reveal the active tab's group
 
-  ['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','sod','eod','training','mgreod','webinar','calllog','calendar','speedtolead','dailyreport','adminreport','reprequests','recruiting','messages','invoicing','onbaudit','data','users','integrations','settings','resources'].forEach(x=>{ const el=document.getElementById('tab-'+x); if(el) el.hidden = (x!==t); });
+  ['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','adminreport','reprequests','recruiting','messages','invoicing','onbaudit','data','users','integrations','settings','resources'].forEach(x=>{ const el=document.getElementById('tab-'+x); if(el) el.hidden = (x!==t); });
   // stale-while-revalidate: render instantly from the cached records, then refresh in the background
-  const render={dash:renderDash, mydeals:renderMyDeals, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, promises:renderPromisesTab, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, webinar:renderWebinars, calllog:renderCallLog, calendar:renderCalendar, speedtolead:renderSpeedToLead, dailyreport:renderDailyReport, adminreport:renderAdminReport, reprequests:renderRepRequests, recruiting:renderRecruiting, messages:renderMessages, training:renderTraining, invoicing:renderInvoicing, data:renderAll}[t];
+  const render={dash:renderDash, mydeals:renderMyDeals, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, promises:renderPromisesTab, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, mgreodview:renderMgrEodView, webinar:renderWebinars, calllog:renderCallLog, calendar:renderCalendar, speedtolead:renderSpeedToLead, dailyreport:renderDailyReport, adminreport:renderAdminReport, reprequests:renderRepRequests, recruiting:renderRecruiting, messages:renderMessages, training:renderTraining, invoicing:renderInvoicing, data:renderAll}[t];
   if(render){ render(); syncRecords().then(()=>{ if(currentTab()===t) render(); buildGlobalClientSelect(); buildViewAsUserSelect(); updateNavBadges(); renderReminders(); }); }
   updateNavBadges();
   if(t==='data'){ renderDailyEntry(); crInit(); }
@@ -3040,8 +3047,13 @@ function renderMgrEod(){
       <textarea rows="2" style="width:100%" data-acct="${esc(c)}" data-f="bottleneck" placeholder="If reps missed KPIs: who was the bottleneck, what happened (sick, half day, left early), did they meet KPIs?">${esc(p.bottleneck||'')}</textarea>
     </div></div>`;
   }).join('') : '<p class="muted" style="padding:14px">You are not set up as a manager on any account yet. Ask an admin to assign your offers under Users &rsaquo; Responsibilities.</p>';
-  renderMgrEodTable();
   renderOffdayApprovals();
+}
+// Leadership view (Admin > Manager EODs): read-only table of every manager's submitted EOD
+function renderMgrEodView(){
+  const seg=document.getElementById('mgrVSeg');
+  if(seg){ const key=MGR_VDAY?(MGR_VDAY===todayLocal()?'today':'yesterday'):''; seg.querySelectorAll('button').forEach(b=>b.classList.toggle('on',(b.getAttribute('onclick')||'').includes(`'${key}'`))); }
+  renderMgrEodTable();
 }
 let MGR_VDAY=''; // manager-EOD review day filter ('' = all recent)
 function setMgrVDay(v){ if(v==='today') MGR_VDAY=todayLocal(); else if(v==='yesterday'){ const d=new Date(); d.setDate(d.getDate()-1); MGR_VDAY=isoLocal(d); } else MGR_VDAY=''; document.querySelectorAll('#mgrVSeg button').forEach(b=>b.classList.toggle('on',(b.getAttribute('onclick')||'').includes(`'${v}'`))); renderMgrEodTable(); }
