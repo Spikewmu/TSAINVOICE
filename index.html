@@ -7066,7 +7066,7 @@ async function archiveUser(username, archive){
   if(!canManageUser(username)){ toast('You can only offboard Sales Managers and below',true); return; }
   const act=archive?'archiveUser':'unarchiveUser';
   const msg = archive
-    ? 'Offboard '+username+'?\n\nSales HQ will automatically:\n  • Deactivate their login (signed out, can’t log back in)\n  • Set their termination date to today\n  • Drop them from the active roster + all pickers\n\nYou still need to do these manually:\n  • Reassign their leads + calendar events to an active rep\n  • Remove their GHL access\n  • Remove them from Slack channels + any founder-specific programs\n\nAll their reports, deals and history stay. You can reactivate them anytime.'
+    ? 'Offboard '+username+'?\n\nSales HQ will automatically:\n  • Deactivate their login (signed out, can’t log back in)\n  • Set their termination date to today\n  • Drop them from the active roster + all pickers\n\nNext you’ll be asked, in a SEPARATE confirm, whether to also delete them from GHL.\n\nYou still need to do these manually:\n  • Reassign their leads + calendar events to an active rep\n  • Remove them from Slack channels + any founder-specific programs\n\nAll their reports, deals and history stay. You can reactivate them anytime.'
     : 'Reactivate '+username+'?\n\nRestores their login and puts them back on the active roster.';
   if(!confirm(msg)) return;
   if(SESSION && SESSION.token){ const res=await authApi({action:act, token:SESSION.token, username}); if(!res||!res.ok){ toast((res&&res.error)||'Could not update',true); return; } }
@@ -7075,6 +7075,28 @@ async function archiveUser(username, archive){
   // auto-stamp the termination date on offboard (so retention/accountability treat today as their end date) - only if none set yet
   if(archive){ try{ const m=repMetaFor(username)||{}, u=userByName(username); if(!m.endDate){ await addRecord({type:'repmeta', username, name:(u&&u.name)||username, startDate:m.startDate||'', endDate:todayLocal(), mgr:m.mgr||'', daysOff:Array.isArray(m.daysOff)?m.daysOff:[], reason:m.reason||''}); } }catch(_){} }
   toast(archive?'Offboarded - login deactivated, termination date set to today':'Reactivated - login restored'); renderUsers();
+  // GHL removal is DESTRUCTIVE + external, so it is its OWN explicit confirm (admin-only) - never fires from the offboard click alone
+  if(archive && SESSION && SESSION.role==='admin'){ try{ await offboardGhl(username); }catch(_){} }
+}
+// Separate, explicit "delete from GHL" step for an offboarded rep. Deletes their GHL user from each of their
+// client locations, but ONLY after a distinct confirm that names the accounts + warns it cannot be undone.
+// The server deletes only an exact single name/email match and skips anything ambiguous, so it can't hit the wrong person.
+async function offboardGhl(username){
+  const u=userByName(username)||{username,name:username};
+  const clients=((typeof teamsFor==='function'?teamsFor(username):[])||[]).filter(Boolean);
+  if(!clients.length) return; // no client accounts -> nothing to remove
+  const who=u.name||username;
+  const ok=confirm('DELETE '+who+' from GHL?\n\nThis PERMANENTLY removes their GHL user account from:\n  '+clients.join(', ')+'\n\nThis CANNOT be undone. It only deletes an exact name/email match and skips anything it is not sure about.\n\nOK = delete them from GHL now\nCancel = leave GHL access (you will remove it manually)');
+  if(!ok) return;
+  const email=/@/.test(u.username||'')?u.username:(u.email||'');
+  toast('Removing '+who+' from GHL...');
+  let res; try{ res=await splApi({action:'ghlRemoveUser', name:who, email, clients}); }catch(e){ res=null; }
+  if(!res||!res.ok||!Array.isArray(res.results)){ toast('Could not reach GHL - remove '+who+' manually',true); return; }
+  const done=res.results.filter(r=>r.ok), manual=res.results.filter(r=>!r.ok);
+  let msg='';
+  if(done.length) msg+='Removed from GHL: '+done.map(r=>r.client).join(', ')+'. ';
+  if(manual.length) msg+='Do manually: '+manual.map(r=>r.client+' ('+r.reason+')').join('; ');
+  toast(msg||'GHL: no accounts to remove', manual.length>0);
 }
 // delUser (hard delete of a user + all their data) removed [T-479] - it was dangerous and no longer wired to any button.
 // Offboarding (archiveUser) is the reversible path: deactivates the login + hides them, keeps all history.

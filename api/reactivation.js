@@ -224,6 +224,38 @@ export default async function handler(req, res) {
     return res.status(200).json(payload);
   }
 
+  // Offboard: remove a rep's GHL user from each of their client locations. DESTRUCTIVE - only fires when the UI
+  // sends it after an explicit "delete from GHL" confirmation. Fail-safe: deletes ONLY on exactly one exact match
+  // (email preferred, else full name); never on 0 or >1 matches. Reports per-client so the admin can finish manually.
+  if (action === 'ghlRemoveUser') {
+    if (!isSuper) return res.status(200).json({ ok: false, error: 'Admins only' });
+    const name = String(b.name || '').trim(), email = String(b.email || '').trim().toLowerCase();
+    const only = Array.isArray(b.clients) ? b.clients.map(x => String(x || '').trim()).filter(Boolean) : [];
+    if (!name && !email) return res.status(200).json({ ok: false, error: 'name or email required' });
+    const nrm = x => String(x || '').trim().toLowerCase();
+    const cfgs = await cfgAll(); const results = [];
+    for (const cfg of cfgs) {
+      const label = cfg.client || cfg.key || cfg.ghlLocationId;
+      if (only.length && !only.some(c => nrm(c) === nrm(label))) continue; // scope to this rep's clients
+      if (!/^pit-/i.test(String(cfg.ghlApiKey || ''))) { results.push({ client: label, ok: false, reason: 'GHL not on v2 API - remove manually' }); continue; }
+      try {
+        const { loc, base, H } = ghlCtx(cfg);
+        const list = await jretry(base + '/users/?locationId=' + encodeURIComponent(loc), { headers: H });
+        const users = (list.j && list.j.users) || [];
+        const full = u => (u.name || ((u.firstName || '') + ' ' + (u.lastName || '')).trim());
+        let matches = email ? users.filter(u => nrm(u.email) === email) : [];
+        if (!matches.length && name) matches = users.filter(u => nrm(full(u)) === nrm(name));
+        if (matches.length === 0) { results.push({ client: label, ok: false, reason: 'no matching GHL user - remove manually' }); continue; }
+        if (matches.length > 1) { results.push({ client: label, ok: false, reason: matches.length + ' GHL users match - remove manually to be safe' }); continue; }
+        const target = matches[0];
+        const del = await jfetch(base + '/users/' + encodeURIComponent(target.id), { method: 'DELETE', headers: H });
+        if (del && del.ok) results.push({ client: label, ok: true, removed: full(target) || target.email || target.id });
+        else results.push({ client: label, ok: false, reason: 'GHL rejected the delete (' + ((del && del.status) || '?') + ') - the key may lack user access; remove manually' });
+      } catch (e) { results.push({ client: label, ok: false, reason: String((e && e.message) || e).slice(0, 120) }); }
+    }
+    return res.status(200).json({ ok: true, results });
+  }
+
   const locationId = String(b.locationId || q.locationId || '').trim();
   if (!locationId) return res.status(200).json({ ok: false, error: 'locationId required' });
   const cfg = await cfgForLocation(locationId);
