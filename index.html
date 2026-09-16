@@ -445,6 +445,7 @@
     <button class="navhead"><svg class="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4-3 7-7 8-4-1-7-4-7-8V6z"/></svg><span class="nlabel">Admin</span><svg class="nchev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
     <div class="navsub">
       <button data-tab="invoicing">Invoicing</button>
+      <button data-tab="contracts">Contracts</button>
       <button data-tab="mgreodview">Manager EODs</button>
       <button data-tab="onbaudit">Onboarding Audit</button>
       <button data-tab="data">Data + Export</button>
@@ -1064,6 +1065,50 @@
     <h2 class="section">Manager EODs</h2>
     <p class="hint">Every manager's submitted end-of-day report - the numbers they reported for each offer plus their constraint note. Shows the latest per manager, account and day, and follows the company selector at the top of the page.</p>
     <div class="panel"><div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px"><h3 style="margin:0">Manager EOD review <span style="font-weight:400;color:var(--muted);font-size:12px">- what each manager reported + their constraint note (latest per manager, account &amp; day)</span></h3><div class="seg" id="mgrVSeg"><button onclick="setMgrVDay('')">All recent</button><button onclick="setMgrVDay('today')">Today</button><button onclick="setMgrVDay('yesterday')">Yesterday</button></div></div><div class="tablewrap" style="margin-top:10px"><table id="mgrEodTable"></table></div></div>
+  </section>
+
+  <!-- ===== CONTRACTS (lender view) ===== -->
+  <section id="tab-contracts" hidden>
+    <h2 class="section">Contracts</h2>
+    <p class="hint">Active client contracts, their revenue-share terms, and forecasted TSA revenue - the view for the lender. <b>Forecast</b> = your expected monthly client collections x the rev-share %. <b>Actual</b> = live cash collected from the app (front-end rate applied). Admin and director only.</p>
+    <div class="filters" style="margin:0 0 10px;align-items:center;gap:10px;flex-wrap:wrap">
+      <div class="seg" id="conPeriodSeg"><button class="on" onclick="setConPeriod('thismonth')">This month</button><button onclick="setConPeriod('quarter')">This quarter</button><button onclick="setConPeriod('year')">This year</button><button onclick="setConPeriod('all')">All-time</button></div>
+      <button class="btn gold sm" style="margin-left:auto" onclick="conEdit('')">+ Add contract</button>
+    </div>
+    <div id="conCards" style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:14px"></div>
+    <div class="panel" id="conForm" hidden>
+      <h3 id="confTitle" style="margin:0">Add contract</h3>
+      <div style="padding:12px 14px 14px">
+        <div class="grid3">
+          <div class="field"><label>Client / contract name</label><input id="conf_client" type="text"></div>
+          <div class="field"><label>App account (for live actuals)</label><select id="conf_app"></select></div>
+          <div class="field"><label>Status</label><label style="font-weight:400;display:flex;align-items:center;gap:6px;margin-top:6px"><input id="conf_active" type="checkbox" checked> Active</label></div>
+        </div>
+        <div class="formhead" style="margin-top:10px"><b>Front-end payments</b></div>
+        <div class="grid3">
+          <div class="field"><label>Rev share %</label><input id="conf_feRate" type="number" min="0" step="0.1"></div>
+          <div class="field"><label>Expected client collections $/mo</label><input id="conf_feMonthly" type="number" min="0" step="0.01"></div>
+          <div class="field"><label>Unknown?</label><label style="font-weight:400;display:flex;align-items:center;gap:6px;margin-top:6px"><input id="conf_feTBD" type="checkbox"> Rate TBD / confirm</label></div>
+        </div>
+        <div class="formhead" style="margin-top:10px"><b>Back-end payments</b></div>
+        <div class="grid3">
+          <div class="field"><label>Rev share %</label><input id="conf_beRate" type="number" min="0" step="0.1"></div>
+          <div class="field"><label>Expected client collections $/mo</label><input id="conf_beMonthly" type="number" min="0" step="0.01"></div>
+          <div class="field"><label>Unknown?</label><label style="font-weight:400;display:flex;align-items:center;gap:6px;margin-top:6px"><input id="conf_beTBD" type="checkbox"> Rate TBD / confirm</label></div>
+        </div>
+        <div class="formhead" style="margin-top:10px"><b>Special / notes</b></div>
+        <div class="grid3">
+          <div class="field"><label>One-time / special %</label><input id="conf_flipRate" type="number" min="0" step="0.1"></div>
+          <div class="field"><label>Special term note</label><input id="conf_flipNote" type="text" placeholder="e.g. on sale of the business flip"></div>
+          <div class="field"><label>Notes</label><input id="conf_notes" type="text"></div>
+        </div>
+        <div class="row-actions" style="margin-top:12px"><button class="btn gold" onclick="conSave()">Save contract</button><button class="btn ghost" onclick="conCancel()">Cancel</button></div>
+      </div>
+    </div>
+    <div class="panel"><h3 style="margin:0">Contracts &amp; rev-share <span style="font-weight:400;color:var(--muted);font-size:12px">- forecast vs live actual</span></h3><div class="tablewrap" style="margin-top:10px"><table id="conTable"></table></div>
+      <p id="conNote" class="hint" style="display:none;margin:10px 14px 0">Rows marked <span class="pill warn">TBD</span> are excluded from the forecast totals until you confirm the rate. Actual TSA applies the front-end rate to live cash collected (the app does not tag front-end vs back-end payments), so treat it as an estimate.</p>
+    </div>
+    <div class="panel"><h3 style="margin:0">Forecasted TSA revenue by month <span style="font-weight:400;color:var(--muted);font-size:12px">- flat recurring from active contracts</span></h3><div class="tablewrap" style="margin-top:10px"><table id="conForecast"></table></div></div>
   </section>
 
   <!-- ===== WEBINAR ===== -->
@@ -2186,8 +2231,8 @@ function startApp(){
 // base tabs a login TIER can see; per-account responsibilities add to this in applyNavAccess()
 function baseAllow(role){
   return ({
-    admin:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','adminreport','recruiting','messages','invoicing','onbaudit','data','users','integrations','settings','reprequests','resources'],
-    director:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','dailyreport','recruiting','messages','adminreport','onbaudit','reprequests','resources'],
+    admin:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','adminreport','recruiting','messages','invoicing','contracts','onbaudit','data','users','integrations','settings','reprequests','resources'],
+    director:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','dailyreport','recruiting','messages','adminreport','contracts','onbaudit','reprequests','resources'],
     manager:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','speedtolead','dailyreport','adminreport','recruiting','messages','reprequests','resources'],
     founder:['dash','reprequests'],
     recruiter:['dash','recruiting','messages','timeoff','reprequests','resources'],
@@ -2332,9 +2377,9 @@ function showTab(t){
   document.querySelectorAll('#tabs button[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
   document.querySelectorAll('#tabs .navgroup').forEach(g=>{ if(g.querySelector('button[data-tab="'+t+'"]')) g.classList.remove('collapsed'); }); // reveal the active tab's group
 
-  ['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','adminreport','reprequests','recruiting','messages','invoicing','onbaudit','data','users','integrations','settings','resources'].forEach(x=>{ const el=document.getElementById('tab-'+x); if(el) el.hidden = (x!==t); });
+  ['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','adminreport','reprequests','recruiting','messages','invoicing','contracts','onbaudit','data','users','integrations','settings','resources'].forEach(x=>{ const el=document.getElementById('tab-'+x); if(el) el.hidden = (x!==t); });
   // stale-while-revalidate: render instantly from the cached records, then refresh in the background
-  const render={dash:renderDash, mydeals:renderMyDeals, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, promises:renderPromisesTab, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, mgreodview:renderMgrEodView, webinar:renderWebinars, calllog:renderCallLog, calendar:renderCalendar, speedtolead:renderSpeedToLead, dailyreport:renderDailyReport, adminreport:renderAdminReport, reprequests:renderRepRequests, recruiting:renderRecruiting, messages:renderMessages, training:renderTraining, invoicing:renderInvoicing, data:renderAll}[t];
+  const render={dash:renderDash, mydeals:renderMyDeals, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, promises:renderPromisesTab, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, mgreodview:renderMgrEodView, contracts:renderContracts, webinar:renderWebinars, calllog:renderCallLog, calendar:renderCalendar, speedtolead:renderSpeedToLead, dailyreport:renderDailyReport, adminreport:renderAdminReport, reprequests:renderRepRequests, recruiting:renderRecruiting, messages:renderMessages, training:renderTraining, invoicing:renderInvoicing, data:renderAll}[t];
   if(render){ render(); syncRecords().then(()=>{ if(currentTab()===t) render(); buildGlobalClientSelect(); buildViewAsUserSelect(); updateNavBadges(); renderReminders(); }); }
   updateNavBadges();
   if(t==='data'){ renderDailyEntry(); crInit(); }
@@ -3054,6 +3099,115 @@ function renderMgrEodView(){
   const seg=document.getElementById('mgrVSeg');
   if(seg){ const key=MGR_VDAY?(MGR_VDAY===todayLocal()?'today':'yesterday'):''; seg.querySelectorAll('button').forEach(b=>b.classList.toggle('on',(b.getAttribute('onclick')||'').includes(`'${key}'`))); }
   renderMgrEodTable();
+}
+/* ===== Contracts & Revenue Forecast (T-548, lender view) ===== */
+const CONTRACT_SEED=[
+  {client:'Prime Acquisitions', feRate:25, beRate:25, flipRate:7, flipNote:'on sale of the business flip'},
+  {client:'Quantum Cipher', feRate:25, beRate:25},
+  {client:'Sales Revelation', feRate:25, beTBD:true, notes:'Back-end % is greyed in the contract - confirm'},
+  {client:'Salon Suites', feRate:30, beRate:0},
+  {client:'The Wealthy Muslim', feRate:30, beRate:30},
+  {client:'Option Trader Labs', feTBD:true, beTBD:true, notes:'Find the agreement - both rates unknown'}
+];
+let CON_PERIOD='thismonth';
+function collapseContracts(list){ const m={}; (list||[]).forEach(x=>{ if(x.type!=='contract')return; const k=nrmName(x.client); if(!m[k]||(x.submittedAt||'')>(m[k].submittedAt||'')) m[k]=x; }); return Object.values(m); }
+function contractsEffective(){
+  const saved={}; collapseContracts(RECORDS).forEach(c=>{ saved[nrmName(c.client)]=c; });
+  const out=[], seen={};
+  CONTRACT_SEED.forEach(s=>{ const k=nrmName(s.client); const rec=saved[k]; seen[k]=1; out.push(rec?Object.assign({},s,rec):Object.assign({},s)); });
+  Object.keys(saved).forEach(k=>{ if(!seen[k]) out.push(saved[k]); });
+  return out;
+}
+function conTokens(s){ return String(s||'').toLowerCase().replace(/\b(the|inc|llc|co|group|acquisitions?|labs?|suites?)\b/g,' ').replace(/[^a-z0-9 ]/g,' ').split(/\s+/).filter(w=>w.length>2); }
+function conMatchClient(c){
+  if(c.appClient) return c.appClient;
+  const want=conTokens(c.client); if(!want.length) return '';
+  let best='', score=0;
+  (clientNames()||[]).forEach(name=>{ const have=conTokens(name); const ov=want.filter(w=>have.includes(w)).length; if(ov>score){ score=ov; best=name; } });
+  return score>0?best:'';
+}
+function conRanges(){
+  const d=new Date();
+  const mo={from:isoLocal(new Date(d.getFullYear(),d.getMonth(),1)), to:isoLocal(new Date(d.getFullYear(),d.getMonth()+1,0))};
+  const q=Math.floor(d.getMonth()/3), qtr={from:isoLocal(new Date(d.getFullYear(),q*3,1)), to:isoLocal(new Date(d.getFullYear(),q*3+3,0))};
+  const yr={from:isoLocal(new Date(d.getFullYear(),0,1)), to:isoLocal(new Date(d.getFullYear(),11,31))};
+  return {thismonth:Object.assign({label:'This month'},mo), quarter:Object.assign({label:'This quarter'},qtr), year:Object.assign({label:'This year'},yr), all:{from:'',to:'',label:'All-time'}};
+}
+function conCashFor(appClient,from,to){
+  if(!appClient) return null;
+  const n=nrmName(appClient);
+  return activityRecords().filter(x=> nrmName(x.client)===n && countsMoney(x) && (!from||(x.date||'').slice(0,10)>=from) && (!to||(x.date||'').slice(0,10)<=to)).reduce((s,x)=>s+(Number(x.cashCollected)||0),0);
+}
+function conMonthlyForecast(c){
+  const fe=(c.feTBD||c.feRate==null)?0:(Number(c.feRate)||0)/100*(Number(c.feMonthly)||0);
+  const be=(c.beTBD||c.beRate==null)?0:(Number(c.beRate)||0)/100*(Number(c.beMonthly)||0);
+  return fe+be;
+}
+function conRateLabel(rate,tbd){ if(tbd||rate==null) return '<span class="pill warn">TBD</span>'; return esc(rate)+'%'; }
+function setConPeriod(p){ CON_PERIOD=p; document.querySelectorAll('#conPeriodSeg button').forEach(b=>b.classList.toggle('on',(b.getAttribute('onclick')||'').includes(`'${p}'`))); renderContracts(); }
+function conByName(name){ return contractsEffective().find(c=>nrmName(c.client)===nrmName(name))||{client:name,active:true}; }
+function conEdit(name){
+  const c=name?conByName(name):{client:'',active:true};
+  const f=document.getElementById('conForm'); if(!f) return;
+  f.hidden=false;
+  document.getElementById('confTitle').textContent=name?('Edit contract - '+c.client):'Add contract';
+  const set=(id,v)=>{ const el=document.getElementById(id); if(el){ if(el.type==='checkbox') el.checked=!!v; else el.value=(v==null?'':v); } };
+  set('conf_client',c.client);
+  const ci=document.getElementById('conf_client'); if(ci) ci.readOnly=!!name && CONTRACT_SEED.some(s=>nrmName(s.client)===nrmName(name));
+  const sel=document.getElementById('conf_app'), cur=c.appClient||conMatchClient(c);
+  if(sel) sel.innerHTML='<option value="">(none - no live actuals)</option>'+(clientNames()||[]).sort().map(n=>`<option value="${esc(n)}"${nrmName(n)===nrmName(cur)?' selected':''}>${esc(n)}</option>`).join('');
+  set('conf_active',c.active!==false);
+  set('conf_feRate',c.feRate); set('conf_feTBD',!!c.feTBD); set('conf_feMonthly',c.feMonthly);
+  set('conf_beRate',c.beRate); set('conf_beTBD',!!c.beTBD); set('conf_beMonthly',c.beMonthly);
+  set('conf_flipRate',c.flipRate); set('conf_flipNote',c.flipNote); set('conf_notes',c.notes);
+  f.scrollIntoView({behavior:'smooth',block:'center'});
+}
+function conCancel(){ const f=document.getElementById('conForm'); if(f) f.hidden=true; }
+async function conSave(){
+  const val=id=>{ const el=document.getElementById(id); return el?(el.type==='checkbox'?el.checked:el.value):''; };
+  const client=String(val('conf_client')||'').trim(); if(!client){ toast('Client name is required',true); return; }
+  const numOr=v=>{ v=String(v).trim(); return v===''?null:(parseFloat(v)||0); };
+  const feTBD=!!val('conf_feTBD'), beTBD=!!val('conf_beTBD');
+  const rec={type:'contract', client, appClient:val('conf_app')||'', active:!!val('conf_active'),
+    feRate:feTBD?null:numOr(val('conf_feRate')), feTBD, feMonthly:numOr(val('conf_feMonthly'))||0,
+    beRate:beTBD?null:numOr(val('conf_beRate')), beTBD, beMonthly:numOr(val('conf_beMonthly'))||0,
+    flipRate:numOr(val('conf_flipRate'))||0, flipNote:String(val('conf_flipNote')||'').trim(), notes:String(val('conf_notes')||'').trim()};
+  try{ await addRecord(rec); toast('Contract saved'); const f=document.getElementById('conForm'); if(f) f.hidden=true; renderContracts(); }
+  catch(e){ toast('Save failed: '+(e&&e.message||e),true); }
+}
+function renderContracts(){
+  const host=document.getElementById('tab-contracts'); if(!host) return;
+  const rng=conRanges()[CON_PERIOD]||conRanges().thismonth;
+  const list=contractsEffective(), active=list.filter(c=>c.active!==false);
+  let fcMonth=0, actual=0, anyTBD=false;
+  const rows=list.map(c=>{
+    const app=conMatchClient(c), fmo=conMonthlyForecast(c);
+    if(c.active!==false) fcMonth+=fmo;
+    const cash=conCashFor(app,rng.from,rng.to);
+    const feR=(c.feTBD||c.feRate==null)?null:(Number(c.feRate)||0);
+    const act=(cash!=null&&feR!=null)?cash*feR/100:null;
+    if(c.active!==false&&act!=null) actual+=act;
+    if(c.feTBD||c.beTBD) anyTBD=true;
+    const special=[]; if(c.flipRate) special.push(esc(c.flipRate)+'% '+esc(c.flipNote||'flip'));
+    return `<tr${c.active===false?' style="opacity:.5"':''}>`
+      +`<td><b>${esc(c.client)}</b>${app?'':' <span class="pill warn" title="No matching app account - set one to pull live actuals">no live link</span>'}${c.notes?`<div style="font-size:11px;color:var(--muted)">${esc(c.notes)}</div>`:''}</td>`
+      +`<td>${c.active===false?'<span class="pill">inactive</span>':'<span class="pill good">active</span>'}</td>`
+      +`<td class="num">${conRateLabel(c.feRate,c.feTBD)}</td>`
+      +`<td class="num">${c.feMonthly?money(c.feMonthly):'<span class="muted">-</span>'}</td>`
+      +`<td class="num">${conRateLabel(c.beRate,c.beTBD)}</td>`
+      +`<td class="num">${c.beMonthly?money(c.beMonthly):'<span class="muted">-</span>'}</td>`
+      +`<td style="font-size:12px">${special.length?special.join('<br>'):'<span class="muted">-</span>'}</td>`
+      +`<td class="num"><b>${money(fmo)}</b></td>`
+      +`<td class="num">${act!=null?money(act):'<span class="muted">'+(app?money(0):'-')+'</span>'}</td>`
+      +`<td><button class="btn ghost sm" onclick="conEdit('${jsStr(c.client)}')">Edit</button></td></tr>`;
+  }).join('');
+  const months=[], d0=new Date(); d0.setDate(1);
+  for(let i=0;i<6;i++){ const d=new Date(d0.getFullYear(),d0.getMonth()+i,1); months.push({label:d.toLocaleString('en-US',{month:'short',year:'numeric'}), amt:fcMonth}); }
+  const card=(l,v)=>`<div class="kpi" style="flex:1;min-width:170px"><div class="lbl">${l}</div><div class="val">${v}</div></div>`;
+  const cards=document.getElementById('conCards'); if(cards) cards.innerHTML=card('Active contracts',active.length)+card('Forecast TSA revenue / mo',money(fcMonth))+card('Forecast / yr',money(fcMonth*12))+card('Actual TSA ('+esc(rng.label)+')',money(actual));
+  const t=document.getElementById('conTable'); if(t) t.innerHTML=`<thead><tr><th>Client</th><th>Status</th><th class="num">FE %</th><th class="num">FE exp $/mo</th><th class="num">BE %</th><th class="num">BE exp $/mo</th><th>Special</th><th class="num">Forecast TSA/mo</th><th class="num">Actual TSA (${esc(rng.label)})</th><th></th></tr></thead><tbody>${rows}</tbody>`;
+  const fc=document.getElementById('conForecast'); if(fc) fc.innerHTML=`<thead><tr>${months.map(m=>`<th class="num">${esc(m.label)}</th>`).join('')}<th class="num">Next 12 mo</th></tr></thead><tbody><tr>${months.map(m=>`<td class="num">${money(m.amt)}</td>`).join('')}<td class="num"><b>${money(fcMonth*12)}</b></td></tr></tbody>`;
+  const note=document.getElementById('conNote'); if(note) note.style.display=anyTBD?'':'none';
 }
 let MGR_VDAY=''; // manager-EOD review day filter ('' = all recent)
 function setMgrVDay(v){ if(v==='today') MGR_VDAY=todayLocal(); else if(v==='yesterday'){ const d=new Date(); d.setDate(d.getDate()-1); MGR_VDAY=isoLocal(d); } else MGR_VDAY=''; document.querySelectorAll('#mgrVSeg button').forEach(b=>b.classList.toggle('on',(b.getAttribute('onclick')||'').includes(`'${v}'`))); renderMgrEodTable(); }
