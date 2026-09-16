@@ -1453,6 +1453,7 @@
         <div class="field"><label>Password *</label><input name="password" type="text" required placeholder="set a password"></div>
         <div class="field"><label>Reporting manager *</label><select name="mgr" id="newUserMgr" required></select><span class="fieldhelp">Who they report to and who approves their time off.</span></div>
         <div class="field"><label>Hire date *</label><input name="startDate" type="date" required><span class="fieldhelp">Keeps pre-hire days from counting as missed reports; drives retention lifespan.</span></div>
+        <div class="field"><label>Email <span class="muted" style="font-weight:400">- their GHL login email</span></label><input name="email" type="email" placeholder="rep@email.com"><span class="fieldhelp">Used to find + remove their GHL account on offboard. Optional but recommended.</span></div>
         <div class="field full"><label>Teams / accounts (assign one or more) *</label><div id="newUserTeams" class="teamboxes"></div></div>
         <div class="full row-actions"><button class="btn gold" type="submit">Save user</button><span class="tag">Saving creates the login and opens the full editor to finish setup. Existing users: change them with Edit on their row below (no password needed).</span></div>
       </form>
@@ -1842,6 +1843,7 @@
         <div class="field"><label>Reporting manager</label><select id="ueMgr"></select><span class="fieldhelp">Approves this person's time off.</span></div>
         <div class="field"><label>Hire date</label><input type="date" id="ueStart"></div>
         <div class="field"><label>Termination date</label><input type="date" id="ueEnd" onchange="ueReasonToggle()"><span class="fieldhelp">Leave blank if still active.</span></div>
+        <div class="field"><label>Email <span class="muted" style="font-weight:400">- GHL login email</span></label><input type="email" id="ueEmail" placeholder="rep@email.com"><span class="fieldhelp">Used to find + remove their GHL account on offboard.</span></div>
       </div>
       <div class="field" id="ueReasonWrap" hidden style="margin-top:10px"><label>Offboard reason</label><select id="ueReason"></select><span class="fieldhelp">Why they left - feeds the retention breakdown.</span></div>
       <div class="field" style="margin-top:10px"><label>Scheduled day(s) off <span class="muted" style="font-weight:400">- recurring weekly, never counts as a missed report</span></label>
@@ -5251,7 +5253,8 @@ async function saveRepMeta(){
   if(!REPMETA_EDIT) return; const u=userByName(REPMETA_EDIT);
   const startDate=(document.getElementById('rmStart').value||'').slice(0,10), endDate=(document.getElementById('rmEnd').value||'').slice(0,10), mgr=document.getElementById('rmMgr').value||'';
   const daysOff=[...document.querySelectorAll('#rmDaysOff input:checked')].map(cb=>+cb.value);
-  await addRecord({type:'repmeta',username:u.username,name:u.name||u.username,startDate,endDate,mgr,daysOff});
+  const email=(repMetaFor(u.username)||{}).email||''; // preserve the GHL email (this panel doesn't edit it)
+  await addRecord({type:'repmeta',username:u.username,name:u.name||u.username,startDate,endDate,mgr,daysOff,email});
   document.getElementById('repMetaEditPanel').hidden=true; REPMETA_EDIT=null; toast('Rep details saved'); renderUsers();
 }
 function repMetaSummary(username){ const m=repMetaFor(username); if(!m) return ''; const bits=[]; if(m.startDate)bits.push('hired '+usDate(m.startDate)); if(m.endDate)bits.push('left '+usDate(m.endDate)); if(m.mgr)bits.push('mgr: '+m.mgr); if(Array.isArray(m.daysOff)&&m.daysOff.length)bits.push('off: '+m.daysOff.map(Number).sort().map(d=>DOW_NAMES[d]).join(', ')); return bits.length?`<div class="muted" style="font-size:11px;margin-top:3px">${esc(bits.join(' · '))}</div>`:''; }
@@ -6958,6 +6961,7 @@ function userEditOpen(username){
   sel.value=m.mgr||'';
   document.getElementById('ueStart').value=m.startDate?m.startDate.slice(0,10):'';
   document.getElementById('ueEnd').value=m.endDate?m.endDate.slice(0,10):'';
+  { const ee=document.getElementById('ueEmail'); if(ee) ee.value=m.email||''; }
   const rsel=document.getElementById('ueReason'); rsel.innerHTML=OFFBOARD_REASONS.map(r=>`<option value="${esc(r)}">${r?esc(r):'- select -'}</option>`).join(''); rsel.value=m.reason||'';
   const cur=Array.isArray(m.daysOff)?m.daysOff.map(Number):[];
   document.getElementById('ueDaysOff').innerHTML=DOW_NAMES.map((nm,i)=>`<label><input type="checkbox" value="${i}" ${cur.includes(i)?'checked':''}>${nm}</label>`).join('');
@@ -6988,7 +6992,8 @@ async function userEditSave(){
   // 3) manager + dates + offboard reason + recurring days off
   const startDate=(document.getElementById('ueStart').value||'').slice(0,10), endDate=(document.getElementById('ueEnd').value||'').slice(0,10), mgr=document.getElementById('ueMgr').value||'', reason=endDate?(document.getElementById('ueReason').value||''):'';
   const daysOff=[...document.querySelectorAll('#ueDaysOff input:checked')].map(cb=>+cb.value);
-  jobs.push(addRecord({type:'repmeta', username, name, startDate, endDate, mgr, daysOff, reason}));
+  const email=(document.getElementById('ueEmail')&&document.getElementById('ueEmail').value||'').trim();
+  jobs.push(addRecord({type:'repmeta', username, name, startDate, endDate, mgr, daysOff, reason, email}));
   // 4) responsibilities (client manager fields) - only when that section is shown
   if(!document.getElementById('ueRespWrap').hidden){
     const sel={};
@@ -7046,7 +7051,7 @@ async function saveUser(e){
     save(LS.users,LOCAL_USERS);
   }
   await addRecord({type:'team', username:o.username, teams:JSON.stringify(teams)}); // assign teams (also clears if none ticked)
-  await addRecord({type:'repmeta', username:o.username, name:o.name, startDate:(o.startDate||'').slice(0,10), endDate:'', mgr:(o.mgr||'').trim(), daysOff:[], reason:''}); // capture manager + hire date at creation
+  await addRecord({type:'repmeta', username:o.username, name:o.name, startDate:(o.startDate||'').slice(0,10), endDate:'', mgr:(o.mgr||'').trim(), daysOff:[], reason:'', email:(o.email||'').trim()}); // capture manager + hire date + email at creation
   if(o.password){ try{ await addRecord({type:'pwreset', username:o.username, at:new Date().toISOString(), by:(SESSION&&SESSION.name)||'admin'}); }catch(_){} } // admin-set password -> force them to set their own on first login
   if((o.role==='setter'||o.role==='closer') && !repOnboardFor(o.username)){ await addRecord({type:'reponboard', username:o.username, name:o.name, contract:false, slack:false, ghl:false, training:false}); } // start their onboarding checklist
   const unEl=e.target.querySelector('[name=username]'); if(unEl) delete unEl.dataset.touched;
@@ -7074,7 +7079,7 @@ async function archiveUser(username, archive){
   else if(CFG.endpoint){ const res=await api({action:act, ...authFields(), username}); if(!res||!res.ok){ toast('Could not update',true); return; } }
   else { LOCAL_USERS=LOCAL_USERS.map(x=>x.username===username?{...x,archived:archive}:x); save(LS.users,LOCAL_USERS); }
   // auto-stamp the termination date on offboard (so retention/accountability treat today as their end date) - only if none set yet
-  if(archive){ try{ const m=repMetaFor(username)||{}, u=userByName(username); if(!m.endDate){ await addRecord({type:'repmeta', username, name:(u&&u.name)||username, startDate:m.startDate||'', endDate:todayLocal(), mgr:m.mgr||'', daysOff:Array.isArray(m.daysOff)?m.daysOff:[], reason:m.reason||''}); } }catch(_){} }
+  if(archive){ try{ const m=repMetaFor(username)||{}, u=userByName(username); if(!m.endDate){ await addRecord({type:'repmeta', username, name:(u&&u.name)||username, startDate:m.startDate||'', endDate:todayLocal(), mgr:m.mgr||'', daysOff:Array.isArray(m.daysOff)?m.daysOff:[], reason:m.reason||'', email:m.email||''}); } }catch(_){} }
   toast(archive?'Offboarded - login deactivated, termination date set to today':'Reactivated - login restored'); renderUsers();
   // GHL removal is DESTRUCTIVE + external, so it is its OWN explicit confirm (admin-only) - never fires from the offboard click alone
   if(archive && SESSION && SESSION.role==='admin'){ try{ await offboardGhl(username); }catch(_){} }
@@ -7089,7 +7094,7 @@ async function offboardGhl(username){
   const who=u.name||username;
   const ok=confirm('DELETE '+who+' from GHL?\n\nThis PERMANENTLY removes their GHL user account from:\n  '+clients.join(', ')+'\n\nThis CANNOT be undone. It only deletes an exact name/email match and skips anything it is not sure about.\n\nOK = delete them from GHL now\nCancel = leave GHL access (you will remove it manually)');
   if(!ok) return;
-  const email=/@/.test(u.username||'')?u.username:(u.email||'');
+  const email=((repMetaFor(username)||{}).email||'').trim() || (/@/.test(u.username||'')?u.username:'') || (u.email||''); // prefer the stored GHL email, then username-if-email
   toast('Removing '+who+' from GHL...');
   let res; try{ res=await splApi({action:'ghlRemoveUser', name:who, email, clients}); }catch(e){ res=null; }
   if(!res||!res.ok||!Array.isArray(res.results)){ toast('Could not reach GHL - remove '+who+' manually',true); return; }
