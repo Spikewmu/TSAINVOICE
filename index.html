@@ -1001,7 +1001,7 @@
     </div></div>
 
     <div class="panel"><h3>Whole team updates <span style="font-weight:400;color:var(--muted);font-size:12px">- not tied to a specific account</span></h3><div style="padding:14px">
-      <div class="field full"><label>Update for the whole team (optional)</label><textarea id="agTeam" rows="2" style="width:100%" placeholder="Announcements or notes for everyone"></textarea></div>
+      <div class="field full"><label>Update for the whole team (optional)</label><div style="position:relative"><textarea id="agTeam" rows="2" style="width:100%;padding-right:92px" placeholder="Announcements or notes for everyone"></textarea><button type="button" class="btn ghost sm" onclick="micDictate(this)" title="Dictate this note" style="position:absolute;top:6px;right:6px">&#127908; Speak</button></div></div>
       <div class="row-actions" style="margin-top:10px"><button class="btn gold" onclick="saveMeeting()">Save all updates</button><span class="tag">Saves your account wins/updates/needs and this whole-team note in one go.</span></div>
     </div></div>
 
@@ -3318,7 +3318,7 @@ function renderFillGrid(){
       <div style="font-weight:600;margin-bottom:6px">${esc(c)}</div>
       ${metricsLineHTML(clientDayMetrics(c,date))}
       <input data-client="${esc(c)}" data-section="Win" data-orig="${win}" style="width:100%" placeholder="Win for ${esc(c)} (optional)" value="${win}">
-      <textarea data-client="${esc(c)}" data-section="Account update" data-orig="${up}" rows="2" style="width:100%;margin-top:6px" placeholder="Update for ${esc(c)} (blank = nothing to report)">${up}</textarea>
+      <div style="position:relative;margin-top:6px"><textarea data-client="${esc(c)}" data-section="Account update" data-orig="${up}" rows="2" style="width:100%;padding-right:92px" placeholder="Update for ${esc(c)} (blank = nothing to report)">${up}</textarea><button type="button" class="btn ghost sm" onclick="micDictate(this)" title="Dictate this update" style="position:absolute;top:6px;right:6px">&#127908; Speak</button></div>
       <input data-client="${esc(c)}" data-section="Need" data-orig="${need}" style="width:100%;margin-top:6px" placeholder="Need for ${esc(c)} (what you need from the team - reps, assets, access, a decision)" value="${need}">
     </div>`; }).join('')
     : '<p class="muted">Add clients on the Client Overview tab first.</p>';
