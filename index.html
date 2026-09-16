@@ -2926,9 +2926,11 @@ async function submitWebinar(e){ e.preventDefault(); const btn=e.target.querySel
 function collapseMgrEod(list){ const m={}; list.forEach(x=>{ if(x.type!=='mgreod')return; const k=[(x.date||'').slice(0,10),(x.client||'').trim(),(x.by||'').trim()].join('|'); if(!m[k]||(x.submittedAt||'')>(m[k].submittedAt||'')) m[k]=x; }); return Object.values(m); }
 // the offers a manager fills an EOD for = the accounts they run (any function); admins/unassigned fall back to all in-scope clients
 function mgrEodClients(){
+  const role=SESSION&&SESSION.role;
+  const all=()=>{ const sc=dashScopeClients(); return sc?sc.filter(c=>c!==' none'):clientNames(); };
+  if(role==='admin'||role==='director') return all(); // super-admin / director fill/see EVERY account (respects the global company selector); managers stay scoped
   const mine=managedClientsForUser(SESSION);
-  if(mine.length) return mine;
-  const sc=dashScopeClients(); return sc?sc.filter(c=>c!==' none'):clientNames();
+  return mine.length ? mine : all();
 }
 const MGR_SET_FIELDS=[['settersWorking','Setters working today','1'],['setterHours','Total hours','0.1'],['setterDials','Total inputs (dials)','1'],['setterSets','Total sets','1'],['setterEods','Setter EOD checkouts','1']];
 const MGR_CLO_FIELDS=[['closersWorking','Closers working today','1'],['closerCalls','Calls taken','1'],['showRate','Show rate (%)','1'],['closeRate','Close rate (%)','1'],['cash','Cash collected ($)','0.01'],['closerEods','Closer EOD checkouts','1']];
@@ -2937,7 +2939,10 @@ const MGR_NUM_FIELDS=[...MGR_SET_FIELDS,...MGR_CLO_FIELDS].map(f=>f[0]);
 // so the manager doesn't retype numbers the reps already entered. Every value stays editable after prefill.
 function mgrEodSuggest(client, date){
   const d=(date||'').slice(0,10);
-  const recs=activityRecords().filter(x=>x.client===client && (x.date||'').slice(0,10)===d);
+  // normalize client-name match (case + whitespace) so an account whose EODs carry a slightly different
+  // spelling than the picker still pulls (fixes "Refresh from team" pulling zeros for Quantum/DHG but not Billy)
+  const nc=s=>String(s||'').trim().toLowerCase().replace(/\s+/g,' ');
+  const recs=activityRecords().filter(x=>nc(x.client)===nc(client) && (x.date||'').slice(0,10)===d);
   const setterEods=recs.filter(x=>x.type==='eod' && x.role==='Setter');
   const closerEods=recs.filter(x=>x.type==='eod' && x.role!=='Setter');
   const setters=new Set(setterEods.map(x=>(x.rep||'').trim().toLowerCase()).filter(Boolean));
