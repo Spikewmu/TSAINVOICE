@@ -303,6 +303,20 @@ export default async function handler(req, res) {
       const out = await ghlPush(cfg, rec, b.contactId); // real note + real source; contactId (optional) pushes straight to that contact when the deal has no lead email
       return res.status(200).json(out);
     }
+    // ---------- SEND a founder-invoice summary to the client's invoicing Slack channel (T-546) ----------
+    if (action === 'sendInvoice') {
+      if (s && !['admin', 'director'].includes(s.role)) return res.status(200).json({ ok: false, error: 'Admins only' });
+      const client = String(b.client || '').trim();
+      if (!client) return res.status(200).json({ ok: false, error: 'client required' });
+      const cfg = await integrationFor(callerWs, client);
+      if (!cfg || !cfg.invoicingSlack) return res.status(200).json({ ok: false, error: 'No invoicing channel connected for ' + client + '. Connect it on Integrations › Invoicing, then send.' });
+      const usd = ss => { ss = String(ss || '').slice(0, 10); const dm = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ss); return dm ? (+dm[2]) + '-' + (+dm[3]) + '-' + dm[1] : ss; };
+      const period = (b.from ? usd(b.from) : '?') + ' to ' + (b.to ? usd(b.to) : '?');
+      const rateDesc = b.rateDesc ? ' (' + String(b.rateDesc).slice(0, 80) + ')' : '';
+      const body = `🧾 *Invoice · ${client}*\n*Period:* ${period}\n*Cash collected:* ${money(b.cash)}\n*Amount due (TSA):* ${money(b.amount)}${rateDesc}\n*Deals:* ${Number(b.deals || 0)}`;
+      await postChan(cfg.invoicingSlack, `Invoice · ${client} · ${money(b.amount)}`, [{ type: 'section', text: { type: 'mrkdwn', text: body } }]);
+      return res.status(200).json({ ok: true });
+    }
     // ---------- ONE-SHOT MAINTENANCE: normalize whitespace in person-name fields (rep/setter/by/closer) ----------
     // Historical records inherited trailing/duplicate spaces from user names (e.g. "Carolina "), because auto-populate
     // stamps rep/by from the stored user name. We PATCH the row IN PLACE by its DB id so there is NO Slack/GHL side
