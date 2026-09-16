@@ -423,6 +423,7 @@
     <button class="navhead"><svg class="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5A2.5 2.5 0 016.5 3H20v15H6.5A2.5 2.5 0 004 20.5z"/><path d="M4 20.5A2.5 2.5 0 016.5 18H20v3H6.5A2.5 2.5 0 014 20.5z"/></svg><span class="nlabel">Resources &amp; Guides</span><svg class="nchev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
     <div class="navsub">
       <button data-tab="resources">Show-Up &amp; Handoff Cadence</button>
+      <button data-tab="faq">FAQ</button>
     </div>
   </div>
   <div class="navgroup collapsed">
@@ -1121,6 +1122,22 @@
       <p id="conNote" class="hint" style="display:none;margin:10px 14px 0">Rows marked <span class="pill warn">TBD</span> are excluded from the forecast totals until you confirm the rate. Actual TSA applies the front-end rate to live cash collected (the app does not tag front-end vs back-end payments), so treat it as an estimate.</p>
     </div>
     <div class="panel"><h3 style="margin:0">Forecasted TSA revenue by month <span style="font-weight:400;color:var(--muted);font-size:12px">- flat recurring from active contracts</span></h3><div class="tablewrap" style="margin-top:10px"><table id="conForecast"></table></div></div>
+  </section>
+
+  <!-- ===== FAQ ===== -->
+  <section id="tab-faq" hidden>
+    <h2 class="section">FAQ</h2>
+    <p class="hint">Ask a question about an account. The client (or an admin) answers it, and it is saved to the <b>master FAQ</b> for everyone - so the same question never has to be asked twice. Becomes the onboarding quiz source over time.</p>
+    <div class="panel" id="faqAskPanel" hidden>
+      <h3 style="margin:0 0 10px">Ask a question</h3>
+      <div style="padding:0 2px">
+        <div class="filters" style="margin:0 0 8px;align-items:flex-end"><div class="field"><label>Account</label><select id="faqClient"></select></div></div>
+        <textarea id="faqQ" rows="2" style="width:100%" placeholder="What do you want to know? (e.g. can we offer a price drop? what is the refund policy?)"></textarea>
+        <div class="row-actions" style="margin-top:10px"><button class="btn gold" onclick="submitFaq()">Submit question</button></div>
+      </div>
+    </div>
+    <div class="panel"><h3 style="margin:0 0 8px">Open questions <span style="font-weight:400;color:var(--muted);font-size:12px">- awaiting an answer</span></h3><div id="faqOpen"></div></div>
+    <div class="panel"><h3 style="margin:0 0 8px">Master FAQ <span style="font-weight:400;color:var(--muted);font-size:12px">- answered</span></h3><input id="faqSearch" placeholder="Search the FAQ" oninput="renderFaq()" style="max-width:340px;margin-bottom:12px"><div id="faqAnswered"></div></div>
   </section>
 
   <!-- ===== WEBINAR ===== -->
@@ -2245,14 +2262,14 @@ function startApp(){
 // base tabs a login TIER can see; per-account responsibilities add to this in applyNavAccess()
 function baseAllow(role){
   return ({
-    admin:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','adminreport','recruiting','messages','invoicing','contracts','onbaudit','data','users','integrations','settings','reprequests','resources'],
-    director:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','dailyreport','recruiting','messages','adminreport','contracts','onbaudit','reprequests','resources'],
-    manager:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','speedtolead','dailyreport','adminreport','recruiting','messages','reprequests','resources'],
-    founder:['dash','reprequests'],
-    recruiter:['dash','recruiting','messages','timeoff','reprequests','resources'],
-    webinarteam:['dash','meeting','promises','timeoff','webinar','resources'],
-    closer:['dash','mydeals','postcall','sod','eod','training','timeoff','calllog','reps','resources'],
-    setter:['dash','mydeals','postcall','sod','eod','training','timeoff','calllog','reps','resources']
+    admin:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','adminreport','recruiting','messages','invoicing','contracts','onbaudit','data','users','integrations','settings','reprequests','resources','faq'],
+    director:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','dailyreport','recruiting','messages','adminreport','contracts','onbaudit','reprequests','resources','faq'],
+    manager:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','speedtolead','dailyreport','adminreport','recruiting','messages','reprequests','resources','faq'],
+    founder:['dash','reprequests','faq'],
+    recruiter:['dash','recruiting','messages','timeoff','reprequests','resources','faq'],
+    webinarteam:['dash','meeting','promises','timeoff','webinar','resources','faq'],
+    closer:['dash','mydeals','postcall','sod','eod','training','timeoff','calllog','reps','resources','faq'],
+    setter:['dash','mydeals','postcall','sod','eod','training','timeoff','calllog','reps','resources','faq']
   })[role] || ['eod'];
 }
 // ---- multi-role: a user can hold several roles (stored as a 'userroles' record); access = the union ----
@@ -2391,9 +2408,9 @@ function showTab(t){
   document.querySelectorAll('#tabs button[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
   document.querySelectorAll('#tabs .navgroup').forEach(g=>{ if(g.querySelector('button[data-tab="'+t+'"]')) g.classList.remove('collapsed'); }); // reveal the active tab's group
 
-  ['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','adminreport','reprequests','recruiting','messages','invoicing','contracts','onbaudit','data','users','integrations','settings','resources'].forEach(x=>{ const el=document.getElementById('tab-'+x); if(el) el.hidden = (x!==t); });
+  ['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','adminreport','reprequests','recruiting','messages','invoicing','contracts','onbaudit','data','users','integrations','settings','resources','faq'].forEach(x=>{ const el=document.getElementById('tab-'+x); if(el) el.hidden = (x!==t); });
   // stale-while-revalidate: render instantly from the cached records, then refresh in the background
-  const render={dash:renderDash, mydeals:renderMyDeals, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, promises:renderPromisesTab, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, mgreodview:renderMgrEodView, contracts:renderContracts, webinar:renderWebinars, calllog:renderCallLog, calendar:renderCalendar, speedtolead:renderSpeedToLead, dailyreport:renderDailyReport, adminreport:renderAdminReport, reprequests:renderRepRequests, recruiting:renderRecruiting, messages:renderMessages, training:renderTraining, invoicing:renderInvoicing, data:renderAll}[t];
+  const render={dash:renderDash, mydeals:renderMyDeals, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, promises:renderPromisesTab, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, mgreodview:renderMgrEodView, contracts:renderContracts, faq:renderFaq, webinar:renderWebinars, calllog:renderCallLog, calendar:renderCalendar, speedtolead:renderSpeedToLead, dailyreport:renderDailyReport, adminreport:renderAdminReport, reprequests:renderRepRequests, recruiting:renderRecruiting, messages:renderMessages, training:renderTraining, invoicing:renderInvoicing, data:renderAll}[t];
   if(render){ render(); syncRecords().then(()=>{ if(currentTab()===t) render(); buildGlobalClientSelect(); buildViewAsUserSelect(); updateNavBadges(); renderReminders(); }); }
   updateNavBadges();
   if(t==='data'){ renderDailyEntry(); crInit(); }
@@ -3237,6 +3254,45 @@ function renderContracts(){
   const t=document.getElementById('conTable'); if(t) t.innerHTML=`<thead><tr><th>Client</th><th>Status</th><th class="num">Front-end</th><th class="num">Back-end</th><th>Special</th><th class="num">Forecast TSA/mo</th><th class="num">Actual TSA</th><th></th></tr></thead><tbody>${rows}</tbody>`;
   const fc=document.getElementById('conForecast'); if(fc) fc.innerHTML=`<thead><tr>${months.map(m=>`<th class="num">${esc(m.label)}</th>`).join('')}<th class="num">Next 12 mo</th></tr></thead><tbody><tr>${months.map(m=>`<td class="num">${money(m.amt)}</td>`).join('')}<td class="num"><b>${money(fcMonth*12)}</b></td></tr></tbody>`;
   const note=document.getElementById('conNote'); if(note) note.style.display=anyTBD?'':'none';
+}
+/* ===== FAQ (T-495): reps ask -> the client (founder) or an admin answers -> saved to a searchable master FAQ ===== */
+function collapseFaq(){ const m={}; (RECORDS||[]).forEach(x=>{ if(x.type!=='faq'||!x.id)return; if(!m[x.id]||(x.submittedAt||'')>(m[x.id].submittedAt||'')) m[x.id]=x; }); return Object.values(m).filter(r=>!r.deleted); }
+function faqRole(){ return (SESSION&&SESSION.role)||''; }
+function faqCanAsk(){ return ['admin','director','manager','webinarteam','recruiter','closer','setter'].includes(faqRole()); }
+function faqCanAnswer(){ return ['admin','director','founder'].includes(faqRole()); }
+function faqIsAdmin(){ return ['admin','director'].includes(faqRole()); }
+// the accounts a user is scoped to (founders/reps -> their teams; admins/directors -> everything)
+function faqMyClients(){ const r=faqRole(); if(faqIsAdmin()) return clientNames(); if(['founder','closer','setter'].includes(r)){ const t=teamsFor(SESSION.username); return t.length?t:(r==='founder'&&SESSION&&SESSION.name?[SESSION.name]:[]); } const sc=dashScopeClients(); return sc||clientNames(); }
+function faqCanAnswerClient(client){ if(faqIsAdmin()) return true; if(faqRole()==='founder') return faqMyClients().some(c=>nrmName(c)===nrmName(client)); return false; }
+function faqVisible(){ const list=collapseFaq(); if(faqIsAdmin()) return list; const mine=faqMyClients().map(nrmName); return list.filter(x=>mine.includes(nrmName(x.client))); }
+function submitFaq(){ if(!faqCanAsk()){ toast('You are not able to submit questions.',true); return; } const q=(document.getElementById('faqQ').value||'').trim(), client=(document.getElementById('faqClient').value||'').trim(); if(!q){ toast('Type a question first.',true); return; } if(!client){ toast('Pick the account this is about.',true); return; } addRecord({type:'faq', id:uid(), question:q, client, status:'open', by:(SESSION&&SESSION.name)||''}).then(()=>{ document.getElementById('faqQ').value=''; toast('Question submitted - the client will answer it.'); renderFaq(); }); }
+function answerFaq(id){ const cur=collapseFaq().find(x=>x.id===id); if(!cur) return; if(!faqCanAnswerClient(cur.client)){ toast('Only the client or an admin can answer this.',true); return; } const el=document.getElementById('faqans_'+id), a=el?(el.value||'').trim():''; if(!a){ toast('Type an answer first.',true); return; } addRecord(Object.assign({},cur,{status:'answered', answer:a, answeredBy:(SESSION&&SESSION.name)||'', answeredAt:new Date().toISOString()})).then(()=>{ toast('Answer saved to the FAQ.'); renderFaq(); }); }
+function reopenFaq(id){ const cur=collapseFaq().find(x=>x.id===id); if(!cur||!faqCanAnswer()) return; addRecord(Object.assign({},cur,{status:'open'})).then(renderFaq); }
+function deleteFaq(id){ const cur=collapseFaq().find(x=>x.id===id); if(!cur) return; if(!faqIsAdmin()){ toast('Admins only.',true); return; } if(!confirm('Remove this question from the FAQ?')) return; addRecord(Object.assign({},cur,{deleted:true})).then(renderFaq); }
+function faqOpenCard(x){
+  const canAns=faqCanAnswerClient(x.client);
+  return `<div style="border:1px solid var(--border);border-radius:9px;padding:10px 12px;margin-bottom:8px">
+    <div><b>${esc(x.question)}</b></div>
+    <div class="muted" style="font-size:11px;margin-top:3px">${esc(x.client)} &middot; asked by ${esc(x.by||'-')}</div>
+    ${canAns?`<div style="display:flex;gap:8px;margin-top:8px"><input id="faqans_${x.id}" placeholder="Answer this" style="flex:1" onkeydown="if(event.key==='Enter'){event.preventDefault();answerFaq('${x.id}');}"><button class="btn gold sm" onclick="answerFaq('${x.id}')">Answer</button></div>`:`<div class="muted" style="font-size:11px;margin-top:6px">Waiting on ${esc(x.client)} to answer.</div>`}
+    ${faqIsAdmin()?`<button class="btn ghost sm" style="margin-top:8px;color:var(--warn);border-color:var(--warn)" onclick="deleteFaq('${x.id}')">Remove</button>`:''}
+  </div>`;
+}
+function faqAnsCard(x){
+  return `<div style="border:1px solid var(--border);border-radius:9px;padding:10px 12px;margin-bottom:8px">
+    <div><b>${esc(x.question)}</b></div>
+    <div style="margin-top:4px">${esc(x.answer)}</div>
+    <div class="muted" style="font-size:11px;margin-top:5px">${esc(x.client)} &middot; answered by ${esc(x.answeredBy||'-')}${x.answeredAt?' &middot; '+esc(usDate(x.answeredAt)):''}${faqCanAnswer()?` &middot; <a class="linklike" style="cursor:pointer" onclick="reopenFaq('${x.id}')">reopen</a>`:''}${faqIsAdmin()?` &middot; <a class="linklike" style="cursor:pointer;color:var(--warn)" onclick="deleteFaq('${x.id}')">remove</a>`:''}</div>
+  </div>`;
+}
+function renderFaq(){
+  const ask=document.getElementById('faqAskPanel'); if(ask) ask.hidden=!faqCanAsk();
+  const sel=document.getElementById('faqClient'); if(sel){ const opts=faqMyClients(), cur=sel.value; sel.innerHTML=opts.map(c=>`<option>${esc(c)}</option>`).join(''); if(cur&&opts.includes(cur)) sel.value=cur; }
+  const all=faqVisible();
+  const openBox=document.getElementById('faqOpen');
+  if(openBox){ const open=all.filter(x=>x.status!=='answered').sort((a,b)=>(b.submittedAt||'').localeCompare(a.submittedAt||'')); openBox.innerHTML=open.length?open.map(faqOpenCard).join(''):'<p class="muted" style="padding:6px 2px;margin:0">No open questions.</p>'; }
+  const box=document.getElementById('faqAnswered');
+  if(box){ const q=((document.getElementById('faqSearch')||{}).value||'').toLowerCase(); let ans=all.filter(x=>x.status==='answered').sort((a,b)=>(b.answeredAt||'').localeCompare(a.answeredAt||'')); if(q) ans=ans.filter(x=>((x.question||'')+' '+(x.answer||'')).toLowerCase().includes(q)); box.innerHTML=ans.length?ans.map(faqAnsCard).join(''):'<p class="muted" style="padding:6px 2px;margin:0">No answered questions yet.</p>'; }
 }
 let MGR_VDAY=''; // manager-EOD review day filter ('' = all recent)
 function setMgrVDay(v){ if(v==='today') MGR_VDAY=todayLocal(); else if(v==='yesterday'){ const d=new Date(); d.setDate(d.getDate()-1); MGR_VDAY=isoLocal(d); } else MGR_VDAY=''; document.querySelectorAll('#mgrVSeg button').forEach(b=>b.classList.toggle('on',(b.getAttribute('onclick')||'').includes(`'${v}'`))); renderMgrEodTable(); }
