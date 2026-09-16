@@ -423,6 +423,7 @@
     <button class="navhead"><svg class="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5A2.5 2.5 0 016.5 3H20v15H6.5A2.5 2.5 0 004 20.5z"/><path d="M4 20.5A2.5 2.5 0 016.5 18H20v3H6.5A2.5 2.5 0 014 20.5z"/></svg><span class="nlabel">Resources &amp; Guides</span><svg class="nchev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
     <div class="navsub">
       <button data-tab="resources">Show-Up &amp; Handoff Cadence</button>
+      <button data-tab="kickoff">New-Account Kickoff</button>
       <button data-tab="faq">FAQ</button>
     </div>
   </div>
@@ -1122,6 +1123,39 @@
       <p id="conNote" class="hint" style="display:none;margin:10px 14px 0">Rows marked <span class="pill warn">TBD</span> are excluded from the forecast totals until you confirm the rate. Actual TSA applies the front-end rate to live cash collected (the app does not tag front-end vs back-end payments), so treat it as an estimate.</p>
     </div>
     <div class="panel"><h3 style="margin:0">Forecasted TSA revenue by month <span style="font-weight:400;color:var(--muted);font-size:12px">- flat recurring from active contracts</span></h3><div class="tablewrap" style="margin-top:10px"><table id="conForecast"></table></div></div>
+  </section>
+
+  <!-- ===== NEW-ACCOUNT KICKOFF SOP ===== -->
+  <section id="tab-kickoff" hidden>
+    <h2 class="section">New-Account Kickoff SOP</h2>
+    <p class="hint">When we take over an account that already has its own reps, the client's founder must formally hand authority to the TSA manager - on a call, in front of the team. Without that endorsement, incumbent reps ignore an "outside" manager. This is the standard play.</p>
+    <div class="panel"><h3 style="margin:0 0 8px">Why this matters</h3><p style="margin:0;line-height:1.6">Existing reps did not hire us and, in their heads, do not report to us yet. When a TSA manager starts asking for SODs/EODs or booking meetings cold, incumbents deprioritize or ignore it (we lost days to Hamza/Hayyan's team ignoring Keithen and Ra-eez). A 15-minute founder-led kickoff fixes it: the person who signs their checks visibly transfers day-to-day authority to us.</p></div>
+    <div class="panel"><h3 style="margin:0 0 8px">When to run it</h3><p style="margin:0 0 8px;line-height:1.6">During onboarding, at the <b>Kickoff</b> stage - <b>before</b> the TSA manager runs their first meeting or asks for a single report. Never let a manager's first contact with the team be a task request; the founder's intro comes first.</p><p class="muted" style="margin:0;line-height:1.6">Skip only when the account has no incumbent reps (a fresh build we staff ourselves) - there is nobody to win over.</p></div>
+    <div class="panel"><h3 style="margin:0 0 8px">Who is in the room</h3><ul style="margin:0;line-height:1.7">
+      <li><b>Client founder / owner</b> - they lead it (non-negotiable; a TSA person introducing themselves never carries the same weight)</li>
+      <li><b>TSA manager(s)</b> assigned to the account</li>
+      <li><b>Every incumbent rep</b> (setters + closers) on the account</li>
+      <li>Optional: Steve or Robb on the first one for a big account</li>
+    </ul></div>
+    <div class="rmsgcard" style="border:1px solid var(--border);border-radius:10px;padding:14px;background:var(--glass);margin-bottom:14px">
+      <div style="font-weight:700;margin-bottom:8px">Founder endorsement script <span class="muted" style="font-weight:400;font-size:12px">- the founder says this, out loud, on the call</span></div>
+      <div class="rmsg" style="white-space:pre-wrap;line-height:1.6;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:12px">Team, quick but important one. I have brought on The Sales Agency to run our sales operation, and [Manager] is now your day-to-day sales manager. That means [Manager] speaks for me on anything sales: your daily check-ins, your numbers, your call schedule, coaching, and how we run the floor. When [Manager] asks for something, treat it exactly like it came from me, because it did. They have my full authority and my full trust. I have seen their system and it is going to make you more money, so lean in. [Manager], take it from here.</div>
+      <div style="margin-top:10px"><button class="rcopy btn ghost sm" onclick="resCopy(this)">&#128203; Copy</button></div>
+    </div>
+    <div class="panel"><h3 style="margin:0 0 8px">Kickoff agenda (15-20 min)</h3><ol style="margin:0;line-height:1.8">
+      <li><b>Founder endorsement</b> (script above) - transfers authority</li>
+      <li><b>Manager intro</b> - who they are, track record, "I am here to make you more money, not add busywork"</li>
+      <li><b>What changes day one</b> - SOD before the day starts, EOD checkout, where to log calls (Sales HQ), the meeting cadence</li>
+      <li><b>What is in it for them</b> - faster leads, better scripts, commission clarity, we handle ops so they just sell</li>
+      <li><b>The non-negotiables</b> - reports are required, same as everyone; missed reports get flagged</li>
+      <li><b>Q&amp;A</b> - answer live; capture anything open in the FAQ</li>
+    </ol></div>
+    <div class="panel"><h3 style="margin:0 0 8px">After the call</h3><ul style="margin:0;line-height:1.7">
+      <li>Manager DMs each rep individually the same day - warm and specific, "great to meet you, here is your login."</li>
+      <li>Add every rep to Sales HQ + the account's Slack channels before the call ends if you can.</li>
+      <li>First SOD/EOD expected the next working day; the manager personally confirms each rep's first submission.</li>
+      <li>If a rep no-shows the kickoff or ignores the manager afterward, escalate to the founder once - the endorsement is what gives that teeth.</li>
+    </ul></div>
   </section>
 
   <!-- ===== FAQ ===== -->
@@ -2262,14 +2296,14 @@ function startApp(){
 // base tabs a login TIER can see; per-account responsibilities add to this in applyNavAccess()
 function baseAllow(role){
   return ({
-    admin:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','adminreport','recruiting','messages','invoicing','contracts','onbaudit','data','users','integrations','settings','reprequests','resources','faq'],
-    director:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','dailyreport','recruiting','messages','adminreport','contracts','onbaudit','reprequests','resources','faq'],
-    manager:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','speedtolead','dailyreport','adminreport','recruiting','messages','reprequests','resources','faq'],
+    admin:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','adminreport','recruiting','messages','invoicing','contracts','onbaudit','data','users','integrations','settings','reprequests','resources','faq','kickoff'],
+    director:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','dailyreport','recruiting','messages','adminreport','contracts','onbaudit','reprequests','resources','faq','kickoff'],
+    manager:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','speedtolead','dailyreport','adminreport','recruiting','messages','reprequests','resources','faq','kickoff'],
     founder:['dash','reprequests','faq'],
-    recruiter:['dash','recruiting','messages','timeoff','reprequests','resources','faq'],
-    webinarteam:['dash','meeting','promises','timeoff','webinar','resources','faq'],
-    closer:['dash','mydeals','postcall','sod','eod','training','timeoff','calllog','reps','resources','faq'],
-    setter:['dash','mydeals','postcall','sod','eod','training','timeoff','calllog','reps','resources','faq']
+    recruiter:['dash','recruiting','messages','timeoff','reprequests','resources','faq','kickoff'],
+    webinarteam:['dash','meeting','promises','timeoff','webinar','resources','faq','kickoff'],
+    closer:['dash','mydeals','postcall','sod','eod','training','timeoff','calllog','reps','resources','faq','kickoff'],
+    setter:['dash','mydeals','postcall','sod','eod','training','timeoff','calllog','reps','resources','faq','kickoff']
   })[role] || ['eod'];
 }
 // ---- multi-role: a user can hold several roles (stored as a 'userroles' record); access = the union ----
@@ -2408,7 +2442,7 @@ function showTab(t){
   document.querySelectorAll('#tabs button[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
   document.querySelectorAll('#tabs .navgroup').forEach(g=>{ if(g.querySelector('button[data-tab="'+t+'"]')) g.classList.remove('collapsed'); }); // reveal the active tab's group
 
-  ['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','adminreport','reprequests','recruiting','messages','invoicing','contracts','onbaudit','data','users','integrations','settings','resources','faq'].forEach(x=>{ const el=document.getElementById('tab-'+x); if(el) el.hidden = (x!==t); });
+  ['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','adminreport','reprequests','recruiting','messages','invoicing','contracts','onbaudit','data','users','integrations','settings','resources','faq','kickoff'].forEach(x=>{ const el=document.getElementById('tab-'+x); if(el) el.hidden = (x!==t); });
   // stale-while-revalidate: render instantly from the cached records, then refresh in the background
   const render={dash:renderDash, mydeals:renderMyDeals, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, promises:renderPromisesTab, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, mgreodview:renderMgrEodView, contracts:renderContracts, faq:renderFaq, webinar:renderWebinars, calllog:renderCallLog, calendar:renderCalendar, speedtolead:renderSpeedToLead, dailyreport:renderDailyReport, adminreport:renderAdminReport, reprequests:renderRepRequests, recruiting:renderRecruiting, messages:renderMessages, training:renderTraining, invoicing:renderInvoicing, data:renderAll}[t];
   if(render){ render(); syncRecords().then(()=>{ if(currentTab()===t) render(); buildGlobalClientSelect(); buildViewAsUserSelect(); updateNavBadges(); renderReminders(); }); }
