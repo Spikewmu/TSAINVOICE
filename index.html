@@ -1130,7 +1130,7 @@
   <section id="tab-scorecards" hidden>
     <h2 class="section">Scorecards</h2>
     <p class="hint">Per-rep performance pulled from EOD data, plus ramp milestones for new hires. Follows the company selector at the top. Ramp shows for anyone in their first 45 days.</p>
-    <div class="filters" style="margin:0 0 14px;align-items:center"><div class="seg" id="scPeriodSeg"><button class="on" onclick="setScPeriod('week')">This week</button><button onclick="setScPeriod('month')">This month</button><button onclick="setScPeriod('30')">Last 30d</button><button onclick="setScPeriod('all')">All-time</button></div></div>
+    <div class="filters" style="margin:0 0 14px;align-items:flex-end;gap:12px;flex-wrap:wrap"><div class="seg" id="scPeriodSeg"><button class="on" onclick="setScPeriod('week')">This week</button><button onclick="setScPeriod('month')">This month</button><button onclick="setScPeriod('30')">Last 30d</button><button onclick="setScPeriod('all')">All-time</button><button onclick="setScPeriod('custom')">Custom</button></div><div class="field" id="scCustomWrap" hidden style="position:relative;flex:0 0 auto;min-width:240px"><label>Custom range</label><div class="rangewrap"><input type="text" id="scRange_txt" readonly placeholder="Click a start day, then an end day" onclick="rpToggle('scRange',event)"><input type="hidden" id="scRange_from"><input type="hidden" id="scRange_to"><div class="rangepop" id="scRange_pop" hidden onclick="event.stopPropagation()"></div></div></div></div>
     <div id="scBody"></div>
   </section>
 
@@ -3338,7 +3338,7 @@ function renderFaq(){
   if(box){ const q=((document.getElementById('faqSearch')||{}).value||'').toLowerCase(); let ans=all.filter(x=>x.status==='answered').sort((a,b)=>(b.answeredAt||'').localeCompare(a.answeredAt||'')); if(q) ans=ans.filter(x=>((x.question||'')+' '+(x.answer||'')).toLowerCase().includes(q)); box.innerHTML=ans.length?ans.map(faqAnsCard).join(''):'<p class="muted" style="padding:6px 2px;margin:0">No answered questions yet.</p>'; }
 }
 /* ===== Rep Scorecards + ramp milestones (T-439) ===== */
-let SC_PERIOD='month';
+let SC_PERIOD='month', SC_RANGE=null;
 // ramp milestone defaults (byDay = deadline in days since hire). Tune these as we learn the real ramp curve.
 const RAMP_DEFS={
   setter:[ {label:'Education', byDay:3, desc:'Training complete', hit:t=> t.trainingDone || t.anyActivity},
@@ -3348,8 +3348,9 @@ const RAMP_DEFS={
            {label:'Initial', byDay:7, desc:'5+ calls taken', hit:t=> t.calls>=5},
            {label:'Performance', byDay:30, desc:'First close or cash', hit:t=> t.closes>=1 || t.cash>0} ]
 };
-function setScPeriod(p){ SC_PERIOD=p; document.querySelectorAll('#scPeriodSeg button').forEach(b=>b.classList.toggle('on',(b.getAttribute('onclick')||'').includes(`'${p}'`))); renderScorecards(); }
-function scRange(){ const t=todayLocal(); if(SC_PERIOD==='all') return {from:'',to:''}; if(SC_PERIOD==='30') return {from:isoOffset(t,-29),to:t}; if(SC_PERIOD==='week'){ const dow=new Date(t+'T00:00:00').getDay(); return {from:isoOffset(t,dow===0?-6:1-dow),to:t}; } return {from:t.slice(0,7)+'-01',to:t}; }
+function setScPeriod(p){ SC_PERIOD=p; document.querySelectorAll('#scPeriodSeg button').forEach(b=>b.classList.toggle('on',(b.getAttribute('onclick')||'').includes(`'${p}'`))); const cw=document.getElementById('scCustomWrap'); if(cw) cw.hidden=(p!=='custom'); if(p==='custom'){ try{ rpAttach('scRange', scApplyCustom); }catch(_){} } renderScorecards(); }
+function scApplyCustom(){ const f=((document.getElementById('scRange_from')||{}).value||'').slice(0,10), t=((document.getElementById('scRange_to')||{}).value||'').slice(0,10); SC_RANGE={from:f,to:t}; renderScorecards(); }
+function scRange(){ const t=todayLocal(); if(SC_PERIOD==='custom') return SC_RANGE||{from:'',to:''}; if(SC_PERIOD==='all') return {from:'',to:''}; if(SC_PERIOD==='30') return {from:isoOffset(t,-29),to:t}; if(SC_PERIOD==='week'){ const dow=new Date(t+'T00:00:00').getDay(); return {from:isoOffset(t,dow===0?-6:1-dow),to:t}; } return {from:t.slice(0,7)+'-01',to:t}; }
 // per-rep bucketing (mirrors the Rep Breakdown loop) -> {setters:{name->o}, closers:{name->o}}
 function scorecardBuckets(recs){
   const setters={}, closers={};
