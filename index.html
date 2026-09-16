@@ -134,7 +134,7 @@
   .linklike:hover{text-decoration:underline}
   .spinner{display:inline-block;width:13px;height:13px;border:2px solid rgba(128,128,128,.35);border-top-color:currentColor;border-radius:50%;animation:spin .6s linear infinite;vertical-align:-2px;margin-right:7px}
   @keyframes spin{to{transform:rotate(360deg)}}
-  .btn:disabled{opacity:.75;cursor:progress}
+  .btn:disabled{opacity:.75;cursor:not-allowed}
   tr.totalrow td{font-weight:700;background:var(--surface-2);border-bottom:2px solid var(--gold,#b8860b)}
   .teamboxes{display:flex;flex-wrap:wrap;gap:8px}
   .teamboxes label{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:500;padding:6px 10px;border:1px solid var(--border,#333);border-radius:8px;cursor:pointer;background:var(--surface-2)}
@@ -2989,7 +2989,7 @@ function renderMgrEod(){
     const v=f=> saved ? ((p[f]===0||p[f])?p[f]:'') : (sug[f]===0?0:(sug[f]||''));
     const hint = sug._n
       ? `<span class="sub">Auto-filled from <b>${sug._s}</b> setter &middot; <b>${sug._c}</b> closer EOD${sug._n>1?'s':''}${saved?' - showing your saved numbers':''}</span>`
-      : `<span class="sub" style="opacity:.7">No team EODs submitted yet for this day - enter numbers manually</span>`;
+      : `<span class="sub" style="opacity:.7">No team EODs submitted for ${usDate(date)} yet - reps submit at end of day. Enter numbers manually, or pick the day you're reporting on.</span>`;
     return `<div class="panel mgrsec"><h3><span class="mgrnum">${i+1}</span> ${esc(c)}${p.submittedAt?' <span class="pill good" style="font-weight:600;margin-left:6px">saved today</span>':''}<button type="button" class="btn ghost sm" style="margin-left:auto;font-weight:600" onclick="mgrEodFill('${jsStr(c)}')"${sug._n?'':' disabled'}>&#8635; Refresh from team</button></h3><div style="padding:0 14px 14px">
       <div style="margin:2px 0 10px">${hint}</div>
       <div class="formhead" style="margin-top:4px"><b>Setters</b></div>
