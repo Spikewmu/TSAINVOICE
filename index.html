@@ -3774,6 +3774,10 @@ function renderDash(){
 function repLeft(u){ const m=repMetaFor(u&&u.username); return !!((m&&m.endDate)||(u&&u.archived)); }
 // Team retention + AOV per team member (value per hire before they leave), segmented setter/closer.
 // All-time + client-scoped on purpose: retention and value-per-hire are lifetime metrics, not a monthly slice.
+// rep tenure/lifespan in days (churned = start->end; active = start->today) + a compact label (T-455)
+function repTenureDays(u){ const m=repMetaFor(u.username); if(!m||!m.startDate) return null; const start=Date.parse(m.startDate); if(!isFinite(start)) return null; const end=m.endDate?Date.parse(m.endDate):Date.now(); return Math.max(0,Math.round((end-start)/86400000)); }
+function fmtTenure(days){ if(days==null) return '-'; if(days<31) return days+'d'; const mo=Math.round(days/30.44); return mo<12?mo+'mo':(days/365.25).toFixed(1)+'y'; }
+const REASON_COLORS=['#E8635F','#E5A15D','#C9A24A','#5FC1A2','#8a93a6','#b98cd6','#6fa8dc'];
 function renderTeamValue(){
   const panel=document.getElementById('dashTeamValue'); if(!panel) return;
   const c=(document.getElementById('fClient')||{}).value||'', sc=dashScopeClients();
@@ -3786,8 +3790,9 @@ function renderTeamValue(){
   const scoped = activityRecords().filter(x=> !scopeClients || scopeClients.includes(x.client)); // client scope, ALL-TIME (ignore month filter)
   const closerCash = agg(scoped).cashCollected;   // closer-credited cash
   const setterCash = aggSetters(scoped).cashSet;  // setter-credited cash
-  const stat = (reps, cash) => { const total=reps.length, left=reps.filter(repLeft).length, active=total-left;
-    return { total, active, retention: total?active/total:0, aov: total?cash/total:0 }; };
+  const stat = (reps, cash) => { const leftReps=reps.filter(repLeft), total=reps.length, left=leftReps.length, active=total-left;
+    const lifes=leftReps.map(repTenureDays).filter(x=>x!=null), avgLife=lifes.length?Math.round(lifes.reduce((a,b)=>a+b,0)/lifes.length):null;
+    return { total, active, retention: total?active/total:0, aov: total?cash/total:0, avgLife }; };
   const S=stat(setters,setterCash), C=stat(closers,closerCash);
   TV_REPS={setter:setters, closer:closers}; // stash in-scope reps for the drill-down
   const col=(label,role,d)=>`<div style="flex:1;min-width:230px">
@@ -3795,13 +3800,22 @@ function renderTeamValue(){
       <div class="cards" style="grid-template-columns:repeat(auto-fill,minmax(115px,1fr));gap:10px">
         <div class="kpi" style="cursor:pointer" onclick="tvToggle('${role}')" title="Click to see who is active vs churned"><div class="lbl">Retention</div><div class="val">${pct(d.retention)}</div><div class="lbl" style="margin-top:4px">${d.active}/${d.total} still active</div></div>
         <div class="kpi"><div class="lbl" title="Average cash credited to this role divided by reps hired - the value per hire before they leave.">AOV / hire</div><div class="val small">${money(Math.round(d.aov))}</div></div>
+        <div class="kpi" title="Average time a churned ${role} stayed before leaving"><div class="lbl">Avg lifespan</div><div class="val small">${d.avgLife!=null?esc(fmtTenure(d.avgLife)):'<span class="muted">-</span>'}</div></div>
         <div class="kpi" style="cursor:pointer" onclick="tvToggle('${role}')" title="Click to see the roster"><div class="lbl">Reps hired</div><div class="val">${d.total} <span style="font-size:11px;color:var(--muted)">&#9662;</span></div></div>
       </div>
       <div id="tvDetail_${role}" hidden style="margin-top:10px"></div></div>`;
   const scopeLabel = scopeClients ? (scopeClients.length===1 ? esc(scopeClients[0]) : 'your accounts') : 'all clients';
+  // offboarding-reason donut across churned reps in scope (both roles) - reuses the T-529 SVG donut helper
+  const churnedAll=[...setters,...closers].filter(repLeft);
+  const rc={}; churnedAll.forEach(u=>{ const m=repMetaFor(u.username); const r=(m&&m.reason&&String(m.reason).trim())||'Not specified'; rc[r]=(rc[r]||0)+1; });
+  const rrows=Object.entries(rc).sort((a,b)=>b[1]-a[1]).map(([name,count],i)=>({name,count,color:REASON_COLORS[i%REASON_COLORS.length]}));
+  const rtot=rrows.reduce((s,r)=>s+r.count,0);
+  const reasonBlock = rtot ? `<div style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px;max-width:460px">${omDonut('Why reps left ('+rtot+')',{total:rtot,rows:rrows})}</div>` : '';
   panel.innerHTML=`<h3>Team retention &amp; value <span style="font-weight:400;color:var(--muted);font-size:12px">- ${scopeLabel}, all-time</span></h3>
     <div style="padding:6px 2px;display:flex;gap:22px;flex-wrap:wrap">${col('Setters','setter',S)}${col('Closers','closer',C)}</div>
-    <p class="fieldhelp" style="margin:6px 2px 0">Retention = reps still active out of everyone assigned to this account (a termination date under Users &rsaquo; Details marks a rep as churned). AOV / hire = total cash credited to that role divided by reps hired - what each hire is worth before they leave. Click a <b>Retention</b> or <b>Reps hired</b> card to see the names.</p>`;
+    ${reasonBlock}
+    <p class="fieldhelp" style="margin:6px 2px 0">Retention = reps still active out of everyone assigned to this account (a termination date under Users &rsaquo; Details marks a rep as churned). AOV / hire = total cash credited to that role divided by reps hired. Avg lifespan = how long churned reps stayed. Click a <b>Retention</b> or <b>Reps hired</b> card to see names + tenure.</p>`;
+  try{ omTipInit(); }catch(_){}
 }
 // drill-down: who's on the retention/AOV panel, active vs churned, with hire/term dates + accounts
 let TV_REPS={setter:[],closer:[]};
@@ -3815,7 +3829,7 @@ function teamValueRoster(role){
   if(!reps.length) return `<div class="muted" style="font-size:12px;padding:6px 2px">No ${role}s in scope.</div>`;
   const row=u=>{
     const m=repMetaFor(u.username), churned=repLeft(u);
-    const bits=[]; if(m&&m.startDate) bits.push('hired '+usDate(m.startDate)); if(m&&m.endDate) bits.push('left '+usDate(m.endDate)); else if(u.archived) bits.push('archived'); if(m&&m.mgr) bits.push('mgr '+esc(m.mgr));
+    const bits=[]; if(m&&m.startDate) bits.push('hired '+usDate(m.startDate)); if(m&&m.endDate) bits.push('left '+usDate(m.endDate)); else if(u.archived) bits.push('archived'); const ten=repTenureDays(u); if(ten!=null) bits.push((churned?'stayed ':'here ')+fmtTenure(ten)); if(m&&m.mgr) bits.push('mgr '+esc(m.mgr)); if(churned&&m&&m.reason&&String(m.reason).trim()) bits.push('reason: '+esc(m.reason));
     const accts=teamsFor(u.username);
     const acctHtml=accts.length?accts.map(t=>`<span class="teamtag">${esc(t)}</span>`).join(''):'<span class="muted" style="font-size:11px">no account</span>';
     const badge=churned
@@ -7301,23 +7315,23 @@ function renderClientOverview(){
 
 /* ---------------- onboarding checklist ---------------- */
 const DEFAULT_ONB_STEPS=[
-  {step:'Contract + NDA signed', owner:'Client', days:0, link:''},
-  {step:'Welcome sequence sent (email, intake, recruiting form, kickoff sheet, call link)', owner:'Auto / Steve', days:1, link:''},
-  {step:'Added to HQ / dashboard (fires email sequence)', owner:'Steve', days:1, link:''},
-  {step:'Client invites us to Slack as a member (not Connect)', owner:'Client', days:1, link:''},
-  {step:'Slack channels created (standard set)', owner:'Josh', days:2, link:''},
-  {step:'Welcome video dropped in sales-management', owner:'Josh', days:2, link:''},
-  {step:'Onboarding call booked', owner:'Client', days:2, link:''},
-  {step:'Intake form completed', owner:'Client', days:3, link:''},
-  {step:'Recruiting form completed', owner:'Client', days:3, link:''},
-  {step:'Drive access + credentials (viewer / password manager)', owner:'Client', days:3, link:''},
-  {step:'Drive folder set up (template duplicated)', owner:'Steve', days:4, link:''},
-  {step:'CRM / systems build', owner:'Steve', days:5, link:''},
-  {step:'Sales assets + scripts', owner:'Josh', days:5, link:''},
-  {step:'Kickoff call done', owner:'Manager', days:5, link:''},
-  {step:'$1 test wire cleared', owner:'Client', days:6, link:''},
-  {step:'Reps onboarded + dialing', owner:'Manager', days:6, link:''},
-  {step:'Launched', owner:'Manager', days:7, link:''}
+  {stage:'1. Signed', step:'Contract + NDA signed', owner:'Client', days:0, link:''},
+  {stage:'1. Signed', step:'Welcome sequence sent (email, intake, recruiting form, kickoff sheet, call link)', owner:'Auto / Steve', days:1, link:''},
+  {stage:'1. Signed', step:'Added to HQ / dashboard (fires email sequence)', owner:'Steve', days:1, link:''},
+  {stage:'2. Connected', step:'Client invites us to Slack as a member (not Connect)', owner:'Client', days:1, link:''},
+  {stage:'2. Connected', step:'Slack channels created (standard set)', owner:'Josh', days:2, link:''},
+  {stage:'2. Connected', step:'Welcome video dropped in sales-management', owner:'Josh', days:2, link:''},
+  {stage:'3. Discovery', step:'Onboarding call booked', owner:'Client', days:2, link:''},
+  {stage:'3. Discovery', step:'Intake form completed', owner:'Client', days:3, link:''},
+  {stage:'3. Discovery', step:'Recruiting form completed', owner:'Client', days:3, link:''},
+  {stage:'3. Discovery', step:'Drive access + credentials (viewer / password manager)', owner:'Client', days:3, link:''},
+  {stage:'4. Build', step:'Drive folder set up (template duplicated)', owner:'Steve', days:4, link:''},
+  {stage:'4. Build', step:'CRM / systems build', owner:'Steve', days:5, link:''},
+  {stage:'4. Build', step:'Sales assets + scripts', owner:'Josh', days:5, link:''},
+  {stage:'5. Kickoff', step:'Kickoff call done', owner:'Manager', days:5, link:''},
+  {stage:'5. Kickoff', step:'$1 test wire cleared', owner:'Client', days:6, link:''},
+  {stage:'5. Kickoff', step:'Reps onboarded + dialing', owner:'Manager', days:6, link:''},
+  {stage:'6. Live', step:'Launched', owner:'Manager', days:7, link:''}
 ];
 const ONB_STATUSES=['Not started','In progress','Done'];
 // steps are editable by admins; the latest saved order is stored as an 'onbconfig' record
@@ -7325,6 +7339,9 @@ function latestOnbConfig(){ let best=null; RECORDS.filter(x=>x.type==='onbconfig
 function onbSteps(){ return latestOnbConfig() || DEFAULT_ONB_STEPS; }
 function latestOnb(client){ const m={}; RECORDS.filter(x=>x.type==='onboard'&&x.client===client).forEach(x=>{ if(!m[x.step]||(x.submittedAt||'')>(m[x.step].submittedAt||'')) m[x.step]=x; }); return m; }
 function onbProgress(client){ const steps=onbSteps(); const st=latestOnb(client); let done=0,bn=null,overdue=0; steps.forEach(s=>{ const r=st[s.step]; if(r&&r.status==='Done') done++; else { if(!bn) bn=s.step; const dl=daysLeft(stepDue(client,s.step)); if(dl!=null&&dl<0) overdue++; } }); return {done,total:steps.length,pct:steps.length?Math.round(done/steps.length*100):0,bottleneck:bn,overdue}; }
+// T-491 "Pizza Hut" stages: group the flat steps into ordered umbrella stages + per-stage progress
+function onbStages(){ const seen=[], set=new Set(); onbSteps().forEach(s=>{ const st=s.stage||'Onboarding'; if(!set.has(st)){ set.add(st); seen.push(st); } }); return seen; }
+function onbStageProg(client){ const st=latestOnb(client), by={}; onbSteps().forEach(s=>{ const stg=s.stage||'Onboarding'; if(!by[stg]) by[stg]={done:0,total:0}; by[stg].total++; const r=st[s.step]; if(r&&r.status==='Done') by[stg].done++; }); return by; }
 // onboarding starts when the client is first added; each step is due start + its `days`
 function onbStart(client){ let t=null; RECORDS.filter(x=>x.type==='client'&&x.name===client).forEach(x=>{ if(!t||(x.submittedAt||'')<t) t=x.submittedAt; }); return t?t.slice(0,10):null; }
 function addDaysISO(iso,n){ if(!iso) return null; const d=new Date(iso+'T00:00:00'); d.setDate(d.getDate()+(+n||0)); return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10); }
@@ -7366,35 +7383,50 @@ function copyOnbDigest(){
   const txt=`*Onboarding - due & overdue (${usDate(todayLocal())})*\n`+d.map(line).join('\n');
   navigator.clipboard.writeText(txt).then(()=>toast('Copied - paste into Slack'),()=>toast('Copy failed',true));
 }
+function onbStepRow(s,i,st,client){
+  const rec=st[s.step]||{}; const status=rec.status||'Not started', done=status==='Done';
+  const due=stepDue(client,s.step), dl=daysLeft(due), overdue=!done&&dl!=null&&dl<0;
+  const link=s.link?` <a class="linklike" href="${esc(s.link)}" target="_blank" rel="noopener" style="font-size:12px">open</a>`:'';
+  const dueTxt=done?'':(due?dueLabel(dl)+' <span class="muted" style="font-size:11px">'+esc(usDate(due))+'</span>':'');
+  let right;
+  if(done){
+    const by=rec.by?esc(rec.by):'someone', when=rec.at?esc(usDate(rec.at)):'', note=rec.note?` <span style="color:var(--ink)">&ldquo;${esc(rec.note)}&rdquo;</span>`:'';
+    right=`<div style="flex:1;text-align:right"><span class="pill good">&#10003; Done</span> <span class="muted" style="font-size:12px">by ${by}${when?' &middot; '+when:''}${note}</span> <button class="btn ghost sm" style="padding:2px 8px;margin-left:6px" onclick="reopenOnbStep(${i})">reopen</button></div>`;
+  } else {
+    right=`<div style="flex:1;display:flex;gap:8px;align-items:center;justify-content:flex-end">
+      <span style="font-size:12px;min-width:96px;text-align:right">${dueTxt}</span>
+      <input id="onbnote_${i}" placeholder="Note (optional)" style="flex:1;max-width:260px" onkeydown="if(event.key==='Enter'){event.preventDefault();completeOnbStep(${i});}">
+      <button class="btn gold sm" onclick="completeOnbStep(${i})">&#10003; Complete</button>
+      ${status==='In progress'?'<span class="tag">in progress</span>':`<button class="btn ghost sm" onclick="setOnbInProgress(${i})">Start</button>`}
+    </div>`;
+  }
+  return `<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)${overdue?';background:rgba(224,122,95,.06)':''}">
+    <span style="width:22px;color:var(--muted);font-variant-numeric:tabular-nums">${i+1}</span>
+    <span style="min-width:220px;max-width:340px"><b>${esc(s.step)}</b>${link} <span class="tag">- ${esc(s.owner)}</span></span>
+    ${right}
+  </div>`;
+}
 function renderOnbChecklist(){
   const client=document.getElementById('onbClient').value;
   const box=document.getElementById('onbSteps');
   if(!client){ box.innerHTML='<p class="muted">No client selected.</p>'; return; }
   const st=latestOnb(client);
   const startTxt = onbStart(client)?`Onboarding started ${esc(usDate(onbStart(client)))} - due dates count from there.`:'Add this client on Client Overview to start the clock.';
-  box.innerHTML=`<p class="fieldhelp" style="margin:0 0 8px">${startTxt}</p>`+onbSteps().map((s,i)=>{
-    const rec=st[s.step]||{}; const status=rec.status||'Not started', done=status==='Done';
-    const due=stepDue(client,s.step), dl=daysLeft(due), overdue=!done&&dl!=null&&dl<0;
-    const link=s.link?` <a class="linklike" href="${esc(s.link)}" target="_blank" rel="noopener" style="font-size:12px">open</a>`:'';
-    const dueTxt=done?'':(due?dueLabel(dl)+' <span class="muted" style="font-size:11px">'+esc(usDate(due))+'</span>':'');
-    let right;
-    if(done){
-      const by=rec.by?esc(rec.by):'someone', when=rec.at?esc(usDate(rec.at)):'', note=rec.note?` <span style="color:var(--ink)">&ldquo;${esc(rec.note)}&rdquo;</span>`:'';
-      right=`<div style="flex:1;text-align:right"><span class="pill good">&#10003; Done</span> <span class="muted" style="font-size:12px">by ${by}${when?' &middot; '+when:''}${note}</span> <button class="btn ghost sm" style="padding:2px 8px;margin-left:6px" onclick="reopenOnbStep(${i})">reopen</button></div>`;
-    } else {
-      right=`<div style="flex:1;display:flex;gap:8px;align-items:center;justify-content:flex-end">
-        <span style="font-size:12px;min-width:96px;text-align:right">${dueTxt}</span>
-        <input id="onbnote_${i}" placeholder="Note (optional)" style="flex:1;max-width:260px" onkeydown="if(event.key==='Enter'){event.preventDefault();completeOnbStep(${i});}">
-        <button class="btn gold sm" onclick="completeOnbStep(${i})">&#10003; Complete</button>
-        ${status==='In progress'?'<span class="tag">in progress</span>':`<button class="btn ghost sm" onclick="setOnbInProgress(${i})">Start</button>`}
-      </div>`;
-    }
-    return `<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)${overdue?';background:rgba(224,122,95,.06)':''}">
-      <span style="width:22px;color:var(--muted);font-variant-numeric:tabular-nums">${i+1}</span>
-      <span style="min-width:220px;max-width:340px"><b>${esc(s.step)}</b>${link} <span class="tag">- ${esc(s.owner)}</span></span>
-      ${right}
-    </div>`;
-  }).join('');
+  const stages=onbStages(), sp=onbStageProg(client);
+  // Pizza-Hut style stage tracker: each umbrella stage lights up (grey -> gold -> green) as its steps complete
+  const tracker=`<div style="display:flex;gap:6px;margin:0 0 16px;flex-wrap:wrap">`+stages.map(stg=>{
+    const p=sp[stg]||{done:0,total:0}, full=p.total&&p.done>=p.total, some=p.done>0;
+    const bg=full?'var(--good)':(some?'var(--gold)':'var(--surface-2)'), fg=(full||some)?'#0e0c09':'var(--muted)';
+    return `<div style="flex:1 1 108px;min-width:108px;background:${bg};color:${fg};border:1px solid var(--border);border-radius:9px;padding:8px 10px;font-size:12px;font-weight:600;text-align:center;line-height:1.3">${full?'&#10003; ':''}${esc(stg)}<div style="font-weight:400;font-size:11px;opacity:.85">${p.done}/${p.total}</div></div>`;
+  }).join('')+`</div>`;
+  const steps=onbSteps();
+  let body='';
+  stages.forEach((stg,si)=>{
+    const p=sp[stg]||{done:0,total:0};
+    body+=`<div style="margin-top:${si?20:6}px;margin-bottom:2px;display:flex;align-items:baseline;gap:8px"><span class="kpisec" style="margin:0">${esc(stg)}</span><span class="pill ${p.done>=p.total?'good':''}" style="font-size:11px">${p.done}/${p.total} done</span></div>`;
+    steps.forEach((s,i)=>{ if((s.stage||'Onboarding')===stg) body+=onbStepRow(s,i,st,client); });
+  });
+  box.innerHTML=`<p class="fieldhelp" style="margin:0 0 12px">${startTxt}</p>`+tracker+body;
 }
 function completeOnbStep(i){
   const client=document.getElementById('onbClient').value; const s=onbSteps()[i]; if(!client||!s) return;
