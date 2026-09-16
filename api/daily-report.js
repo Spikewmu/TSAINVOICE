@@ -36,40 +36,37 @@ function buildText(client, day, prev, sods, eods) {
   const S = (a, f) => a.reduce((s, x) => s + num(x[f]), 0);
   const pct = n => n == null ? '-' : Math.round(n * 100) + '%';
   const b = s => ' • ' + s; // one metric per line (stacked), no emoji, plain text
-  const L = [`${client} - Daily Report`];
+  const L = [`${client} - Daily Report`, ''];
 
-  // SETTERS first: yesterday's activity, then today's commitment
-  if (fSet.length || rSet.length) {
-    L.push('SETTERS', '', `Yesterday (${usDate(prev)})`);
-    L.push(b(`${rSet.length} setter${rSet.length === 1 ? '' : 's'} working`)); // headcount context (reports submitted) so a low number from few reps isn't a false red flag
-    L.push(b(`${S(rSet, 'newOutreach')} dials`));
-    L.push(b(`${S(rSet, 'connectedCalls')} connects`));
-    L.push(b(`${S(rSet, 'callsSet')} sets`));
-    L.push('', `Today (${usDate(day)})`);
-    L.push(b(`${S(fSet, 'sodSetTotal')} sets committed`));
-    L.push(b(`same-day ${S(fSet, 'sodSameDay')} · 24h ${S(fSet, 'sod24')} · 48h ${S(fSet, 'sod48')} · 72h ${S(fSet, 'sod72')}`));
-  }
+  // ===== YESTERDAY'S PERFORMANCE (Robb's 9-16 format: one umbrella, setters then closers) =====
+  // headcount line = number of reports submitted (Robb: "that's not the names, it's just the unit"),
+  // so a low number from only 2 of 5 reps working isn't a false red flag. Zeros are kept (pressure, not alarming).
+  L.push(`*Yesterday's Performance (${usDate(prev)})*`, '');
+  L.push('SETTERS', `*Setters working today - ${rSet.length}*`);
+  L.push(b(`${S(rSet, 'newOutreach')} dials`));
+  L.push(b(`${S(rSet, 'connectedCalls')} connects`));
+  L.push(b(`${S(rSet, 'callsSet')} sets`));
 
-  // CLOSERS below: yesterday's results, then today's forecast
-  if (fClo.length || rClo.length) {
-    const taken = S(rClo, 'connectedMeetings'), noShow = S(rClo, 'noShows'), held = S(rClo, 'newMeetings') + S(rClo, 'followUpMeetings'), spots = S(rClo, 'callCapacity');
-    const show = (taken + noShow) ? taken / (taken + noShow) : null, util = spots ? held / spots : null;
-    const onCal = taken + noShow; // calls that were on the calendar = taken + no-shows
-    L.push('', 'CLOSERS', '', `Yesterday (${usDate(prev)})`);
-    L.push(b(`${rClo.length} closer${rClo.length === 1 ? '' : 's'} working`)); // headcount context (reports submitted)
-    L.push(b(`${onCal} calls on the calendar`));
-    L.push(b(`${taken} calls taken`));
-    L.push(b(`${pct(show)} show rate`));
-    L.push(b(`${pct(util)} call utilization`));
-    L.push(b(`${S(rClo, 'closedDeals')} closes`));
-    L.push(b(`${money(S(rClo, 'cashCollected'))} cash`));
-    L.push('', `Today (${usDate(day)})`);
-    L.push(b(`${S(fClo, 'sodCallsToday')} calls on the calendar`));
-    L.push(b(`${S(fClo, 'sodConfirmed')} confirmed`));
-    L.push(b(`projecting ${S(fClo, 'sodProjClose')} closes / ${money(S(fClo, 'sodProjCollectWk'))}`));
-  }
+  const taken = S(rClo, 'connectedMeetings'), noShow = S(rClo, 'noShows'), held = S(rClo, 'newMeetings') + S(rClo, 'followUpMeetings'), spots = S(rClo, 'callCapacity');
+  const show = (taken + noShow) ? taken / (taken + noShow) : null, util = spots ? held / spots : null;
+  const onCal = taken + noShow; // calls that were on the calendar = taken + no-shows
+  L.push('', 'CLOSERS', `*Closers on the calendar - ${rClo.length}*`);
+  L.push(b(`${onCal} on the calendar`));
+  L.push(b(`${taken} calls taken`));
+  L.push(b(`${pct(show)} show rate`));
+  L.push(b(`${pct(util)} call utilization`));
+  L.push(b(`${S(rClo, 'closedDeals')} closes`));
 
-  if (!fClo.length && !rClo.length && !fSet.length && !rSet.length) L.push('', 'No SOD or EOD data logged.');
+  // ===== TODAY'S FORECAST (underneath yesterday, consolidating the two umbrellas) =====
+  L.push('', `*Today's Forecast (${usDate(day)})*`, '');
+  L.push('SETTERS');
+  L.push(b(`${S(fSet, 'sodSetTotal')} sets committed`));
+  L.push(b(`same-day ${S(fSet, 'sodSameDay')} · 24h ${S(fSet, 'sod24')} · 48h ${S(fSet, 'sod48')} · 72h ${S(fSet, 'sod72')}`));
+  L.push('', 'CLOSERS');
+  L.push(b(`${S(fClo, 'sodCallsToday')} calls on the calendar`));
+  L.push(b(`${S(fClo, 'sodConfirmed')} confirmed`));
+  L.push(b(`projecting ${S(fClo, 'sodProjClose')} closes / ${money(S(fClo, 'sodProjCollectWk'))}`));
+
   // blank line between consecutive bullets so each metric breathes (Robb's 9-15 ask); section spacing untouched
   const out = [];
   for (let i = 0; i < L.length; i++) { out.push(L[i]); if (L[i].startsWith(' • ') && L[i + 1] && L[i + 1].startsWith(' • ')) out.push(''); }
