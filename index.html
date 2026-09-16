@@ -4472,6 +4472,7 @@ function invPreview(){
 let LAST_INVOICE=null; // stashed each time an invoice is generated, so "Send to billing" can post its numbers
 async function invSendToBilling(){
   const li=LAST_INVOICE; if(!li||!li.client){ toast('Generate an invoice first.',true); return; }
+  if(!(li.amountDue>0) && !confirm('This invoice for '+li.client+' is $0 (no billing rate set, or no cash collected in this period). Send it to the billing channel anyway?')) return;
   const btn=document.getElementById('invSendBtn'); if(btn&&btn.disabled) return; btnBusy(btn,true);
   try{
     const hdr={'Content-Type':'application/json'}; if(SESSION&&SESSION.token) hdr['x-session-token']=SESSION.token; else if(SESSION&&SESSION.pw) hdr['x-admin-pass']=SESSION.pw;

@@ -314,7 +314,11 @@ export default async function handler(req, res) {
       const period = (b.from ? usd(b.from) : '?') + ' to ' + (b.to ? usd(b.to) : '?');
       const rateDesc = b.rateDesc ? ' (' + String(b.rateDesc).slice(0, 80) + ')' : '';
       const body = `🧾 *Invoice · ${client}*\n*Period:* ${period}\n*Cash collected:* ${money(b.cash)}\n*Amount due (TSA):* ${money(b.amount)}${rateDesc}\n*Deals:* ${Number(b.deals || 0)}`;
-      await postChan(cfg.invoicingSlack, `Invoice · ${client} · ${money(b.amount)}`, [{ type: 'section', text: { type: 'mrkdwn', text: body } }]);
+      // post directly (not fire-and-forget) so a revoked/invalid webhook is reported instead of a false "sent"
+      let posted = false, perr = '';
+      try { const pr = await fetch(chanDest(cfg.invoicingSlack), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: `Invoice · ${client} · ${money(b.amount)}`, blocks: [{ type: 'section', text: { type: 'mrkdwn', text: body } }] }) }); posted = pr.ok; if (!pr.ok) perr = 'Slack returned ' + pr.status; }
+      catch (e) { perr = String((e && e.message) || e); }
+      if (!posted) return res.status(200).json({ ok: false, error: 'Could not post to the billing channel' + (perr ? ': ' + perr : '') + '. Reconnect it on Integrations › Invoicing.' });
       return res.status(200).json({ ok: true });
     }
     // ---------- ONE-SHOT MAINTENANCE: normalize whitespace in person-name fields (rep/setter/by/closer) ----------
