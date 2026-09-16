@@ -223,18 +223,39 @@ export default async function handler(req, res) {
       const filter = ws === DEFAULT_WS
         ? `or=(data->>ws.eq.${DEFAULT_WS},data->>ws.is.null)`
         : `data->>ws=eq.${encodeURIComponent(ws)}`;
-      // PostgREST caps every response at db-max-rows (1000) regardless of the limit param, so we page
-      // through with Range headers until a short page comes back. Without this only the oldest 1000 rows
-      // loaded (order=id.asc) and everything newer silently vanished from the app once the table passed 1000.
-      const PAGE = 1000, out = [];
-      for (let from = 0; ; from += PAGE) {
-        const r = await supa(`records?select=data&order=id.asc&${filter}`, { headers: { 'Range-Unit': 'items', Range: `${from}-${from + PAGE - 1}` } });
-        if (!r.ok) { const t = await r.text(); return res.status(200).json({ ok: false, error: 'db ' + r.status + ' ' + t.slice(0, 160) }); }
-        const rows = await r.json();
-        for (const x of rows) if (x && x.data) out.push(x.data);
-        if (rows.length < PAGE || from > 500000) break;
-      }
-      return res.status(200).json({ ok: true, ws, records: out });
+      // SCALING: the `records` table grows fastest from daily operational/log rows (a report per rep per
+      // day + login/password events). Those only need a recent window in the app, so we cap them by the
+      // indexed `submitted_at` column. Everything else - deals, payments, and ALL config (users, teams,
+      // integrations, meta) - loads in FULL so money history, retention and settings are always complete.
+      // A client can request the full history (e.g. an "all time" analytics view) with full:true / ?full=1.
+      const WINDOW_DAYS = Number(process.env.RECORDS_WINDOW_DAYS || 180);
+      const WINDOWED_TYPES = ['eod', 'sod', 'postcall', 'mgreod', 'login', 'pwchange', 'pwreset'];
+      const wantFull = b.full === true || q.full === '1' || q.full === 'true';
+      const cutoff = new Date(Date.now() - WINDOW_DAYS * 864e5).toISOString();
+      // page every row matching an extra PostgREST filter (server caps each response at 1000 rows)
+      const pageAll = async (extra) => {
+        const PAGE = 1000, out = [];
+        for (let from = 0; ; from += PAGE) {
+          const r = await supa(`records?select=data&order=id.asc&${filter}${extra || ''}`, { headers: { 'Range-Unit': 'items', Range: `${from}-${from + PAGE - 1}` } });
+          if (!r.ok) { const t = await r.text(); throw new Error('db ' + r.status + ' ' + t.slice(0, 160)); }
+          const rows = await r.json();
+          for (const x of rows) if (x && x.data) out.push(x.data);
+          if (rows.length < PAGE || from > 500000) break;
+        }
+        return out;
+      };
+      try {
+        if (wantFull) { // explicit full-history read (unbounded) for all-time views
+          const out = await pageAll('');
+          return res.status(200).json({ ok: true, ws, records: out, windowDays: null });
+        }
+        const inList = WINDOWED_TYPES.join(',');
+        const [full, windowed] = await Promise.all([
+          pageAll(`&type=not.in.(${inList})`),                                              // deals + payments + config, complete
+          pageAll(`&type=in.(${inList})&submitted_at=gte.${encodeURIComponent(cutoff)}`),   // operational logs, recent window only
+        ]);
+        return res.status(200).json({ ok: true, ws, records: full.concat(windowed), windowDays: WINDOW_DAYS });
+      } catch (e) { return res.status(200).json({ ok: false, error: String((e && e.message) || e) }); }
     }
     if (action === 'write') {
       const rec = b.record || {};
