@@ -1105,7 +1105,7 @@
         <div class="row-actions" style="margin-top:12px"><button class="btn gold" onclick="conSave()">Save contract</button><button class="btn ghost" onclick="conCancel()">Cancel</button></div>
       </div>
     </div>
-    <div class="panel"><h3 style="margin:0">Contracts &amp; rev-share <span style="font-weight:400;color:var(--muted);font-size:12px">- forecast vs live actual</span></h3><div class="tablewrap" style="margin-top:10px"><table id="conTable"></table></div>
+    <div class="panel"><h3 style="margin:0">Contracts &amp; rev-share <span style="font-weight:400;color:var(--muted);font-size:12px">- forecast vs live actual</span></h3><div class="tablewrap" style="margin-top:10px"><table id="conTable" style="width:100%;font-size:12.5px"></table></div>
       <p id="conNote" class="hint" style="display:none;margin:10px 14px 0">Rows marked <span class="pill warn">TBD</span> are excluded from the forecast totals until you confirm the rate. Actual TSA applies the front-end rate to live cash collected (the app does not tag front-end vs back-end payments), so treat it as an estimate.</p>
     </div>
     <div class="panel"><h3 style="margin:0">Forecasted TSA revenue by month <span style="font-weight:400;color:var(--muted);font-size:12px">- flat recurring from active contracts</span></h3><div class="tablewrap" style="margin-top:10px"><table id="conForecast"></table></div></div>
@@ -3192,11 +3192,9 @@ function renderContracts(){
     return `<tr${c.active===false?' style="opacity:.5"':''}>`
       +`<td><b>${esc(c.client)}</b>${app?'':' <span class="pill warn" title="No matching app account - set one to pull live actuals">no live link</span>'}${c.notes?`<div style="font-size:11px;color:var(--muted)">${esc(c.notes)}</div>`:''}</td>`
       +`<td>${c.active===false?'<span class="pill">inactive</span>':'<span class="pill good">active</span>'}</td>`
-      +`<td class="num">${conRateLabel(c.feRate,c.feTBD)}</td>`
-      +`<td class="num">${c.feMonthly?money(c.feMonthly):'<span class="muted">-</span>'}</td>`
-      +`<td class="num">${conRateLabel(c.beRate,c.beTBD)}</td>`
-      +`<td class="num">${c.beMonthly?money(c.beMonthly):'<span class="muted">-</span>'}</td>`
-      +`<td style="font-size:12px">${special.length?special.join('<br>'):'<span class="muted">-</span>'}</td>`
+      +`<td class="num" style="white-space:nowrap">${conRateLabel(c.feRate,c.feTBD)}${c.feMonthly?`<div class="muted" style="font-size:11px">of ${money(c.feMonthly)}/mo</div>`:''}</td>`
+      +`<td class="num" style="white-space:nowrap">${conRateLabel(c.beRate,c.beTBD)}${c.beMonthly?`<div class="muted" style="font-size:11px">of ${money(c.beMonthly)}/mo</div>`:''}</td>`
+      +`<td style="font-size:11.5px;white-space:normal;max-width:150px">${special.length?special.join('<br>'):'<span class="muted">-</span>'}</td>`
       +`<td class="num"><b>${money(fmo)}</b></td>`
       +`<td class="num">${act!=null?money(act):'<span class="muted">'+(app?money(0):'-')+'</span>'}</td>`
       +`<td><button class="btn ghost sm" onclick="conEdit('${jsStr(c.client)}')">Edit</button></td></tr>`;
@@ -3205,7 +3203,7 @@ function renderContracts(){
   for(let i=0;i<6;i++){ const d=new Date(d0.getFullYear(),d0.getMonth()+i,1); months.push({label:d.toLocaleString('en-US',{month:'short',year:'numeric'}), amt:fcMonth}); }
   const card=(l,v)=>`<div class="kpi" style="flex:1;min-width:170px"><div class="lbl">${l}</div><div class="val">${v}</div></div>`;
   const cards=document.getElementById('conCards'); if(cards) cards.innerHTML=card('Active contracts',active.length)+card('Forecast TSA revenue / mo',money(fcMonth))+card('Forecast / yr',money(fcMonth*12))+card('Actual TSA ('+esc(rng.label)+')',money(actual));
-  const t=document.getElementById('conTable'); if(t) t.innerHTML=`<thead><tr><th>Client</th><th>Status</th><th class="num">FE %</th><th class="num">FE exp $/mo</th><th class="num">BE %</th><th class="num">BE exp $/mo</th><th>Special</th><th class="num">Forecast TSA/mo</th><th class="num">Actual TSA (${esc(rng.label)})</th><th></th></tr></thead><tbody>${rows}</tbody>`;
+  const t=document.getElementById('conTable'); if(t) t.innerHTML=`<thead><tr><th>Client</th><th>Status</th><th class="num">Front-end</th><th class="num">Back-end</th><th>Special</th><th class="num">Forecast TSA/mo</th><th class="num">Actual TSA</th><th></th></tr></thead><tbody>${rows}</tbody>`;
   const fc=document.getElementById('conForecast'); if(fc) fc.innerHTML=`<thead><tr>${months.map(m=>`<th class="num">${esc(m.label)}</th>`).join('')}<th class="num">Next 12 mo</th></tr></thead><tbody><tr>${months.map(m=>`<td class="num">${money(m.amt)}</td>`).join('')}<td class="num"><b>${money(fcMonth*12)}</b></td></tr></tbody>`;
   const note=document.getElementById('conNote'); if(note) note.style.display=anyTBD?'':'none';
 }
