@@ -322,6 +322,18 @@
   .locknote{font-size:12px;color:var(--muted);background:var(--surface-2);border-radius:8px;padding:8px 12px;display:inline-block;margin-bottom:12px}
   [hidden]{display:none !important}
   @media(max-width:560px){.kpi .val{font-size:21px}}
+  /* Phone polish (T-472): stack filter controls + header selects full-width so forms read like an app, not a spreadsheet */
+  @media(max-width:560px){
+    main{padding:16px 14px 60px}
+    h2.section{font-size:20px}
+    .filters{gap:8px}
+    .filters .field, .filters .rangewrap{flex:1 1 100%;min-width:0}
+    .filters .field input, .filters .field select, .filters .rangewrap input[type=text]{width:100%;box-sizing:border-box}
+    header.app select{max-width:44vw}
+    .seg{flex-wrap:wrap}
+    .row-actions{flex-wrap:wrap}
+    .row-actions .btn{flex:1 1 auto}
+  }
 </style>
 </head>
 <body>
@@ -3089,7 +3101,7 @@ function renderMgrEod(){
       <div class="formhead" style="margin-top:12px"><b>Closers</b></div>
       <div class="grid3">${MGR_CLO_FIELDS.map(f=>inp(c,f[0],f[1],f[2],v(f[0]),!saved)).join('')}</div>
       <div class="formhead" style="margin-top:12px"><b>Constraint</b> <span class="sub">what held the team back</span></div>
-      <textarea rows="2" style="width:100%" data-acct="${esc(c)}" data-f="bottleneck" placeholder="If reps missed KPIs: who was the bottleneck, what happened (sick, half day, left early), did they meet KPIs?">${esc(p.bottleneck||'')}</textarea>
+      <div style="position:relative"><textarea rows="2" style="width:100%;padding-right:92px" data-acct="${esc(c)}" data-f="bottleneck" placeholder="If reps missed KPIs: who was the bottleneck, what happened (sick, half day, left early), did they meet KPIs?">${esc(p.bottleneck||'')}</textarea><button type="button" class="btn ghost sm" onclick="micDictate(this)" title="Dictate instead of typing" style="position:absolute;top:6px;right:6px">&#127908; Speak</button></div>
     </div></div>`;
   }).join('') : '<p class="muted" style="padding:14px">You are not set up as a manager on any account yet. Ask an admin to assign your offers under Users &rsaquo; Responsibilities.</p>';
   renderOffdayApprovals();
@@ -3099,6 +3111,23 @@ function renderMgrEodView(){
   const seg=document.getElementById('mgrVSeg');
   if(seg){ const key=MGR_VDAY?(MGR_VDAY===todayLocal()?'today':'yesterday'):''; seg.querySelectorAll('button').forEach(b=>b.classList.toggle('on',(b.getAttribute('onclick')||'').includes(`'${key}'`))); }
   renderMgrEodTable();
+}
+/* Voice-to-text (T-528): dictate into the sibling textarea using the browser's built-in Web Speech API
+   (Chrome/Edge - no external service or key). The mic button sits inside a position:relative wrapper next
+   to its textarea; click to start, click again (or stop talking) to stop. Reusable on any textarea. */
+let __micRec=null, __micBtn=null;
+function micDictate(btn){
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){ toast('Voice input needs Chrome or Edge on this device.',true); return; }
+  if(__micRec){ try{ __micRec.stop(); }catch(_){} return; } // already listening -> stop
+  const ta=btn.parentElement&&btn.parentElement.querySelector('textarea'); if(!ta) return;
+  const base=ta.value?ta.value.replace(/\s*$/,'')+' ':'';
+  const rec=new SR(); rec.lang='en-US'; rec.interimResults=true; rec.continuous=true;
+  rec.onresult=e=>{ let txt=''; for(let i=0;i<e.results.length;i++) txt+=e.results[i][0].transcript; ta.value=base+txt; ta.dispatchEvent(new Event('input',{bubbles:true})); };
+  rec.onerror=e=>{ if(e&&e.error&&e.error!=='no-speech'&&e.error!=='aborted') toast('Voice input: '+e.error,true); };
+  rec.onend=()=>{ __micRec=null; if(__micBtn){ __micBtn.classList.remove('micon'); __micBtn.style.color=''; __micBtn.innerHTML='&#127908; Speak'; __micBtn=null; } };
+  __micRec=rec; __micBtn=btn; btn.classList.add('micon'); btn.style.color='var(--bad)'; btn.innerHTML='&#9724; Stop';
+  try{ rec.start(); }catch(_){ __micRec=null; if(__micBtn){ __micBtn.innerHTML='&#127908; Speak'; __micBtn=null; } }
 }
 /* ===== Contracts & Revenue Forecast (T-548, lender view) ===== */
 const CONTRACT_SEED=[
@@ -4017,8 +4046,11 @@ function splRenderLeads(){
   else rows=rows.sort((a,b)=>(b.gapMin==null?1e9:b.gapMin)-(a.gapMin==null?1e9:a.gapMin)); // uncalled first, then slowest
   rows=rows.slice(0,60);
   const gap=r=> r.gapMin==null?'<span style="color:var(--warn)">-</span>':`<span style="color:${r.gapMin<=target?'var(--good)':'inherit'};font-weight:${r.gapMin<=target?'600':'400'}">${splFmtMin(r.gapMin)}</span>`;
-  lt.innerHTML=`<thead><tr><th>Lead</th><th>Came in</th><th>1st call</th><th class="num">Gap</th><th>Rep</th></tr></thead><tbody>`
-    +(rows.length?rows.map(r=>`<tr><td>${splGhlLink(r.id)?`<a href="${splGhlLink(r.id)}" target="_blank" rel="noopener" class="linklike" title="Open in GHL">${esc(r.name)}</a>`:esc(r.name)}</td><td style="white-space:nowrap;font-size:12px">${esc(splTs(r.created))}</td><td style="white-space:nowrap;font-size:12px">${r.firstCall?esc(splTs(r.firstCall)):'<span style="color:var(--warn)">none</span>'}</td><td class="num">${gap(r)}</td><td>${esc(r.rep||'')}</td></tr>`).join(''):`<tr><td colspan="5" class="muted" style="padding:14px">${__splRepFilter?('No leads for '+esc(__splRepFilter)+' in this view.'):(view==='within'?('No leads called within '+target+' min in this window.'):(view==='uncalled'?'Every lead in this window got a call.':'No leads in this window.'))}</td></tr>`)+`</tbody>`;
+  // surface a call recording when this lead matches a logged post-call/deal that has a Fathom link (matched by lead name)
+  const fmap={}; RECORDS.forEach(x=>{ if((x.type==='deal'||x.type==='postcall') && x.fathom && String(x.lead||'').trim()){ fmap[nrmName(x.lead)]=x.fathom; } });
+  const rec=r=>{ const f=fmap[nrmName(r.name)]; return f?`<a href="${esc(f)}" target="_blank" rel="noopener" class="linklike" title="Watch the call recording">&#9654; Watch</a>`:'<span class="muted">-</span>'; };
+  lt.innerHTML=`<thead><tr><th>Lead</th><th>Came in</th><th>1st call</th><th class="num">Gap</th><th>Rep</th><th>Recording</th></tr></thead><tbody>`
+    +(rows.length?rows.map(r=>`<tr><td>${splGhlLink(r.id)?`<a href="${splGhlLink(r.id)}" target="_blank" rel="noopener" class="linklike" title="Open this contact in GHL">${esc(r.name)} &#8599;</a>`:esc(r.name)}</td><td style="white-space:nowrap;font-size:12px">${esc(splTs(r.created))}</td><td style="white-space:nowrap;font-size:12px">${r.firstCall?esc(splTs(r.firstCall)):'<span style="color:var(--warn)">none</span>'}</td><td class="num">${gap(r)}</td><td>${esc(r.rep||'')}</td><td>${rec(r)}</td></tr>`).join(''):`<tr><td colspan="6" class="muted" style="padding:14px">${__splRepFilter?('No leads for '+esc(__splRepFilter)+' in this view.'):(view==='within'?('No leads called within '+target+' min in this window.'):(view==='uncalled'?'Every lead in this window got a call.':'No leads in this window.'))}</td></tr>`)+`</tbody>`;
 }
 // share of logged calls that were wrong/bad numbers, scoped to the dashboard's date range + client + role scope
 function badNumberPct(){
@@ -5572,7 +5604,7 @@ function renderInterviewPanel(){
       <td>${c.rating?'<span class="stars">'+'★'.repeat(Math.min(5,c.rating))+'</span>':'<span class="muted">-</span>'}</td>
       <td>${esc(recArr(c.role).join(', ')||'-')}${c.sold?'<div class="muted" style="font-size:11px">'+esc(c.sold)+'</div>':''}</td>
       <td><span class="pill">${esc(c.recStatus||'-')}</span></td>
-      <td style="white-space:nowrap"><button class="btn sm gold" style="padding:3px 9px" onclick="recDecision('${c.id}','offer')">Send offer</button> <button class="btn sm" style="padding:3px 9px" onclick="recDecision('${c.id}','shortlist')">Shortlist</button> <button class="btn sm ghost" style="padding:3px 9px;color:var(--warn);border-color:var(--warn)" onclick="recDecision('${c.id}','notq')">Not qualified</button></td>
+      <td style="white-space:nowrap"><button class="btn sm gold" style="padding:3px 9px" onclick="recDecision('${c.id}','offer')">Send offer</button> <button class="btn sm" style="padding:3px 9px;background:var(--good);color:#0e0c09;border-color:var(--good)" onclick="recDecision('${c.id}','hired')" title="Mark hired - starts their onboarding">Hired</button> <button class="btn sm" style="padding:3px 9px" onclick="recDecision('${c.id}','shortlist')">Shortlist</button> <button class="btn sm ghost" style="padding:3px 9px;color:var(--warn);border-color:var(--warn)" onclick="recDecision('${c.id}','notq')">Not qualified</button></td>
     </tr>`).join('')
     :'<tr><td colspan="5" class="muted" style="padding:16px">No candidates awaiting a decision. Invite people to a group interview from the Search view, then decide them here.</td></tr>')+'</tbody>';
 }
@@ -5580,6 +5612,7 @@ async function recDecision(id,outcome){
   if(outcome==='offer'){ offerOpenFor(id); return; } // opens the offer composer; sending moves them to Offer Sent
   const c=REC_ALL.find(x=>x.id===id); if(!c) return;
   if(outcome==='shortlist'){ await recSetStage(id,'Shortlisted'); }
+  else if(outcome==='hired'){ await recSetStage(id,'Hired'); toast((c.name||'Candidate')+' marked Hired - onboarding started'); }
   else if(outcome==='notq'){ await recSetStage(id,'Not Looking'); const t=new Date(), ds=`${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`, tag='Not qualified '+usDate(ds); const next=recArr(c.tags).includes(tag)?recArr(c.tags):[...recArr(c.tags),tag]; c.tags=next; recFetch('/api/recruiting?action=tag',{method:'POST',body:JSON.stringify({records:[{id,tags:next}]})}); }
   renderInterviewPanel();
 }
@@ -6548,10 +6581,10 @@ function renderUsersTable(list){
   renderRepOnboarding();
 }
 /* ---- Rep onboarding checklist: contract -> Slack -> GHL -> training (Ra-eez's 4 steps) ---- */
-const ONBOARD_STEPS=[['contract','Contract','Sent + signed (TSA or the client company)'],['slack','Slack','Invited to the client Slack + channels'],['ghl','GHL','CRM access (closers also added to payment options)'],['training','Training','Sales HQ login + how to submit reports (Fathom for closers)']];
+const ONBOARD_STEPS=[['contract','Contract','Sent + signed (TSA or the client company)'],['slack','Slack','Invited to the client Slack + channels'],['ghl','GHL','CRM access (closers also added to payment options)'],['calendar','Calendar','Connect your Google Calendar + Meet in GHL so bookings land + Meet links generate'],['number','Number','A GHL phone number is provisioned + assigned to you to dial out (A2P alone is not enough)'],['training','Training','Sales HQ login + how to submit reports (Fathom for closers)']];
 function repOnboardMap(){ const m={}; RECORDS.forEach(x=>{ if(x.type!=='reponboard')return; const k=nrmName(x.username); if(!k)return; if(!m[k]||(x.submittedAt||'')>(m[k].submittedAt||'')) m[k]=x; }); return m; }
 function repOnboardFor(username){ return repOnboardMap()[nrmName(username)]||null; }
-function onboardDone(ob){ return !!(ob&&ob.contract&&ob.slack&&ob.ghl&&ob.training); }
+function onboardDone(ob){ return !!ob && ONBOARD_STEPS.every(([k])=>ob[k]); }
 function renderRepOnboarding(){
   const panel=document.getElementById('usersOnboardPanel'), box=document.getElementById('usersOnboard'); if(!panel||!box) return;
   const reps=(USERS_CACHE||[]).filter(u=>['setter','closer'].includes(u.role) && !u.archived && (!GLOBAL_CLIENT || teamsFor(u.username).includes(GLOBAL_CLIENT))); // follow the global company scope
@@ -6560,7 +6593,7 @@ function renderRepOnboarding(){
     .sort((a,b)=>String(a.name||a.username).localeCompare(String(b.name||b.username)));
   if(!list.length){ panel.hidden=true; box.innerHTML=''; return; }
   panel.hidden=false;
-  box.innerHTML=list.map(u=>{ const ob=repOnboardFor(u.username)||{}, done=['contract','slack','ghl','training'].filter(s=>ob[s]).length;
+  box.innerHTML=list.map(u=>{ const ob=repOnboardFor(u.username)||{}, done=ONBOARD_STEPS.filter(([k])=>ob[k]).length;
     const teams=teamsFor(u.username), mgr=(repMetaFor(u.username)||{}).mgr, uname=esc(u.username).replace(/'/g,"\\'");
     const steps=ONBOARD_STEPS.map(([k,lbl,hint])=>`<label style="display:inline-flex;gap:6px;align-items:center;font-size:13px;cursor:pointer" title="${esc(hint)}"><input type="checkbox" ${ob[k]?'checked':''} onchange="toggleOnboardStep('${uname}','${k}',this.checked)"> ${lbl}</label>`).join('');
     return `<div style="border:1px solid var(--border);border-radius:9px;padding:10px 12px;margin-bottom:10px">
@@ -6569,15 +6602,16 @@ function renderRepOnboarding(){
         ${teams.length?`<span class="muted" style="font-size:12px">${esc(teams.join(', '))}</span>`:'<span class="tag" style="color:var(--warn);border-color:var(--warn)">no account assigned</span>'}
         ${mgr?`<span class="muted" style="font-size:12px">mgr: ${esc(mgr)}</span>`:''}
         <span style="flex:1"></span>
-        <span class="pill ${done===4?'good':''}">${done}/4</span>
+        <span class="pill ${done===ONBOARD_STEPS.length?'good':''}">${done}/${ONBOARD_STEPS.length}</span>
       </div>
       <div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:8px">${steps}</div>
     </div>`;
   }).join('');
 }
 async function toggleOnboardStep(username, step, on){
-  const u=userByName(username)||{username,name:username}, cur=repOnboardFor(username)||{contract:false,slack:false,ghl:false,training:false};
-  const rec={type:'reponboard', username:(u.username||username), name:(u.name||username), contract:!!cur.contract, slack:!!cur.slack, ghl:!!cur.ghl, training:!!cur.training};
+  const u=userByName(username)||{username,name:username}, cur=repOnboardFor(username)||{};
+  const rec={type:'reponboard', username:(u.username||username), name:(u.name||username)};
+  ONBOARD_STEPS.forEach(([k])=>{ rec[k]=!!cur[k]; });
   rec[step]=!!on;
   await addRecord(rec);
   if(onboardDone(rec)) toast((u.name||username)+' fully onboarded');
