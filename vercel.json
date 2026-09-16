@@ -2,6 +2,7 @@
   "crons": [
     { "path": "/api/onboarding-digest", "schedule": "0 13 * * *" },
     { "path": "/api/client-digests", "schedule": "0 14 * * *" },
-    { "path": "/api/daily-report", "schedule": "0,30 12-17 * * *" }
+    { "path": "/api/daily-report", "schedule": "0,30 12-17 * * *" },
+    { "path": "/api/leaderboard", "schedule": "0,30 12-17 * * *" }
   ]
 }
