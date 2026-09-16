@@ -1056,7 +1056,7 @@
     </div>
     <div id="mgrEodSections"></div>
     <div class="row-actions" style="margin:8px 0 2px"><button class="btn gold" id="mgrEodSubmit" onclick="submitMgrEod()">Submit manager EOD</button></div>
-    <div class="panel"><h3>Recent manager EODs <span style="font-weight:400;color:var(--muted);font-size:12px">- latest per manager, account + day</span></h3><div class="tablewrap"><table id="mgrEodTable"></table></div></div>
+    <div class="panel"><div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px"><h3 style="margin:0">Manager EOD review <span style="font-weight:400;color:var(--muted);font-size:12px">- what each manager reported + their constraint note (latest per manager, account &amp; day)</span></h3><div class="seg" id="mgrVSeg"><button onclick="setMgrVDay('')">All recent</button><button onclick="setMgrVDay('today')">Today</button><button onclick="setMgrVDay('yesterday')">Yesterday</button></div></div><div class="tablewrap" style="margin-top:10px"><table id="mgrEodTable"></table></div></div>
   </section>
 
   <!-- ===== WEBINAR ===== -->
@@ -3035,12 +3035,16 @@ function renderMgrEod(){
   renderMgrEodTable();
   renderOffdayApprovals();
 }
+let MGR_VDAY=''; // manager-EOD review day filter ('' = all recent)
+function setMgrVDay(v){ if(v==='today') MGR_VDAY=todayLocal(); else if(v==='yesterday'){ const d=new Date(); d.setDate(d.getDate()-1); MGR_VDAY=isoLocal(d); } else MGR_VDAY=''; document.querySelectorAll('#mgrVSeg button').forEach(b=>b.classList.toggle('on',(b.getAttribute('onclick')||'').includes(`'${v}'`))); renderMgrEodTable(); }
 function renderMgrEodTable(){
   const t=document.getElementById('mgrEodTable'); if(!t) return;
   const sc=dashScopeClients();
-  const rows=collapseMgrEod(RECORDS).filter(x=>!sc||sc.includes(x.client)).sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.submittedAt||'').localeCompare(a.submittedAt||'')).slice(0,60);
+  let rows=collapseMgrEod(RECORDS).filter(x=>!sc||sc.includes(x.client));
+  if(MGR_VDAY) rows=rows.filter(x=>(x.date||'').slice(0,10)===MGR_VDAY);
+  rows=rows.sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.submittedAt||'').localeCompare(a.submittedAt||'')).slice(0,60);
   const head=`<thead><tr><th>Date</th><th>Account</th><th>Manager</th><th class="num">Setters</th><th class="num">Dials</th><th class="num">Sets</th><th class="num">Set EOD</th><th class="num">Closers</th><th class="num">Calls</th><th class="num">Show%</th><th class="num">Close%</th><th class="num">Cash</th><th class="num">Clo EOD</th><th>Bottleneck</th></tr></thead><tbody>`;
-  t.innerHTML=head+(rows.length?rows.map(x=>`<tr><td style="white-space:nowrap">${esc(usDate(x.date))}</td><td>${esc(x.client)}</td><td>${esc(x.by||'')}</td><td class="num">${x.settersWorking||0}</td><td class="num">${x.setterDials||0}</td><td class="num">${x.setterSets||0}</td><td class="num">${x.setterEods||0}</td><td class="num">${x.closersWorking||0}</td><td class="num">${x.closerCalls||0}</td><td class="num">${x.showRate||0}%</td><td class="num">${x.closeRate||0}%</td><td class="num">${money(x.cash)}</td><td class="num">${x.closerEods||0}</td><td>${esc(x.bottleneck||'')}</td></tr>`).join(''):`<tr><td colspan="14" class="muted" style="padding:16px">No manager EODs yet.</td></tr>`)+`</tbody>`;
+  t.innerHTML=head+(rows.length?rows.map(x=>`<tr><td style="white-space:nowrap">${esc(usDate(x.date))}</td><td>${esc(x.client)}</td><td>${esc(x.by||'')}</td><td class="num">${x.settersWorking||0}</td><td class="num">${x.setterDials||0}</td><td class="num">${x.setterSets||0}</td><td class="num">${x.setterEods||0}</td><td class="num">${x.closersWorking||0}</td><td class="num">${x.closerCalls||0}</td><td class="num">${x.showRate||0}%</td><td class="num">${x.closeRate||0}%</td><td class="num">${money(x.cash)}</td><td class="num">${x.closerEods||0}</td><td style="white-space:normal;min-width:200px;max-width:380px;font-size:12.5px">${esc(x.bottleneck||'')}</td></tr>`).join(''):`<tr><td colspan="14" class="muted" style="padding:16px">No manager EODs${MGR_VDAY?' for '+usDate(MGR_VDAY):' yet'}.</td></tr>`)+`</tbody>`;
 }
 async function submitMgrEod(){
   const btn=document.getElementById('mgrEodSubmit'); if(btn&&btn.disabled) return; btnBusy(btn,true); let ok=false;
