@@ -4497,13 +4497,16 @@ function genRepCommSummary(data,from,to,client){
   const pc=payCycleForRange(from,to), period=`${esc(usDate(from))} &ndash; ${esc(usDate(to))}${pc?` &middot; paid ${esc(usDate(pc.pay))}`:''}`;
   const totC=data.closers.reduce((s,o)=>s+o.commission,0), totS=data.setters.reduce((s,o)=>s+o.commission,0);
   const sec=(title,rows,role)=>{
-    const body=rows.length?rows.map(o=>`<tr>
-      <td style="padding:11px 8px;border-bottom:1px solid #eef1f6"><button onclick="showRepStatement('${role}','${encodeURIComponent(o.rep)}')" style="background:none;border:0;color:#1a2b4a;font-weight:700;cursor:pointer;padding:0;text-decoration:underline;font-size:13px">${esc(o.rep)}</button></td>
-      <td style="padding:11px 8px;border-bottom:1px solid #eef1f6;text-align:right;color:#6b7488">${o.items.filter(i=>i.kind==='Deal').length}</td>
+    const body=rows.length?rows.map(o=>{
+      const leads=[...new Set(o.items.map(i=>String(i.lead||'').trim()).filter(Boolean))]; // who this rep closed/set in the cycle
+      const leadsLine = leads.length ? `<div style="font-size:11px;color:#8a93a6;margin-top:3px;line-height:1.4">${leads.map(esc).join(', ')}</div>` : '';
+      return `<tr>
+      <td style="padding:11px 8px;border-bottom:1px solid #eef1f6;vertical-align:top"><button onclick="showRepStatement('${role}','${encodeURIComponent(o.rep)}')" style="background:none;border:0;color:#1a2b4a;font-weight:700;cursor:pointer;padding:0;text-decoration:underline;font-size:13px">${esc(o.rep)}</button>${leadsLine}</td>
+      <td style="padding:11px 8px;border-bottom:1px solid #eef1f6;text-align:right;color:#6b7488;vertical-align:top">${o.items.filter(i=>i.kind==='Deal').length}</td>
       <td style="padding:11px 8px;border-bottom:1px solid #eef1f6;text-align:right;font-variant-numeric:tabular-nums">${money(o.cash)}</td>
       <td style="padding:11px 8px;border-bottom:1px solid #eef1f6;text-align:right;color:#6b7488">${Math.round(o.effRate*10)/10}%</td>
       <td style="padding:11px 8px;border-bottom:1px solid #eef1f6;text-align:right;font-weight:800;color:#1a2b4a;font-variant-numeric:tabular-nums">${money(o.commission)}</td>
-    </tr>`).join(''):`<tr><td colspan="5" style="text-align:center;color:#8a93a6;padding:16px">No ${role} commissions in this period.</td></tr>`;
+    </tr>`; }).join(''):`<tr><td colspan="5" style="text-align:center;color:#8a93a6;padding:16px">No ${role} commissions in this period.</td></tr>`;
     const tot=rows.reduce((s,o)=>s+o.commission,0);
     return repCommCard(`<div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px"><div style="font-weight:800;color:#1a2b4a;font-size:16px">${title}</div><div style="font-size:13px;color:#6b7488">Total: <b style="color:#1a2b4a">${money(tot)}</b></div></div>
       <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:12px;min-width:520px">
