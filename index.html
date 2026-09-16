@@ -440,6 +440,7 @@
     <div class="navsub">
       <button data-tab="dailyreport">Daily Report</button>
       <button data-tab="reps">Rep Breakdown</button>
+      <button data-tab="scorecards">Scorecards</button>
       <button data-tab="mgreod">Manager EOD</button>
       <button data-tab="calllog">Call Log</button>
       <button data-tab="calendar">Calendar</button>
@@ -1123,6 +1124,14 @@
       <p id="conNote" class="hint" style="display:none;margin:10px 14px 0">Rows marked <span class="pill warn">TBD</span> are excluded from the forecast totals until you confirm the rate. Actual TSA applies the front-end rate to live cash collected (the app does not tag front-end vs back-end payments), so treat it as an estimate.</p>
     </div>
     <div class="panel"><h3 style="margin:0">Forecasted TSA revenue by month <span style="font-weight:400;color:var(--muted);font-size:12px">- flat recurring from active contracts</span></h3><div class="tablewrap" style="margin-top:10px"><table id="conForecast"></table></div></div>
+  </section>
+
+  <!-- ===== SCORECARDS ===== -->
+  <section id="tab-scorecards" hidden>
+    <h2 class="section">Scorecards</h2>
+    <p class="hint">Per-rep performance pulled from EOD data, plus ramp milestones for new hires. Follows the company selector at the top. Ramp shows for anyone in their first 45 days.</p>
+    <div class="filters" style="margin:0 0 14px;align-items:center"><div class="seg" id="scPeriodSeg"><button class="on" onclick="setScPeriod('week')">This week</button><button onclick="setScPeriod('month')">This month</button><button onclick="setScPeriod('30')">Last 30d</button><button onclick="setScPeriod('all')">All-time</button></div></div>
+    <div id="scBody"></div>
   </section>
 
   <!-- ===== NEW-ACCOUNT KICKOFF SOP ===== -->
@@ -2296,9 +2305,9 @@ function startApp(){
 // base tabs a login TIER can see; per-account responsibilities add to this in applyNavAccess()
 function baseAllow(role){
   return ({
-    admin:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','adminreport','recruiting','messages','invoicing','contracts','onbaudit','data','users','integrations','settings','reprequests','resources','faq','kickoff'],
-    director:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','dailyreport','recruiting','messages','adminreport','contracts','onbaudit','reprequests','resources','faq','kickoff'],
-    manager:['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','speedtolead','dailyreport','adminreport','recruiting','messages','reprequests','resources','faq','kickoff'],
+    admin:['dash','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','adminreport','recruiting','messages','invoicing','contracts','onbaudit','data','users','integrations','settings','reprequests','resources','faq','kickoff'],
+    director:['dash','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','dailyreport','recruiting','messages','adminreport','contracts','onbaudit','reprequests','resources','faq','kickoff'],
+    manager:['dash','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','speedtolead','dailyreport','adminreport','recruiting','messages','reprequests','resources','faq','kickoff'],
     founder:['dash','reprequests','faq'],
     recruiter:['dash','recruiting','messages','timeoff','reprequests','resources','faq','kickoff'],
     webinarteam:['dash','meeting','promises','timeoff','webinar','resources','faq','kickoff'],
@@ -2442,9 +2451,9 @@ function showTab(t){
   document.querySelectorAll('#tabs button[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
   document.querySelectorAll('#tabs .navgroup').forEach(g=>{ if(g.querySelector('button[data-tab="'+t+'"]')) g.classList.remove('collapsed'); }); // reveal the active tab's group
 
-  ['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','adminreport','reprequests','recruiting','messages','invoicing','contracts','onbaudit','data','users','integrations','settings','resources','faq','kickoff'].forEach(x=>{ const el=document.getElementById('tab-'+x); if(el) el.hidden = (x!==t); });
+  ['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','adminreport','reprequests','recruiting','messages','invoicing','contracts','onbaudit','data','users','integrations','settings','resources','faq','kickoff','scorecards'].forEach(x=>{ const el=document.getElementById('tab-'+x); if(el) el.hidden = (x!==t); });
   // stale-while-revalidate: render instantly from the cached records, then refresh in the background
-  const render={dash:renderDash, mydeals:renderMyDeals, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, promises:renderPromisesTab, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, mgreodview:renderMgrEodView, contracts:renderContracts, faq:renderFaq, webinar:renderWebinars, calllog:renderCallLog, calendar:renderCalendar, speedtolead:renderSpeedToLead, dailyreport:renderDailyReport, adminreport:renderAdminReport, reprequests:renderRepRequests, recruiting:renderRecruiting, messages:renderMessages, training:renderTraining, invoicing:renderInvoicing, data:renderAll}[t];
+  const render={dash:renderDash, mydeals:renderMyDeals, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, promises:renderPromisesTab, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, mgreodview:renderMgrEodView, contracts:renderContracts, faq:renderFaq, scorecards:renderScorecards, webinar:renderWebinars, calllog:renderCallLog, calendar:renderCalendar, speedtolead:renderSpeedToLead, dailyreport:renderDailyReport, adminreport:renderAdminReport, reprequests:renderRepRequests, recruiting:renderRecruiting, messages:renderMessages, training:renderTraining, invoicing:renderInvoicing, data:renderAll}[t];
   if(render){ render(); syncRecords().then(()=>{ if(currentTab()===t) render(); buildGlobalClientSelect(); buildViewAsUserSelect(); updateNavBadges(); renderReminders(); }); }
   updateNavBadges();
   if(t==='data'){ renderDailyEntry(); crInit(); }
@@ -3327,6 +3336,85 @@ function renderFaq(){
   if(openBox){ const open=all.filter(x=>x.status!=='answered').sort((a,b)=>(b.submittedAt||'').localeCompare(a.submittedAt||'')); openBox.innerHTML=open.length?open.map(faqOpenCard).join(''):'<p class="muted" style="padding:6px 2px;margin:0">No open questions.</p>'; }
   const box=document.getElementById('faqAnswered');
   if(box){ const q=((document.getElementById('faqSearch')||{}).value||'').toLowerCase(); let ans=all.filter(x=>x.status==='answered').sort((a,b)=>(b.answeredAt||'').localeCompare(a.answeredAt||'')); if(q) ans=ans.filter(x=>((x.question||'')+' '+(x.answer||'')).toLowerCase().includes(q)); box.innerHTML=ans.length?ans.map(faqAnsCard).join(''):'<p class="muted" style="padding:6px 2px;margin:0">No answered questions yet.</p>'; }
+}
+/* ===== Rep Scorecards + ramp milestones (T-439) ===== */
+let SC_PERIOD='month';
+// ramp milestone defaults (byDay = deadline in days since hire). Tune these as we learn the real ramp curve.
+const RAMP_DEFS={
+  setter:[ {label:'Education', byDay:3, desc:'Training complete', hit:t=> t.trainingDone || t.anyActivity},
+           {label:'Initial', byDay:7, desc:'100+ dials logged', hit:t=> t.dials>=100},
+           {label:'Performance', byDay:21, desc:'15+ sets', hit:t=> t.sets>=15} ],
+  closer:[ {label:'Education', byDay:3, desc:'Training complete', hit:t=> t.trainingDone || t.anyActivity},
+           {label:'Initial', byDay:7, desc:'5+ calls taken', hit:t=> t.calls>=5},
+           {label:'Performance', byDay:30, desc:'First close or cash', hit:t=> t.closes>=1 || t.cash>0} ]
+};
+function setScPeriod(p){ SC_PERIOD=p; document.querySelectorAll('#scPeriodSeg button').forEach(b=>b.classList.toggle('on',(b.getAttribute('onclick')||'').includes(`'${p}'`))); renderScorecards(); }
+function scRange(){ const t=todayLocal(); if(SC_PERIOD==='all') return {from:'',to:''}; if(SC_PERIOD==='30') return {from:isoOffset(t,-29),to:t}; if(SC_PERIOD==='week'){ const dow=new Date(t+'T00:00:00').getDay(); return {from:isoOffset(t,dow===0?-6:1-dow),to:t}; } return {from:t.slice(0,7)+'-01',to:t}; }
+// per-rep bucketing (mirrors the Rep Breakdown loop) -> {setters:{name->o}, closers:{name->o}}
+function scorecardBuckets(recs){
+  const setters={}, closers={};
+  const b=(map,name)=>{ if(!map[name]) map[name]={rep:name,hours:0,newOut:0,fuOut:0,set:0,connCalls:0,connected:0,newMtg:0,followMtg:0,noShows:0,capacity:0,cash:0,deals:0,contract:0}; return map[name]; };
+  (recs||[]).forEach(x=>{
+    const rep=String(x.rep||'').trim(), setter=String(x.setter||'').trim();
+    if((x.type==='eod'||!x.type)&&rep){ const o=b(x.role==='Setter'?setters:closers,rep);
+      o.hours+=x.hoursDialing||0; o.newOut+=x.newOutreach||0; o.fuOut+=x.followUpOutreach||0; o.set+=x.callsSet||0; o.connCalls+=x.connectedCalls||0;
+      o.connected+=x.connectedMeetings||0; o.newMtg+=x.newMeetings||0; o.followMtg+=x.followUpMeetings||0; o.noShows+=x.noShows||0; o.capacity+=x.callCapacity||0;
+      if(x.role!=='Setter'&&countsMoney(x)){ o.cash+=x.cashCollected||0; o.deals+=x.closedDeals||0; o.contract+=x.contractValue||0; } }
+    if(x.type==='deal'||x.type==='payment'){ if(rep){ const o=b(closers,rep); o.cash+=x.cashCollected||0; o.deals+=x.closedDeals||0; o.contract+=x.contractValue||0; } if(setter){ const o=b(setters,setter); o.cash+=x.cashCollected||0; o.deals+=x.closedDeals||0; } }
+  });
+  return {setters,closers};
+}
+function scEmpty(){ return {newOut:0,connCalls:0,set:0,hours:0,connected:0,deals:0,cash:0,contract:0,noShows:0,newMtg:0,followMtg:0,capacity:0}; }
+function evalRamp(defs, cumT, ten){
+  const milestones=defs.map(d=>{ const done=!!d.hit(cumT), missed=!done&&ten>d.byDay, left=Math.max(0,d.byDay-ten); return {label:d.label,desc:d.desc,byDay:d.byDay,done,missed,left}; });
+  const verdict = milestones.some(m=>m.missed)?'missed':(milestones.every(m=>m.done)?'passed':'ramping');
+  return {milestones,verdict};
+}
+function scTile(label,val){ return `<div style="background:var(--surface-2);border-radius:8px;padding:7px 9px;text-align:center"><div class="muted" style="font-size:10px;text-transform:uppercase;letter-spacing:.02em">${label}</div><div style="font-size:16px;font-weight:700;font-variant-numeric:tabular-nums">${val}</div></div>`; }
+function scCard(u,role,rowIn,cumIn){
+  const row=rowIn||scEmpty(), cum=cumIn||scEmpty();
+  const ten=repTenureDays(u), trainingDone=!!(repOnboardFor(u.username)||{}).training;
+  const accts=teamsFor(u.username), acctHtml=accts.length?accts.join(', '):'no account';
+  let tiles;
+  if(role==='setter'){ const dials=row.newOut||0, conn=row.connCalls||0, sets=row.set||0;
+    tiles=[scTile('Dials',dials.toLocaleString()),scTile('Connects',conn),scTile('Sets',sets),scTile('Conv%',pct(dials?conn/dials:0)),scTile('Book%',pct(conn?sets/conn:0)),scTile('Hours',Math.round(row.hours||0)),scTile('Cash set',money(row.cash||0))].join('');
+  } else { const calls=row.connected||0, closes=row.deals||0, ns=row.noShows||0;
+    tiles=[scTile('Calls',calls),scTile('Closes',closes),scTile('Close%',pct(calls?closes/calls:0)),scTile('Show%',pct((calls+ns)?calls/(calls+ns):0)),scTile('Util%',pct(row.capacity?(row.newMtg+row.followMtg)/row.capacity:0)),scTile('Cash',money(row.cash||0))].join('');
+  }
+  let rampBlock='';
+  if(ten!=null && ten<=45){
+    const cumT = role==='setter'
+      ? {dials:cum.newOut||0, sets:cum.set||0, trainingDone, anyActivity:((cum.newOut||0)+(cum.set||0))>0}
+      : {calls:cum.connected||0, closes:cum.deals||0, cash:cum.cash||0, trainingDone, anyActivity:((cum.connected||0)+(cum.deals||0)+(cum.cash||0))>0};
+    const {milestones,verdict}=evalRamp(RAMP_DEFS[role], cumT, ten);
+    const vb = verdict==='passed'?'<span class="pill good">Passed ramp &#10003;</span>':verdict==='missed'?'<span class="pill" style="color:var(--bad);border-color:var(--bad)">Missed ramp - contact your manager</span>':'<span class="pill" style="color:var(--gold);border-color:var(--gold-soft)">Ramping</span>';
+    rampBlock=`<div style="margin-top:10px;border-top:1px solid var(--border);padding-top:8px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap"><span style="font-size:11px;text-transform:uppercase;color:var(--muted);font-weight:700">Ramp &middot; day ${ten}</span> ${vb}</div>
+      ${milestones.map(m=>`<div style="display:flex;align-items:center;gap:8px;font-size:12px;padding:2px 0"><span style="width:16px">${m.done?'&#9989;':(m.missed?'&#10060;':'&#8987;')}</span><span style="flex:1">${esc(m.label)}: ${esc(m.desc)}</span><span class="muted" style="font-size:11px">${m.done?'done':(m.missed?'missed (by day '+m.byDay+')':m.left+'d left')}</span></div>`).join('')}
+    </div>`;
+  }
+  return `<div class="panel" style="margin:0;padding:14px;flex:1 1 300px;min-width:280px;max-width:370px">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><div style="font-weight:700">${esc(u.name||u.username)}</div>${ten!=null?`<span class="muted" style="font-size:11px">${esc(fmtTenure(ten))}</span>`:''}</div>
+    <div class="muted" style="font-size:11px;margin:2px 0 10px">${esc(acctHtml)}</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(74px,1fr));gap:8px">${tiles}</div>
+    ${rampBlock}
+  </div>`;
+}
+function renderScorecards(){
+  const host=document.getElementById('scBody'); if(!host) return;
+  const sc = GLOBAL_CLIENT ? [GLOBAL_CLIENT] : (dashScopeClients()||null);
+  const {from,to}=scRange();
+  const recsP=activityRecords().filter(x=>((!from&&!to)||inRange(x.date,from,to)) && (!sc||sc.includes(x.client)));
+  const recsA=activityRecords().filter(x=> !sc||sc.includes(x.client)); // all-time for cumulative ramp checks
+  const pB=scorecardBuckets(recsP), aB=scorecardBuckets(recsA);
+  const inScope=u=> !sc || teamsFor(u.username).some(t=>sc.includes(t));
+  const list=role=>(USERS_CACHE||[]).filter(u=>!u.archived && inScope(u) && (u.role===role||hasRole(u.username,role))).sort((a,b)=>String(a.name||a.username).localeCompare(String(b.name||b.username)));
+  const setters=list('setter'), closers=list('closer');
+  const key=u=>String(u.name||'').trim();
+  const grid=(arr,role,map)=>`<div style="display:flex;flex-wrap:wrap;gap:12px;margin:6px 0 18px">${arr.map(u=>scCard(u,role,map[key(u)],aB[role==='setter'?'setters':'closers'][key(u)])).join('')}</div>`;
+  host.innerHTML = (setters.length?`<div class="kpisec">Setters (${setters.length})</div>`+grid(setters,'setter',pB.setters):'')
+    + (closers.length?`<div class="kpisec">Closers (${closers.length})</div>`+grid(closers,'closer',pB.closers):'')
+    + ((!setters.length&&!closers.length)?'<p class="muted" style="padding:14px">No setters or closers in scope. Pick a company at the top, or assign reps to accounts.</p>':'');
 }
 let MGR_VDAY=''; // manager-EOD review day filter ('' = all recent)
 function setMgrVDay(v){ if(v==='today') MGR_VDAY=todayLocal(); else if(v==='yesterday'){ const d=new Date(); d.setDate(d.getDate()-1); MGR_VDAY=isoLocal(d); } else MGR_VDAY=''; document.querySelectorAll('#mgrVSeg button').forEach(b=>b.classList.toggle('on',(b.getAttribute('onclick')||'').includes(`'${v}'`))); renderMgrEodTable(); }
