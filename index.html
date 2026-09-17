@@ -2439,7 +2439,7 @@ function applyIdentity(){
   if(hybrid && !REP_ACTAS) REP_ACTAS = SESSION.role==='setter'?'Setter':'Closer'; // default a hybrid to their primary
   const myRole = myRepRole();
   setEodRole(myRole);
-  document.getElementById('roleSegWrap').hidden = !hybrid; // a hybrid (closer + setter) can switch; single-role reps cannot
+  document.getElementById('roleSegWrap').hidden = !hybrid; // closers (auto-hybrid) can switch Closer/Setter; pure setters cannot
   const pcw=document.getElementById('pcRoleSegWrap'); if(pcw) pcw.hidden = !hybrid;
   setPcRole(myRole);
   const eRep=document.querySelector('#eodForm [name=rep]');
@@ -5192,9 +5192,11 @@ function remitBlockHtml(bi){
 /* ---------------- rep breakdown tab ---------------- */
 let REP_SEL=null, REP_SCOPE=null;
 function repMode(){ return SESSION && (SESSION.role==='closer'||SESSION.role==='setter'); }
-// a rep who holds BOTH closer and setter can log as either; REP_ACTAS is the role they're currently logging as
+// REP_ACTAS is the role a rep is currently logging as (Closer or Setter)
 let REP_ACTAS=null;
-function isHybridRep(){ return !!(SESSION && hasRole(SESSION.username,'closer') && hasRole(SESSION.username,'setter')); }
+// Every CLOSER is treated as a hybrid: closers occasionally set, so they automatically get the setter toggle + setter
+// forms in Sales HQ without being assigned the setter role. Pure setters stay setter-only (setters don't close).
+function isHybridRep(){ return !!(SESSION && hasRole(SESSION.username,'closer')); }
 function myRepRole(){ if(isHybridRep()) return REP_ACTAS||'Closer'; return SESSION&&SESSION.role==='setter'?'Setter':'Closer'; }
 // EOD compliance: who submitted an End-of-Day for a given day
 function submittedEod(name, day, client){
