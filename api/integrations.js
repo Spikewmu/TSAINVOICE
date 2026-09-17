@@ -156,7 +156,9 @@ export default async function handler(req, res) {
       const sb = Buffer.from(JSON.stringify(stateObj)).toString('base64url');
       const mac = crypto.createHmac('sha256', process.env.SESSION_SECRET || 'tsa-session').update(sb).digest('base64url');
       const redirect = baseUrl(req) + '/api/slack-oauth';
-      const url = 'https://slack.com/oauth/v2/authorize?' + new URLSearchParams({ client_id: slackAppId(appKey), scope: 'incoming-webhook', redirect_uri: redirect, state: sb + '.' + mac }).toString();
+      // the invoicing channel also needs files:write so the app can attach the invoice PDF (webhooks can't attach files)
+      const scope = (field === 'invoicing') ? 'incoming-webhook,files:write' : 'incoming-webhook';
+      const url = 'https://slack.com/oauth/v2/authorize?' + new URLSearchParams({ client_id: slackAppId(appKey), scope, redirect_uri: redirect, state: sb + '.' + mac }).toString();
       return res.status(200).json({ ok: true, url });
     }
     // ---- client-level config: Slack fallback + EOD toggle ----
