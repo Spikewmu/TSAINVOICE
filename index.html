@@ -4420,7 +4420,13 @@ function renderPaymentsModal(){
       ? `<input type="date" value="${esc((p.date||'').slice(0,10))}" onchange="editPaymentDate('${pid}',this.value)" style="width:150px" title="Edit the expected date this payment lands">`
       : esc(usDate(p.date));
     const beNote=(acctFrontEndOnly(d.client) && paymentBackEnd(p)) ? '<div style="font-size:11px;color:var(--warn)">back-end (30+ days) · no rep commission, TSA still bills</div>' : '';
-    rows+=`<tr><td>${dateCell}</td><td class="num">${money(p.amount)}</td><td>${esc(p.method||'')}${p.notes?`<div class="muted" style="font-size:11px">${esc(p.notes)}</div>`:''}${beNote}</td><td>${pill(p.status)}</td><td>${act}</td></tr>`;
+    // method: let a manager/closer switch how the money is / will be paid (e.g. customer decides to pay by card), inline
+    const methods=['Wire','Card','ACH','Check','Other'];
+    const cur=p.method||'Wire';
+    const methodCell=canMng
+      ? `<select onchange="editPaymentMethod('${pid}',this.value)" style="width:110px" title="Change how this payment is being made">${(methods.includes(cur)?methods:[cur,...methods]).map(m=>`<option${cur===m?' selected':''}>${esc(m)}</option>`).join('')}</select>`
+      : esc(cur);
+    rows+=`<tr><td>${dateCell}</td><td class="num">${money(p.amount)}</td><td>${methodCell}${p.notes?`<div class="muted" style="font-size:11px">${esc(p.notes)}</div>`:''}${beNote}</td><td>${pill(p.status)}</td><td>${act}</td></tr>`;
   });
   const table=`<div style="overflow-x:auto;margin-bottom:14px"><table style="margin-bottom:0;min-width:600px;width:100%"><thead><tr><th>Date</th><th class="num">Amount</th><th>Method</th><th>Status</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`;
   const form=canMng?`<div style="border:1px solid var(--border);border-radius:10px;padding:12px;background:var(--surface-2)">
@@ -4458,6 +4464,14 @@ async function editPaymentDate(pid,val){
   const rec={...p}; delete rec.id; delete rec.submittedAt; delete rec.submittedET; rec.pid=p.pid||p.id; rec.date=val||'';
   await addRecord(rec);
   toast('Expected date updated');
+  renderPaymentsModal(); try{ const md=document.getElementById('tab-mydeals'); if(md&&!md.hidden) renderMyDeals(); }catch(_){}; if(!repMode()) renderDash();
+}
+// edit the payment method on an existing payment (append-only: write a fresh version, latest-wins)
+async function editPaymentMethod(pid,val){
+  const p=paymentsCollapsed().find(x=>String(x.pid||x.id)===String(pid)); if(!p) return;
+  const rec={...p}; delete rec.id; delete rec.submittedAt; delete rec.submittedET; rec.pid=p.pid||p.id; rec.method=val||'Wire';
+  await addRecord(rec);
+  toast('Method updated to '+(val||'Wire'));
   renderPaymentsModal(); try{ const md=document.getElementById('tab-mydeals'); if(md&&!md.hidden) renderMyDeals(); }catch(_){}; if(!repMode()) renderDash();
 }
 async function setPaymentStatus(pid,status,del,dateOverride){
