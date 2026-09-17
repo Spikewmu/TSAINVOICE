@@ -57,7 +57,7 @@ const pubCfg = d => ({ key: d.key, ws: d.ws, client: d.client || '', eodToSlack:
   deal: d.dealSlack || '', postcall: d.postcallSlack || '', postcallSetter: d.postcallSetterSlack || '', postcallCloser: d.postcallCloserSlack || '', sod: d.sodSlack || '', sodSetter: d.sodSetterSlack || '', sodCloser: d.sodCloserSlack || '',
   dailyReport: d.dailyReportSlack || '', dailyReportOn: !!d.dailyReportOn, dailyReportTime: d.dailyReportTime || '09:30',
   leaderboard: d.leaderboardSlack || '', leaderboardOn: !!d.leaderboardOn, leaderboardTime: d.leaderboardTime || '10:00',
-  invoicing: d.invoicingSlack || '',
+  invoicing: d.invoicingSlack || '', invoicingPdf: !!(d.invoicingSlackBot && d.invoicingSlackChanId),
   // the connected Slack channel name per source (captured at OAuth connect), for display
   chan: { slack: d.slackWebhookChan||'', setter: d.eodSetterSlackChan||'', closer: d.eodCloserSlackChan||'', mgr: d.eodMgrSlackChan||'', deal: d.dealSlackChan||'', postcall: d.postcallSlackChan||'', postcallSetter: d.postcallSetterSlackChan||'', postcallCloser: d.postcallCloserSlackChan||'', sod: d.sodSlackChan||'', sodSetter: d.sodSetterSlackChan||'', sodCloser: d.sodCloserSlackChan||'', dailyReport: d.dailyReportSlackChan||'', leaderboard: d.leaderboardSlackChan||'', invoicing: d.invoicingSlackChan||'' },
   ghl: !!d.ghlApiKey, ghlLocation: d.ghlLocationId || '', ghlEnabled: !!d.ghlEnabled }); // ghlApiKey itself is write-only, never returned
@@ -190,7 +190,7 @@ export default async function handler(req, res) {
         ghlEnabled: b.ghlEnabled != null ? !!b.ghlEnabled : !!(cur && cur.ghlEnabled),
         eodToSlack: b.eodToSlack != null ? !!b.eodToSlack : !!(cur && cur.eodToSlack), updatedAt: now };
       // preserve the connected Slack CHANNEL NAMES (captured at OAuth connect, not part of this save form) - otherwise Save routing wipes them
-      ['slackWebhookChan', 'eodSetterSlackChan', 'eodCloserSlackChan', 'eodMgrSlackChan', 'dealSlackChan', 'postcallSlackChan', 'postcallSetterSlackChan', 'postcallCloserSlackChan', 'sodSlackChan', 'sodSetterSlackChan', 'sodCloserSlackChan', 'dailyReportSlackChan', 'leaderboardSlackChan', 'invoicingSlackChan'].forEach(k => { if (cur && cur[k] != null) rec[k] = cur[k]; });
+      ['slackWebhookChan', 'eodSetterSlackChan', 'eodCloserSlackChan', 'eodMgrSlackChan', 'dealSlackChan', 'postcallSlackChan', 'postcallSetterSlackChan', 'postcallCloserSlackChan', 'sodSlackChan', 'sodSetterSlackChan', 'sodCloserSlackChan', 'dailyReportSlackChan', 'leaderboardSlackChan', 'invoicingSlackChan', 'invoicingSlackBot', 'invoicingSlackChanId'].forEach(k => { if (cur && cur[k] != null) rec[k] = cur[k]; });
       const r = await supa('records', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ rid: rec.id, type: 'integration', submitted_at: now, data: rec }) });
       if (!r || !r.ok) return res.status(200).json({ ok: false, error: 'db write failed' });
       return res.status(200).json({ ok: true, config: pubCfg(rec) });

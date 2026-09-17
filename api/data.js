@@ -44,6 +44,60 @@ async function integrationFor(ws, client) {
 const chanDest = u => (/discord(app)?\.com\/api\/webhooks\//i.test(String(u || '')) && !/\/slack\/?$/i.test(String(u))) ? String(u).replace(/\/+$/, '') + '/slack' : u; // Discord accepts Slack payloads at /slack
 const money = n => '$' + Number(n || 0).toLocaleString('en-US');
 async function postChan(dest, text, blocks) { if (!dest) return; try { await fetch(chanDest(dest), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text, blocks }) }); } catch (e) { } }
+// ---- zero-dependency PDF builder (Vercel functions have no npm deps) ----
+function pdfEsc(s) { return String(s == null ? '' : s).replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)'); }
+function buildPdf(lines) { // lines: [{t,x,y,size,bold}]
+  let content = '';
+  lines.forEach(l => { content += `BT /F${l.bold ? 2 : 1} ${l.size || 11} Tf ${l.x} ${l.y} Td (${pdfEsc(l.t)}) Tj ET\n`; });
+  const objs = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R /F2 5 0 R >> >> /Contents 6 0 R >>',
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>',
+    `<< /Length ${Buffer.byteLength(content, 'latin1')} >>\nstream\n${content}endstream`
+  ];
+  let pdf = '%PDF-1.4\n'; const offs = [];
+  objs.forEach((o, i) => { offs.push(Buffer.byteLength(pdf, 'latin1')); pdf += `${i + 1} 0 obj\n${o}\nendobj\n`; });
+  const xref = Buffer.byteLength(pdf, 'latin1');
+  pdf += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n`;
+  offs.forEach(o => { pdf += String(o).padStart(10, '0') + ' 00000 n \n'; });
+  pdf += `trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
+  return Buffer.from(pdf, 'latin1');
+}
+function invoicePdf(b) {
+  const usd = n => '$' + Number(n || 0).toLocaleString('en-US');
+  const dt = ss => { ss = String(ss || '').slice(0, 10); const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ss); return m ? (+m[2]) + '-' + (+m[3]) + '-' + m[1] : ss; };
+  const L = [], add = (t, x, y, o) => L.push({ t, x, y, size: o && o.size, bold: o && o.bold });
+  const rule = y => add('________________________________________________________________', 54, y, { size: 9 });
+  let y = 744;
+  add('THE SALES AGENCY', 54, y, { size: 18, bold: true }); y -= 18;
+  add('Performance commission invoice', 54, y, { size: 11 }); y -= 30;
+  add('Bill to:', 54, y, { bold: true }); add(b.client || '', 110, y); y -= 16;
+  add('Period:', 54, y, { bold: true }); add(dt(b.from) + ' to ' + dt(b.to), 110, y); y -= 16;
+  add('Invoice date:', 54, y, { bold: true }); add(dt(new Date().toISOString()), 130, y); y -= 26;
+  add('Description', 54, y, { bold: true }); add('Amount', 470, y, { bold: true }); y -= 4; rule(y); y -= 18;
+  add('Sales services' + (b.rateDesc ? ' (' + String(b.rateDesc).slice(0, 60) + ')' : ''), 54, y); add(usd(b.amount), 470, y); y -= 15;
+  add('Cash collected in period', 54, y, { size: 10 }); add(usd(b.cash), 470, y, { size: 10 }); y -= 13;
+  add('Deals', 54, y, { size: 10 }); add(String(b.deals || 0), 470, y, { size: 10 }); y -= 16; rule(y); y -= 20;
+  add('Amount due', 54, y, { bold: true, size: 13 }); add(usd(b.amount), 450, y, { bold: true, size: 13 }); y -= 34;
+  const r = b.remit || {};
+  add('Remit / wire instructions', 54, y, { bold: true }); y -= 18;
+  [['Beneficiary', r.beneficiary], ['Bank', r.bank], ['Bank address', r.bankAddr], ['Account type', r.acctType], ['Routing', r.routing], ['Account #', r.account], ['SWIFT', r.swift], ['Reference', r.reference]].forEach(([k, v]) => { if (v) { add(k + ':', 54, y, { size: 10 }); add(String(v), 160, y, { size: 10 }); y -= 14; } });
+  y -= 10; add('Sales services provided by The Sales Agency. Thank you.', 54, y, { size: 9 });
+  return buildPdf(L);
+}
+// upload a file to a Slack channel via files.uploadV2 (3-step). Needs a bot token with files:write + the channel_id.
+async function slackUploadFile(bot, channelId, filename, buffer, comment) {
+  try {
+    const g = await fetch('https://slack.com/api/files.getUploadURLExternal', { method: 'POST', headers: { Authorization: 'Bearer ' + bot, 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ filename, length: String(buffer.length) }) });
+    const gj = await g.json(); if (!gj.ok) return { ok: false, error: 'getUploadURL: ' + gj.error };
+    const form = new FormData(); form.append('file', new Blob([buffer], { type: 'application/pdf' }), filename);
+    const u = await fetch(gj.upload_url, { method: 'POST', body: form }); if (!u.ok) return { ok: false, error: 'upload ' + u.status };
+    const c = await fetch('https://slack.com/api/files.completeUploadExternal', { method: 'POST', headers: { Authorization: 'Bearer ' + bot, 'Content-Type': 'application/json' }, body: JSON.stringify({ files: [{ id: gj.file_id, title: filename }], channel_id: channelId, initial_comment: comment }) });
+    const cj = await c.json(); return cj.ok ? { ok: true } : { ok: false, error: 'complete: ' + cj.error };
+  } catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
+}
 // in-app event feeds to Slack: New closed deal / Post-call checkout / Start-of-day projection (each to its own channel if set)
 async function eventToSlack(rec) {
   try {
@@ -314,12 +368,23 @@ export default async function handler(req, res) {
       const period = (b.from ? usd(b.from) : '?') + ' to ' + (b.to ? usd(b.to) : '?');
       const rateDesc = b.rateDesc ? ' (' + String(b.rateDesc).slice(0, 80) + ')' : '';
       const body = `🧾 *Invoice · ${client}*\n*Period:* ${period}\n*Cash collected:* ${money(b.cash)}\n*Amount due (TSA):* ${money(b.amount)}${rateDesc}\n*Deals:* ${Number(b.deals || 0)}`;
-      // post directly (not fire-and-forget) so a revoked/invalid webhook is reported instead of a false "sent"
+      // 1) Preferred: attach the invoice PDF via the Slack file API (needs the bot token + channel_id captured at connect + files:write)
+      let pdfErr = '';
+      if (cfg.invoicingSlackBot && cfg.invoicingSlackChanId) {
+        try {
+          const pdf = invoicePdf({ client, from: b.from, to: b.to, cash: b.cash, amount: b.amount, rateDesc: b.rateDesc, deals: b.deals, remit: b.remit || {} });
+          const fname = ('Invoice - ' + client + ' - ' + period).replace(/[^A-Za-z0-9 .\-]/g, '').replace(/\s+/g, ' ').slice(0, 80) + '.pdf';
+          const up = await slackUploadFile(cfg.invoicingSlackBot, cfg.invoicingSlackChanId, fname, pdf, body);
+          if (up.ok) return res.status(200).json({ ok: true, pdf: true });
+          pdfErr = up.error || 'upload failed';
+        } catch (e) { pdfErr = String((e && e.message) || e); }
+      }
+      // 2) Fallback: post the text summary via the incoming webhook (no file attach possible on a webhook)
       let posted = false, perr = '';
       try { const pr = await fetch(chanDest(cfg.invoicingSlack), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: `Invoice · ${client} · ${money(b.amount)}`, blocks: [{ type: 'section', text: { type: 'mrkdwn', text: body } }] }) }); posted = pr.ok; if (!pr.ok) perr = 'Slack returned ' + pr.status; }
       catch (e) { perr = String((e && e.message) || e); }
       if (!posted) return res.status(200).json({ ok: false, error: 'Could not post to the billing channel' + (perr ? ': ' + perr : '') + '. Reconnect it on Integrations › Invoicing.' });
-      return res.status(200).json({ ok: true });
+      return res.status(200).json({ ok: true, pdf: false, pdfNote: pdfErr ? ('summary posted, but the PDF failed to attach: ' + pdfErr) : 'summary posted (reconnect the billing channel with file access to attach the PDF)' });
     }
     // ---------- ONE-SHOT MAINTENANCE: normalize whitespace in person-name fields (rep/setter/by/closer) ----------
     // Historical records inherited trailing/duplicate spaces from user names (e.g. "Carolina "), because auto-populate

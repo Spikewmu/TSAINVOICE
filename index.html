@@ -4671,9 +4671,11 @@ async function invSendToBilling(){
   const btn=document.getElementById('invSendBtn'); if(btn&&btn.disabled) return; btnBusy(btn,true);
   try{
     const hdr={'Content-Type':'application/json'}; if(SESSION&&SESSION.token) hdr['x-session-token']=SESSION.token; else if(SESSION&&SESSION.pw) hdr['x-admin-pass']=SESSION.pw;
-    const r=await fetch('/api/data?action=sendInvoice',{method:'POST',headers:hdr,body:JSON.stringify({client:li.client,from:li.from,to:li.to,cash:li.cashCollected,amount:li.amountDue,rateDesc:li.rateDesc,deals:li.deals})});
+    const bi=(typeof billingInfo==='function'?billingInfo():null)||{};
+    const remit={beneficiary:bi.name||'', bank:bi.bank||'', bankAddr:bi.bankAddr||'', acctType:bi.acctType||'', routing:bi.routing||'', account:bi.acct||'', swift:bi.swift||'', reference:bi.reference||''};
+    const r=await fetch('/api/data?action=sendInvoice',{method:'POST',headers:hdr,body:JSON.stringify({client:li.client,from:li.from,to:li.to,cash:li.cashCollected,amount:li.amountDue,rateDesc:li.rateDesc,deals:li.deals,remit})});
     const j=await r.json();
-    if(j&&j.ok) toast('Invoice sent to the '+li.client+' billing channel.');
+    if(j&&j.ok) toast(j.pdf?('Invoice + PDF sent to the '+li.client+' billing channel.'):('Invoice summary sent to '+li.client+"'s billing channel"+(j.pdfNote?' - '+j.pdfNote:'.')), !j.pdf);
     else toast((j&&j.error)||'Could not send the invoice.',true);
   }catch(e){ toast('Send failed: '+((e&&e.message)||e),true); }
   finally{ btnBusy(btn,false); }
