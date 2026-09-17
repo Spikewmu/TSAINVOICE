@@ -4404,20 +4404,23 @@ function renderPaymentsModal(){
   const pill=s=> s==='confirmed'?'<span class="chip" style="background:rgba(74,160,80,.15);color:#7bd487">confirmed</span>':'<span class="chip" style="background:rgba(212,175,90,.15);color:var(--gold)">pending</span>';
   const stat=(lbl,val,col)=>`<div><div class="muted" style="font-size:11px">${lbl}</div><div style="font-size:17px${col?';color:'+col:''}">${money(val)}</div></div>`;
   const summary=`<div style="display:flex;gap:18px;flex-wrap:wrap;margin:0 0 14px">${stat('Collected to date',collected,'#7bd487')}${stat('Contract',contract)}${stat('Balance',bal)}${pend>0?stat('Pending',pend,'var(--gold)'):''}</div>`;
+  const rowDayPickers=[];
   let rows=`<tr><td>${esc(usDate(d.date))}</td><td class="num">${money(d.cashCollected)}</td><td class="muted">at close</td><td>${pill('confirmed')}</td><td></td></tr>`;
   pays.forEach(p=>{
     const pid=esc(p.pid||p.id);
     let act='';
     if(canMng){
       if(String(PAY_CONFIRMING||'')===String(p.pid||p.id)){
-        act=`<span style="white-space:nowrap">Date cleared <input type="date" id="payConfirmDate" value="${esc(p.date||todayCentral())}" style="width:150px;display:inline-block"> <button class="btn sm gold" onclick="doConfirm('${pid}')">Confirm</button> <button class="btn sm ghost" onclick="cancelConfirm()">Cancel</button></span>`;
+        act=`<span style="white-space:nowrap">Date cleared <span class="rangewrap" style="vertical-align:middle"><input type="text" id="payConfirmDate_txt" readonly placeholder="Pick a day" onclick="dayPopToggle('payConfirmDate',event)" style="width:140px"><input type="hidden" id="payConfirmDate" value="${esc(p.date||todayCentral())}"><div class="rangepop" id="payConfirmDate_pop" hidden onclick="event.stopPropagation()"></div></span> <button class="btn sm gold" onclick="doConfirm('${pid}')">Confirm</button> <button class="btn sm ghost" onclick="cancelConfirm()">Cancel</button></span>`;
       } else {
         act=(p.status==='pending'?`<button class="btn sm gold" onclick="confirmPayment('${pid}')">Confirm</button>`:`<button class="btn sm ghost" onclick="revertPayment('${pid}')" title="Back to pending">Undo</button>`)+` <button class="btn sm ghost" onclick="removePayment('${pid}')" title="Remove this payment">&times;</button>`;
       }
     }
-    // pending payments: let a manager/closer edit the expected date the money is coming in, inline
+    // pending payments: let a manager/closer edit the expected date the money is coming in, inline (styled M-D-Y picker)
+    const did='payd_'+pid;
+    if(canMng && p.status==='pending') rowDayPickers.push({id:did,pid});
     const dateCell=(canMng && p.status==='pending')
-      ? `<input type="date" value="${esc((p.date||'').slice(0,10))}" onchange="editPaymentDate('${pid}',this.value)" style="width:150px" title="Edit the expected date this payment lands">`
+      ? `<span class="rangewrap"><input type="text" id="${did}_txt" readonly placeholder="Pick a day" onclick="dayPopToggle('${did}',event)" style="width:140px" title="Edit the expected date this payment lands"><input type="hidden" id="${did}" value="${esc((p.date||'').slice(0,10))}"><div class="rangepop" id="${did}_pop" hidden onclick="event.stopPropagation()"></div></span>`
       : esc(usDate(p.date));
     const beNote=(acctFrontEndOnly(d.client) && paymentBackEnd(p)) ? '<div style="font-size:11px;color:var(--warn)">back-end (30+ days) · no rep commission, TSA still bills</div>' : '';
     // method: let a manager/closer switch how the money is / will be paid (e.g. customer decides to pay by card), inline
@@ -4428,12 +4431,12 @@ function renderPaymentsModal(){
       : esc(cur);
     rows+=`<tr><td>${dateCell}</td><td class="num">${money(p.amount)}</td><td>${methodCell}${p.notes?`<div class="muted" style="font-size:11px">${esc(p.notes)}</div>`:''}${beNote}</td><td>${pill(p.status)}</td><td>${act}</td></tr>`;
   });
-  const table=`<div style="overflow-x:auto;margin-bottom:14px"><table style="margin-bottom:0;min-width:600px;width:100%"><thead><tr><th>Date</th><th class="num">Amount</th><th>Method</th><th>Status</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  const table=`<div style="margin-bottom:14px"><table style="margin-bottom:0;min-width:600px;width:100%"><thead><tr><th>Date</th><th class="num">Amount</th><th>Method</th><th>Status</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`;
   const form=canMng?`<div style="border:1px solid var(--border);border-radius:10px;padding:12px;background:var(--surface-2)">
       <div style="font-weight:600;margin-bottom:8px;font-size:13px">Add a payment</div>
       <div class="grid3" style="gap:8px">
         <div class="field"><label>Amount ($)</label><input type="number" id="payAmt" min="0" step="0.01" placeholder="0.00"></div>
-        <div class="field"><label>Date collected</label><input type="date" id="payDate"></div>
+        <div class="field"><label>Date collected</label><div class="rangewrap" style="display:block"><input type="text" id="payDate_txt" readonly placeholder="Pick a day" onclick="dayPopToggle('payDate',event)" style="width:100%"><input type="hidden" id="payDate"><div class="rangepop" id="payDate_pop" hidden onclick="event.stopPropagation()"></div></div></div>
         <div class="field"><label>Method</label><select id="payMethod"><option>Wire</option><option>Card</option><option>ACH</option><option>Check</option><option>Other</option></select></div>
       </div>
       <div class="grid3" style="gap:8px;margin-top:8px">
@@ -4444,7 +4447,9 @@ function renderPaymentsModal(){
       <p class="fieldhelp" style="margin-top:8px">Log a wire as <b>Pending</b> until it clears, then hit <b>Confirm</b> - it only counts toward cash + commission once confirmed.</p>
     </div>`:`<p class="hint">Only the closer on this deal or a manager can add or confirm payments.</p>`;
   document.getElementById('payBody').innerHTML=summary+table+form;
-  const dt=document.getElementById('payDate'); if(dt&&!dt.value) dt.value=todayCentral();
+  const dt=document.getElementById('payDate'); if(dt){ if(!dt.value) dt.value=todayCentral(); dayPickAttach('payDate'); }
+  rowDayPickers.forEach(rp=>{ if(document.getElementById(rp.id)) dayPickAttach(rp.id,(iso)=>editPaymentDate(rp.pid,iso)); });
+  if(document.getElementById('payConfirmDate_txt')) dayPickAttach('payConfirmDate');
 }
 async function addPayment(){
   const d=PAY_DEAL; if(!d) return;
