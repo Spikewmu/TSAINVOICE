@@ -2834,7 +2834,7 @@ function postcallOutcomeChanged(){
 // setters report what happened on each connected call (no Won/deal fields).
 const PC_OUTCOMES={
   Closer:['Won (closed)','Lost','No-show','Follow-up booked','Rescheduled','Disqualified','Canceled'],
-  Setter:['Booked (set)','Follow-up booked','Callback scheduled','Not interested','Disqualified','No answer','Wrong number']
+  Setter:['Booked (set)','Follow-up booked','Callback scheduled','Not interested','Disqualified','No answer','Hung up','Wrong number']
 };
 function pcRole(){ const i=document.querySelector('#postcallForm [name=role]'); return i?i.value:'Closer'; }
 function setPcRole(r){
@@ -2916,7 +2916,7 @@ function fillCallLogFilters(recs){
   const fr=document.getElementById('clRep'); if(fr){ const cur=fr.value, reps=[...new Set(recs.map(x=>String(x.rep||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b)); fr.innerHTML='<option value="">All reps</option>'+reps.map(n=>`<option>${esc(n)}</option>`).join(''); if(reps.includes(cur))fr.value=cur; }
   const oc=document.getElementById('clOutcome'); if(oc){ const cur=oc.value, outs=[...new Set([...PC_OUTCOMES.Closer,...PC_OUTCOMES.Setter])]; oc.innerHTML='<option value="">All outcomes</option>'+outs.map(o=>`<option>${esc(o)}</option>`).join(''); if(cur)oc.value=cur; }
 }
-function callLogPill(o){ const good=/^(Won|Booked)/.test(o||''), bad=/^(Lost|No-show|No answer|Disqualified|Not interested|Wrong)/.test(o||''); return `<span class="pill ${good?'good':(bad?'warn':'')}">${esc(o||'-')}</span>`; }
+function callLogPill(o){ const good=/^(Won|Booked)/.test(o||''), bad=/^(Lost|No-show|No answer|Disqualified|Not interested|Wrong|Hung)/.test(o||''); return `<span class="pill ${good?'good':(bad?'warn':'')}">${esc(o||'-')}</span>`; }
 /* ---------------- Calendar (multi-client GHL meetings) ---------------- */
 let __calRef=null, __calView=7; // __calView = number of day columns shown (1, 2, or 7)
 try{ const v=parseInt(localStorage.getItem('tsa_cal_view')||'',10); if([1,2,7].includes(v)) __calView=v; }catch(e){}
@@ -4060,7 +4060,7 @@ const OUTCOME_COLORS={
   'Won (closed)':'#5FC1A2','Booked (set)':'#5FC1A2',
   'Follow-up booked':'#C9A24A','Callback scheduled':'#E6CB7C','Rescheduled':'#E5A15D',
   'Not interested':'#D77A55','No answer':'#7C8A99','No-show':'#E8635F','Lost':'#B23B39',
-  'Wrong number':'#8A8F98','Disqualified':'#9B7BB8','Canceled':'#6E5AA6'
+  'Wrong number':'#8A8F98','Hung up':'#6E7681','Disqualified':'#9B7BB8','Canceled':'#6E5AA6'
 };
 function omColor(name){ return name==='(blank)' ? '#4B5563' : (OUTCOME_COLORS[name] || '#6B7280'); }
 function outcomeMixData(pcs, role){
