@@ -372,7 +372,8 @@ export default async function handler(req, res) {
       let pdfErr = '';
       if (cfg.invoicingSlackBot && cfg.invoicingSlackChanId) {
         try {
-          const pdf = invoicePdf({ client, from: b.from, to: b.to, cash: b.cash, amount: b.amount, rateDesc: b.rateDesc, deals: b.deals, remit: b.remit || {} });
+          // prefer the exact-match PDF captured from the on-screen invoice; fall back to the server-built one
+          const pdf = (b.pdfBase64 && String(b.pdfBase64).length > 100) ? Buffer.from(String(b.pdfBase64), 'base64') : invoicePdf({ client, from: b.from, to: b.to, cash: b.cash, amount: b.amount, rateDesc: b.rateDesc, deals: b.deals, remit: b.remit || {} });
           const fname = ('Invoice - ' + client + ' - ' + period).replace(/[^A-Za-z0-9 .\-]/g, '').replace(/\s+/g, ' ').slice(0, 80) + '.pdf';
           const up = await slackUploadFile(cfg.invoicingSlackBot, cfg.invoicingSlackChanId, fname, pdf, body);
           if (up.ok) return res.status(200).json({ ok: true, pdf: true });

@@ -335,6 +335,9 @@
     .row-actions .btn{flex:1 1 auto}
   }
 </style>
+<!-- invoice-to-PDF (Send to billing): capture the on-screen invoice exactly. Loaded deferred; used on demand only. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
 </head>
 <body>
 
@@ -4665,6 +4668,21 @@ function invPreview(){
   out.innerHTML=genFounderInvoice(client,from,to);
 }
 let LAST_INVOICE=null; // stashed each time an invoice is generated, so "Send to billing" can post its numbers
+// Capture the on-screen invoice (#invoiceDoc) to a PDF that matches the dashboard exactly, returned as base64.
+async function invoiceToPdfBase64(){
+  try{
+    const el=document.getElementById('invoiceDoc');
+    if(!el || typeof html2canvas!=='function' || !(window.jspdf&&window.jspdf.jsPDF)) return null;
+    const canvas=await html2canvas(el,{scale:2,backgroundColor:'#eef1f6',useCORS:true,logging:false});
+    const imgData=canvas.toDataURL('image/jpeg',0.9);
+    const {jsPDF}=window.jspdf, pdf=new jsPDF({unit:'pt',format:'letter'});
+    const pw=pdf.internal.pageSize.getWidth(), ph=pdf.internal.pageSize.getHeight(), m=18;
+    const imgW=pw-m*2, imgH=canvas.height*(imgW/canvas.width), usable=ph-m*2;
+    let rendered=0, page=0;
+    while(rendered<imgH && page<40){ if(page>0) pdf.addPage(); pdf.addImage(imgData,'JPEG',m,m-rendered,imgW,imgH,'inv','FAST'); rendered+=usable; page++; }
+    return (pdf.output('datauristring')||'').split(',')[1]||null;
+  }catch(e){ return null; }
+}
 async function invSendToBilling(){
   const li=LAST_INVOICE; if(!li||!li.client){ toast('Generate an invoice first.',true); return; }
   if(!(li.amountDue>0) && !confirm('This invoice for '+li.client+' is $0 (no billing rate set, or no cash collected in this period). Send it to the billing channel anyway?')) return;
@@ -4673,7 +4691,8 @@ async function invSendToBilling(){
     const hdr={'Content-Type':'application/json'}; if(SESSION&&SESSION.token) hdr['x-session-token']=SESSION.token; else if(SESSION&&SESSION.pw) hdr['x-admin-pass']=SESSION.pw;
     const bi=(typeof billingInfo==='function'?billingInfo():null)||{};
     const remit={beneficiary:bi.name||'', bank:bi.bank||'', bankAddr:bi.bankAddr||'', acctType:bi.acctType||'', routing:bi.routing||'', account:bi.acct||'', swift:bi.swift||'', reference:bi.reference||''};
-    const r=await fetch('/api/data?action=sendInvoice',{method:'POST',headers:hdr,body:JSON.stringify({client:li.client,from:li.from,to:li.to,cash:li.cashCollected,amount:li.amountDue,rateDesc:li.rateDesc,deals:li.deals,remit})});
+    const pdfBase64=await invoiceToPdfBase64(); // exact-match PDF captured from the on-screen invoice (null falls back to the server-built PDF)
+    const r=await fetch('/api/data?action=sendInvoice',{method:'POST',headers:hdr,body:JSON.stringify({client:li.client,from:li.from,to:li.to,cash:li.cashCollected,amount:li.amountDue,rateDesc:li.rateDesc,deals:li.deals,remit,pdfBase64})});
     const j=await r.json();
     if(j&&j.ok) toast(j.pdf?('Invoice + PDF sent to the '+li.client+' billing channel.'):('Invoice summary sent to '+li.client+"'s billing channel"+(j.pdfNote?' - '+j.pdfNote:'.')), !j.pdf);
     else toast((j&&j.error)||'Could not send the invoice.',true);
