@@ -442,6 +442,7 @@
     <button class="navhead"><svg class="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-8M2 20h20"/></svg><span class="nlabel">Reporting</span><svg class="nchev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
     <div class="navsub">
       <button data-tab="dailyreport">Daily Report</button>
+      <button data-tab="dayreports">SOD / EOD Reports</button>
       <button data-tab="reps">Rep Breakdown</button>
       <button data-tab="scorecards">Scorecards</button>
       <button data-tab="mgreod">Manager EOD</button>
@@ -1621,6 +1622,19 @@
     </div>
   </section>
 
+  <!-- ===== SOD / EOD REPORTS (readable) ===== -->
+  <section id="tab-dayreports" hidden>
+    <h2 class="section">SOD / EOD Reports</h2>
+    <p class="hint">Read the actual Start-of-Day and End-of-Day reports your team submitted, laid out to skim. Pick a day, flip between EOD and SOD, and filter by client.</p>
+    <div class="filters" style="align-items:flex-end;flex-wrap:wrap;gap:12px">
+      <div class="field"><label>Report type</label><div class="seg" id="dayRepSeg"><button class="on" onclick="setDayRepKind('eod')">End of Day</button><button onclick="setDayRepKind('sod')">Start of Day</button></div></div>
+      <div class="field"><label>Day</label><div class="rangewrap"><input type="text" id="dayRepDate_txt" readonly placeholder="Pick a day" onclick="dayPopToggle('dayRepDate',event)"><input type="hidden" id="dayRepDate"><div class="rangepop" id="dayRepDate_pop" hidden onclick="event.stopPropagation()"></div></div></div>
+      <div class="field"><label>Client</label><select id="dayRepClient" onchange="renderDayReports()"></select></div>
+      <span id="dayRepSummary" class="tag" style="align-self:flex-end;margin-bottom:2px"></span>
+    </div>
+    <div id="dayRepBody"></div>
+  </section>
+
   <!-- ===== REP BREAKDOWN ===== -->
   <section id="tab-reps" hidden>
     <h2 class="section">Rep Breakdown</h2>
@@ -2309,9 +2323,9 @@ function startApp(){
 // base tabs a login TIER can see; per-account responsibilities add to this in applyNavAccess()
 function baseAllow(role){
   return ({
-    admin:['dash','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','adminreport','recruiting','messages','invoicing','contracts','onbaudit','data','users','integrations','settings','reprequests','resources','faq','kickoff'],
-    director:['dash','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','dailyreport','recruiting','messages','adminreport','contracts','onbaudit','reprequests','resources','faq','kickoff'],
-    manager:['dash','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','speedtolead','dailyreport','adminreport','recruiting','messages','reprequests','resources','faq','kickoff'],
+    admin:['dash','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','dayreports','adminreport','recruiting','messages','invoicing','contracts','onbaudit','data','users','integrations','settings','reprequests','resources','faq','kickoff'],
+    director:['dash','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','dailyreport','dayreports','recruiting','messages','adminreport','contracts','onbaudit','reprequests','resources','faq','kickoff'],
+    manager:['dash','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','speedtolead','dailyreport','dayreports','adminreport','recruiting','messages','reprequests','resources','faq','kickoff'],
     founder:['dash','reprequests','faq'],
     recruiter:['dash','recruiting','messages','timeoff','reprequests','resources','faq','kickoff'],
     webinarteam:['dash','meeting','promises','timeoff','webinar','resources','faq','kickoff'],
@@ -2455,9 +2469,9 @@ function showTab(t){
   document.querySelectorAll('#tabs button[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
   document.querySelectorAll('#tabs .navgroup').forEach(g=>{ if(g.querySelector('button[data-tab="'+t+'"]')) g.classList.remove('collapsed'); }); // reveal the active tab's group
 
-  ['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','adminreport','reprequests','recruiting','messages','invoicing','contracts','onbaudit','data','users','integrations','settings','resources','faq','kickoff','scorecards'].forEach(x=>{ const el=document.getElementById('tab-'+x); if(el) el.hidden = (x!==t); });
+  ['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','dayreports','adminreport','reprequests','recruiting','messages','invoicing','contracts','onbaudit','data','users','integrations','settings','resources','faq','kickoff','scorecards'].forEach(x=>{ const el=document.getElementById('tab-'+x); if(el) el.hidden = (x!==t); });
   // stale-while-revalidate: render instantly from the cached records, then refresh in the background
-  const render={dash:renderDash, mydeals:renderMyDeals, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, promises:renderPromisesTab, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, mgreodview:renderMgrEodView, contracts:renderContracts, faq:renderFaq, scorecards:renderScorecards, webinar:renderWebinars, calllog:renderCallLog, calendar:renderCalendar, speedtolead:renderSpeedToLead, dailyreport:renderDailyReport, adminreport:renderAdminReport, reprequests:renderRepRequests, recruiting:renderRecruiting, messages:renderMessages, training:renderTraining, invoicing:renderInvoicing, data:renderAll}[t];
+  const render={dash:renderDash, mydeals:renderMyDeals, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, promises:renderPromisesTab, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, mgreodview:renderMgrEodView, contracts:renderContracts, faq:renderFaq, scorecards:renderScorecards, webinar:renderWebinars, calllog:renderCallLog, calendar:renderCalendar, speedtolead:renderSpeedToLead, dailyreport:renderDailyReport, dayreports:renderDayReports, adminreport:renderAdminReport, reprequests:renderRepRequests, recruiting:renderRecruiting, messages:renderMessages, training:renderTraining, invoicing:renderInvoicing, data:renderAll}[t];
   if(render){ render(); syncRecords().then(()=>{ if(currentTab()===t) render(); buildGlobalClientSelect(); buildViewAsUserSelect(); updateNavBadges(); renderReminders(); }); }
   updateNavBadges();
   if(t==='data'){ renderDailyEntry(); crInit(); }
@@ -5265,6 +5279,56 @@ function renderSodCheck(){
     return p.length?`<div style="margin:5px 0;font-size:13px;line-height:1.4"><span class="pill">${esc(x.rep||'?')}</span>${x.client?' <span class="muted" style="font-size:11px">'+esc(x.client)+'</span> ':' '}${p.join(' &nbsp;·&nbsp; ')}</div>`:''; };
   const detHtml=closeRecs.map(line).filter(Boolean).join('');
   document.getElementById('sodDetail').innerHTML = detHtml ? `<div style="border-top:1px solid var(--border);padding-top:10px;margin-top:4px"><div style="font-size:12px;text-transform:uppercase;color:var(--muted);font-weight:700;letter-spacing:.02em;margin-bottom:6px">Closer targets today</div>${detHtml}</div>` : '';
+}
+/* ---------------- SOD / EOD readable reports (one place to skim what everyone submitted) ---------------- */
+let DAYREP_KIND='eod';
+function setDayRepKind(k){ DAYREP_KIND=(k==='sod')?'sod':'eod'; document.querySelectorAll('#dayRepSeg button').forEach(b=>b.classList.toggle('on',(b.getAttribute('onclick')||'').includes(`'${DAYREP_KIND}'`))); renderDayReports(); }
+// latest submission per rep+client for a type on one day (append-only, latest-wins)
+function dayRepRecs(type,day){ const m={}; RECORDS.forEach(x=>{ if(x.type!==type || String(x.date||'').slice(0,10)!==day) return; const k=(x.rep||'').trim().toLowerCase()+'|'+(x.client||'').trim().toLowerCase(); if(!m[k]||(x.submittedAt||'')>(m[k].submittedAt||'')) m[k]=x; }); return Object.values(m); }
+function dayRepClients(){ const scope=dashScopeClients(); const all=clientNames().slice().sort((a,b)=>a.localeCompare(b)); return (scope&&scope.length)?all.filter(c=>scope.includes(c)):all; }
+// one readable stat grid from [label,value] pairs
+function drStatGrid(pairs){ return `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:8px;margin:8px 0 4px">`+pairs.map(p=>`<div style="border:1px solid var(--border);border-radius:8px;padding:7px 9px"><div style="font-size:10.5px;text-transform:uppercase;color:var(--muted);font-weight:700;letter-spacing:.02em">${esc(p[0])}</div><div style="font-size:16px;font-weight:700;margin-top:1px">${p[1]}</div></div>`).join('')+`</div>`; }
+function drCardShell(x, inner, notes){
+  const role=esc(x.role||'Closer'), when=x.submittedAt?(()=>{ try{ return new Date(x.submittedAt).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}); }catch(e){ return ''; } })():'';
+  return `<div class="panel" style="margin:0 0 12px;padding:12px 14px">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px">
+      <div><span style="font-weight:700;font-size:15px">${esc(x.rep||'?')}</span> <span class="chip" style="background:var(--surface-2);color:var(--muted);font-size:11px">${role}</span>${x.client?` <span class="muted" style="font-size:12px">${esc(x.client)}</span>`:''}</div>
+      ${when?`<span class="muted" style="font-size:11px">submitted ${esc(when)}</span>`:''}
+    </div>${inner}${notes?`<div style="margin-top:6px;background:var(--surface-2);border-radius:8px;padding:7px 10px;font-size:13px;line-height:1.4"><span class="muted" style="text-transform:uppercase;font-size:10px;font-weight:700">Notes</span><br>${esc(notes)}</div>`:''}</div>`;
+}
+function drEodCard(x){
+  const role=(x.role||'Closer'), defs=(role==='Setter'?EOD_SETTER:EOD_CLOSER), moneyF={contractValue:1,cashCollected:1,depositCollected:1};
+  const pairs=defs.map(d=>{ const raw=+x[d[0]]||0; return [d[1].replace(' *',''), moneyF[d[0]]?money(raw):String(raw)]; });
+  let units=''; try{ const u=x.productUnits?JSON.parse(x.productUnits):null; if(u&&Object.keys(u).length) units=`<div style="font-size:12.5px;margin:2px 0 4px"><span class="muted" style="text-transform:uppercase;font-size:10.5px;font-weight:700">Units by offer</span> &mdash; ${Object.entries(u).map(([k,v])=>esc(k)+': <b>'+esc(String(v))+'</b>').join(' · ')}</div>`; }catch(e){}
+  return drCardShell(x, drStatGrid(pairs)+units, (x.notes||'').trim());
+}
+function drSodCard(x){
+  const role=(x.role||'Closer'), num=k=>+x[k]||0, g=k=>(x[k]||'').trim();
+  const pairs=[['Calls today',num('sodCallsToday')],['Confirmed',num('sodConfirmed')]];
+  if(role==='Setter'){ pairs.push(['VSL watched',num('sodWatchedVsl')],['Set commitment',num('sodSetTotal')],['Same-day',num('sodSameDay')],['24h window',num('sod24')],['48h window',num('sod48')],['72h window',num('sod72')]); }
+  const grid=drStatGrid(pairs.map(p=>[p[0],String(p[1])]));
+  const proj=[]; const addP=(lbl,k)=>{ if(g(k)) proj.push(`<div style="font-size:13px;margin:4px 0;line-height:1.4"><span class="muted" style="text-transform:uppercase;font-size:10.5px;font-weight:700">${lbl}</span><br>${esc(g(k))}</div>`); };
+  addP('Projected to close today','sodProjClose'); addP('In blood today','sodBloodToday'); addP('Projected to collect this week','sodProjCollectWk'); addP('In blood to collect this week','sodBloodCollectWk');
+  return drCardShell(x, grid+(proj.length?`<div style="border-top:1px solid var(--border);margin-top:6px;padding-top:6px">${proj.join('')}</div>`:''), (x.notes||'').trim());
+}
+function renderDayReports(){
+  const body=document.getElementById('dayRepBody'); if(!body) return;
+  if(repMode()){ body.innerHTML='<p class="muted" style="padding:12px 0">Managers and admins only.</p>'; const s=document.getElementById('dayRepSummary'); if(s)s.textContent=''; return; }
+  const di=document.getElementById('dayRepDate'); if(di&&!di.value) di.value=todayLocal(); dayPickAttach('dayRepDate', renderDayReports);
+  const day=(di&&di.value)||todayLocal();
+  const clients=dayRepClients(), sel=document.getElementById('dayRepClient');
+  if(sel){ const prev=preferGlobal(clients, sel.value||''); sel.innerHTML='<option value="">All accounts</option>'+clients.map(c=>`<option${c===prev?' selected':''}>${esc(c)}</option>`).join(''); sel.value=prev; }
+  const clientFilter=(sel&&sel.value)||'', scope=dashScopeClients();
+  let recs=dayRepRecs(DAYREP_KIND, day)
+    .filter(r=> !scope || scope.includes(String(r.client||'').trim()))
+    .filter(r=> !clientFilter || String(r.client||'').trim()===clientFilter);
+  const setters=recs.filter(r=>(r.role||'Closer')==='Setter').sort((a,b)=>(a.rep||'').localeCompare(b.rep||''));
+  const closers=recs.filter(r=>(r.role||'Closer')!=='Setter').sort((a,b)=>(a.rep||'').localeCompare(b.rep||''));
+  const cardFn=DAYREP_KIND==='sod'?drSodCard:drEodCard, kindLabel=DAYREP_KIND==='sod'?'Start of Day':'End of Day';
+  const sum=document.getElementById('dayRepSummary'); if(sum){ sum.textContent=`${kindLabel} · ${usDate(day)} · ${recs.length} submitted`; sum.style.color='var(--muted)'; sum.style.borderColor='var(--border)'; }
+  if(!recs.length){ body.innerHTML=`<p class="muted" style="padding:12px 0">No ${kindLabel} reports submitted for ${esc(usDate(day))}${clientFilter?' at '+esc(clientFilter):''} yet.</p>`; return; }
+  const group=(title,arr)=> arr.length?`<div style="font-size:12px;text-transform:uppercase;color:var(--muted);font-weight:700;letter-spacing:.02em;margin:6px 0 8px">${title} (${arr.length})</div>`+arr.map(cardFn).join(''):'';
+  body.innerHTML=group('Closers',closers)+group('Setters',setters);
 }
 /* ---------------- admin report: submission compliance across setters/closers/managers ---------------- */
 // everyone assigned as a webinar/setter/closer manager on any client = who should submit a Manager EOD
