@@ -427,6 +427,7 @@
     <div class="navsub">
       <button data-tab="resources">Show-Up &amp; Handoff Cadence</button>
       <button data-tab="kickoff">New-Account Kickoff</button>
+      <button data-tab="webinarsop">Webinar Playbook</button>
       <button data-tab="faq">FAQ</button>
     </div>
   </div>
@@ -1170,6 +1171,50 @@
       <li>First SOD/EOD expected the next working day; the manager personally confirms each rep's first submission.</li>
       <li>If a rep no-shows the kickoff or ignores the manager afterward, escalate to the founder once - the endorsement is what gives that teeth.</li>
     </ul></div>
+  </section>
+
+  <!-- ===== WEBINAR PLAYBOOK ===== -->
+  <section id="tab-webinarsop" hidden>
+    <h2 class="section">Webinar Cadence Playbook</h2>
+    <p class="hint">How we turn webinar registrants into closed deals with one repeatable cadence. <b>The one rule:</b> never book a brand-new opt-in straight to a sales call. Everyone goes to the webinar first, or they show up cold and say "I never signed up for a call."</p>
+    <div class="panel"><h3 style="margin:0 0 8px">The 3-phase cadence</h3><p class="muted" style="margin:0 0 8px;line-height:1.6">Everything is measured from the day a lead registers for a webinar.</p><ol style="margin:0;line-height:1.8">
+      <li><b>Phase 1 - days 1 to 6:</b> get them to <b>attend the webinar</b>. Setter team A calls every new registrant, confirms they will attend, sends the link. No qualifying, no pitch, just get them to show up.</li>
+      <li><b>Phase 2 - days 7 to 14:</b> get them to the <b>Q&amp;A</b>. Setters chase everyone who <b>attended but did not book</b>; closers chase everyone who <b>booked but did not close</b>.</li>
+      <li><b>Phase 3 - day 15 and up:</b> get them on a <b>sales call</b>. Setter team B books aged leads and sends a pre-call sequence in between: <b>VSL</b> (condensed webinar), <b>testimonials</b>, and <b>authority by association</b> (founder on stage).</li>
+    </ol></div>
+    <div class="panel"><h3 style="margin:0 0 8px">Weekly rhythm</h3><ul style="margin:0;line-height:1.7">
+      <li><b>Webinar:</b> every <b>Wednesday, 7:00 PM CT</b> (same link + time each week).</li>
+      <li><b>Q&amp;A:</b> the <b>following Thursday</b>, for the <b>prior week's</b> attendees who did not close. Hosted by the founder.</li>
+      <li>Both run every week, so there is always a webinar this week and a Q&amp;A for last week's group.</li>
+    </ul></div>
+    <div class="rmsgcard" style="border:1px solid var(--border);border-radius:10px;padding:14px;background:var(--glass);margin-bottom:14px">
+      <div style="font-weight:700;margin-bottom:8px">Setter script - confirm attendance (days 1-6)</div>
+      <div class="rmsg" style="white-space:pre-wrap;line-height:1.6;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:12px">Hey [First name], it is [Setter] with [Founder]'s team. I saw you registered for the masterclass on [Date] and wanted to make sure you are set to be there live. I will text you the link now so it is handy. Anything that would stop you from making it?</div>
+      <div style="margin-top:10px"><button class="rcopy btn ghost sm" onclick="resCopy(this)">&#128203; Copy</button></div>
+    </div>
+    <div class="rmsgcard" style="border:1px solid var(--border);border-radius:10px;padding:14px;background:var(--glass);margin-bottom:14px">
+      <div style="font-weight:700;margin-bottom:8px">Setter script - after the webinar</div>
+      <div class="rmsg" style="white-space:pre-wrap;line-height:1.6;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:12px">Hey [First name], what were your thoughts on the training? [listen] Great, let's get you a time with the team to walk through how it applies to your situation.
+
+If they did not watch: No problem at all, I will send it right over. Can you watch it before we talk tomorrow? It will make our call way more useful for you.</div>
+      <div style="margin-top:10px"><button class="rcopy btn ghost sm" onclick="resCopy(this)">&#128203; Copy</button></div>
+    </div>
+    <div class="panel"><h3 style="margin:0 0 8px">Tagging (this is what makes the lists work)</h3><ul style="margin:0;line-height:1.7">
+      <li><b>On registration:</b> tag <code>webinar-registrant</code> + a week tag <code>webinar YYYY-MM-DD</code> (the webinar date they registered for).</li>
+      <li><b>On attendance:</b> tag <code>attended YYYY-MM-DD</code> (needs Zoom <b>Webinar</b> to capture the attendee list; tag manually from the export until then).</li>
+      <li><b>On booking:</b> move to the <b>Booked</b> pipeline stage. <b>On close:</b> tag <code>won</code> + Won stage.</li>
+    </ul></div>
+    <div class="panel"><h3 style="margin:0 0 8px">The engine: cadence-timer workflow + 3 smart lists (GHL)</h3>
+      <p style="margin:0 0 8px;line-height:1.6">Date-range filters in GHL are not truly dynamic. Instead run <b>one workflow that flips a single phase tag</b> as the lead ages, and let the lists filter on that tag.</p>
+      <p style="margin:0 0 6px;line-height:1.6"><b>Workflow "Webinar - Cadence Phase Timer":</b> on <code>webinar-registrant</code> add <code>phase-webinar</code> &rarr; wait 6 days &rarr; swap to <code>phase-qa</code> &rarr; wait 8 days (14 total) &rarr; swap to <code>phase-salescall</code>. If <code>won</code> is added, strip all <code>phase-*</code> tags and end.</p>
+      <ul style="margin:0;line-height:1.7">
+        <li><b>List 1 - Phase 1 (days 1-6):</b> tag is <code>phase-webinar</code> AND not <code>attended</code> AND not <code>won</code>.</li>
+        <li><b>List 2 - Phase 2 (days 7-14):</b> tag is <code>phase-qa</code> AND not <code>won</code> (setters work attended-not-booked; closers work booked-not-closed from the Booked stage).</li>
+        <li><b>List 3 - Phase 3 (day 15+):</b> tag is <code>phase-salescall</code> AND not <code>won</code>.</li>
+      </ul>
+      <p class="muted" style="margin:8px 0 0;line-height:1.6">Drop each saved list link + the webinar link/date/time in the leadership Slack channel so setters open the right list without hunting.</p>
+    </div>
+    <div class="panel"><h3 style="margin:0 0 8px">Reps still get paid</h3><p style="margin:0;line-height:1.6">If a lead goes to the webinar, then books, then closes, the setter and closer are paid normally. Sending a lead to the webinar first does not cost anyone their commission.</p></div>
   </section>
 
   <!-- ===== FAQ ===== -->
@@ -2323,14 +2368,14 @@ function startApp(){
 // base tabs a login TIER can see; per-account responsibilities add to this in applyNavAccess()
 function baseAllow(role){
   return ({
-    admin:['dash','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','dayreports','adminreport','recruiting','messages','invoicing','contracts','onbaudit','data','users','integrations','settings','reprequests','resources','faq','kickoff'],
-    director:['dash','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','dailyreport','dayreports','recruiting','messages','adminreport','contracts','onbaudit','reprequests','resources','faq','kickoff'],
-    manager:['dash','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','speedtolead','dailyreport','dayreports','adminreport','recruiting','messages','reprequests','resources','faq','kickoff'],
+    admin:['dash','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','dayreports','adminreport','recruiting','messages','invoicing','contracts','onbaudit','data','users','integrations','settings','reprequests','resources','faq','kickoff','webinarsop'],
+    director:['dash','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','dailyreport','dayreports','recruiting','messages','adminreport','contracts','onbaudit','reprequests','resources','faq','kickoff','webinarsop'],
+    manager:['dash','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','speedtolead','dailyreport','dayreports','adminreport','recruiting','messages','reprequests','resources','faq','kickoff','webinarsop'],
     founder:['dash','reprequests','faq'],
-    recruiter:['dash','recruiting','messages','timeoff','reprequests','resources','faq','kickoff'],
-    webinarteam:['dash','meeting','promises','timeoff','webinar','resources','faq','kickoff'],
-    closer:['dash','mydeals','postcall','sod','eod','training','timeoff','calllog','reps','resources','faq','kickoff'],
-    setter:['dash','mydeals','postcall','sod','eod','training','timeoff','calllog','reps','resources','faq','kickoff']
+    recruiter:['dash','recruiting','messages','timeoff','reprequests','resources','faq','kickoff','webinarsop'],
+    webinarteam:['dash','meeting','promises','timeoff','webinar','resources','faq','kickoff','webinarsop'],
+    closer:['dash','mydeals','postcall','sod','eod','training','timeoff','calllog','reps','resources','faq','kickoff','webinarsop'],
+    setter:['dash','mydeals','postcall','sod','eod','training','timeoff','calllog','reps','resources','faq','kickoff','webinarsop']
   })[role] || ['eod'];
 }
 // ---- multi-role: a user can hold several roles (stored as a 'userroles' record); access = the union ----
@@ -2469,7 +2514,7 @@ function showTab(t){
   document.querySelectorAll('#tabs button[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
   document.querySelectorAll('#tabs .navgroup').forEach(g=>{ if(g.querySelector('button[data-tab="'+t+'"]')) g.classList.remove('collapsed'); }); // reveal the active tab's group
 
-  ['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','dayreports','adminreport','reprequests','recruiting','messages','invoicing','contracts','onbaudit','data','users','integrations','settings','resources','faq','kickoff','scorecards'].forEach(x=>{ const el=document.getElementById('tab-'+x); if(el) el.hidden = (x!==t); });
+  ['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','dayreports','adminreport','reprequests','recruiting','messages','invoicing','contracts','onbaudit','data','users','integrations','settings','resources','faq','kickoff','webinarsop','scorecards'].forEach(x=>{ const el=document.getElementById('tab-'+x); if(el) el.hidden = (x!==t); });
   // stale-while-revalidate: render instantly from the cached records, then refresh in the background
   const render={dash:renderDash, mydeals:renderMyDeals, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, promises:renderPromisesTab, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, mgreodview:renderMgrEodView, contracts:renderContracts, faq:renderFaq, scorecards:renderScorecards, webinar:renderWebinars, calllog:renderCallLog, calendar:renderCalendar, speedtolead:renderSpeedToLead, dailyreport:renderDailyReport, dayreports:renderDayReports, adminreport:renderAdminReport, reprequests:renderRepRequests, recruiting:renderRecruiting, messages:renderMessages, training:renderTraining, invoicing:renderInvoicing, data:renderAll}[t];
   if(render){ render(); syncRecords().then(()=>{ if(currentTab()===t) render(); buildGlobalClientSelect(); buildViewAsUserSelect(); updateNavBadges(); renderReminders(); }); }
