@@ -4699,13 +4699,25 @@ async function invoiceToPdfBase64(){
   try{
     const el=document.getElementById('invoiceDoc');
     if(!el || typeof html2canvas!=='function' || !(window.jspdf&&window.jspdf.jsPDF)) return null;
-    const canvas=await html2canvas(el,{scale:2,backgroundColor:'#eef1f6',useCORS:true,logging:false});
-    const imgData=canvas.toDataURL('image/jpeg',0.92);
-    const {jsPDF}=window.jspdf;
-    // one continuous page sized to the invoice (no mid-card page splits, matches the on-screen scroll)
-    const pageW=612, m=16, imgW=pageW-m*2, imgH=canvas.height*(imgW/canvas.width), pageH=Math.ceil(imgH+m*2);
-    const pdf=new jsPDF({unit:'pt',format:[pageW,pageH]});
-    pdf.addImage(imgData,'JPEG',m,m,imgW,imgH,'inv','FAST');
+    // capture each card separately and lay them onto US Letter pages, breaking BETWEEN cards so nothing splits
+    // awkwardly and it prints cleanly. A single card taller than a page is sliced (rare).
+    const cards=[...el.children].filter(c=>c.tagName!=='STYLE' && c.offsetHeight>0);
+    if(!cards.length) return null;
+    const {jsPDF}=window.jspdf, pdf=new jsPDF({unit:'pt',format:'letter'});
+    const pw=612, ph=792, m=26, uw=pw-m*2, uh=ph-m*2;
+    let y=m, placed=false;
+    for(let i=0;i<cards.length;i++){
+      const canvas=await html2canvas(cards[i],{scale:2,backgroundColor:'#ffffff',useCORS:true,logging:false});
+      const img=canvas.toDataURL('image/jpeg',0.92), w=uw, h=canvas.height*(w/canvas.width), alias='c'+i;
+      if(h<=uh){
+        if(placed && y+h>ph-m){ pdf.addPage(); y=m; }
+        pdf.addImage(img,'JPEG',m,y,w,h,alias,'FAST'); y+=h+16;
+      } else { // card taller than one page -> give it fresh pages and slice
+        if(placed){ pdf.addPage(); y=m; }
+        let done=0; while(done<h){ if(done>0) pdf.addPage(); pdf.addImage(img,'JPEG',m,m-done,w,h,alias,'FAST'); done+=uh; } y=m;
+      }
+      placed=true;
+    }
     return (pdf.output('datauristring')||'').split(',')[1]||null;
   }catch(e){ return null; }
 }
