@@ -755,6 +755,7 @@
         </div>
         <div class="row-actions" style="margin-top:10px">
           <button class="btn gold sm" onclick="invPreview()">Generate invoice</button>
+          <button class="btn ghost sm" id="invApproveBtn" onclick="approveInvoice()">&#10003; Approve</button>
           <button class="btn ghost sm" onclick="invThisWeek()">Last week (Mon-Sun)</button>
           <button class="btn ghost sm" onclick="invCurrentWeek()">Current week</button>
           <button class="btn ghost sm" onclick="invPrevWeek()">&#8592; Previous week</button>
@@ -4658,6 +4659,31 @@ async function saveInvStats(){
   try{ await addRecord(rec); toast('Invoice stats saved'); invPreview(); }
   catch(e){ toast('Save failed: '+(e&&e.message||e),true); }
 }
+// Invoice status: persisted per client+period so the invoice reads Approved / Sent instead of a permanent Draft.
+function invApprovalFor(client,from,to){
+  const k=[nrmName(client),String(from||'').slice(0,10),String(to||'').slice(0,10)].join('|'); let best=null;
+  (RECORDS||[]).forEach(x=>{ if(x.type==='invoiceapproval' && [nrmName(x.client),String(x.from||'').slice(0,10),String(x.to||'').slice(0,10)].join('|')===k){ if(!best||(x.submittedAt||'')>(best.submittedAt||'')) best=x; } });
+  return best;
+}
+function invStatusPill(client,from,to){
+  const a=invApprovalFor(client,from,to), st=a&&a.status;
+  if(st==='approved'||st==='sent'){ const lbl=st==='sent'?'Sent':'Approved', c=st==='sent'?'#2f8f5b':'#c9a227', bg=st==='sent'?'#e8f5ee':'#fbf4e0';
+    return `<div style="display:inline-block;margin-top:5px;font-size:11px;color:${c};background:${bg};border:1px solid ${c};border-radius:20px;padding:2px 10px" title="${lbl} by ${esc(a.by||'-')}${a.at?' on '+esc(usDate(a.at)):''}">${lbl}</div>`; }
+  return '<div style="display:inline-block;margin-top:5px;font-size:11px;color:#6b7488;border:1px solid #e6e9ef;border-radius:20px;padding:2px 10px">Draft</div>';
+}
+async function setInvStatus(status){
+  const li=LAST_INVOICE; if(!li||!li.client) return false;
+  await addRecord({type:'invoiceapproval', client:li.client, from:li.from, to:li.to, status, by:(SESSION&&SESSION.name)||'', at:new Date().toISOString()});
+  return true;
+}
+async function approveInvoice(){
+  if(!invAllowed()){ toast('Admins only',true); return; }
+  const li=LAST_INVOICE; if(!li||!li.client){ toast('Generate an invoice first.',true); return; }
+  const cur=invApprovalFor(li.client,li.from,li.to);
+  if(cur&&cur.status==='approved'){ if(!confirm('This invoice is already approved. Revert it to Draft?')) return; await setInvStatus('draft'); toast('Invoice reverted to Draft'); }
+  else { await setInvStatus('approved'); toast('Invoice approved'); }
+  invPreview();
+}
 function invPreview(){
   const out=document.getElementById('invoiceOut'); if(!out) return;
   const client=(document.getElementById('invClient')||{}).value||'';
@@ -4694,7 +4720,7 @@ async function invSendToBilling(){
     const pdfBase64=await invoiceToPdfBase64(); // exact-match PDF captured from the on-screen invoice (null falls back to the server-built PDF)
     const r=await fetch('/api/data?action=sendInvoice',{method:'POST',headers:hdr,body:JSON.stringify({client:li.client,from:li.from,to:li.to,cash:li.cashCollected,amount:li.amountDue,rateDesc:li.rateDesc,deals:li.deals,remit,pdfBase64})});
     const j=await r.json();
-    if(j&&j.ok) toast(j.pdf?('Invoice + PDF sent to the '+li.client+' billing channel.'):('Invoice summary sent to '+li.client+"'s billing channel"+(j.pdfNote?' - '+j.pdfNote:'.')), !j.pdf);
+    if(j&&j.ok){ toast(j.pdf?('Invoice + PDF sent to the '+li.client+' billing channel.'):('Invoice summary sent to '+li.client+"'s billing channel"+(j.pdfNote?' - '+j.pdfNote:'.')), !j.pdf); try{ await setInvStatus('sent'); invPreview(); }catch(_){} }
     else toast((j&&j.error)||'Could not send the invoice.',true);
   }catch(e){ toast('Send failed: '+((e&&e.message)||e),true); }
   finally{ btnBusy(btn,false); }
@@ -4753,7 +4779,7 @@ function genFounderInvoice(client,from,to){
           <div style="width:52px;height:52px;border-radius:11px;background:#c9a227;color:#241c08;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:18px">${esc(initials)}</div>
           <div><div style="font-size:19px;font-weight:800;color:#1a2b4a">${esc(client)}</div><div style="font-size:13px;color:#8a93a6">Invoice</div></div>
         </div>
-        <div style="text-align:right"><div style="font-size:22px;font-weight:800;color:#1a2b4a;font-variant-numeric:tabular-nums">#${esc(invNo)}</div><div style="display:inline-block;margin-top:5px;font-size:11px;color:#6b7488;border:1px solid #e6e9ef;border-radius:20px;padding:2px 10px">Draft</div></div>
+        <div style="text-align:right"><div style="font-size:22px;font-weight:800;color:#1a2b4a;font-variant-numeric:tabular-nums">#${esc(invNo)}</div>${invStatusPill(client,from,to)}</div>
       </div>
       <div style="border-top:1px solid #eef1f6;margin:18px 0"></div>
       <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px">
