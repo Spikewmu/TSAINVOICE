@@ -338,7 +338,7 @@ function dispoDateParts() {
   try {
     const tz = { timeZone: 'America/Chicago' };
     const date = new Intl.DateTimeFormat('en-US', { ...tz, month: 'numeric', day: 'numeric', year: 'numeric' }).format(new Date()).replace(/\//g, '-');
-    const time = new Intl.DateTimeFormat('en-US', { ...tz, hour: 'numeric', minute: '2-digit' }).format(new Date());
+    const time = new Intl.DateTimeFormat('en-US', { ...tz, hour: 'numeric', minute: '2-digit' }).format(new Date()) + ' CST';
     return { date, time, datetime: date + ' ' + time };
   } catch (e) { const d = new Date(); const date = (d.getMonth() + 1) + '-' + d.getDate() + '-' + d.getFullYear(); return { date, time: '', datetime: date }; }
 }
