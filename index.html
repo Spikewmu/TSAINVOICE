@@ -2876,6 +2876,8 @@ async function submitPostCall(e){ e.preventDefault(); const btn=e.target.querySe
     if(o.role==='Setter' && !(o.setter||'').trim()) o.setter=o.rep; // a setter's post-call credits themselves
     won=/^Won/.test(o.outcome||'');
     if(won && !(o.leadEmail||'').trim()){ toast('Lead email is required on a Won close - it matches the deal to the CRM contact.',true); return; }
+    const missingReq=[...document.querySelectorAll('#pcExtraFields [data-pcreq="1"]')].find(el=>!String(el.value||'').trim());
+    if(missingReq){ const lb=(missingReq.closest('.field')&&missingReq.closest('.field').querySelector('label')); toast('Please answer: '+((lb?lb.textContent:'').replace('*','').trim()||'the required qualification question'),true); return; }
     const gf={}; document.querySelectorAll('#pcExtraFields [data-pcfield]').forEach(el=>{ if(el && el.value!=='') gf[el.getAttribute('data-pcfield')]=el.value; }); if(Object.keys(gf).length) o.ghlFields=gf; // Post-Call Fields -> written to GHL custom fields on server push
     await addRecord(o); // every call logs a post-call record
     if(won){ // a win ALSO logs a closed deal so it flows into cash / leaderboards / invoicing
@@ -2906,10 +2908,10 @@ function renderPcExtraFields(){
   const fields=(cfg&&Array.isArray(cfg.fields)?cfg.fields:[]).filter(f=> !f.role||f.role==='Both'||f.role===role);
   if(!client||!fields.length){ wrap.innerHTML=''; return; }
   let h=`<div class="formhead" style="margin-top:6px"><b>${esc(client)} lead qualification</b><span class="sub">saved to the lead's GHL fields when you submit</span></div><div class="grid3">`;
-  fields.forEach(f=>{ const opts=Array.isArray(f.options)?f.options:[]; const inp = opts.length
-      ? `<select data-pcfield="${esc(f.id)}"><option value="">-</option>${opts.map(o=>`<option>${esc(o)}</option>`).join('')}</select>`
-      : `<input type="text" data-pcfield="${esc(f.id)}">`;
-    h+=`<div class="field"><label>${esc(f.label||f.name)}</label>${inp}</div>`; });
+  fields.forEach(f=>{ const opts=Array.isArray(f.options)?f.options:[]; const req=f.required!==false; const rq=req?' data-pcreq="1"':''; const inp = opts.length
+      ? `<select data-pcfield="${esc(f.id)}"${rq}><option value="">-</option>${opts.map(o=>`<option>${esc(o)}</option>`).join('')}</select>`
+      : `<input type="text" data-pcfield="${esc(f.id)}"${rq}>`;
+    h+=`<div class="field"><label>${esc(f.label||f.name)}${req?' *':''}</label>${inp}</div>`; });
   wrap.innerHTML=h+`</div>`;
 }
 function postcallOutcomeChanged(){
@@ -5564,11 +5566,11 @@ function pfRenderBody(){
   h+= fromSaved
     ? `<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:4px"><div style="font-weight:700">Post-call questions for ${esc(client)}</div><button class="btn ghost sm" onclick="pfFetch()">Refresh / add fields from GHL</button></div><div class="muted" style="font-size:11.5px;margin-bottom:10px">Showing your saved questions. Pull from GHL to add more fields or refresh options.</div>`
     : `<div style="font-weight:700;margin-bottom:4px">Choose which GHL fields become post-call questions</div><div class="muted" style="font-size:11.5px;margin-bottom:10px">Tick a field to add it to the Post-Call Checkout for ${esc(client)}. Its answer writes back to that GHL field on submit.</div>`;
-  list.forEach(f=>{ const sv=savedMap[f.id]; const on=fromSaved?true:!!sv; const label=(sv&&sv.label)||f.name||f.key||f.id; const role=(sv&&sv.role)||'Setter'; const opts=Array.isArray(f.options)&&f.options.length?f.options:((sv&&sv.options)||[]);
+  list.forEach(f=>{ const sv=savedMap[f.id]; const on=fromSaved?true:!!sv; const label=(sv&&sv.label)||f.name||f.key||f.id; const role=(sv&&sv.role)||'Setter'; const opts=Array.isArray(f.options)&&f.options.length?f.options:((sv&&sv.options)||[]); const req=sv?(sv.required!==false):true;
     h+=`<div class="panel" style="margin:0 0 8px;padding:10px 12px" data-pffield="${esc(f.id)}" data-pfkey="${esc(f.key||'')}" data-pfname="${esc(f.name||'')}" data-pfdtype="${esc(f.dataType||'')}" data-pfopts="${esc(JSON.stringify(opts))}">
       <label style="display:flex;align-items:center;gap:8px;font-weight:600;font-size:13.5px"><input type="checkbox" class="pfInc" ${on?'checked':''} style="width:16px;height:16px;flex:0 0 auto"> ${esc(f.name||f.key||f.id)}</label>
       <div class="muted" style="font-size:11px;margin:2px 0 8px">${esc(f.dataType||'field')}${opts.length?(' - options: '+esc(opts.slice(0,6).join(', '))+(opts.length>6?'...':'')):' - free text'}</div>
-      <div class="filters" style="margin:0"><div class="field" style="flex:2"><label>Question label on the form</label><input class="pfLabel" value="${esc(label)}"></div><div class="field" style="max-width:160px"><label>Who answers</label><select class="pfRole">${['Setter','Closer','Both'].map(r=>`<option${role===r?' selected':''}>${r}</option>`).join('')}</select></div></div>
+      <div class="filters" style="margin:0"><div class="field" style="flex:2"><label>Question label on the form</label><input class="pfLabel" value="${esc(label)}"></div><div class="field" style="max-width:150px"><label>Who answers</label><select class="pfRole">${['Setter','Closer','Both'].map(r=>`<option${role===r?' selected':''}>${r}</option>`).join('')}</select></div><div class="field" style="max-width:120px"><label>Required</label><label style="display:inline-flex;align-items:center;gap:7px;font-weight:500;padding:8px 0"><input type="checkbox" class="pfReq" ${req?'checked':''} style="width:16px;height:16px;flex:0 0 auto"> Required</label></div></div>
     </div>`; });
   h+=`<div class="row-actions" style="margin-top:10px"><button class="btn gold sm" onclick="pfSave()">Save questions</button></div><p class="fieldhelp" style="margin-top:8px">Reps see only the ticked questions for their role. On submit the answers write to the lead's GHL custom fields (the client's GHL must be connected under Integrations > CRM push).</p></div>`;
   body.innerHTML=h;
@@ -5578,7 +5580,7 @@ async function pfSave(){
   const out=[];
   document.querySelectorAll('#pfBody [data-pffield]').forEach(card=>{ const inc=card.querySelector('.pfInc'); if(!inc||!inc.checked) return;
     let opts=[]; try{ opts=JSON.parse(card.getAttribute('data-pfopts')||'[]'); }catch(e){}
-    out.push({ id:card.getAttribute('data-pffield'), key:card.getAttribute('data-pfkey')||'', name:card.getAttribute('data-pfname')||'', dataType:card.getAttribute('data-pfdtype')||'', options:opts, label:(card.querySelector('.pfLabel')||{}).value||'', role:(card.querySelector('.pfRole')||{}).value||'Setter' }); });
+    out.push({ id:card.getAttribute('data-pffield'), key:card.getAttribute('data-pfkey')||'', name:card.getAttribute('data-pfname')||'', dataType:card.getAttribute('data-pfdtype')||'', options:opts, label:(card.querySelector('.pfLabel')||{}).value||'', role:(card.querySelector('.pfRole')||{}).value||'Setter', required:!!((card.querySelector('.pfReq')||{}).checked) }); });
   await addRecord({type:'pcfields',client,fields:out});
   toast('Saved '+out.length+' post-call question'+(out.length===1?'':'s')+' for '+client);
 }
