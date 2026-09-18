@@ -468,6 +468,7 @@
       <button data-tab="contracts">Contracts</button>
       <button data-tab="mgreodview">Manager EODs</button>
       <button data-tab="onbaudit">Onboarding Audit</button>
+      <button data-tab="ghlmap">GHL Mapping</button>
       <button data-tab="data">Data + Export</button>
       <button data-tab="users">Users</button>
       <button data-tab="integrations">Integrations</button>
@@ -1711,6 +1712,18 @@ If they did not watch: No problem at all, I will send it right over. Can you wat
     <div class="panel" id="repDetailPanel" hidden><h3 id="repDetailTitle">Rep detail</h3><div class="tablewrap"><table id="repDetailTable"></table></div></div>
   </section>
 
+  <!-- ===== GHL MAPPING ===== -->
+  <section id="tab-ghlmap" hidden>
+    <h2 class="section">GHL Mapping</h2>
+    <p class="hint">Map what reps log in Sales HQ to each client's <b>actual GHL pipeline stages</b>. Because every client names their stages differently, we pull the live pipeline from their GHL and you match each post-call outcome to a stage with a dropdown. Once mapped, a submitted report can move the lead to the right stage automatically. Admins only.</p>
+    <div class="filters" style="align-items:flex-end">
+      <div class="field"><label>Client</label><select id="gmClient" onchange="gmClientChange()"></select></div>
+      <button class="btn gold sm" id="gmFetchBtn" onclick="gmFetch()">Pull pipelines from GHL</button>
+    </div>
+    <div id="gmStatus" class="fieldhelp" style="margin:6px 0"></div>
+    <div id="gmBody"></div>
+  </section>
+
   <!-- ===== INTEGRATIONS ===== -->
   <section id="tab-integrations" hidden>
     <h2 class="section">Integrations</h2>
@@ -2368,8 +2381,8 @@ function startApp(){
 // base tabs a login TIER can see; per-account responsibilities add to this in applyNavAccess()
 function baseAllow(role){
   return ({
-    admin:['dash','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','dayreports','adminreport','recruiting','messages','invoicing','contracts','onbaudit','data','users','integrations','settings','reprequests','resources','faq','kickoff','webinarsop'],
-    director:['dash','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','dailyreport','dayreports','recruiting','messages','adminreport','contracts','onbaudit','reprequests','resources','faq','kickoff','webinarsop'],
+    admin:['dash','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','dayreports','adminreport','recruiting','messages','invoicing','contracts','onbaudit','ghlmap','data','users','integrations','settings','reprequests','resources','faq','kickoff','webinarsop'],
+    director:['dash','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','dailyreport','dayreports','recruiting','messages','adminreport','contracts','onbaudit','ghlmap','reprequests','resources','faq','kickoff','webinarsop'],
     manager:['dash','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','speedtolead','dailyreport','dayreports','adminreport','recruiting','messages','reprequests','resources','faq','kickoff','webinarsop'],
     founder:['dash','reprequests','faq'],
     recruiter:['dash','recruiting','messages','timeoff','reprequests','resources','faq','kickoff','webinarsop'],
@@ -2514,7 +2527,7 @@ function showTab(t){
   document.querySelectorAll('#tabs button[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
   document.querySelectorAll('#tabs .navgroup').forEach(g=>{ if(g.querySelector('button[data-tab="'+t+'"]')) g.classList.remove('collapsed'); }); // reveal the active tab's group
 
-  ['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','dayreports','adminreport','reprequests','recruiting','messages','invoicing','contracts','onbaudit','data','users','integrations','settings','resources','faq','kickoff','webinarsop','scorecards'].forEach(x=>{ const el=document.getElementById('tab-'+x); if(el) el.hidden = (x!==t); });
+  ['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','dayreports','adminreport','reprequests','recruiting','messages','invoicing','contracts','onbaudit','ghlmap','data','users','integrations','settings','resources','faq','kickoff','webinarsop','scorecards'].forEach(x=>{ const el=document.getElementById('tab-'+x); if(el) el.hidden = (x!==t); });
   // stale-while-revalidate: render instantly from the cached records, then refresh in the background
   const render={dash:renderDash, mydeals:renderMyDeals, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, promises:renderPromisesTab, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, mgreodview:renderMgrEodView, contracts:renderContracts, faq:renderFaq, scorecards:renderScorecards, webinar:renderWebinars, calllog:renderCallLog, calendar:renderCalendar, speedtolead:renderSpeedToLead, dailyreport:renderDailyReport, dayreports:renderDayReports, adminreport:renderAdminReport, reprequests:renderRepRequests, recruiting:renderRecruiting, messages:renderMessages, training:renderTraining, invoicing:renderInvoicing, data:renderAll}[t];
   if(render){ render(); syncRecords().then(()=>{ if(currentTab()===t) render(); buildGlobalClientSelect(); buildViewAsUserSelect(); updateNavBadges(); renderReminders(); }); }
@@ -2524,6 +2537,7 @@ function showTab(t){
   if(t==='settings'){ loadSettingsForm(); }
   if(t==='integrations'){ renderIntegrations(); }
   if(t==='onbaudit'){ renderOnbAudit(); }
+  if(t==='ghlmap'){ renderGhlMap(); }
   if(t==='sod'){ renderSodTab(); }
   renderReminders();
 }
@@ -5423,6 +5437,52 @@ function arSummaryBar(txt,miss){ const sum=document.getElementById('arSummary');
 function managersForClient(client){ const c=latestClients().find(x=>String(x.name||'')===client); if(!c) return []; return [...new Set(['webinarMgr','setterMgr','closerMgr'].map(f=>(c[f]||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b)); }
 
 // ---------------- ONBOARDING AUDIT (admin/director): per-client onboarding health check ----------------
+/* ===== Admin > GHL Mapping: map post-call outcomes to each client's live GHL pipeline stages ===== */
+let GM_PIPELINES=null, GM_LOADED_CLIENT='';
+function gmApi(action, body){ const hdr={'Content-Type':'application/json'}; if(SESSION&&SESSION.token) hdr['x-session-token']=SESSION.token; else if(SESSION&&SESSION.pw) hdr['x-admin-pass']=SESSION.pw; return fetch('/api/data?action='+action,{method:'POST',headers:hdr,body:JSON.stringify(body||{})}).then(r=>r.json()).catch(e=>({ok:false,error:String(e)})); }
+function GM_OUTCOMES(){ try{ return [...new Set([...(PC_OUTCOMES.Closer||[]),...(PC_OUTCOMES.Setter||[])])]; }catch(e){ return []; } }
+function ghlMapFor(client){ if(!client) return null; let best=null; const cn=nrm(client); RECORDS.forEach(x=>{ if(x.type==='ghlmap' && nrm(x.client)===cn){ if(!best||(x.submittedAt||'')>(best.submittedAt||'')) best=x; } }); return best; }
+function renderGhlMap(){
+  const sel=document.getElementById('gmClient'); if(sel){ const clients=clientNames().slice().sort((a,b)=>String(a).localeCompare(String(b))); const prev=preferGlobal(clients, sel.value||''); sel.innerHTML='<option value="">Select a client</option>'+clients.map(c=>`<option${c===prev?' selected':''}>${esc(c)}</option>`).join(''); sel.value=prev; }
+  const cur=(sel&&sel.value)||''; if(cur!==GM_LOADED_CLIENT){ GM_PIPELINES=null; GM_LOADED_CLIENT=''; }
+  gmRenderBody();
+}
+function gmClientChange(){ GM_PIPELINES=null; GM_LOADED_CLIENT=''; const st=document.getElementById('gmStatus'); if(st) st.textContent=''; gmRenderBody(); }
+async function gmFetch(){
+  const client=(document.getElementById('gmClient')||{}).value||''; if(!client){ toast('Pick a client first',true); return; }
+  const st=document.getElementById('gmStatus'), btn=document.getElementById('gmFetchBtn'); if(btn) btn.disabled=true; if(st){ st.textContent='Pulling pipelines from GHL...'; st.style.color='var(--muted)'; }
+  const j=await gmApi('ghlPipelines',{client}); if(btn) btn.disabled=false;
+  if(!j||!j.ok){ if(st){ st.textContent=(j&&j.error)||'Could not load pipelines'; st.style.color='var(--warn)'; } GM_PIPELINES=null; GM_LOADED_CLIENT=''; gmRenderBody(); return; }
+  GM_PIPELINES=j.pipelines||[]; GM_LOADED_CLIENT=client;
+  if(st){ st.textContent=`Loaded ${GM_PIPELINES.length} pipeline${GM_PIPELINES.length===1?'':'s'} from ${esc(client)}'s GHL.`; st.style.color='var(--good)'; }
+  gmRenderBody();
+}
+function gmSavedSummary(saved){ const rows=Object.entries(saved.map||{}).filter(e=>e[1]).map(e=>`<div style="font-size:13px;margin:2px 0"><b>${esc(e[0])}</b> &rarr; ${esc((saved.stageNames&&saved.stageNames[e[1]])||e[1])}</div>`).join('')||'<span class="muted">no outcomes mapped yet</span>'; return `<div class="panel" style="padding:12px 14px"><div style="font-weight:700;margin-bottom:6px">Saved mapping <span class="muted" style="font-weight:400;font-size:12px">- pipeline: ${esc(saved.pipelineName||saved.pipelineId||'?')}</span></div>${rows}<p class="fieldhelp" style="margin-top:8px">Pull pipelines to edit this mapping.</p></div>`; }
+function gmRenderBody(){
+  const body=document.getElementById('gmBody'); if(!body) return;
+  const client=(document.getElementById('gmClient')||{}).value||'';
+  if(!client){ body.innerHTML='<p class="muted" style="padding:8px 0">Select a client and pull their GHL pipelines to start mapping.</p>'; return; }
+  const saved=ghlMapFor(client);
+  if(!GM_PIPELINES){ body.innerHTML=saved?gmSavedSummary(saved):'<p class="muted" style="padding:8px 0">Click <b>Pull pipelines from GHL</b> to load this client\'s stages.</p>'; return; }
+  if(!GM_PIPELINES.length){ body.innerHTML='<p class="hint">No pipelines found in this client\'s GHL. Create the pipeline in GHL first, then pull again.</p>'; return; }
+  const pipeId=(document.getElementById('gmPipe')||{}).value || (saved&&saved.pipelineId) || GM_PIPELINES[0].id;
+  const pipe=GM_PIPELINES.find(p=>p.id===pipeId)||GM_PIPELINES[0];
+  const stages=pipe.stages||[];
+  const map=(saved&&saved.pipelineId===pipe.id&&saved.map)?saved.map:{};
+  let h=`<div class="panel" style="padding:12px 14px;margin:0 0 12px"><div class="field" style="max-width:380px;margin:0"><label>Pipeline to map into</label><select id="gmPipe" onchange="gmRenderBody()">${GM_PIPELINES.map(p=>`<option value="${esc(p.id)}"${p.id===pipe.id?' selected':''}>${esc(p.name)} (${(p.stages||[]).length} stages)</option>`).join('')}</select></div></div>`;
+  h+=`<div class="panel" style="padding:12px 14px"><div style="font-weight:700;margin-bottom:10px">Post-call outcome &rarr; GHL stage</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:8px 14px">`;
+  GM_OUTCOMES().forEach(o=>{ const cur=map[o]||''; h+=`<div class="field" style="margin:0"><label>${esc(o)}</label><select data-gmoutcome="${esc(o)}"><option value="">(no move)</option>${stages.map(s=>`<option value="${esc(s.id)}"${s.id===cur?' selected':''}>${esc(s.name)}</option>`).join('')}</select></div>`; });
+  h+=`</div><div class="row-actions" style="margin-top:12px"><button class="btn gold sm" onclick="gmSave()">Save mapping</button></div><p class="fieldhelp" style="margin-top:8px">Stored per client. Auto-moving the lead to the mapped stage on report submit is the next step - it will be gated + tested before it touches live opportunities.</p></div>`;
+  body.innerHTML=h;
+}
+async function gmSave(){
+  const client=(document.getElementById('gmClient')||{}).value||''; if(!client){ toast('Pick a client',true); return; }
+  const pipeId=(document.getElementById('gmPipe')||{}).value||'', pipe=(GM_PIPELINES||[]).find(p=>p.id===pipeId); if(!pipe){ toast('Pull pipelines first',true); return; }
+  const map={}, stageNames={}; (pipe.stages||[]).forEach(s=>stageNames[s.id]=s.name);
+  document.querySelectorAll('#gmBody [data-gmoutcome]').forEach(el=>{ const o=el.getAttribute('data-gmoutcome'); if(el.value) map[o]=el.value; });
+  await addRecord({type:'ghlmap',client,pipelineId:pipe.id,pipelineName:pipe.name,map,stageNames});
+  toast('GHL mapping saved for '+client);
+}
 async function renderOnbAudit(){
   const wrap=document.getElementById('onbAuditBody'); if(!wrap) return;
   if(!(SESSION && (SESSION.role==='admin'||SESSION.role==='director'))){ wrap.innerHTML='<p class="muted" style="padding:14px">Admins only.</p>'; return; }

@@ -257,6 +257,23 @@ async function ghlPush(cfg, rec, contactIdOverride) {
   } catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
 }
 
+// list a client's GHL pipelines + stages (for the Admin > GHL Mapping section). Token stays server-side; only ids/names return.
+async function ghlPipelines(cfg) {
+  if (!cfg || !cfg.ghlApiKey) return { ok: false, error: 'no GHL API key set for this client' };
+  try {
+    const key = String(cfg.ghlApiKey || ''), v2 = /^pit-/i.test(key), loc = String(cfg.ghlLocationId || '').trim();
+    const H = v2 ? { Authorization: 'Bearer ' + key, Version: '2021-07-28' } : { Authorization: 'Bearer ' + key };
+    if (v2 && !loc) return { ok: false, error: 'This is a v2 Private Integration token - set the Location ID on Integrations first.' };
+    const url = v2 ? 'https://services.leadconnectorhq.com/opportunities/pipelines?locationId=' + encodeURIComponent(loc)
+                   : 'https://rest.gohighlevel.com/v1/pipelines/';
+    const r = await fetch(url, { headers: H });
+    if (!r.ok) { const t = await r.text(); return { ok: false, error: 'GHL pipelines lookup failed (' + r.status + ') ' + t.slice(0, 140) }; }
+    const j = await r.json().catch(() => ({}));
+    const pipelines = (j.pipelines || []).map(p => ({ id: p.id, name: p.name, stages: (p.stages || []).map(st => ({ id: st.id, name: st.name })) }));
+    return { ok: true, pipelines };
+  } catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
+}
+
 export default async function handler(req, res) {
   const h = req.headers || {}, b = req.body || {}, q = req.query || {};
   const s = verifySession(b.token || q.token || h['x-session-token'] || '');
@@ -355,6 +372,16 @@ export default async function handler(req, res) {
       const cfg = await integrationFor(rec.ws, rec.client);
       if (!cfg || !cfg.ghlApiKey) return res.status(200).json({ ok: false, error: 'No GHL API key set for ' + (rec.client || 'this client') + ' - add it on Integrations first.' });
       const out = await ghlPush(cfg, rec, b.contactId); // real note + real source; contactId (optional) pushes straight to that contact when the deal has no lead email
+      return res.status(200).json(out);
+    }
+    // ---------- list a client's GHL pipelines + stages (Admin > GHL Mapping) ----------
+    if (action === 'ghlPipelines') {
+      if (s && !['admin', 'director'].includes(s.role)) return res.status(200).json({ ok: false, error: 'Admins only' });
+      const client = String(b.client || q.client || '').trim();
+      if (!client) return res.status(200).json({ ok: false, error: 'client required' });
+      const cfg = await integrationFor(callerWs, client);
+      if (!cfg || !cfg.ghlApiKey) return res.status(200).json({ ok: false, error: 'No GHL API key set for ' + client + ' - add it on Integrations > CRM push (GHL) first.' });
+      const out = await ghlPipelines(cfg);
       return res.status(200).json(out);
     }
     // ---------- SEND a founder-invoice summary to the client's invoicing Slack channel (T-546) ----------
