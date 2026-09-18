@@ -5438,7 +5438,7 @@ function managersForClient(client){ const c=latestClients().find(x=>String(x.nam
 
 // ---------------- ONBOARDING AUDIT (admin/director): per-client onboarding health check ----------------
 /* ===== Admin > GHL Mapping: map post-call outcomes to each client's live GHL pipeline stages ===== */
-let GM_PIPELINES=null, GM_LOADED_CLIENT='';
+let GM_PIPELINES=null, GM_LOADED_CLIENT='', GM_ACTIVE_PIPE=null;
 // suggested outcome -> standard TakeOver stage NAME (used to pre-fill dropdowns on first map, by name match). See [[postcall-pipeline-mapping]].
 const GM_DEFAULTS={ 'Booked (set)':'Call Booked','Follow-up booked':'Follow Up Call Booked','Callback scheduled':'Follow Up','Not interested':'Not Interested','Disqualified':'DQ','No answer':"Didn't Answer",'Hung up':'In Contact','Wrong number':'Not Interested','Won (closed)':'Closed (Won)','No-show':'No Showed','Canceled':'Canceled','Rescheduled':'Follow Up Call Booked' };
 const gmNorm=s=>String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,'');
@@ -5466,26 +5466,38 @@ function gmRenderBody(){
   const client=(document.getElementById('gmClient')||{}).value||'';
   if(!client){ body.innerHTML='<p class="muted" style="padding:8px 0">Select a client and pull their GHL pipelines to start mapping.</p>'; return; }
   const saved=ghlMapFor(client);
-  if(!GM_PIPELINES){ body.innerHTML=saved?gmSavedSummary(saved):'<p class="muted" style="padding:8px 0">Click <b>Pull pipelines from GHL</b> to load this client\'s stages.</p>'; return; }
-  if(!GM_PIPELINES.length){ body.innerHTML='<p class="hint">No pipelines found in this client\'s GHL. Create the pipeline in GHL first, then pull again.</p>'; return; }
-  const pipeId=(document.getElementById('gmPipe')||{}).value || (saved&&saved.pipelineId) || GM_PIPELINES[0].id;
-  const pipe=GM_PIPELINES.find(p=>p.id===pipeId)||GM_PIPELINES[0];
+  // Use freshly-pulled pipelines if we have them; otherwise rebuild the editable mapping from the SAVED record
+  // (we stored every stage's id+name), so a saved client opens ready-to-edit without re-pulling from GHL every time.
+  let pipes=GM_PIPELINES, fromSaved=false;
+  if(!pipes && saved && saved.pipelineId){ pipes=[{ id:saved.pipelineId, name:saved.pipelineName||'Saved pipeline', stages:Object.entries(saved.stageNames||{}).map(e=>({id:e[0],name:e[1]})) }]; fromSaved=true; }
+  if(!pipes){ GM_ACTIVE_PIPE=null; body.innerHTML='<p class="muted" style="padding:8px 0">Click <b>Pull pipelines from GHL</b> to load this client\'s stages.</p>'; return; }
+  if(!pipes.length){ GM_ACTIVE_PIPE=null; body.innerHTML='<p class="hint">No pipelines found in this client\'s GHL. Create the pipeline in GHL first, then pull again.</p>'; return; }
+  // require an EXPLICIT pipeline choice when freshly pulled; a saved client opens on its saved pipeline
+  const selEl=document.getElementById('gmPipe');
+  const pipeId=(selEl && selEl.value) ? selEl.value : ((saved&&saved.pipelineId) || (fromSaved?pipes[0].id:''));
+  let h=`<div class="panel" style="padding:12px 14px;margin:0 0 12px"><div style="display:flex;justify-content:space-between;align-items:flex-end;gap:10px;flex-wrap:wrap"><div class="field" style="max-width:440px;margin:0;flex:1"><label>Pipeline to map into</label><select id="gmPipe" onchange="gmRenderBody()"><option value="">- Choose the pipeline -</option>${pipes.map(p=>`<option value="${esc(p.id)}"${p.id===pipeId?' selected':''}>${esc(p.name)} (${(p.stages||[]).length} stages)</option>`).join('')}</select><span class="fieldhelp">${fromSaved?'Showing your saved mapping. <b>Pull pipelines from GHL</b> to switch pipeline or refresh stages.':'Pick the pipeline these dispositions should map into. Saved per client, for this pipeline only.'}</span></div>${fromSaved?'<button class="btn ghost sm" onclick="gmFetch()">Refresh from GHL</button>':''}</div></div>`;
+  const pipe=pipes.find(p=>p.id===pipeId); GM_ACTIVE_PIPE=pipe||null;
+  if(!pipe){ body.innerHTML=h+'<p class="muted" style="padding:4px 0">Choose the pipeline above to map its stages.</p>'; return; }
   const stages=pipe.stages||[];
   const hasSaved=!!(saved&&saved.pipelineId===pipe.id&&saved.map);
   const map=hasSaved?saved.map:{};
+  const autoOn=!!(hasSaved&&saved.autoMove);
   const byNorm={}; stages.forEach(s=>{ if(byNorm[gmNorm(s.name)]===undefined) byNorm[gmNorm(s.name)]=s.id; }); // stage lookup by normalized name (for the suggested defaults)
-  let h=`<div class="panel" style="padding:12px 14px;margin:0 0 12px"><div class="field" style="max-width:380px;margin:0"><label>Pipeline to map into</label><select id="gmPipe" onchange="gmRenderBody()">${GM_PIPELINES.map(p=>`<option value="${esc(p.id)}"${p.id===pipe.id?' selected':''}>${esc(p.name)} (${(p.stages||[]).length} stages)</option>`).join('')}</select></div></div>`;
-  h+=`<div class="panel" style="padding:12px 14px"><div style="font-weight:700;margin-bottom:4px">Post-call outcome &rarr; GHL stage</div>${hasSaved?'':'<div class="muted" style="font-size:11.5px;margin-bottom:8px">Pre-filled with suggested stages where the names match our standard scheme. Review each, then <b>Save mapping</b>. Anything that did not match shows <b>(no move)</b>.</div>'}<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:8px 14px">`;
+  h+=`<div class="panel" style="padding:12px 14px"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div style="font-weight:700">Post-call outcome &rarr; GHL stage</div><label style="display:inline-flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600"><input type="checkbox" id="gmAuto" ${autoOn?'checked':''} style="width:16px;height:16px;flex:0 0 auto"> Auto-move leads on submit</label></div>`;
+  h+=`<div class="muted" style="font-size:11.5px;margin:6px 0 8px">${autoOn?'Auto-move is <b>ON</b> for this pipeline. Note: the auto-move engine is not built yet, so nothing moves until it ships (and it will be tested first).':'Auto-move is <b>OFF</b>. Saving only stores the mapping - <b>no leads move in GHL</b>.'}</div>`;
+  h+= hasSaved?'':'<div class="muted" style="font-size:11.5px;margin-bottom:8px">Pre-filled with suggested stages where the names match our standard scheme. Review each, then <b>Save mapping</b>. Anything that did not match shows <b>(no move)</b>.</div>';
+  h+=`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:8px 14px">`;
   GM_OUTCOMES().forEach(o=>{ const cur = hasSaved ? (map[o]||'') : (byNorm[gmNorm(GM_DEFAULTS[o]||'')]||''); h+=`<div class="field" style="margin:0"><label>${esc(o)}</label><select data-gmoutcome="${esc(o)}"><option value="">(no move)</option>${stages.map(s=>`<option value="${esc(s.id)}"${s.id===cur?' selected':''}>${esc(s.name)}</option>`).join('')}</select></div>`; });
-  h+=`</div><div class="row-actions" style="margin-top:12px"><button class="btn gold sm" onclick="gmSave()">Save mapping</button></div><p class="fieldhelp" style="margin-top:8px">Stored per client. Auto-moving the lead to the mapped stage on report submit is the next step - it will be gated + tested before it touches live opportunities.</p></div>`;
+  h+=`</div><div class="row-actions" style="margin-top:12px"><button class="btn gold sm" onclick="gmSave()">Save mapping</button></div></div>`;
   body.innerHTML=h;
 }
 async function gmSave(){
   const client=(document.getElementById('gmClient')||{}).value||''; if(!client){ toast('Pick a client',true); return; }
-  const pipeId=(document.getElementById('gmPipe')||{}).value||'', pipe=(GM_PIPELINES||[]).find(p=>p.id===pipeId); if(!pipe){ toast('Pull pipelines first',true); return; }
+  const pipe=GM_ACTIVE_PIPE; if(!pipe){ toast('Choose a pipeline first',true); return; }
   const map={}, stageNames={}; (pipe.stages||[]).forEach(s=>stageNames[s.id]=s.name);
   document.querySelectorAll('#gmBody [data-gmoutcome]').forEach(el=>{ const o=el.getAttribute('data-gmoutcome'); if(el.value) map[o]=el.value; });
-  await addRecord({type:'ghlmap',client,pipelineId:pipe.id,pipelineName:pipe.name,map,stageNames});
+  const autoMove=!!((document.getElementById('gmAuto')||{}).checked);
+  await addRecord({type:'ghlmap',client,pipelineId:pipe.id,pipelineName:pipe.name,map,stageNames,autoMove});
   toast('GHL mapping saved for '+client);
 }
 async function renderOnbAudit(){
