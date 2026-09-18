@@ -5687,10 +5687,14 @@ function gmRenderBody(){
   h+=`<div class="panel" style="padding:12px 14px"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div style="font-weight:700">Post-call outcome &rarr; GHL stage</div><label style="display:inline-flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600"><input type="checkbox" id="gmAuto" ${autoOn?'checked':''} style="width:16px;height:16px;flex:0 0 auto"> Auto-move leads on submit</label></div>`;
   h+=`<div class="muted" style="font-size:11.5px;margin:6px 0 8px">${autoOn?'Auto-move is <b>ON</b> for this pipeline. On each matching post-call/deal submit, the lead\'s GHL opportunity moves to the mapped stage automatically. Run the test below first to confirm the wiring.':'Auto-move is <b>OFF</b>. Saving only stores the mapping - <b>no leads move in GHL</b>. You can still run the manual test below.'}</div>`;
   h+= hasSaved?'':'<div class="muted" style="font-size:11.5px;margin-bottom:8px">Pre-filled with suggested stages where the names match our standard scheme. Review each, then <b>Save mapping</b>. Anything that did not match shows <b>(no move)</b>.</div>';
-  h+=`<div class="muted" style="font-size:11.5px;margin-bottom:8px">Optional <b>tag</b> per outcome is applied to the contact on move - this is what the reactivation/webinar <b>smart lists</b> filter on (a stage move alone won't update them). Comma-separate multiple tags. Placeholders: <code>{{closer}}</code> <code>{{setter}}</code> <code>{{outcome}}</code>.</div>`;
-  h+=`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px 14px">`;
-  GM_OUTCOMES().forEach(o=>{ const cur = hasSaved ? (map[o]||'') : (byNorm[gmNorm(GM_DEFAULTS[o]||'')]||''); h+=`<div class="field" style="margin:0"><label>${esc(o)}</label><select data-gmoutcome="${esc(o)}"><option value="">(no move)</option>${stages.map(s=>`<option value="${esc(s.id)}"${s.id===cur?' selected':''}>${esc(s.name)}</option>`).join('')}</select><input data-gmtag="${esc(o)}" value="${esc(tagsMap[o]||'')}" placeholder="tag on move (optional)" style="margin-top:4px;font-size:12px;padding:6px 8px"></div>`; });
-  h+=`</div><div class="row-actions" style="margin-top:12px"><button class="btn gold sm" onclick="gmSave()">Save mapping</button></div>`;
+  h+=`<div class="muted" style="font-size:11.5px;margin-bottom:8px">Optional <b>tag</b> per outcome is applied to the contact on move - this is what the reactivation/webinar <b>smart lists</b> filter on (a stage move alone won't update them). Comma-separate multiple tags. Placeholders: <code>{{closer}}</code> <code>{{setter}}</code> <code>{{outcome}}</code> <code>{{offer}}</code> <code>{{date}}</code> <code>{{time}}</code> (e.g. <code>Closed {{closer}} {{date}} {{offer}}</code>).</div>`;
+  const gmRow=o=>{ const cur = hasSaved ? (map[o]||'') : (byNorm[gmNorm(GM_DEFAULTS[o]||'')]||''); return `<div class="field" style="margin:0"><label>${esc(o)}</label><select data-gmoutcome="${esc(o)}" onchange="gmSyncField(this,'gmoutcome')"><option value="">(no move)</option>${stages.map(s=>`<option value="${esc(s.id)}"${s.id===cur?' selected':''}>${esc(s.name)}</option>`).join('')}</select><input data-gmtag="${esc(o)}" value="${esc(tagsMap[o]||'')}" oninput="gmSyncField(this,'gmtag')" placeholder="tag on move (optional)" style="margin-top:4px;font-size:12px;padding:6px 8px"></div>`; };
+  const gmGrid=list=>`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px 14px">${list.map(gmRow).join('')}</div>`;
+  const gmShared=(PC_OUTCOMES.Closer||[]).filter(o=>(PC_OUTCOMES.Setter||[]).includes(o));
+  h+=`<div style="font-weight:700;font-size:12px;letter-spacing:.03em;text-transform:uppercase;color:var(--muted);margin:2px 0 6px">Closer dispositions</div>`+gmGrid(PC_OUTCOMES.Closer||[]);
+  h+=`<div style="font-weight:700;font-size:12px;letter-spacing:.03em;text-transform:uppercase;color:var(--muted);margin:16px 0 6px">Setter dispositions</div>`+gmGrid(PC_OUTCOMES.Setter||[]);
+  if(gmShared.length) h+=`<div class="muted" style="font-size:11px;margin-top:8px">${gmShared.map(esc).join(' and ')} appear in both sections and stay in sync (either role can report them).</div>`;
+  h+=`<div class="row-actions" style="margin-top:12px"><button class="btn gold sm" onclick="gmSave()">Save mapping</button></div>`;
   // Test auto-move for one real contact (ignores the toggle) so an admin can confirm the wiring before going live
   const stName=id=>{ const st=(stages||[]).find(x=>x.id===id); return st?st.name:id; };
   const mappedOutcomes=[...new Set([...Object.keys(map).filter(o=>map[o]),...Object.keys(tagsMap).filter(o=>tagsMap[o])])];
@@ -5711,6 +5715,8 @@ async function gmSave(){
   await addRecord({type:'ghlmap',client,pipelineId:pipe.id,pipelineName:pipe.name,map,tags,stageNames,autoMove});
   toast('GHL mapping saved for '+client);
 }
+// keep a shared outcome (one that appears in both the Closer + Setter sections) in sync across its two rows
+function gmSyncField(el,attr){ try{ const key=(el.getAttribute('data-'+attr)||'').replace(/"/g,'\\"'); document.querySelectorAll('#gmBody [data-'+attr+'="'+key+'"]').forEach(x=>{ if(x!==el) x.value=el.value; }); }catch(e){} }
 // Test the auto-move engine on one real contact (uses the saved mapping; ignores the toggle). Shows exactly what GHL did.
 async function gmTest(){
   const client=(document.getElementById('gmClient')||{}).value||'';

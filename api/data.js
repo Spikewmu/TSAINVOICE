@@ -276,7 +276,8 @@ async function ghlPush(cfg, rec, contactIdOverride) {
             if (gm.pipelineId && stage) move = await ghlMove(cfg, id, gm.pipelineId, stage, rec.leadEmail || rec.email || rec.lead || '');
             const tagTpl = gm.tags && gm.tags[rec.outcome];
             if (tagTpl) {
-              const ctx = { closer: rec.role === 'Setter' ? '' : rec.rep, setter: rec.role === 'Setter' ? rec.rep : rec.setter, rep: rec.rep, outcome: rec.outcome, product: rec.product, client: rec.client };
+              const dp = dispoDateParts();
+              const ctx = { closer: rec.role === 'Setter' ? '' : rec.rep, setter: rec.role === 'Setter' ? rec.rep : rec.setter, rep: rec.rep, outcome: rec.outcome, product: rec.product, offer: rec.product, client: rec.client, date: dp.date, time: dp.time, datetime: dp.datetime };
               const list = String(tagTpl).split(',').map(t => fillTagTemplate(t, ctx)).filter(Boolean);
               if (list.length) tags = await ghlTag(cfg, id, list);
             }
@@ -328,9 +329,18 @@ async function ghlMove(cfg, contactId, pipelineId, stageId, hint) {
   } catch (e) { return { ok: false, reason: String((e && e.message) || e) }; }
 }
 
-// substitute {{closer}}/{{setter}}/{{rep}}/{{outcome}}/{{product}}/{{client}} in a tag template, then trim
+// substitute {{closer}}/{{setter}}/{{rep}}/{{outcome}}/{{product}}/{{offer}}/{{client}}/{{date}}/{{time}}/{{datetime}} in a tag template, then trim
 function fillTagTemplate(tpl, ctx) {
-  return String(tpl || '').replace(/\{\{\s*(closer|setter|rep|outcome|product|client)\s*\}\}/gi, (m, k) => String((ctx && ctx[k.toLowerCase()]) || '').trim()).replace(/\s+/g, ' ').trim();
+  return String(tpl || '').replace(/\{\{\s*(closer|setter|rep|outcome|product|offer|client|date|time|datetime)\s*\}\}/gi, (m, k) => String((ctx && ctx[k.toLowerCase()]) || '').trim()).replace(/\s+/g, ' ').trim();
+}
+// disposition date/time parts in the team's standard timezone (Central), M-D-Y like the rest of the app
+function dispoDateParts() {
+  try {
+    const tz = { timeZone: 'America/Chicago' };
+    const date = new Intl.DateTimeFormat('en-US', { ...tz, month: 'numeric', day: 'numeric', year: 'numeric' }).format(new Date()).replace(/\//g, '-');
+    const time = new Intl.DateTimeFormat('en-US', { ...tz, hour: 'numeric', minute: '2-digit' }).format(new Date());
+    return { date, time, datetime: date + ' ' + time };
+  } catch (e) { const d = new Date(); const date = (d.getMonth() + 1) + '-' + d.getDate() + '-' + d.getFullYear(); return { date, time: '', datetime: date }; }
 }
 // append tag(s) to a contact (never replaces existing tags). Used by the auto-move engine so smart lists (which filter on tags) update.
 async function ghlTag(cfg, contactId, tags) {
@@ -521,7 +531,7 @@ export default async function handler(req, res) {
       if (!stage && !tagTpl) return res.status(200).json({ ok: false, error: '"' + outcome + '" has no stage or tag set in this mapping - nothing to test.' });
       let move, tags;
       if (stage) move = await ghlMove(cfg, contactId, gm.pipelineId, stage, b.hint || '');
-      if (tagTpl) { const list = String(tagTpl).split(',').map(t => fillTagTemplate(t, { outcome })).filter(Boolean); if (list.length) tags = await ghlTag(cfg, contactId, list); }
+      if (tagTpl) { const dp = dispoDateParts(); const list = String(tagTpl).split(',').map(t => fillTagTemplate(t, { outcome, product: '', offer: '', date: dp.date, time: dp.time, datetime: dp.datetime })).filter(Boolean); if (list.length) tags = await ghlTag(cfg, contactId, list); }
       const failed = (move && !move.ok) || (tags && !tags.ok);
       return res.status(200).json({ ok: !failed, move, tags, stageName: stage ? ((gm.stageNames && gm.stageNames[stage]) || stage) : null, pipelineName: gm.pipelineName || gm.pipelineId });
     }
