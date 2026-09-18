@@ -1678,7 +1678,6 @@ If they did not watch: No problem at all, I will send it right over. Can you wat
     <div class="filters" style="align-items:flex-end;flex-wrap:wrap;gap:10px">
       <div class="field"><label>Status</label><select id="hlStatus" onchange="renderHotList()"><option value="">All</option><option>Open</option><option>Won</option><option>Lost</option></select></div>
       <div class="field"><label>Rep</label><select id="hlRep" onchange="renderHotList()"><option value="">All reps</option></select></div>
-      <div class="field"><label>Client</label><select id="hlClient" onchange="renderHotList()"><option value="">All clients</option></select></div>
       <div class="field"><label>Close date</label><div class="rangewrap"><input type="text" id="hlRange_txt" readonly placeholder="Click a start day, then an end day" onclick="rpToggle('hlRange',event)"><input type="hidden" id="hlRange_from"><input type="hidden" id="hlRange_to"><div class="rangepop" id="hlRange_pop" hidden onclick="event.stopPropagation()"></div></div></div>
       <div class="field"><label>Quick range</label><div class="row-actions"><button class="btn ghost sm" onclick="hlPreset('month')">This month</button><button class="btn ghost sm" onclick="hlPreset('7')">Next 7 days</button><button class="btn ghost sm" onclick="hlPreset('30')">Next 30 days</button><button class="btn ghost sm" onclick="hlPreset('quarter')">This quarter</button><button class="btn ghost sm" onclick="hlPreset('all')">All</button></div></div>
       <button class="btn gold sm" id="hlAddBtn" onclick="hlOpenAdd()">+ Add deal</button>
@@ -5498,11 +5497,11 @@ function hlRepNames(){
 function hlClients(){ const scope=dashScopeClients(); const all=clientNames().slice().sort((a,b)=>String(a).localeCompare(String(b))); return (scope&&scope.length)?all.filter(c=>scope.includes(c)):all; }
 function hlVisible(){
   const scope=dashScopeClients();
-  const stf=(document.getElementById('hlStatus')||{}).value||'', rpf=(document.getElementById('hlRep')||{}).value||'', clf=(document.getElementById('hlClient')||{}).value||'';
+  const stf=(document.getElementById('hlStatus')||{}).value||'', rpf=(document.getElementById('hlRep')||{}).value||'';
   const from=(document.getElementById('hlRange_from')||{}).value||'', to=(document.getElementById('hlRange_to')||{}).value||'';
   return hotDeals().filter(d=>{
     if(scope && !scope.includes(String(d.client||''))) return false;
-    if(clf && String(d.client||'')!==clf) return false;
+    if(GLOBAL_CLIENT && String(d.client||'')!==GLOBAL_CLIENT) return false; // follow the top company selector
     if(stf && (d.status||'Open')!==stf) return false;
     if(rpf && String(d.rep||'')!==rpf) return false;
     if(from && String(d.closeDate||'')<from) return false;
@@ -5512,8 +5511,6 @@ function hlVisible(){
 }
 function renderHotList(){
   const sec=document.getElementById('tab-hotlist'); if(!sec) return;
-  const clients=hlClients();
-  const rc=document.getElementById('hlClient'); if(rc){ const prev=preferGlobal(clients, rc.value||''); rc.innerHTML='<option value="">All clients</option>'+clients.map(c=>`<option${c===prev?' selected':''}>${esc(c)}</option>`).join(''); rc.value=prev; }
   const rp=document.getElementById('hlRep'); if(rp){ const prev=rp.value; rp.innerHTML='<option value="">All reps</option>'+hlRepNames().map(n=>`<option${n===prev?' selected':''}>${esc(n)}</option>`).join(''); rp.value=prev; }
   try{ rpAttach('hlRange', renderHotList); }catch(e){}
   const canAdd=hlCanAdd(); const ab=document.getElementById('hlAddBtn'); if(ab) ab.style.display=canAdd?'':'none';
@@ -5566,7 +5563,7 @@ function hlOpenAdd(){
   const g=i=>document.getElementById(i);
   g('hlModalTitle').textContent='New hot list deal';
   g('hlProspect').value=''; g('hlmProb').value='50'; g('hlmCash').value=''; g('hlmRevenue').value=''; g('hlmStatus').value='Open'; g('hlmReason').value='';
-  if(g('hlmClient')) g('hlmClient').value=preferGlobal(hlClients(), (document.getElementById('hlClient')||{}).value||'');
+  if(g('hlmClient')) g('hlmClient').value=preferGlobal(hlClients(), '');
   hlModalRepFill();
   if(g('hlmRep')){ const me=(SESSION&&SESSION.name)||'', opts=[...g('hlmRep').options].map(o=>o.value); g('hlmRep').value=(repMode()&&opts.includes(me))?me:''; }
   if(g('hlmDate')) g('hlmDate').value=''; dayPickAttach('hlmDate', ()=>{}); dayPickSync('hlmDate');
