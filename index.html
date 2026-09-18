@@ -5475,7 +5475,7 @@ function managersForClient(client){ const c=latestClients().find(x=>String(x.nam
 /* ===== Admin > GHL Mapping: map post-call outcomes to each client's live GHL pipeline stages ===== */
 let GM_PIPELINES=null, GM_LOADED_CLIENT='', GM_ACTIVE_PIPE=null;
 // suggested outcome -> standard TakeOver stage NAME (used to pre-fill dropdowns on first map, by name match). See [[postcall-pipeline-mapping]].
-const GM_DEFAULTS={ 'Booked (set)':'Call Booked','Follow-up booked':'Follow Up Call Booked','Callback scheduled':'Follow Up','Not interested':'Not Interested','Disqualified':'DQ','No answer':"Didn't Answer",'Hung up':'In Contact','Wrong number':'Not Interested','Won (closed)':'Closed (Won)','No-show':'No Showed','Canceled':'Canceled','Rescheduled':'Follow Up Call Booked' };
+const GM_DEFAULTS={ 'Booked (set)':'Call Booked','Follow-up booked':'Follow Up Call Booked','Callback scheduled':'Follow Up','Not interested':'Not Interested','Disqualified':'DQ','No answer':"Didn't Answer",'Hung up':'In Contact','Wrong number':'Not Interested','Won (closed)':'Closed (Won)','Lost':'Lost','No-show':'No Showed','Canceled':'Canceled','Rescheduled':'Follow Up Call Booked' };
 const gmNorm=s=>String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,'');
 function gmApi(action, body){ const hdr={'Content-Type':'application/json'}; if(SESSION&&SESSION.token) hdr['x-session-token']=SESSION.token; else if(SESSION&&SESSION.pw) hdr['x-admin-pass']=SESSION.pw; return fetch('/api/data?action='+action,{method:'POST',headers:hdr,body:JSON.stringify(body||{})}).then(r=>r.json()).catch(e=>({ok:false,error:String(e)})); }
 function GM_OUTCOMES(){ try{ return [...new Set([...(PC_OUTCOMES.Closer||[]),...(PC_OUTCOMES.Setter||[])])]; }catch(e){ return []; } }
