@@ -2415,7 +2415,7 @@ function startApp(){
     else if(role==='founder'){ Promise.all([syncRecords(),loadUsers()]).then(()=>{ renderDash(); }); showTab('dash'); } // founder: their company only, dashboard-only, read-only, no filters
     else if(role==='webinarteam'){ Promise.all([syncRecords(),loadUsers()]).then(()=>{ fillLists(); applyNavAccess(); renderDash(); }); showTab('dash'); } // webinar team: dashboard + webinar tab, all clients
     else if(role==='recruiter'){ Promise.all([syncRecords(),loadUsers()]).then(()=>{ fillLists(); applyNavAccess(); renderDash(); }); showTab('recruiting'); } // recruiter: dashboard scoped to their client + Recruiting + Time Off
-    else { applyIdentity(); syncRecords().then(()=>{ reconcileSessionRole(); applyNavAccess(); applyIdentity(); }); showTab(allow[0]); }
+    else { applyIdentity(); Promise.all([syncRecords(),loadUsers()]).then(()=>{ reconcileSessionRole(); fillLists(); applyNavAccess(); applyIdentity(); }); showTab(allow[0]); } // closers/setters also load the roster so rep/setter pickers use real users, not the legacy CFG seed list
     // deep-link: if the URL had a #tab this role can see, open it instead of the default landing tab
     try{ if(wantHash && document.getElementById('tab-'+wantHash) && baseAllow(role).includes(wantHash)) showTab(wantHash); }catch(_){}
     // let a pasted/edited #hash switch pages in-session (only to a tab whose nav button is visible)
