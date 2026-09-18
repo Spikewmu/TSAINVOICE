@@ -1957,7 +1957,7 @@ If they did not watch: No problem at all, I will send it right over. Can you wat
     <h3 id="hlModalTitle" style="margin:0 0 12px">New hot list deal</h3>
     <div class="field"><label>Prospect name *</label><input id="hlProspect" placeholder="Acme Corp"></div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-      <div class="field"><label>Client *</label><select id="hlmClient"></select></div>
+      <div class="field"><label>Client *</label><select id="hlmClient" onchange="hlModalRepFill()"></select></div>
       <div class="field"><label>Rep</label><select id="hlmRep"></select></div>
       <div class="field"><label>Projected closing date</label><div class="rangewrap" style="display:block"><input type="text" id="hlmDate_txt" readonly placeholder="Pick a day" onclick="dayPopToggle('hlmDate',event)" style="width:100%"><input type="hidden" id="hlmDate"><div class="rangepop" id="hlmDate_pop" hidden onclick="event.stopPropagation()"></div></div></div>
       <div class="field"><label>Probability %</label><input id="hlmProb" type="number" min="0" max="100" value="50"></div>
@@ -5483,8 +5483,18 @@ let HL_EDIT_ID=null;
 // who can add/edit hot deals: super admin, director, managers, and closers (incl. hybrids). Setters are view-only.
 function hlCanAdd(){ return !!(SESSION && (['admin','director','manager'].includes(SESSION.role) || (typeof hasRole==='function' && hasRole(SESSION.username,'closer')))); }
 function hotDeals(){ const m={}; RECORDS.forEach(x=>{ if(x.type!=='hotdeal'||!x.id) return; if(!m[x.id]||(x.submittedAt||'')>(m[x.id].submittedAt||'')) m[x.id]=x; }); return Object.values(m).filter(d=>!d.deleted); }
-// who can be the rep on a projected close: closers (incl. hybrids), managers, directors + super admins - not pure setters
-function hlRepNames(){ try{ const roles=['admin','director','manager','closer']; const names=(USERS_CACHE||[]).filter(u=>u&&!u.archived&&(roles.includes(u.role)||(typeof hasRole==='function'&&hasRole(u.username,'closer')))).map(u=>u.name||u.username); return [...new Set(names)].sort((a,b)=>String(a).localeCompare(String(b))); }catch(e){ return []; } }
+// who can be the rep on a projected close: closers (incl. hybrids), managers, directors + super admins - never pure setters.
+// pull from several reliable sources so managers/admins show even if they aren't regular entries in USERS_CACHE.
+function hlRepNames(){
+  try{
+    const s=new Set();
+    (repNames('closer')||[]).forEach(n=>{ n=String(n||'').trim(); if(n) s.add(n); }); // closers + hybrids
+    (USERS_CACHE||[]).forEach(u=>{ if(u&&!u.archived&&['admin','director','manager'].includes(u.role)){ const n=String(u.name||'').trim(); if(n) s.add(n); } });
+    try{ (leaderNames()||[]).forEach(n=>{ n=String(n||'').trim(); if(n) s.add(n); }); }catch(e){}   // admin/manager account names + current admin
+    try{ (managerNames()||[]).forEach(n=>{ n=String(n||'').trim(); if(n) s.add(n); }); }catch(e){}  // managers assigned on any client
+    return [...s].sort((a,b)=>a.localeCompare(b));
+  }catch(e){ return []; }
+}
 function hlClients(){ const scope=dashScopeClients(); const all=clientNames().slice().sort((a,b)=>String(a).localeCompare(String(b))); return (scope&&scope.length)?all.filter(c=>scope.includes(c)):all; }
 function hlVisible(){
   const scope=dashScopeClients();
@@ -5528,9 +5538,27 @@ function hlPreset(p){ const t=todayLocal(); let from='',to='';
   try{ const st=__rp['hlRange']=__rp['hlRange']||{}; st.start=from; st.end=to; rpSync('hlRange'); }catch(e){}
   renderHotList();
 }
+// reps for the deal's client: closers assigned to that client + the client's managers + super admins
+function hlRepNamesForClient(client){
+  try{
+    const s=new Set();
+    (repsForClient('closer', String(client||''))||[]).forEach(n=>{ n=String(n||'').trim(); if(n) s.add(n); });
+    const cl=latestClients().find(c=>nrmName(c.name)===nrmName(client));
+    if(cl) ['webinarMgr','setterMgr','closerMgr'].forEach(f=>{ const v=String(cl[f]||'').trim(); if(v) s.add(v); });
+    (USERS_CACHE||[]).forEach(u=>{ if(u&&!u.archived&&['admin','director'].includes(u.role)){ const n=String(u.name||'').trim(); if(n) s.add(n); } });
+    if(SESSION&&SESSION.name&&['admin','director','manager'].includes(SESSION.role)) s.add(SESSION.name);
+    return [...s].sort((a,b)=>a.localeCompare(b));
+  }catch(e){ return hlRepNames(); }
+}
 function hlFillModalSelects(){
   const mc=document.getElementById('hlmClient'); if(mc) mc.innerHTML='<option value="">-</option>'+hlClients().map(c=>`<option>${esc(c)}</option>`).join('');
-  const mr=document.getElementById('hlmRep'); if(mr) mr.innerHTML='<option value="">-</option>'+hlRepNames().map(n=>`<option>${esc(n)}</option>`).join('');
+}
+// (re)populate the modal Rep dropdown scoped to the currently-selected client
+function hlModalRepFill(){
+  const mc=document.getElementById('hlmClient'), mr=document.getElementById('hlmRep'); if(!mr) return;
+  const client=(mc&&mc.value)||'', prev=mr.value, names=hlRepNamesForClient(client);
+  mr.innerHTML='<option value="">-</option>'+names.map(n=>`<option${n===prev?' selected':''}>${esc(n)}</option>`).join('');
+  mr.value=names.includes(prev)?prev:'';
 }
 function hlOpenAdd(){
   if(!hlCanAdd()){ toast('Setters can view the hot list but not add deals',true); return; }
@@ -5539,7 +5567,8 @@ function hlOpenAdd(){
   g('hlModalTitle').textContent='New hot list deal';
   g('hlProspect').value=''; g('hlmProb').value='50'; g('hlmCash').value=''; g('hlmRevenue').value=''; g('hlmStatus').value='Open'; g('hlmReason').value='';
   if(g('hlmClient')) g('hlmClient').value=preferGlobal(hlClients(), (document.getElementById('hlClient')||{}).value||'');
-  if(g('hlmRep')) g('hlmRep').value=repMode()?((SESSION&&SESSION.name)||''):'';
+  hlModalRepFill();
+  if(g('hlmRep')){ const me=(SESSION&&SESSION.name)||'', opts=[...g('hlmRep').options].map(o=>o.value); g('hlmRep').value=(repMode()&&opts.includes(me))?me:''; }
   if(g('hlmDate')) g('hlmDate').value=''; dayPickAttach('hlmDate', ()=>{}); dayPickSync('hlmDate');
   g('hlModal').hidden=false;
 }
@@ -5548,7 +5577,8 @@ function hlOpenEdit(id){
   const g=i=>document.getElementById(i);
   g('hlModalTitle').textContent='Edit hot list deal';
   g('hlProspect').value=d.prospect||''; g('hlmProb').value=(d.prob!=null?d.prob:50); g('hlmCash').value=d.cash||''; g('hlmRevenue').value=d.revenue||''; g('hlmStatus').value=d.status||'Open'; g('hlmReason').value=d.reason||'';
-  if(g('hlmClient')) g('hlmClient').value=d.client||''; if(g('hlmRep')) g('hlmRep').value=d.rep||'';
+  if(g('hlmClient')) g('hlmClient').value=d.client||''; hlModalRepFill();
+  if(g('hlmRep')){ const mr=g('hlmRep'); if(d.rep && ![...mr.options].some(o=>o.value===d.rep)) mr.insertAdjacentHTML('beforeend', `<option>${esc(d.rep)}</option>`); mr.value=d.rep||''; }
   if(g('hlmDate')) g('hlmDate').value=(d.closeDate||'').slice(0,10); dayPickAttach('hlmDate', ()=>{}); dayPickSync('hlmDate');
   g('hlModal').hidden=false;
 }
