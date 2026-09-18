@@ -2449,7 +2449,7 @@ function baseAllow(role){
     admin:['dash','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','dayreports','hotlist','adminreport','recruiting','messages','invoicing','contracts','onbaudit','ghlmap','pcfields','data','users','integrations','settings','reprequests','resources','faq','kickoff','webinarsop'],
     director:['dash','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','dailyreport','dayreports','hotlist','recruiting','messages','adminreport','contracts','onbaudit','ghlmap','pcfields','reprequests','resources','faq','kickoff','webinarsop'],
     manager:['dash','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','speedtolead','dailyreport','dayreports','hotlist','adminreport','recruiting','messages','reprequests','resources','faq','kickoff','webinarsop'],
-    founder:['dash','reprequests','faq'],
+    founder:['dash','hotlist','reprequests','faq'],
     recruiter:['dash','recruiting','messages','timeoff','reprequests','resources','faq','kickoff','webinarsop'],
     webinarteam:['dash','meeting','promises','timeoff','webinar','resources','faq','kickoff','webinarsop'],
     closer:['dash','mydeals','postcall','sod','eod','training','timeoff','calllog','reps','hotlist','resources','faq','kickoff','webinarsop'],
@@ -5530,7 +5530,7 @@ function hlVisible(){
 }
 function renderHotList(){
   const sec=document.getElementById('tab-hotlist'); if(!sec) return;
-  const rp=document.getElementById('hlRep'); if(rp){ const prev=rp.value; rp.innerHTML='<option value="">All reps</option>'+hlRepNames().map(n=>`<option${n===prev?' selected':''}>${esc(n)}</option>`).join(''); rp.value=prev; }
+  const rp=document.getElementById('hlRep'); if(rp){ const prev=rp.value; const _sc=dashScopeClients(); const _reps=(_sc&&_sc.length)?[...new Set(_sc.flatMap(c=>hlRepNamesForClient(c)))].sort((a,b)=>String(a).localeCompare(String(b))):hlRepNames(); rp.innerHTML='<option value="">All reps</option>'+_reps.map(n=>`<option${n===prev?' selected':''}>${esc(n)}</option>`).join(''); rp.value=prev; }
   try{ rpAttach('hlRange', renderHotList); }catch(e){}
   const canAdd=hlCanAdd(); const ab=document.getElementById('hlAddBtn'); if(ab) ab.style.display=canAdd?'':'none';
   const deals=hlVisible(), open=deals.filter(d=>(d.status||'Open')==='Open');
