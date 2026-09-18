@@ -4812,7 +4812,20 @@ function invAllowed(){ return !!(SESSION && SESSION.role==='admin'); } // Super 
 function clientBillingCfg(client){
   const k=String(client||'').trim().toLowerCase(); if(!k) return null;
   let best=null; RECORDS.forEach(x=>{ if(x.type==='clientbilling' && String(x.client||'').trim().toLowerCase()===k){ if(!best||(x.submittedAt||'')>(best.submittedAt||'')) best=x; } });
-  return best;
+  if(best) return best;                       // an explicit Billing-settings rate always wins
+  try{ return contractCfgFor(client); }catch(e){ return null; } // else inherit the client's front-end rev-share % from the Contracts page
+}
+// Pull a billing rate straight from the Contracts page: the client's front-end rev-share % becomes the flat invoice rate,
+// so you don't re-enter it in Billing settings. Explicit clientbilling records still override this. Cached per RECORDS length.
+let _conCfgCache={n:-1,m:{}};
+function contractCfgFor(client){
+  const k=nrmName(client); if(!k) return null;
+  if(_conCfgCache.n!==RECORDS.length) _conCfgCache={n:RECORDS.length,m:{}};
+  if(k in _conCfgCache.m) return _conCfgCache.m[k];
+  let res=null;
+  try{ for(const c of contractsEffective()){ const app=conMatchClient(c); if(app && nrmName(app)===k){ res=(!c.feTBD && c.feRate!=null)?{mode:'flat', flatRate:Number(c.feRate)||0, _source:'contract'}:null; break; } } }
+  catch(e){ res=null; }
+  _conCfgCache.m[k]=res; return res;
 }
 // front-end-only accounts (e.g. Snoop): reps earn commission ONLY on payments within 30 days of the close.
 function acctFrontEndOnly(client){ const c=clientBillingCfg(client); return !!(c&&c.frontEndOnly); }
@@ -5076,7 +5089,7 @@ function genFounderInvoice(client,from,to){
   if(cfg){
     if(mode==='repcomp'){ pct=(cfg.closerRate||0)+(cfg.setterRate||0)+(cfg.overrideRate||0); }
     else { pct=cfg.flatRate||0; }
-    rateDesc=`${pct}% of ${overridden?money(billBase)+' (billed override)':'cash collected'}${mode==='repcomp'?' (rep comp + override)':''}`;
+    rateDesc=`${pct}% of ${overridden?money(billBase)+' (billed override)':'cash collected'}${mode==='repcomp'?' (rep comp + override)':(cfg._source==='contract'?' (from contract rev-share)':'')}`;
   }
   const amountDue=Math.round(billBase*pct)/100;
   const noCfg=!cfg||!pct;
