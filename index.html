@@ -6256,7 +6256,7 @@ function renderRepRequests(){
   const form=document.getElementById('rrqForm');
   if(form){
     if(rrqCanSubmit()){ form.hidden=false;
-      const cs=document.getElementById('rrqClient'); if(cs){ const cur=cs.value, cl=rrqMyClients(); cs.innerHTML=cl.map(c=>`<option>${esc(c)}</option>`).join(''); cs.value=cl.includes(cur)?cur:preferGlobal(cl,cur); cs.disabled=(SESSION&&SESSION.role==='founder')&&cl.length<=1; }
+      const cs=document.getElementById('rrqClient'); if(cs){ const cur=cs.value, cl=rrqMyClients(); cs.innerHTML=cl.map(c=>`<option>${esc(c)}</option>`).join(''); cs.value=cl.includes(cur)?cur:(preferGlobal(cl,cur)||(cl.length===1?cl[0]:'')); cs.disabled=(SESSION&&SESSION.role==='founder')&&cl.length<=1; }
       try{ dayPickAttach('rrqBy', ()=>{}); }catch(_){}
     } else form.hidden=true;
   }
