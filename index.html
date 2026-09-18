@@ -6506,10 +6506,16 @@ function repStageLabel(user,cfg,p){
   return 'Graduated';
 }
 function trToggleRep(i){ const d=document.getElementById('trdet_'+i); if(d) d.hidden=!d.hidden; }
+let TR_ROSTER_FILTER='all'; // all | incomplete | completed (completed = certified/graduated)
+function trSetRosterFilter(f){ TR_ROSTER_FILTER=(f==='incomplete'||f==='completed')?f:'all'; renderTraining(); }
 function trainingRoster(){
-  const cfg=repOnbConfig(), reps=(USERS_CACHE||[]).filter(u=>['closer','setter'].includes(u.role)), hires=RECORDS.filter(x=>x.type==='hire');
+  const cfg=repOnbConfig(), hires=RECORDS.filter(x=>x.type==='hire');
+  // scope the roster to the header company selector + the viewer's own account scope (managers see only their accounts)
+  const gc=GLOBAL_CLIENT, scope=dashScopeClients();
+  const reps=(USERS_CACHE||[]).filter(u=>['closer','setter'].includes(u.role)).filter(u=>{ const teams=teamsFor(u.username); if(gc) return teams.includes(gc); if(scope) return teams.some(t=>scope.includes(t)); return true; });
   let h='';
-  const pending=hires.filter(hn=>!reps.some(u=>nrm(u.name)===nrm(hn.name)));
+  const allReps=(USERS_CACHE||[]).filter(u=>['closer','setter'].includes(u.role)); // pending = hires with no login yet, checked against ALL reps (not the scoped view)
+  const pending=hires.filter(hn=>!allReps.some(u=>nrm(u.name)===nrm(hn.name)));
   if(pending.length) h+=`<div class="tag" style="color:var(--gold);border-color:var(--gold);display:block;white-space:normal;padding:9px 12px;line-height:1.5;margin-bottom:12px">${pending.length} newly hired candidate${pending.length>1?'s have':' has'} accepted and need a login (Users tab) to start onboarding: ${pending.map(hn=>esc(hn.name||'candidate')).join(', ')}.</div>`;
   if(SESSION&&SESSION.role==='admin'){
     const opts=(USERS_CACHE||[]).slice().sort((a,b)=>String(a.name||a.username).localeCompare(String(b.name||b.username))).map(u=>`<option value="${esc(u.username)}">${esc(u.name||u.username)} - ${esc(roleLabel(u.role))}</option>`).join('');
@@ -6518,9 +6524,14 @@ function trainingRoster(){
       <button class="btn ghost sm" style="color:var(--warn);border-color:var(--warn)" onclick="repResetProgress((document.getElementById('trResetUser')||{}).value)">Reset onboarding</button>
       <span class="muted" style="font-size:11px;align-self:center">Clears intake, checklist, training and certification progress.</span></div>`;
   }
-  if(!reps.length) return h+'<p class="hint">No setters or closers on the roster yet.</p>';
+  if(!reps.length) return h+`<p class="hint">No setters or closers${gc?' on '+esc(gc):''} yet.</p>`;
+  // status filter: Everyone / Incomplete / Completed (Completed = certified/graduated)
+  const gradN=reps.filter(u=>repGraduated(u.username)).length, incN=reps.length-gradN;
+  h+=`<div class="seg" id="trRosterSeg" style="margin:0 0 12px"><button class="${TR_ROSTER_FILTER==='all'?'on':''}" onclick="trSetRosterFilter('all')">Everyone ${reps.length}</button><button class="${TR_ROSTER_FILTER==='incomplete'?'on':''}" onclick="trSetRosterFilter('incomplete')">Incomplete ${incN}</button><button class="${TR_ROSTER_FILTER==='completed'?'on':''}" onclick="trSetRosterFilter('completed')">Completed ${gradN}</button></div>`;
+  const shown = TR_ROSTER_FILTER==='completed'?reps.filter(u=>repGraduated(u.username)) : TR_ROSTER_FILTER==='incomplete'?reps.filter(u=>!repGraduated(u.username)) : reps;
   const intakeF=repIntakeFields(cfg), tasks=repTasks(cfg);
-  h+=reps.map((u,i)=>{
+  if(!shown.length) return h+'<p class="hint" style="margin-top:4px">Nobody in this view.</p>';
+  h+=shown.map((u,i)=>{
     const ecfg=repEffectiveConfig(u.username), mods=ecfg.modules; // per-rep: global base + their client offer modules
     const p=repProgress(u.username), pct=repOnbPct(u.username), grad=repGraduated(u.username);
     const intakeDone=!!(p['intake']&&p['intake'].done), intakeData=(p['intake']&&p['intake'].data)||{};
