@@ -57,6 +57,12 @@
   nav.tabs .navgroup:not(.collapsed) .navhead .nchev{transform:rotate(180deg);color:var(--gold)}
   nav.tabs .navgroup.collapsed .navsub{display:none}
   nav.tabs .navsub{display:flex;flex-direction:column;gap:1px;padding:3px 0}
+  /* Flat nav (founder view): no collapsible group headers, every page as a plain top-level list item */
+  nav.tabs.flatnav .navhead{display:none}
+  nav.tabs.flatnav .navgroup{margin:0;border:none}
+  nav.tabs.flatnav .navgroup .navsub{display:flex !important;padding:0}
+  nav.tabs.flatnav .navsub button[data-tab]{padding:11px 14px;font-size:15px;font-weight:600;border-radius:9px;border-left:2.5px solid transparent}
+  nav.tabs.flatnav .navsub button[data-tab].active{border-left-color:var(--gold);box-shadow:none}
   main{flex:1;min-width:0;max-width:1120px;padding:22px 22px 60px}
   .hamburger{display:none;background:transparent;border:1px solid var(--glass-brd);color:var(--ink,#fff);width:42px;height:38px;border-radius:9px;font-size:19px;cursor:pointer;align-items:center;justify-content:center;line-height:1;flex:none}
   .hamburger:hover{border-color:var(--gold);color:var(--gold)}
@@ -2429,7 +2435,7 @@ function startApp(){
   ensureKey().then(()=>{
     if(role==='admin'){ setEodRole('Closer'); Promise.all([syncRecords(),loadUsers()]).then(()=>{ fillLists(); setEodRole('Closer'); setPcRole('Closer'); applyNavAccess(); renderDash(); renderAll(); }); showTab('dash'); }
     else if(role==='manager'){ setEodRole('Closer'); Promise.all([syncRecords(),loadUsers()]).then(()=>{ fillLists(); setEodRole('Closer'); setPcRole('Closer'); applyNavAccess(); renderDash(); }); showTab('clients'); }
-    else if(role==='founder'){ try{ const _hb=document.getElementById('navHotListBtn'), _rs=document.getElementById('navReportingSub'); if(_hb&&_rs){ _rs.appendChild(_hb); pruneNavGroups(); } }catch(_){} Promise.all([syncRecords(),loadUsers()]).then(()=>{ renderDash(); }); showTab('dash'); } // founder: their company only, dashboard-only, read-only; Hot List lives under Reporting for founders
+    else if(role==='founder'){ try{ applyFlatNav(); }catch(_){} Promise.all([syncRecords(),loadUsers()]).then(()=>{ renderDash(); }); showTab('dash'); } // founder: their company only, dashboard-only, read-only, flat nav list
     else if(role==='webinarteam'){ Promise.all([syncRecords(),loadUsers()]).then(()=>{ fillLists(); applyNavAccess(); renderDash(); }); showTab('dash'); } // webinar team: dashboard + webinar tab, all clients
     else if(role==='recruiter'){ Promise.all([syncRecords(),loadUsers()]).then(()=>{ fillLists(); applyNavAccess(); renderDash(); }); showTab('recruiting'); } // recruiter: dashboard scoped to their client + Recruiting + Time Off
     else { applyIdentity(); Promise.all([syncRecords(),loadUsers()]).then(()=>{ reconcileSessionRole(); fillLists(); applyNavAccess(); applyIdentity(); }); showTab(allow[0]); } // closers/setters also load the roster so rep/setter pickers use real users, not the legacy CFG seed list
@@ -2510,8 +2516,11 @@ function applyNavAccess(){
   if(!hasRecruiterAddon()){ ['recruiting','messages'].forEach(t=>{ const i=allow.indexOf(t); if(i>=0) allow.splice(i,1); }); }
   document.querySelectorAll('#tabs button[data-tab]').forEach(b=>{ b.hidden = !allow.includes(b.dataset.tab); });
   pruneNavGroups();
+  applyFlatNav();
   updateNavBadges();
 }
+// Founder view: render the nav as a flat list of pages (no collapsible "Setter/Closer tools / Resources / Recruiting" group headers)
+function applyFlatNav(){ try{ const nav=document.getElementById('tabs'); if(nav) nav.classList.toggle('flatnav', !!(SESSION && SESSION.role==='founder')); }catch(_){} }
 // super-admin "view as" - preview the app as another role (layout only; the real access/token is unchanged, resets on reload)
 let VIEW_AS_REAL=null;
 function viewAs(role){
