@@ -5439,6 +5439,9 @@ function managersForClient(client){ const c=latestClients().find(x=>String(x.nam
 // ---------------- ONBOARDING AUDIT (admin/director): per-client onboarding health check ----------------
 /* ===== Admin > GHL Mapping: map post-call outcomes to each client's live GHL pipeline stages ===== */
 let GM_PIPELINES=null, GM_LOADED_CLIENT='';
+// suggested outcome -> standard TakeOver stage NAME (used to pre-fill dropdowns on first map, by name match). See [[postcall-pipeline-mapping]].
+const GM_DEFAULTS={ 'Booked (set)':'Call Booked','Follow-up booked':'Follow Up Call Booked','Callback scheduled':'Follow Up','Not interested':'Not Interested','Disqualified':'DQ','No answer':"Didn't Answer",'Hung up':'In Contact','Wrong number':'Not Interested','Won (closed)':'Closed (Won)','No-show':'No Showed','Canceled':'Canceled','Rescheduled':'Follow Up Call Booked' };
+const gmNorm=s=>String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,'');
 function gmApi(action, body){ const hdr={'Content-Type':'application/json'}; if(SESSION&&SESSION.token) hdr['x-session-token']=SESSION.token; else if(SESSION&&SESSION.pw) hdr['x-admin-pass']=SESSION.pw; return fetch('/api/data?action='+action,{method:'POST',headers:hdr,body:JSON.stringify(body||{})}).then(r=>r.json()).catch(e=>({ok:false,error:String(e)})); }
 function GM_OUTCOMES(){ try{ return [...new Set([...(PC_OUTCOMES.Closer||[]),...(PC_OUTCOMES.Setter||[])])]; }catch(e){ return []; } }
 function ghlMapFor(client){ if(!client) return null; let best=null; const cn=nrm(client); RECORDS.forEach(x=>{ if(x.type==='ghlmap' && nrm(x.client)===cn){ if(!best||(x.submittedAt||'')>(best.submittedAt||'')) best=x; } }); return best; }
@@ -5468,10 +5471,12 @@ function gmRenderBody(){
   const pipeId=(document.getElementById('gmPipe')||{}).value || (saved&&saved.pipelineId) || GM_PIPELINES[0].id;
   const pipe=GM_PIPELINES.find(p=>p.id===pipeId)||GM_PIPELINES[0];
   const stages=pipe.stages||[];
-  const map=(saved&&saved.pipelineId===pipe.id&&saved.map)?saved.map:{};
+  const hasSaved=!!(saved&&saved.pipelineId===pipe.id&&saved.map);
+  const map=hasSaved?saved.map:{};
+  const byNorm={}; stages.forEach(s=>{ if(byNorm[gmNorm(s.name)]===undefined) byNorm[gmNorm(s.name)]=s.id; }); // stage lookup by normalized name (for the suggested defaults)
   let h=`<div class="panel" style="padding:12px 14px;margin:0 0 12px"><div class="field" style="max-width:380px;margin:0"><label>Pipeline to map into</label><select id="gmPipe" onchange="gmRenderBody()">${GM_PIPELINES.map(p=>`<option value="${esc(p.id)}"${p.id===pipe.id?' selected':''}>${esc(p.name)} (${(p.stages||[]).length} stages)</option>`).join('')}</select></div></div>`;
-  h+=`<div class="panel" style="padding:12px 14px"><div style="font-weight:700;margin-bottom:10px">Post-call outcome &rarr; GHL stage</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:8px 14px">`;
-  GM_OUTCOMES().forEach(o=>{ const cur=map[o]||''; h+=`<div class="field" style="margin:0"><label>${esc(o)}</label><select data-gmoutcome="${esc(o)}"><option value="">(no move)</option>${stages.map(s=>`<option value="${esc(s.id)}"${s.id===cur?' selected':''}>${esc(s.name)}</option>`).join('')}</select></div>`; });
+  h+=`<div class="panel" style="padding:12px 14px"><div style="font-weight:700;margin-bottom:4px">Post-call outcome &rarr; GHL stage</div>${hasSaved?'':'<div class="muted" style="font-size:11.5px;margin-bottom:8px">Pre-filled with suggested stages where the names match our standard scheme. Review each, then <b>Save mapping</b>. Anything that did not match shows <b>(no move)</b>.</div>'}<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:8px 14px">`;
+  GM_OUTCOMES().forEach(o=>{ const cur = hasSaved ? (map[o]||'') : (byNorm[gmNorm(GM_DEFAULTS[o]||'')]||''); h+=`<div class="field" style="margin:0"><label>${esc(o)}</label><select data-gmoutcome="${esc(o)}"><option value="">(no move)</option>${stages.map(s=>`<option value="${esc(s.id)}"${s.id===cur?' selected':''}>${esc(s.name)}</option>`).join('')}</select></div>`; });
   h+=`</div><div class="row-actions" style="margin-top:12px"><button class="btn gold sm" onclick="gmSave()">Save mapping</button></div><p class="fieldhelp" style="margin-top:8px">Stored per client. Auto-moving the lead to the mapped stage on report submit is the next step - it will be gated + tested before it touches live opportunities.</p></div>`;
   body.innerHTML=h;
 }
