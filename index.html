@@ -812,20 +812,12 @@
     </div>
     <div id="invSettings" hidden>
       <div class="panel" style="padding:18px;max-width:760px">
-        <h3 style="margin:0 0 4px">Rep pay &amp; billing fallback</h3>
-        <p class="fieldhelp" style="margin:0 0 6px"><b>The client invoice rate now comes from the Contracts page</b> (front-end / back-end rev-share). This box is only for: the per-client <b>rep-commission rates</b> (Rep comp mode = closer % + setter %), the <b>Front-end only</b> flag below, and a <b>billing fallback</b> if a client has no contract rate set. Visible to Super Admin only.</p>
+        <h3 style="margin:0 0 4px">Account settings</h3>
+        <p class="fieldhelp" style="margin:0 0 12px">Client invoice rates come from <b>Contracts</b>; rep commission rates from <b>Rep Commission Breakdown</b>. This box only sets, per client, the <b>Front-end only</b> flag and an optional <b>billing fallback %</b> (used only if the client has no contract rate). Super Admin only.</p>
         <div class="field"><label>Client</label><select id="invCfgClient" data-list="clients" onchange="invLoadCfg()"></select></div>
-        <div class="field"><label>Billing mode</label><select id="invMode" onchange="invModeChanged()"><option value="flat">Flat rate (% of cash collected)</option><option value="repcomp">Rep comp + TSA override</option></select></div>
-        <div class="field invFlat"><label>Flat rate (%)</label><input type="number" id="invFlatRate" step="0.1" placeholder="e.g. 12.5"></div>
-        <div class="invRep" hidden>
-          <div class="grid3" style="gap:10px">
-            <div class="field"><label>Closer (%)</label><input type="number" id="invCloserRate" step="0.1" placeholder="7"></div>
-            <div class="field"><label>Setter (%)</label><input type="number" id="invSetterRate" step="0.1" placeholder="3"></div>
-            <div class="field"><label>TSA override (%)</label><input type="number" id="invOverrideRate" step="0.1" placeholder="e.g. 3"></div>
-          </div>
-        </div>
+        <div class="field"><label>Billing fallback rate (%)</label><input type="number" id="invFlatRate" step="0.1" placeholder="only if no contract rate"><span class="fieldhelp">Flat % of cash collected, used <b>only</b> when this client has no rev-share set on its Contract.</span></div>
         <label style="display:flex;gap:8px;align-items:flex-start;margin-top:12px;font-weight:500"><input type="checkbox" id="invFrontEndOnly" style="width:20px;height:20px;flex:0 0 auto;margin:1px 2px 0 0;accent-color:var(--gold);cursor:pointer"><span>Front-end only <span class="fieldhelp" style="margin:0;font-weight:400">- reps earn commission <b>only</b> on payments collected within 30 days of the close (e.g. Snoop). TSA still bills the client on later payments; the rep just isn't paid on them. Leave off for normal accounts, where reps are paid on recurring / back-end payments too.</span></span></label>
-        <div class="row-actions" style="margin-top:10px"><button class="btn gold sm" onclick="saveClientBilling()">Save client rate</button></div>
+        <div class="row-actions" style="margin-top:10px"><button class="btn gold sm" onclick="saveClientBilling()">Save</button></div>
       </div>
       <div class="panel" style="padding:18px;max-width:760px;margin-top:16px">
         <h3 style="margin:0 0 4px">TSA payment details (wire / ACH)</h3>
@@ -4941,24 +4933,20 @@ function invThisWeek(){ const bw=billingWeek(); document.getElementById('invFrom
 function currentWeek(ref){ const d=ref?new Date(ref):new Date(); const back=(d.getDay()+6)%7; const from=new Date(d); from.setDate(d.getDate()-back); const to=new Date(from); to.setDate(from.getDate()+6); return {from:isoLocal(from), to:isoLocal(to)}; }
 function invCurrentWeek(){ const cw=currentWeek(); document.getElementById('invFrom').value=cw.from; document.getElementById('invTo').value=cw.to; invPreview(); }
 function invPrevWeek(){ const f=document.getElementById('invFrom').value; const ref=f?new Date(f+'T00:00:00'):new Date(); ref.setDate(ref.getDate()-7); const bw=billingWeek(ref); document.getElementById('invFrom').value=bw.from; document.getElementById('invTo').value=bw.to; invPreview(); }
-function invModeChanged(){ const mode=document.getElementById('invMode').value; document.querySelector('#invSettings .invFlat').hidden=mode!=='flat'; document.querySelector('#invSettings .invRep').hidden=mode!=='repcomp'; }
 function invLoadCfg(){
   const client=document.getElementById('invCfgClient').value; const cfg=clientBillingCfg(client)||{};
-  document.getElementById('invMode').value=cfg.mode||'flat';
   document.getElementById('invFlatRate').value=(cfg.flatRate!=null?cfg.flatRate:'');
-  document.getElementById('invCloserRate').value=(cfg.closerRate!=null?cfg.closerRate:'');
-  document.getElementById('invSetterRate').value=(cfg.setterRate!=null?cfg.setterRate:'');
-  document.getElementById('invOverrideRate').value=(cfg.overrideRate!=null?cfg.overrideRate:'');
   const fe=document.getElementById('invFrontEndOnly'); if(fe) fe.checked=!!cfg.frontEndOnly;
-  invModeChanged();
 }
 async function saveClientBilling(){
   if(!invAllowed()){ toast('Super Admin only',true); return; }
   const client=document.getElementById('invCfgClient').value;
   if(!client){ toast('Pick a client first',true); return; }
   const num=id=>{ const v=parseFloat(document.getElementById(id).value); return isNaN(v)?null:v; };
-  const rec={type:'clientbilling',client,mode:document.getElementById('invMode').value,flatRate:num('invFlatRate'),closerRate:num('invCloserRate'),setterRate:num('invSetterRate'),overrideRate:num('invOverrideRate'),frontEndOnly:document.getElementById('invFrontEndOnly').checked,by:(SESSION&&SESSION.name)||''};
-  try{ await addRecord(rec); toast('Saved billing rate for '+client); invPreview(); }
+  const prev=clientBillingCfg(client)||{};
+  // keep any legacy rep-comp fields on the record so old data isn't lost; this UI only edits the fallback flat rate + front-end-only
+  const rec={type:'clientbilling',client,mode:'flat',flatRate:num('invFlatRate'),closerRate:prev.closerRate!=null?prev.closerRate:null,setterRate:prev.setterRate!=null?prev.setterRate:null,overrideRate:prev.overrideRate!=null?prev.overrideRate:null,frontEndOnly:document.getElementById('invFrontEndOnly').checked,by:(SESSION&&SESSION.name)||''};
+  try{ await addRecord(rec); toast('Saved for '+client); invPreview(); }
   catch(e){ toast('Save failed: '+(e&&e.message||e),true); }
 }
 async function saveBillingInfo(){
