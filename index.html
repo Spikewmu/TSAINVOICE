@@ -6434,6 +6434,16 @@ function renderTraining(){
   if(hint) hint.textContent='Work through each module, then pass the certification to graduate.';
   wrap.innerHTML=trainingSelf((SESSION&&SESSION.username)||'');
 }
+// turn a training link into an embedded player (YouTube / Vimeo / Google Drive); else a plain "Open material" link
+function trVideoEmbed(link){
+  const u=String(link||'').trim(); if(!u) return ''; let src='', m;
+  if(m=u.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/|live\/)|youtu\.be\/)([\w-]{6,})/i)) src='https://www.youtube.com/embed/'+m[1];
+  else if(m=u.match(/vimeo\.com\/(?:video\/)?(\d+)/i)) src='https://player.vimeo.com/video/'+m[1];
+  else if(m=u.match(/drive\.google\.com\/file\/d\/([\w-]+)/i)) src='https://drive.google.com/file/d/'+m[1]+'/preview';
+  else if(m=u.match(/drive\.google\.com\/open\?id=([\w-]+)/i)) src='https://drive.google.com/file/d/'+m[1]+'/preview';
+  if(src) return `<div style="position:relative;width:100%;max-width:640px;aspect-ratio:16/9;margin:10px 0;border-radius:10px;overflow:hidden;border:1px solid var(--border);background:#000"><iframe src="${esc(src)}" style="position:absolute;inset:0;width:100%;height:100%;border:0" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen loading="lazy"></iframe></div>`;
+  return `<div style="margin-top:8px"><a href="${esc(u)}" target="_blank" rel="noopener" class="linklike" style="font-size:13px">Open material</a></div>`;
+}
 function trainingSelf(user){
   const cfg=repEffectiveConfig(user), p=repProgress(user), total=cfg.modules.length, doneCount=repModulesDone(user,cfg), pct=repOnbPct(user), grad=repGraduated(user), allModsDone=doneCount>=total;
   const intakeFields=repIntakeFields(cfg), tasks=repTasks(cfg);
@@ -6458,7 +6468,7 @@ function trainingSelf(user){
   // 3) Training modules
   h+=`<h3 class="section" style="margin-top:22px">Training</h3>`;
   cfg.modules.forEach((mo,i)=>{ const done=p[mo.id]&&p[mo.id].done;
-    h+=`<div class="modcard${done?' done':''}"><div class="modhead"><span class="modstep">${done?'✓':(i+1)}</span><div style="flex:1"><h4>${esc(mo.title)}${mo.client?` <span class="teamtag" style="font-size:10px">${esc(mo.client)}</span>`:''}</h4><div class="modbody">${esc(mo.body)}</div>${mo.link?`<div style="margin-top:8px"><a href="${esc(mo.link)}" target="_blank" rel="noopener" class="linklike" style="font-size:13px">Open material</a></div>`:''}<div style="margin-top:10px">${done?'<span class="muted" style="font-size:12px">Completed</span>':`<button class="btn sm" onclick="repMarkModule('${mo.id}')">Mark complete</button>`}</div></div></div></div>`;
+    h+=`<div class="modcard${done?' done':''}"><div class="modhead"><span class="modstep">${done?'✓':(i+1)}</span><div style="flex:1"><h4>${esc(mo.title)}${mo.client?` <span class="teamtag" style="font-size:10px">${esc(mo.client)}</span>`:''}</h4><div class="modbody">${esc(mo.body)}</div>${trVideoEmbed(mo.link)}<div style="margin-top:10px">${done?'<span class="muted" style="font-size:12px">Completed</span>':`<button class="btn sm" onclick="repMarkModule('${mo.id}')">Mark complete</button>`}</div></div></div></div>`;
   });
   const previewing=(typeof VIEW_AS_REAL!=='undefined' && VIEW_AS_REAL); // in preview, unlock the quiz so it can be reviewed
   h+=`<h3 class="section" style="margin-top:22px">Certification</h3>`;
@@ -6574,12 +6584,12 @@ function trRenderEditor(){
   h+=`<button class="btn ghost sm" onclick="trAdd('tasks')">+ Add task</button>`;
   }
   h+=head(TR_SCOPE?('Offer training modules - '+esc(TR_SCOPE)):'Training modules');
-  h+=TR_CFG.modules.map((m,i)=>card(`<div class="filters" style="align-items:flex-end;margin:0 0 8px"><div class="field" style="flex:2"><label>Module title</label><input value="${esc(m.title||'')}" oninput="trUpd('modules',${i},'title',this.value)"></div>${del('modules',i)}</div><div class="field" style="margin:0 0 8px"><label>Content</label><textarea rows="3" oninput="trUpd('modules',${i},'body',this.value)" style="width:100%">${esc(m.body||'')}</textarea></div><div class="field" style="margin:0"><label>Video / doc link (optional)</label><input value="${esc(m.link||'')}" oninput="trUpd('modules',${i},'link',this.value)" placeholder="https://..."></div>`)).join('');
+  h+=TR_CFG.modules.map((m,i)=>card(`<div class="filters" style="align-items:flex-end;margin:0 0 8px"><div class="field" style="flex:2"><label>Module title</label><input value="${esc(m.title||'')}" oninput="trUpd('modules',${i},'title',this.value)"></div>${del('modules',i)}</div><div class="field" style="margin:0 0 8px"><label>Content</label><textarea rows="3" oninput="trUpd('modules',${i},'body',this.value)" style="width:100%">${esc(m.body||'')}</textarea></div><div class="field" style="margin:0"><label>Video / doc link (optional)</label><input value="${esc(m.link||'')}" oninput="trUpd('modules',${i},'link',this.value)" placeholder="YouTube, Vimeo or Google Drive link - embeds automatically"></div>`)).join('');
   h+=`<button class="btn ghost sm" onclick="trAdd('modules')">+ Add module</button>`;
   h+=head(TR_SCOPE?('Offer quiz questions - '+esc(TR_SCOPE)):'Certification quiz');
   if(TR_SCOPE) h+=`<div class="muted" style="font-size:11px;margin:0 0 8px">Added to the certification quiz for ${esc(TR_SCOPE)} reps. The passing score is set on the global default.</div>`;
   else h+=`<div class="field" style="max-width:200px;margin:0 0 10px"><label>Passing score (%)</label><input type="number" min="0" max="100" value="${TR_CFG.passPct}" oninput="trUpdMeta('passPct',this.value)"></div>`;
-  h+=TR_CFG.quiz.map((qq,qi)=>card(`<div class="filters" style="align-items:flex-end;margin:0 0 8px"><div class="field" style="flex:1"><label>Question ${qi+1}</label><input value="${esc(qq.q||'')}" oninput="trUpd('quiz',${qi},'q',this.value)"></div>${del('quiz',qi)}</div><div style="font-size:11px;color:var(--muted);margin-bottom:6px">Select the correct answer with the dot on the left.</div>`+(qq.options||[]).map((op,oi)=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px"><input type="radio" name="ans${qi}" ${qq.answer===oi?'checked':''} onchange="trSetAns(${qi},${oi})" title="Correct answer" style="flex:0 0 auto"><input style="flex:1" value="${esc(op)}" oninput="trUpdOpt(${qi},${oi},this.value)" placeholder="Option ${oi+1}">${qq.options.length>2?`<button class="btn ghost sm" onclick="trDelOpt(${qi},${oi})">&times;</button>`:''}</div>`).join('')+`<button class="btn ghost sm" style="margin-top:4px" onclick="trAddOpt(${qi})">+ Add option</button>`)).join('');
+  h+=TR_CFG.quiz.map((qq,qi)=>card(`<div class="filters" style="align-items:flex-end;margin:0 0 8px"><div class="field" style="flex:1"><label>Question ${qi+1}</label><input value="${esc(qq.q||'')}" oninput="trUpd('quiz',${qi},'q',this.value)"></div>${del('quiz',qi)}</div><div style="font-size:11px;color:var(--muted);margin-bottom:6px">Select the correct answer with the dot on the left.</div>`+(qq.options||[]).map((op,oi)=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px"><input type="radio" name="ans${qi}" ${qq.answer===oi?'checked':''} onchange="trSetAns(${qi},${oi})" title="Mark as the correct answer" style="flex:0 0 auto;width:18px;height:18px;min-width:18px;margin:0;accent-color:var(--gold);cursor:pointer"><input style="flex:1;min-width:0" value="${esc(op)}" oninput="trUpdOpt(${qi},${oi},this.value)" placeholder="Option ${oi+1}">${qq.options.length>2?`<button class="btn ghost sm" style="flex:0 0 auto" onclick="trDelOpt(${qi},${oi})">&times;</button>`:''}</div>`).join('')+`<button class="btn ghost sm" style="margin-top:4px" onclick="trAddOpt(${qi})">+ Add option</button>`)).join('');
   h+=`<button class="btn ghost sm" onclick="trAdd('quiz')">+ Add question</button>`;
   el.innerHTML=h;
 }
