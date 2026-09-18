@@ -2078,8 +2078,8 @@ If they did not watch: No problem at all, I will send it right over. Can you wat
 const LS = { cfg:'tsa_inv_cfg', data:'tsa_inv_data', auth:'tsa_inv_session', users:'tsa_inv_users' };
 const DEFAULT_CFG = {
   clients:["Prime (Billy)","Social Revelation (Ryan)","MSP","DAB","Eight-Figure Sales"],
-  closers:["Bre","Carolina","Josh"],
-  setters:["Twyla","Gianna","Ra-eez"],
+  closers:[],
+  setters:[], // real reps come from the user roster (USERS_CACHE), never a hardcoded seed - see repNames()
   products:["Retainer","DWY","DFY","Partnership","Other"],
   goal:2000000, closerRate:7, setterRate:3,
   endpoint:"https://script.google.com/macros/s/AKfycbzOjSVJ7gj4V6kcrbiAodGmoA884imoyvD9j-teTlxMZgGH9OYcR3q7pXUAeqCYGeS1/exec",
@@ -2647,7 +2647,7 @@ function repNames(role){
   // (a closer+setter with primary "closer" must still appear in the setter pickers, and vice versa)
   const fromUsers=[...new Set(USERS_CACHE.filter(u=> !u.archived && (u.role===role || hasRole(u.username, role))).map(u=>String(u.name||'').trim()).filter(Boolean))];
   if(fromUsers.length) return fromUsers.sort((a,b)=>a.localeCompare(b));
-  return (role==='closer'?CFG.closers:CFG.setters)||[]; // fallback until accounts exist
+  return []; // no seed fallback: pickers are driven only by the real roster (USERS_CACHE loads for every role at login). Never surface stale seed names.
 }
 // admin/manager account names, so an admin/manager filling a form can credit ANY leader who also sells (e.g. Robb closing on MSP), not just themselves
 function leaderNames(){
