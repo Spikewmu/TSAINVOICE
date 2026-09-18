@@ -432,7 +432,7 @@
     <button class="navhead"><svg class="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14v-2a8 8 0 0116 0v2"/><rect x="2" y="14" width="4" height="6" rx="1"/><rect x="18" y="14" width="4" height="6" rx="1"/></svg><span class="nlabel">Setter / Closer tools</span><svg class="nchev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
     <div class="navsub">
       <button data-tab="mydeals">My Deals & Payments</button>
-      <button data-tab="hotlist">Hot List</button>
+      <button data-tab="hotlist" id="navHotListBtn">Hot List</button>
       <button data-tab="postcall">Post-Call Checkout</button>
       <button data-tab="sod">Start of Day</button>
       <button data-tab="eod">End of Day</button>
@@ -459,7 +459,7 @@
   </div>
   <div class="navgroup collapsed">
     <button class="navhead"><svg class="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-8M2 20h20"/></svg><span class="nlabel">Reporting</span><svg class="nchev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
-    <div class="navsub">
+    <div class="navsub" id="navReportingSub">
       <button data-tab="dailyreport">Daily Report</button>
       <button data-tab="dayreports">SOD / EOD Reports</button>
       <button data-tab="reps">Rep Breakdown</button>
@@ -2429,7 +2429,7 @@ function startApp(){
   ensureKey().then(()=>{
     if(role==='admin'){ setEodRole('Closer'); Promise.all([syncRecords(),loadUsers()]).then(()=>{ fillLists(); setEodRole('Closer'); setPcRole('Closer'); applyNavAccess(); renderDash(); renderAll(); }); showTab('dash'); }
     else if(role==='manager'){ setEodRole('Closer'); Promise.all([syncRecords(),loadUsers()]).then(()=>{ fillLists(); setEodRole('Closer'); setPcRole('Closer'); applyNavAccess(); renderDash(); }); showTab('clients'); }
-    else if(role==='founder'){ Promise.all([syncRecords(),loadUsers()]).then(()=>{ renderDash(); }); showTab('dash'); } // founder: their company only, dashboard-only, read-only, no filters
+    else if(role==='founder'){ try{ const _hb=document.getElementById('navHotListBtn'), _rs=document.getElementById('navReportingSub'); if(_hb&&_rs){ _rs.appendChild(_hb); pruneNavGroups(); } }catch(_){} Promise.all([syncRecords(),loadUsers()]).then(()=>{ renderDash(); }); showTab('dash'); } // founder: their company only, dashboard-only, read-only; Hot List lives under Reporting for founders
     else if(role==='webinarteam'){ Promise.all([syncRecords(),loadUsers()]).then(()=>{ fillLists(); applyNavAccess(); renderDash(); }); showTab('dash'); } // webinar team: dashboard + webinar tab, all clients
     else if(role==='recruiter'){ Promise.all([syncRecords(),loadUsers()]).then(()=>{ fillLists(); applyNavAccess(); renderDash(); }); showTab('recruiting'); } // recruiter: dashboard scoped to their client + Recruiting + Time Off
     else { applyIdentity(); Promise.all([syncRecords(),loadUsers()]).then(()=>{ reconcileSessionRole(); fillLists(); applyNavAccess(); applyIdentity(); }); showTab(allow[0]); } // closers/setters also load the roster so rep/setter pickers use real users, not the legacy CFG seed list
