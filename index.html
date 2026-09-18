@@ -2972,6 +2972,7 @@ async function submitPostCall(e){ e.preventDefault(); const btn=e.target.querySe
     const missingReq=[...document.querySelectorAll('#pcExtraFields [data-pcreq="1"]')].find(el=>!String(el.value||'').trim());
     if(missingReq){ const lb=(missingReq.closest('.field')&&missingReq.closest('.field').querySelector('label')); toast('Please answer: '+((lb?lb.textContent:'').replace('*','').trim()||'the required qualification question'),true); return; }
     const gf={}; document.querySelectorAll('#pcExtraFields [data-pcfield]').forEach(el=>{ if(el && el.value!=='') gf[el.getAttribute('data-pcfield')]=el.value; }); if(Object.keys(gf).length) o.ghlFields=gf; // Post-Call Fields -> written to GHL custom fields on server push
+    if(won) o.wonDeal=true; // a win also logs a deal (below), which posts the richer "closed deal" GHL note - so the server skips this post-call's duplicate note
     await addRecord(o); // every call logs a post-call record
     if(won){ // a win ALSO logs a closed deal so it flows into cash / leaderboards / invoicing
       const d=num({type:'deal',role:'Closer',date:o.date,client:o.client,lead:o.lead,leadEmail:o.leadEmail||'',rep:o.rep,setter:o.setter||'',source:o.source||'',product:o.product||'',callType:o.callType||'',contractValue:o.contractValue||0,cashCollected:o.cashCollected||0,depositCollected:o.depositCollected||0,fathom:o.fathom||'',notes:o.notes||'',closedDeals:1});

@@ -248,8 +248,13 @@ async function ghlPush(cfg, rec, contactIdOverride) {
       } catch (e) { }
     }
     if (payLines.length > 1) { lines.push('Payment plan:'); payLines.forEach(l => lines.push('  - ' + l)); } // only when there's more than the close-day cash
-    const body = 'Sales HQ ' + (rec.type === 'deal' ? 'closed deal' : 'post-call') + ' (' + new Date().toISOString().slice(0, 10) + ')\n' + lines.join('\n');
-    await fetch(base + '/contacts/' + id + '/notes', { method: 'POST', headers: H, body: JSON.stringify({ body }) }).catch(() => { });
+    // A won Post-Call Checkout writes BOTH a postcall and a deal record; the deal posts the richer "closed deal" note
+    // (with payment plan), so skip the duplicate post-call note on a won close. The postcall still does the auto-move,
+    // tags, source, and custom-field writes below.
+    if (!(rec.type === 'postcall' && rec.wonDeal)) {
+      const body = 'Sales HQ ' + (rec.type === 'deal' ? 'closed deal' : 'post-call') + ' (' + new Date().toISOString().slice(0, 10) + ')\n' + lines.join('\n');
+      await fetch(base + '/contacts/' + id + '/notes', { method: 'POST', headers: H, body: JSON.stringify({ body }) }).catch(() => { });
+    }
     if (rec.source) await fetch(base + '/contacts/' + id, { method: 'PUT', headers: H, body: JSON.stringify({ source: rec.source }) }).catch(() => { });
     const tsaTag = rec.type === 'deal' ? 'tsa - closed deal' : 'tsa - post-call'; // append (never replaces existing tags) so the marketer can filter TSA outcomes
     await fetch(base + '/contacts/' + id + '/tags' + (v2 ? '' : '/'), { method: 'POST', headers: H, body: JSON.stringify({ tags: [tsaTag] }) }).catch(() => { });
