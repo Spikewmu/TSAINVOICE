@@ -23,6 +23,13 @@
     --glass-blur:blur(16px) saturate(1.15); --glass-hi:inset 0 1px 0 rgba(255,255,255,.07);
   }
   *{box-sizing:border-box}
+  /* Themed scrollbars - subtle translucent gold on the warm-dark ground, site-wide (matches the scheme instead of the default light OS bar) */
+  *{scrollbar-width:thin;scrollbar-color:rgba(201,162,74,.34) transparent}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:rgba(201,162,74,.30);border:2px solid transparent;background-clip:padding-box;border-radius:8px}
+  ::-webkit-scrollbar-thumb:hover{background:rgba(201,162,74,.58);background-clip:padding-box}
+  ::-webkit-scrollbar-corner{background:transparent}
   body{margin:0;background:radial-gradient(1100px 620px at 12% -8%,rgba(201,162,74,.11),transparent 58%),radial-gradient(1000px 560px at 100% -5%,rgba(150,110,50,.10),transparent 55%),var(--ground);background-attachment:fixed;color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.5}
   header.app{position:sticky;top:0;z-index:20;background:rgba(16,13,9,.72);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border-bottom:1px solid var(--glass-brd);color:#fff;padding:14px 20px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
   header.app .brand{font-family:var(--serif);font-weight:700;letter-spacing:.01em;font-size:19px;display:flex;align-items:center;gap:9px}
@@ -125,6 +132,16 @@
   .agstaff{font-size:11px;color:var(--muted);margin:0 0 8px}
   .agstaff b{color:var(--ink)}
   td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+  /* Hot List (T-555) polish: cleaner KPI cards + a table that wraps the reason instead of forcing a horizontal scroll */
+  .hlkpi{padding:15px 17px;margin:0}
+  .hlkpi .lbl{font-size:11px;text-transform:uppercase;letter-spacing:.05em;font-weight:700;color:var(--muted)}
+  .hlkpi .val{font-size:26px;font-weight:700;margin-top:4px;font-variant-numeric:tabular-nums;letter-spacing:-.01em;line-height:1.15}
+  .hlkpi.accent{background:linear-gradient(160deg,#241d10,#17130d);border-color:var(--gold-soft);box-shadow:inset 0 0 0 1px rgba(201,162,74,.12),var(--shadow)}
+  .hlkpi.accent .lbl{color:var(--gold-2)}
+  .hlkpi.accent .val{color:var(--gold-2)}
+  #hlTable td,#hlTable th{vertical-align:top}
+  #hlTable td.hlreason,#hlTable th.hlreason{white-space:normal;min-width:200px;max-width:360px;word-break:break-word;overflow-wrap:anywhere;color:var(--muted)}
+  #hlTable .hlprob{display:inline-block;min-width:34px;font-variant-numeric:tabular-nums;font-weight:600}
   tbody tr:hover{background:var(--surface-2)}
   tr.rank1 td:first-child{font-weight:700;color:var(--gold)}
   .pill{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;background:var(--surface-2);color:var(--muted)}
@@ -5518,15 +5535,15 @@ function renderHotList(){
   const canAdd=hlCanAdd(); const ab=document.getElementById('hlAddBtn'); if(ab) ab.style.display=canAdd?'':'none';
   const deals=hlVisible(), open=deals.filter(d=>(d.status||'Open')==='Open');
   const fc=open.reduce((a,d)=>a+(+d.revenue||0),0), wt=open.reduce((a,d)=>a+(+d.revenue||0)*((+d.prob||0)/100),0), cc=open.reduce((a,d)=>a+(+d.cash||0),0);
-  const kpi=(lbl,val)=>`<div class="panel" style="padding:14px 16px;margin:0"><div class="muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.03em;font-weight:700">${lbl}</div><div style="font-size:24px;font-weight:700;margin-top:3px">${val}</div></div>`;
-  const kw=document.getElementById('hlKpis'); if(kw) kw.innerHTML=kpi('Open deals',open.length)+kpi('Forecasted cash',money(fc))+kpi('Weighted pipeline',money(wt))+kpi('Cash to be collected',money(cc));
+  const kpi=(lbl,val,accent)=>`<div class="panel hlkpi${accent?' accent':''}"><div class="lbl">${lbl}</div><div class="val">${val}</div></div>`;
+  const kw=document.getElementById('hlKpis'); if(kw) kw.innerHTML=kpi('Open deals',open.length)+kpi('Forecasted cash',money(fc))+kpi('Weighted pipeline',money(wt))+kpi('Cash to be collected',money(cc),true);
   const stPill=s=>{ s=s||'Open'; const c=s==='Won'?'good':(s==='Lost'?'warn':''); return `<span class="pill ${c}">${esc(s)}</span>`; };
   const rows=deals.slice().sort((a,b)=>String(a.closeDate||'').localeCompare(String(b.closeDate||''))).map(d=>{
     const id=esc(String(d.id));
     const act=canAdd?`<span style="white-space:nowrap"><button class="btn sm ghost" title="Mark won" onclick="hlSetStatus('${id}','Won')" style="color:#7bd487;border-color:#3a5a45">&#10003;</button> <button class="btn sm ghost" title="Mark lost" onclick="hlSetStatus('${id}','Lost')" style="color:var(--warn);border-color:var(--warn)">&#10007;</button> <button class="btn sm ghost" title="Edit" onclick="hlOpenEdit('${id}')">&#9998;</button> <button class="btn sm ghost" title="Delete" onclick="hlDelete('${id}')">&#128465;</button></span>`:'';
-    return `<tr><td><b>${esc(d.prospect||'')}</b>${d.client?`<div class="muted" style="font-size:11px">${esc(d.client)}</div>`:''}</td><td>${esc(d.rep||'-')}</td><td>${d.closeDate?esc(usDate(d.closeDate)):'-'}</td><td class="num">${money(d.revenue||0)}</td><td class="num">${money(d.cash||0)}</td><td>${(+d.prob||0)}%</td><td>${stPill(d.status)}</td><td>${esc(d.reason||'')}</td><td>${act}</td></tr>`;
+    return `<tr><td><b>${esc(d.prospect||'')}</b>${d.client?`<div class="muted" style="font-size:11px">${esc(d.client)}</div>`:''}</td><td>${esc(d.rep||'-')}</td><td>${d.closeDate?esc(usDate(d.closeDate)):'-'}</td><td class="num">${money(d.revenue||0)}</td><td class="num">${money(d.cash||0)}</td><td><span class="hlprob">${(+d.prob||0)}%</span></td><td>${stPill(d.status)}</td><td class="hlreason">${esc(d.reason||'')}</td><td>${act}</td></tr>`;
   }).join('');
-  const tb=document.getElementById('hlTable'); if(tb) tb.innerHTML=`<thead><tr><th>Prospect</th><th>Rep</th><th>Close date</th><th class="num">Revenue</th><th class="num">Cash to be collected</th><th>Prob.</th><th>Status</th><th>Reason</th><th></th></tr></thead><tbody>${rows||`<tr><td colspan="9" class="muted" style="padding:14px">No hot deals yet. Click <b>Add deal</b> to flag a projected deal.</td></tr>`}</tbody>`;
+  const tb=document.getElementById('hlTable'); if(tb) tb.innerHTML=`<thead><tr><th>Prospect</th><th>Rep</th><th>Close date</th><th class="num">Revenue</th><th class="num">Cash to be collected</th><th>Prob.</th><th>Status</th><th class="hlreason">Reason</th><th></th></tr></thead><tbody>${rows||`<tr><td colspan="9" class="muted" style="padding:14px">No hot deals yet. Click <b>Add deal</b> to flag a projected deal.</td></tr>`}</tbody>`;
 }
 function hlPreset(p){ const t=todayLocal(); let from='',to='';
   if(p==='month'){ from=t.slice(0,7)+'-01'; const y=+t.slice(0,4),m=+t.slice(5,7),last=new Date(y,m,0).getDate(); to=`${y}-${String(m).padStart(2,'0')}-${String(last).padStart(2,'0')}`; }
