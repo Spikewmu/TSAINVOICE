@@ -790,6 +790,14 @@
           <button class="btn ghost sm" onclick="invPrint()">&#128424; Print / save PDF</button>
           <button class="btn ghost sm" id="invSendBtn" onclick="invSendToBilling()">&#128228; Send to billing</button>
         </div>
+        <div class="grid3" style="gap:12px;margin-top:12px;border-top:1px solid var(--border);padding-top:12px">
+          <div class="field"><label>Override billed amount ($)</label><input type="number" id="invOverrideCash" min="0" step="0.01" placeholder="blank = use cash collected"><span class="fieldhelp">Bill on this figure instead of cash collected (e.g. bill $10,000 when $10,500 was collected). Applies to this client + period only.</span></div>
+          <div class="field" style="grid-column:span 2"><label>Override reason (optional)</label><input type="text" id="invOverrideNote" placeholder="e.g. extra $500 covered processor fees"></div>
+        </div>
+        <div class="row-actions" style="margin-top:8px">
+          <button class="btn gold sm" onclick="applyInvoiceOverride()">Apply override</button>
+          <button class="btn ghost sm" onclick="clearInvoiceOverride()">Clear override</button>
+        </div>
       </div>
       <div id="invoiceOut" style="margin-top:18px"></div>
     </div>
@@ -4896,7 +4904,36 @@ function invPreview(){
   const to=(document.getElementById('invTo')||{}).value||'';
   if(!client){ out.innerHTML='<div class="panel" style="padding:20px"><p class="muted" style="margin:0">Pick a client and a billing period, then Generate invoice.</p></div>'; return; }
   if(!from||!to||from>to){ out.innerHTML='<div class="panel" style="padding:20px"><p class="muted" style="margin:0">Set a valid billing period (from is on or before to).</p></div>'; return; }
+  const ov=invoiceOverrideFor(client,from,to);
+  const oc=document.getElementById('invOverrideCash'), on=document.getElementById('invOverrideNote');
+  if(oc) oc.value=(ov&&ov.billedCash!=null)?ov.billedCash:'';
+  if(on) on.value=(ov&&ov.note)||'';
   out.innerHTML=genFounderInvoice(client,from,to);
+}
+// Per-invoice billed-amount override (admin): bill on a set figure instead of auto cash collected. Keyed by client+period, append-only latest-wins.
+function invoiceOverrideFor(client,from,to){
+  const ck=String(client||'').trim().toLowerCase(); let best=null;
+  (RECORDS||[]).forEach(x=>{ if(x.type!=='invoiceoverride') return; if(String(x.client||'').trim().toLowerCase()!==ck) return; if(x.from!==from||x.to!==to) return; if(!best||String(x.submittedAt||'')>String(best.submittedAt||'')) best=x; });
+  if(!best || best.billedCash==null) return null;
+  return { billedCash:best.billedCash, note:best.note||'' };
+}
+async function applyInvoiceOverride(){
+  if(!invAllowed()){ toast('Super Admin only',true); return; }
+  const client=(document.getElementById('invClient')||{}).value||'', from=(document.getElementById('invFrom')||{}).value||'', to=(document.getElementById('invTo')||{}).value||'';
+  if(!client||!from||!to){ toast('Pick a client and billing period first',true); return; }
+  const raw=(document.getElementById('invOverrideCash')||{}).value; const bc=parseFloat(raw);
+  if(raw===''||isNaN(bc)||bc<0){ toast('Enter a valid override amount (or use Clear override)',true); return; }
+  const note=((document.getElementById('invOverrideNote')||{}).value||'').trim();
+  try{ await addRecord({type:'invoiceoverride',client,from,to,billedCash:Math.round(bc*100)/100,note,by:(SESSION&&SESSION.name)||''}); toast('Override applied - billing on '+money(bc)); invPreview(); }
+  catch(e){ toast('Could not apply override: '+((e&&e.message)||e),true); }
+}
+async function clearInvoiceOverride(){
+  if(!invAllowed()){ toast('Super Admin only',true); return; }
+  const client=(document.getElementById('invClient')||{}).value||'', from=(document.getElementById('invFrom')||{}).value||'', to=(document.getElementById('invTo')||{}).value||'';
+  if(!client||!from||!to) return;
+  if(!invoiceOverrideFor(client,from,to)){ const oc=document.getElementById('invOverrideCash'); if(oc)oc.value=''; const on=document.getElementById('invOverrideNote'); if(on)on.value=''; toast('No override set'); return; }
+  try{ await addRecord({type:'invoiceoverride',client,from,to,billedCash:null,note:'',by:(SESSION&&SESSION.name)||''}); toast('Override cleared'); invPreview(); }
+  catch(e){ toast('Could not clear: '+((e&&e.message)||e),true); }
 }
 let LAST_INVOICE=null; // stashed each time an invoice is generated, so "Send to billing" can post its numbers
 // Capture the on-screen invoice (#invoiceDoc) to a PDF that matches the dashboard exactly, returned as base64.
@@ -4961,12 +4998,17 @@ function genFounderInvoice(client,from,to){
   const recPays=paymentsCollapsed().filter(p=>p.status==='confirmed' && String(p.client||'').trim().toLowerCase()===ck && inPeriod(p.date)).sort((a,b)=>String(a.date).localeCompare(String(b.date)));
   // amount due (hybrid) - % of cash collected in the period
   const cfg=clientBillingCfg(client);
+  // billed-amount override (admin): bill on a set figure instead of auto cash collected, while still showing actual collected
+  const ov=invoiceOverrideFor(client,from,to);
+  const overridden=!!(ov&&ov.billedCash!=null);
+  const billBase=overridden?ov.billedCash:cashCollected;
   let pct=0, rateDesc='', mode=cfg&&cfg.mode||'flat';
   if(cfg){
-    if(mode==='repcomp'){ pct=(cfg.closerRate||0)+(cfg.setterRate||0)+(cfg.overrideRate||0); rateDesc=`${pct}% of cash collected (rep comp + override)`; }
-    else { pct=cfg.flatRate||0; rateDesc=`${pct}% of cash collected`; }
+    if(mode==='repcomp'){ pct=(cfg.closerRate||0)+(cfg.setterRate||0)+(cfg.overrideRate||0); }
+    else { pct=cfg.flatRate||0; }
+    rateDesc=`${pct}% of ${overridden?money(billBase)+' (billed override)':'cash collected'}${mode==='repcomp'?' (rep comp + override)':''}`;
   }
-  const amountDue=Math.round(cashCollected*pct)/100;
+  const amountDue=Math.round(billBase*pct)/100;
   const noCfg=!cfg||!pct;
   try{ LAST_INVOICE={client,from,to,cashCollected,amountDue,rateDesc,deals:uniqDeals.length}; }catch(_){}
   const slug=(client.match(/[A-Za-z0-9]+/g)||[]).map(w=>w[0]).join('').toUpperCase();
@@ -5018,6 +5060,7 @@ function genFounderInvoice(client,from,to){
         <div style="font-size:13px;font-weight:700;color:#c9a227;text-transform:uppercase;letter-spacing:.04em">Total due</div>
         <div style="font-size:26px;font-weight:900;color:#c9a227;font-variant-numeric:tabular-nums">${money(amountDue)}</div>
       </div>
+      ${overridden?`<div style="margin-top:8px;text-align:right;font-size:12px;color:#6b7488">Billed on <b style="color:#1a2b4a">${money(billBase)}</b> (override)${ov.note?' &ndash; '+esc(ov.note):''}. Actual cash collected: <b style="color:#1a2b4a">${money(cashCollected)}</b>.</div>`:''}
       ${noCfg?`<div style="margin-top:10px;font-size:12px;color:#b4632a">No billing rate set for this client - set one under Billing settings to compute the amount due.</div>`:''}
       <div style="border-top:1px solid #eef1f6;margin:18px 0 12px"></div>
       <div style="font-size:12px;color:#8a93a6">Notes</div>
