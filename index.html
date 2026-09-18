@@ -1880,7 +1880,7 @@ If they did not watch: No problem at all, I will send it right over. Can you wat
 <div class="modal" id="trModal" hidden onclick="if(event.target===this)trEditClose()">
   <div class="modalcard" style="width:min(700px,95vw);max-height:90vh;overflow:auto">
     <h3 style="margin:0 0 2px">Edit onboarding curriculum</h3>
-    <p class="hint" style="margin:0 0 12px">Build what a new hire goes through: the details you collect, their checklist, training modules, and the certification quiz. Admins only; applies for everyone.</p>
+    <p class="hint" style="margin:0 0 12px">Build what a new hire goes through: the details you collect, their checklist, training modules, and the certification quiz. Admins only. The <b>Global default</b> applies to every rep; pick a <b>client</b> to add offer-specific modules + quiz questions on top for reps assigned to that account.</p>
     <div id="trEditor"></div>
     <div id="trErr" class="fieldhelp" style="color:var(--warn);margin:8px 0" hidden></div>
     <div class="row-actions" style="margin-top:12px;flex-wrap:wrap">
@@ -6379,7 +6379,19 @@ const REP_ONB_DEFAULT={
     {id:'t4',title:'Shadow 3 live calls',desc:'Sit in on 3 calls before taking your own.',owner:'rep'}
   ]
 };
-function repOnbConfig(){ let best=null; RECORDS.forEach(x=>{ if(x.type==='reponbconfig'){ if(!best||(x.submittedAt||'')>(best.submittedAt||'')) best=x; } }); if(best&&best.config){ try{ const c=(typeof best.config==='string')?JSON.parse(best.config):best.config; if(c&&Array.isArray(c.modules)&&Array.isArray(c.quiz)) return c; }catch(e){} } return REP_ONB_DEFAULT; }
+function repParseCfg(rec){ if(!rec||!rec.config) return null; try{ const c=(typeof rec.config==='string')?JSON.parse(rec.config):rec.config; return (c&&typeof c==='object')?c:null; }catch(e){ return null; } }
+// GLOBAL base curriculum (the reponbconfig with no client) - applies to everyone
+function repOnbConfig(){ let best=null; RECORDS.forEach(x=>{ if(x.type==='reponbconfig' && !x.client){ if(!best||(x.submittedAt||'')>(best.submittedAt||'')) best=x; } }); const c=repParseCfg(best); if(c&&Array.isArray(c.modules)&&Array.isArray(c.quiz)) return c; return REP_ONB_DEFAULT; }
+// per-CLIENT add-on curriculum (offer-specific modules + quiz layered on top of the global base)
+function repClientOnbConfig(client){ if(!client) return null; const cn=nrm(client); let best=null; RECORDS.forEach(x=>{ if(x.type==='reponbconfig' && x.client && nrm(x.client)===cn){ if(!best||(x.submittedAt||'')>(best.submittedAt||'')) best=x; } }); const c=repParseCfg(best); if(!c) return null; return { modules:Array.isArray(c.modules)?c.modules:[], quiz:Array.isArray(c.quiz)?c.quiz:[] }; }
+// a rep's EFFECTIVE curriculum = global base + the add-on modules/quiz for every client they are assigned to
+function repEffectiveConfig(user){ const base=JSON.parse(JSON.stringify(repOnbConfig())); base.modules=base.modules||[]; base.quiz=base.quiz||[];
+  const seen={}; (teamsFor(user)||[]).forEach(cl=>{ const k=nrm(cl); if(!cl||seen[k])return; seen[k]=1; const cc=repClientOnbConfig(cl); if(!cc)return;
+    cc.modules.forEach(m=>base.modules.push(Object.assign({},m,{client:cl})));
+    cc.quiz.forEach(q=>base.quiz.push(Object.assign({},q,{client:cl})));
+  });
+  return base;
+}
 function repProgress(user){ const m={}, u=nrm(user); RECORDS.forEach(x=>{ if(x.type!=='reponb'||nrm(x.user)!==u)return; if(!m[x.key]||(x.submittedAt||'')>(m[x.key].submittedAt||'')) m[x.key]=x; }); return m; }
 function repModulesDone(user,cfg){ const p=repProgress(user); return (cfg||repOnbConfig()).modules.filter(mo=>p[mo.id]&&p[mo.id].done).length; }
 function repQuizRec(user){ return repProgress(user)['quiz']; }
@@ -6389,7 +6401,7 @@ function repIntakeFields(cfg){ return (cfg||repOnbConfig()).intake||[]; }
 function repTaskDone(user,tid){ const r=repProgress(user)['task:'+tid]; return !!(r&&r.done); }
 function repTasksDone(user,cfg){ return repTasks(cfg).filter(t=>repTaskDone(user,t.id)).length; }
 function repIntakeDone(user){ const r=repProgress(user)['intake']; return !!(r&&r.done); }
-function repOnbPct(user){ const cfg=repOnbConfig(), hasIntake=repIntakeFields(cfg).length>0?1:0, total=hasIntake+repTasks(cfg).length+cfg.modules.length+1;
+function repOnbPct(user){ const cfg=repEffectiveConfig(user), hasIntake=repIntakeFields(cfg).length>0?1:0, total=hasIntake+repTasks(cfg).length+cfg.modules.length+1;
   const done=(hasIntake&&repIntakeDone(user)?1:0)+repTasksDone(user,cfg)+repModulesDone(user,cfg)+(repGraduated(user)?1:0);
   return total?Math.round(done/total*100):0; }
 // admin: wipe a person's onboarding progress (supersede every done key with done:false, latest-wins)
@@ -6423,7 +6435,7 @@ function renderTraining(){
   wrap.innerHTML=trainingSelf((SESSION&&SESSION.username)||'');
 }
 function trainingSelf(user){
-  const cfg=repOnbConfig(), p=repProgress(user), total=cfg.modules.length, doneCount=repModulesDone(user,cfg), pct=repOnbPct(user), grad=repGraduated(user), allModsDone=doneCount>=total;
+  const cfg=repEffectiveConfig(user), p=repProgress(user), total=cfg.modules.length, doneCount=repModulesDone(user,cfg), pct=repOnbPct(user), grad=repGraduated(user), allModsDone=doneCount>=total;
   const intakeFields=repIntakeFields(cfg), tasks=repTasks(cfg);
   let h=`<div class="progwrap"><b>${pct}%</b><div class="progbar"><i style="width:${pct}%"></i></div>${grad?'<span class="gradbadge"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Graduated</span>':''}</div>`;
   // 1) Intake form
@@ -6446,7 +6458,7 @@ function trainingSelf(user){
   // 3) Training modules
   h+=`<h3 class="section" style="margin-top:22px">Training</h3>`;
   cfg.modules.forEach((mo,i)=>{ const done=p[mo.id]&&p[mo.id].done;
-    h+=`<div class="modcard${done?' done':''}"><div class="modhead"><span class="modstep">${done?'✓':(i+1)}</span><div style="flex:1"><h4>${esc(mo.title)}</h4><div class="modbody">${esc(mo.body)}</div>${mo.link?`<div style="margin-top:8px"><a href="${esc(mo.link)}" target="_blank" rel="noopener" class="linklike" style="font-size:13px">Open material</a></div>`:''}<div style="margin-top:10px">${done?'<span class="muted" style="font-size:12px">Completed</span>':`<button class="btn sm" onclick="repMarkModule('${mo.id}')">Mark complete</button>`}</div></div></div></div>`;
+    h+=`<div class="modcard${done?' done':''}"><div class="modhead"><span class="modstep">${done?'✓':(i+1)}</span><div style="flex:1"><h4>${esc(mo.title)}${mo.client?` <span class="teamtag" style="font-size:10px">${esc(mo.client)}</span>`:''}</h4><div class="modbody">${esc(mo.body)}</div>${mo.link?`<div style="margin-top:8px"><a href="${esc(mo.link)}" target="_blank" rel="noopener" class="linklike" style="font-size:13px">Open material</a></div>`:''}<div style="margin-top:10px">${done?'<span class="muted" style="font-size:12px">Completed</span>':`<button class="btn sm" onclick="repMarkModule('${mo.id}')">Mark complete</button>`}</div></div></div></div>`;
   });
   const previewing=(typeof VIEW_AS_REAL!=='undefined' && VIEW_AS_REAL); // in preview, unlock the quiz so it can be reviewed
   h+=`<h3 class="section" style="margin-top:22px">Certification</h3>`;
@@ -6465,7 +6477,7 @@ function quizHTML(cfg){
 }
 function quizPick(qi,oi){ QUIZ_ANS[qi]=oi; document.querySelectorAll('.quizopt[data-qi="'+qi+'"]').forEach(e=>e.classList.toggle('sel', (+e.dataset.oi)===oi)); }
 async function submitQuiz(){
-  const cfg=repOnbConfig();
+  const cfg=repEffectiveConfig((SESSION&&SESSION.username)||'');
   if(Object.keys(QUIZ_ANS).length<cfg.quiz.length){ toast('Answer every question first',true); return; }
   let correct=0;
   cfg.quiz.forEach((qq,qi)=>{ const pick=QUIZ_ANS[qi]; document.querySelectorAll('.quizq[data-qi="'+qi+'"] .quizopt').forEach(e=>{ const oi=+e.dataset.oi; if(oi===qq.answer) e.classList.add('correct'); else if(oi===pick) e.classList.add('wrong'); }); if(pick===qq.answer) correct++; });
@@ -6475,7 +6487,7 @@ async function submitQuiz(){
   if(passed) setTimeout(renderTraining,1400); else setTimeout(()=>{ QUIZ_ANS={}; renderTraining(); },2600);
 }
 function repStageLabel(user,cfg,p){
-  cfg=cfg||repOnbConfig(); p=p||repProgress(user);
+  cfg=cfg||repEffectiveConfig(user); p=p||repProgress(user);
   const intake=repIntakeFields(cfg), tasks=repTasks(cfg);
   if(intake.length && !(p['intake']&&p['intake'].done)) return 'Your details';
   const td=tasks.filter(t=>p['task:'+t.id]&&p['task:'+t.id].done).length; if(td<tasks.length) return 'Checklist';
@@ -6497,12 +6509,13 @@ function trainingRoster(){
       <span class="muted" style="font-size:11px;align-self:center">Clears intake, checklist, training and certification progress.</span></div>`;
   }
   if(!reps.length) return h+'<p class="hint">No setters or closers on the roster yet.</p>';
-  const intakeF=repIntakeFields(cfg), tasks=repTasks(cfg), mods=cfg.modules;
+  const intakeF=repIntakeFields(cfg), tasks=repTasks(cfg);
   h+=reps.map((u,i)=>{
+    const ecfg=repEffectiveConfig(u.username), mods=ecfg.modules; // per-rep: global base + their client offer modules
     const p=repProgress(u.username), pct=repOnbPct(u.username), grad=repGraduated(u.username);
     const intakeDone=!!(p['intake']&&p['intake'].done), intakeData=(p['intake']&&p['intake'].data)||{};
     const td=tasks.filter(t=>p['task:'+t.id]&&p['task:'+t.id].done).length, md=mods.filter(m=>p[m.id]&&p[m.id].done).length;
-    const q=p['quiz'], stage=repStageLabel(u.username,cfg,p);
+    const q=p['quiz'], stage=repStageLabel(u.username,ecfg,p);
     const teams=teamsFor(u.username);
     const offers = teams.length ? `<div style="margin-top:3px">${teams.map(t=>`<span class="teamtag">${esc(t)}</span>`).join('')}</div>` : '<div class="muted" style="font-size:11px;margin-top:3px">no account assigned</div>';
     const chip=(lab,ok,cnt)=>`<span style="font-size:11px;color:${ok?'var(--good,#3ddc84)':'var(--muted)'}">${ok?'✓':'○'} ${lab}${cnt!=null?' '+cnt:''}</span>`;
@@ -6525,14 +6538,16 @@ function trainingRoster(){
   return h;
 }
 /* ---- onboarding curriculum GUI editor (no JSON) ---- */
-let TR_CFG=null;
+let TR_CFG=null, TR_SCOPE=''; // '' = global base; a client name = that client's offer add-ons
 function trCfgShape(c){ c.passPct=c.passPct||80; c.intake=Array.isArray(c.intake)?c.intake:[]; c.tasks=Array.isArray(c.tasks)?c.tasks:[]; c.modules=Array.isArray(c.modules)?c.modules:[]; c.quiz=Array.isArray(c.quiz)?c.quiz:[]; return c; }
-function trEditOpen(){ if(!(SESSION&&SESSION.role==='admin')){ toast('Admins only',true); return; } TR_CFG=trCfgShape(JSON.parse(JSON.stringify(repOnbConfig()))); document.getElementById('trErr').hidden=true; trRenderEditor(); document.getElementById('trModal').hidden=false; }
+function trLoadScope(){ if(TR_SCOPE){ const cc=repClientOnbConfig(TR_SCOPE)||{modules:[],quiz:[]}; TR_CFG=trCfgShape(JSON.parse(JSON.stringify({modules:cc.modules||[],quiz:cc.quiz||[]}))); } else { TR_CFG=trCfgShape(JSON.parse(JSON.stringify(repOnbConfig()))); } }
+function trEditOpen(){ if(!(SESSION&&SESSION.role==='admin')){ toast('Admins only',true); return; } TR_SCOPE=''; trLoadScope(); document.getElementById('trErr').hidden=true; trRenderEditor(); document.getElementById('trModal').hidden=false; }
+function trSetScope(client){ TR_SCOPE=client||''; const e=document.getElementById('trErr'); if(e) e.hidden=true; trLoadScope(); trRenderEditor(); }
 function trEditClose(){ document.getElementById('trModal').hidden=true; }
-function trResetDefault(){ TR_CFG=trCfgShape(JSON.parse(JSON.stringify(REP_ONB_DEFAULT))); trRenderEditor(); }
+function trResetDefault(){ if(TR_SCOPE) TR_CFG=trCfgShape({modules:[],quiz:[]}); else TR_CFG=trCfgShape(JSON.parse(JSON.stringify(REP_ONB_DEFAULT))); trRenderEditor(); }
 function trUpdMeta(field,val){ if(TR_CFG) TR_CFG[field]= field==='passPct' ? Math.max(0,Math.min(100,parseInt(val,10)||0)) : val; }
 function trUpd(section,i,field,val){ if(TR_CFG&&TR_CFG[section]&&TR_CFG[section][i]) TR_CFG[section][i][field]=val; }
-function trAdd(section){ if(!TR_CFG) return; const id=section.slice(0,1)+Date.now().toString(36).slice(-4);
+function trAdd(section){ if(!TR_CFG) return; const pfx=(section==='modules'&&TR_SCOPE)?(nrm(TR_SCOPE).replace(/[^a-z0-9]+/g,'').slice(0,8)+'_'):''; const id=pfx+section.slice(0,1)+Date.now().toString(36).slice(-4);
   if(section==='intake') TR_CFG.intake.push({id,label:'',type:'text'});
   else if(section==='tasks') TR_CFG.tasks.push({id,title:'',desc:'',owner:'rep'});
   else if(section==='modules') TR_CFG.modules.push({id,title:'',body:'',link:''});
@@ -6548,27 +6563,39 @@ function trRenderEditor(){
   const head=t=>`<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--gold);margin:18px 0 8px">${t}</div>`;
   const card=inner=>`<div class="panel" style="margin:0 0 8px;padding:12px">${inner}</div>`;
   const del=(s,i)=>`<button class="btn ghost sm" style="align-self:flex-end;color:var(--warn);border-color:var(--warn)" onclick="trDel('${s}',${i})">Remove</button>`;
-  let h=head('Intake - details the new hire fills in');
+  const _clients=(typeof clientNames==='function'?clientNames():[]).slice().sort((a,b)=>String(a).localeCompare(String(b)));
+  let h=`<div class="panel" style="margin:0 0 10px;padding:10px 12px;display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap"><div class="field" style="margin:0;min-width:250px"><label>Editing for</label><select onchange="trSetScope(this.value)"><option value="">Global default (everyone)</option>${_clients.map(c=>`<option value="${esc(c)}"${nrm(TR_SCOPE)===nrm(c)?' selected':''}>${esc(c)} (offer add-on)</option>`).join('')}</select></div><span class="muted" style="font-size:11px;align-self:center;flex:1;min-width:180px">${TR_SCOPE?('Offer modules + quiz questions added on top of the global curriculum for reps on '+esc(TR_SCOPE)+'.'):'The base curriculum every rep gets.'}</span></div>`;
+  if(!TR_SCOPE){
+  h+=head('Intake - details the new hire fills in');
   h+=TR_CFG.intake.map((f,i)=>card(`<div class="filters" style="align-items:flex-end;margin:0"><div class="field" style="flex:2"><label>Question / label</label><input value="${esc(f.label||'')}" oninput="trUpd('intake',${i},'label',this.value)"></div><div class="field" style="max-width:150px"><label>Answer type</label><select onchange="trUpd('intake',${i},'type',this.value)">${['text','phone','email','date','checkbox'].map(t=>`<option value="${t}" ${f.type===t?'selected':''}>${t}</option>`).join('')}</select></div>${del('intake',i)}</div>`)).join('');
   h+=`<button class="btn ghost sm" onclick="trAdd('intake')">+ Add intake field</button>`;
   h+=head('Checklist tasks');
   h+=TR_CFG.tasks.map((t,i)=>card(`<div class="filters" style="align-items:flex-end;margin:0 0 8px"><div class="field" style="flex:2"><label>Task</label><input value="${esc(t.title||'')}" oninput="trUpd('tasks',${i},'title',this.value)"></div><div class="field" style="max-width:150px"><label>Who does it</label><select onchange="trUpd('tasks',${i},'owner',this.value)"><option value="rep" ${t.owner!=='manager'?'selected':''}>The rep</option><option value="manager" ${t.owner==='manager'?'selected':''}>Manager</option></select></div>${del('tasks',i)}</div><div class="field" style="margin:0"><label>Description</label><input value="${esc(t.desc||'')}" oninput="trUpd('tasks',${i},'desc',this.value)"></div>`)).join('');
   h+=`<button class="btn ghost sm" onclick="trAdd('tasks')">+ Add task</button>`;
-  h+=head('Training modules');
+  }
+  h+=head(TR_SCOPE?('Offer training modules - '+esc(TR_SCOPE)):'Training modules');
   h+=TR_CFG.modules.map((m,i)=>card(`<div class="filters" style="align-items:flex-end;margin:0 0 8px"><div class="field" style="flex:2"><label>Module title</label><input value="${esc(m.title||'')}" oninput="trUpd('modules',${i},'title',this.value)"></div>${del('modules',i)}</div><div class="field" style="margin:0 0 8px"><label>Content</label><textarea rows="3" oninput="trUpd('modules',${i},'body',this.value)" style="width:100%">${esc(m.body||'')}</textarea></div><div class="field" style="margin:0"><label>Video / doc link (optional)</label><input value="${esc(m.link||'')}" oninput="trUpd('modules',${i},'link',this.value)" placeholder="https://..."></div>`)).join('');
   h+=`<button class="btn ghost sm" onclick="trAdd('modules')">+ Add module</button>`;
-  h+=head('Certification quiz');
-  h+=`<div class="field" style="max-width:200px;margin:0 0 10px"><label>Passing score (%)</label><input type="number" min="0" max="100" value="${TR_CFG.passPct}" oninput="trUpdMeta('passPct',this.value)"></div>`;
+  h+=head(TR_SCOPE?('Offer quiz questions - '+esc(TR_SCOPE)):'Certification quiz');
+  if(TR_SCOPE) h+=`<div class="muted" style="font-size:11px;margin:0 0 8px">Added to the certification quiz for ${esc(TR_SCOPE)} reps. The passing score is set on the global default.</div>`;
+  else h+=`<div class="field" style="max-width:200px;margin:0 0 10px"><label>Passing score (%)</label><input type="number" min="0" max="100" value="${TR_CFG.passPct}" oninput="trUpdMeta('passPct',this.value)"></div>`;
   h+=TR_CFG.quiz.map((qq,qi)=>card(`<div class="filters" style="align-items:flex-end;margin:0 0 8px"><div class="field" style="flex:1"><label>Question ${qi+1}</label><input value="${esc(qq.q||'')}" oninput="trUpd('quiz',${qi},'q',this.value)"></div>${del('quiz',qi)}</div><div style="font-size:11px;color:var(--muted);margin-bottom:6px">Select the correct answer with the dot on the left.</div>`+(qq.options||[]).map((op,oi)=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px"><input type="radio" name="ans${qi}" ${qq.answer===oi?'checked':''} onchange="trSetAns(${qi},${oi})" title="Correct answer" style="flex:0 0 auto"><input style="flex:1" value="${esc(op)}" oninput="trUpdOpt(${qi},${oi},this.value)" placeholder="Option ${oi+1}">${qq.options.length>2?`<button class="btn ghost sm" onclick="trDelOpt(${qi},${oi})">&times;</button>`:''}</div>`).join('')+`<button class="btn ghost sm" style="margin-top:4px" onclick="trAddOpt(${qi})">+ Add option</button>`)).join('');
   h+=`<button class="btn ghost sm" onclick="trAdd('quiz')">+ Add question</button>`;
   el.innerHTML=h;
 }
 async function trEditSave(){
   if(!TR_CFG){ trEditClose(); return; }
-  TR_CFG.intake=TR_CFG.intake.filter(f=>(f.label||'').trim());
-  TR_CFG.tasks=TR_CFG.tasks.filter(t=>(t.title||'').trim());
-  TR_CFG.modules=TR_CFG.modules.filter(m=>(m.title||'').trim());
-  TR_CFG.quiz=TR_CFG.quiz.filter(q=>(q.q||'').trim() && (q.options||[]).filter(o=>(o||'').trim()).length>=2);
+  TR_CFG.modules=(TR_CFG.modules||[]).filter(m=>(m.title||'').trim());
+  TR_CFG.quiz=(TR_CFG.quiz||[]).filter(q=>(q.q||'').trim() && (q.options||[]).filter(o=>(o||'').trim()).length>=2);
+  if(TR_SCOPE){
+    // per-client add-on: only modules + quiz. Namespace module ids so they never collide with global / other clients.
+    const pfx=nrm(TR_SCOPE).replace(/[^a-z0-9]+/g,'').slice(0,8)+'_';
+    TR_CFG.modules.forEach(m=>{ if(!String(m.id||'').startsWith(pfx)) m.id=pfx+String(m.id||('m'+Date.now().toString(36).slice(-4))); });
+    await addRecord({type:'reponbconfig',client:TR_SCOPE,config:JSON.stringify({modules:TR_CFG.modules,quiz:TR_CFG.quiz}),by:(SESSION&&SESSION.name)||''});
+    trEditClose(); toast('Saved '+TR_SCOPE+' offer add-ons'); renderTraining(); return;
+  }
+  TR_CFG.intake=(TR_CFG.intake||[]).filter(f=>(f.label||'').trim());
+  TR_CFG.tasks=(TR_CFG.tasks||[]).filter(t=>(t.title||'').trim());
   if(!TR_CFG.modules.length){ const el=document.getElementById('trErr'); el.hidden=false; el.textContent='Add at least one training module.'; return; }
   await addRecord({type:'reponbconfig',config:JSON.stringify(TR_CFG),by:(SESSION&&SESSION.name)||''});
   trEditClose(); toast('Curriculum saved'); renderTraining();
