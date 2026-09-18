@@ -2077,7 +2077,7 @@ If they did not watch: No problem at all, I will send it right over. Can you wat
 /* ---------------- config ---------------- */
 const LS = { cfg:'tsa_inv_cfg', data:'tsa_inv_data', auth:'tsa_inv_session', users:'tsa_inv_users' };
 const DEFAULT_CFG = {
-  clients:["Prime (Billy)","Social Revelation (Ryan)","MSP","DAB","Eight-Figure Sales"],
+  clients:[], // client pickers are driven only by real client records (latestClients via clientNames()), never a hardcoded seed
   closers:[],
   setters:[], // real reps come from the user roster (USERS_CACHE), never a hardcoded seed - see repNames()
   products:["Retainer","DWY","DFY","Partnership","Other"],
@@ -7912,7 +7912,7 @@ function latestClients(){
   RECORDS.filter(x=>x.type==='client').forEach(x=>{ const k=(x.name||'').toLowerCase(); if(!k)return; if(!m[k]||(x.submittedAt||'')>(m[k].submittedAt||'')) m[k]=x; });
   return Object.values(m).filter(x=>x.status!=='__DELETED__');
 }
-function clientNames(){ const s=new Set(CFG.clients||[]); latestClients().forEach(c=>s.add(c.name)); return [...s]; }
+function clientNames(){ const s=new Set(); latestClients().forEach(c=>s.add(c.name)); return [...s]; } // real client records only - no CFG seed (default or cached), so retired/renamed clients never linger in pickers
 // monthly cash-collected goal for the dashboard's current client filter / scope:
 // selected client's goal, or the sum across all in-scope clients; falls back to the global yearly/12
 function monthlyGoalScope(){
