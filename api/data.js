@@ -263,21 +263,28 @@ async function ghlPush(cfg, rec, contactIdOverride) {
         } catch (e) { }
       }
     }
-    // AUTO-MOVE: if this client has a saved GHL map with auto-move ON and the outcome maps to a stage, move the opportunity.
-    let move;
+    // AUTO-MOVE + TAGS: if this client has a saved GHL map with auto-move ON, move the opportunity to the mapped
+    // stage AND apply the mapped disposition tag(s) - the reactivation/webinar smart lists filter on tags, not stage.
+    let move, tags;
     try {
       if (rec.client && rec.outcome) {
         const gr = await supa('records?select=data&type=eq.ghlmap&data->>client=eq.' + encodeURIComponent(rec.client) + '&order=submitted_at.desc&limit=1');
         if (gr.ok) {
           const gm = ((await gr.json())[0] || {}).data;
-          const stage = gm && gm.map && gm.map[rec.outcome];
-          if (gm && gm.autoMove && gm.pipelineId && stage) {
-            move = await ghlMove(cfg, id, gm.pipelineId, stage, rec.leadEmail || rec.email || rec.lead || '');
+          if (gm && gm.autoMove) {
+            const stage = gm.map && gm.map[rec.outcome];
+            if (gm.pipelineId && stage) move = await ghlMove(cfg, id, gm.pipelineId, stage, rec.leadEmail || rec.email || rec.lead || '');
+            const tagTpl = gm.tags && gm.tags[rec.outcome];
+            if (tagTpl) {
+              const ctx = { closer: rec.role === 'Setter' ? '' : rec.rep, setter: rec.role === 'Setter' ? rec.rep : rec.setter, rep: rec.rep, outcome: rec.outcome, product: rec.product, client: rec.client };
+              const list = String(tagTpl).split(',').map(t => fillTagTemplate(t, ctx)).filter(Boolean);
+              if (list.length) tags = await ghlTag(cfg, id, list);
+            }
           }
         }
       }
     } catch (e) { move = { ok: false, reason: String((e && e.message) || e) }; }
-    return { ok: true, contactId: id, move };
+    return { ok: true, contactId: id, move, tags };
   } catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
 }
 
@@ -318,6 +325,25 @@ async function ghlMove(cfg, contactId, pipelineId, stageId, hint) {
       if (!ur.ok) { const t = await ur.text(); return { ok: false, reason: 'move failed (' + ur.status + ') ' + t.slice(0, 120), opportunityId: opp.id }; }
       return { ok: true, opportunityId: opp.id, movedToStage: stageId };
     }
+  } catch (e) { return { ok: false, reason: String((e && e.message) || e) }; }
+}
+
+// substitute {{closer}}/{{setter}}/{{rep}}/{{outcome}}/{{product}}/{{client}} in a tag template, then trim
+function fillTagTemplate(tpl, ctx) {
+  return String(tpl || '').replace(/\{\{\s*(closer|setter|rep|outcome|product|client)\s*\}\}/gi, (m, k) => String((ctx && ctx[k.toLowerCase()]) || '').trim()).replace(/\s+/g, ' ').trim();
+}
+// append tag(s) to a contact (never replaces existing tags). Used by the auto-move engine so smart lists (which filter on tags) update.
+async function ghlTag(cfg, contactId, tags) {
+  try {
+    tags = (Array.isArray(tags) ? tags : [tags]).map(t => String(t || '').trim()).filter(Boolean);
+    if (!cfg || !cfg.ghlApiKey || !contactId || !tags.length) return { ok: false, reason: 'no tags to apply' };
+    const key = String(cfg.ghlApiKey || ''), v2 = /^pit-/i.test(key);
+    const base = v2 ? 'https://services.leadconnectorhq.com' : 'https://rest.gohighlevel.com/v1';
+    const H = v2 ? { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json', Version: '2021-07-28' }
+                 : { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json' };
+    const r = await fetch(base + '/contacts/' + contactId + '/tags' + (v2 ? '' : '/'), { method: 'POST', headers: H, body: JSON.stringify({ tags }) });
+    if (!r.ok) { const t = await r.text(); return { ok: false, reason: 'tag failed (' + r.status + ') ' + t.slice(0, 100), applied: tags }; }
+    return { ok: true, applied: tags };
   } catch (e) { return { ok: false, reason: String((e && e.message) || e) }; }
 }
 
@@ -491,9 +517,13 @@ export default async function handler(req, res) {
       const gm = gr.ok ? (((await gr.json())[0]) || {}).data : null;
       if (!gm || !gm.pipelineId) return res.status(200).json({ ok: false, error: 'No saved GHL mapping for ' + client + ' - map its pipeline first.' });
       const stage = gm.map && gm.map[outcome];
-      if (!stage) return res.status(200).json({ ok: false, error: '"' + outcome + '" is set to (no move) in this mapping - nothing to test.' });
-      const move = await ghlMove(cfg, contactId, gm.pipelineId, stage, b.hint || '');
-      return res.status(200).json({ ok: !!(move && move.ok), move, stageName: (gm.stageNames && gm.stageNames[stage]) || stage, pipelineName: gm.pipelineName || gm.pipelineId });
+      const tagTpl = gm.tags && gm.tags[outcome];
+      if (!stage && !tagTpl) return res.status(200).json({ ok: false, error: '"' + outcome + '" has no stage or tag set in this mapping - nothing to test.' });
+      let move, tags;
+      if (stage) move = await ghlMove(cfg, contactId, gm.pipelineId, stage, b.hint || '');
+      if (tagTpl) { const list = String(tagTpl).split(',').map(t => fillTagTemplate(t, { outcome })).filter(Boolean); if (list.length) tags = await ghlTag(cfg, contactId, list); }
+      const failed = (move && !move.ok) || (tags && !tags.ok);
+      return res.status(200).json({ ok: !failed, move, tags, stageName: stage ? ((gm.stageNames && gm.stageNames[stage]) || stage) : null, pipelineName: gm.pipelineName || gm.pipelineId });
     }
     // ---------- SEND a founder-invoice summary to the client's invoicing Slack channel (T-546) ----------
     if (action === 'sendInvoice') {
