@@ -811,8 +811,8 @@
     </div>
     <div id="invSettings" hidden>
       <div class="panel" style="padding:18px;max-width:760px">
-        <h3 style="margin:0 0 4px">Client billing rate</h3>
-        <p class="fieldhelp" style="margin:0 0 12px">What each client pays TSA. <b>Flat</b> = one % of their cash collected. <b>Rep comp + override</b> = closer % + setter % + TSA override %, summed. Visible to Super Admin only.</p>
+        <h3 style="margin:0 0 4px">Rep pay &amp; billing fallback</h3>
+        <p class="fieldhelp" style="margin:0 0 6px"><b>The client invoice rate now comes from the Contracts page</b> (front-end / back-end rev-share). This box is only for: the per-client <b>rep-commission rates</b> (Rep comp mode = closer % + setter %), the <b>Front-end only</b> flag below, and a <b>billing fallback</b> if a client has no contract rate set. Visible to Super Admin only.</p>
         <div class="field"><label>Client</label><select id="invCfgClient" data-list="clients" onchange="invLoadCfg()"></select></div>
         <div class="field"><label>Billing mode</label><select id="invMode" onchange="invModeChanged()"><option value="flat">Flat rate (% of cash collected)</option><option value="repcomp">Rep comp + TSA override</option></select></div>
         <div class="field invFlat"><label>Flat rate (%)</label><input type="number" id="invFlatRate" step="0.1" placeholder="e.g. 12.5"></div>
