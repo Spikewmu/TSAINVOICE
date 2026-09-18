@@ -263,8 +263,62 @@ async function ghlPush(cfg, rec, contactIdOverride) {
         } catch (e) { }
       }
     }
-    return { ok: true, contactId: id };
+    // AUTO-MOVE: if this client has a saved GHL map with auto-move ON and the outcome maps to a stage, move the opportunity.
+    let move;
+    try {
+      if (rec.client && rec.outcome) {
+        const gr = await supa('records?select=data&type=eq.ghlmap&data->>client=eq.' + encodeURIComponent(rec.client) + '&order=submitted_at.desc&limit=1');
+        if (gr.ok) {
+          const gm = ((await gr.json())[0] || {}).data;
+          const stage = gm && gm.map && gm.map[rec.outcome];
+          if (gm && gm.autoMove && gm.pipelineId && stage) {
+            move = await ghlMove(cfg, id, gm.pipelineId, stage, rec.leadEmail || rec.email || rec.lead || '');
+          }
+        }
+      }
+    } catch (e) { move = { ok: false, reason: String((e && e.message) || e) }; }
+    return { ok: true, contactId: id, move };
   } catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
+}
+
+// AUTO-MOVE ENGINE: move a contact's opportunity to a mapped pipeline stage. Never throws; returns diagnostics so the
+// caller (auto-submit or the on-demand test) can see exactly what GHL did. v1 and v2 differ in both lookup and update.
+async function ghlMove(cfg, contactId, pipelineId, stageId, hint) {
+  try {
+    if (!cfg || !cfg.ghlApiKey) return { ok: false, reason: 'no GHL API key' };
+    if (!contactId || !pipelineId || !stageId) return { ok: false, reason: 'missing contact, pipeline, or stage' };
+    const key = String(cfg.ghlApiKey || ''), v2 = /^pit-/i.test(key), loc = String(cfg.ghlLocationId || '').trim();
+    const base = v2 ? 'https://services.leadconnectorhq.com' : 'https://rest.gohighlevel.com/v1';
+    const H = v2 ? { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json', Version: '2021-07-28' }
+                 : { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json' };
+    if (v2 && !loc) return { ok: false, reason: 'v2 token needs a Location ID (set it on Integrations)' };
+    if (v2) {
+      // v2: find the contact's opportunities, prefer one already in the target pipeline
+      const sr = await fetch(base + '/opportunities/search?location_id=' + encodeURIComponent(loc) + '&contact_id=' + encodeURIComponent(contactId), { headers: H });
+      if (!sr.ok) { const t = await sr.text(); return { ok: false, reason: 'opp search failed (' + sr.status + ') ' + t.slice(0, 120) }; }
+      const sj = await sr.json().catch(() => ({}));
+      const opps = sj.opportunities || [];
+      if (!opps.length) return { ok: false, reason: 'no opportunity exists for this contact - create one in GHL first' };
+      const opp = opps.find(o => String(o.pipelineId || '') === String(pipelineId)) || opps[0];
+      const ur = await fetch(base + '/opportunities/' + opp.id, { method: 'PUT', headers: H, body: JSON.stringify({ pipelineId, pipelineStageId: stageId }) });
+      if (!ur.ok) { const t = await ur.text(); return { ok: false, reason: 'move failed (' + ur.status + ') ' + t.slice(0, 120), opportunityId: opp.id }; }
+      return { ok: true, opportunityId: opp.id, movedToStage: stageId };
+    } else {
+      // v1: list the pipeline's opportunities (narrow by the lead's email/name), match by contact id
+      const qs = hint ? '?query=' + encodeURIComponent(hint) + '&limit=50' : '?limit=100';
+      const sr = await fetch(base + '/pipelines/' + encodeURIComponent(pipelineId) + '/opportunities' + qs, { headers: H });
+      if (!sr.ok) { const t = await sr.text(); return { ok: false, reason: 'opp list failed (' + sr.status + ') ' + t.slice(0, 120) }; }
+      const sj = await sr.json().catch(() => ({}));
+      const opps = sj.opportunities || [];
+      const cid = String(contactId);
+      let opp = opps.find(o => String((o.contact && o.contact.id) || o.contactId || '') === cid);
+      if (!opp && hint && opps.length === 1) opp = opps[0]; // single query hit for this lead -> use it
+      if (!opp) return { ok: false, reason: 'no opportunity found for this contact in the pipeline - create one in GHL first' };
+      const ur = await fetch(base + '/pipelines/' + encodeURIComponent(pipelineId) + '/opportunities/' + opp.id, { method: 'PUT', headers: H, body: JSON.stringify({ stageId, title: opp.name || opp.title || 'Opportunity' }) });
+      if (!ur.ok) { const t = await ur.text(); return { ok: false, reason: 'move failed (' + ur.status + ') ' + t.slice(0, 120), opportunityId: opp.id }; }
+      return { ok: true, opportunityId: opp.id, movedToStage: stageId };
+    }
+  } catch (e) { return { ok: false, reason: String((e && e.message) || e) }; }
 }
 
 // list a client's GHL pipelines + stages (for the Admin > GHL Mapping section). Token stays server-side; only ids/names return.
@@ -424,6 +478,22 @@ export default async function handler(req, res) {
       if (!cfg || !cfg.ghlApiKey) return res.status(200).json({ ok: false, error: 'No GHL API key set for ' + client + ' - add it on Integrations > CRM push (GHL) first.' });
       const out = await ghlFields(cfg);
       return res.status(200).json(out);
+    }
+    // ---------- TEST the auto-move engine for one contact (Admin > GHL Mapping). Ignores the per-client auto-move
+    // toggle so an admin can validate the move BEFORE turning it on live. Uses the client's saved mapping. ----------
+    if (action === 'ghlMoveTest') {
+      if (s && !['admin', 'director'].includes(s.role)) return res.status(200).json({ ok: false, error: 'Admins only' });
+      const client = String(b.client || '').trim(), outcome = String(b.outcome || '').trim(), contactId = String(b.contactId || '').trim();
+      if (!client || !outcome || !contactId) return res.status(200).json({ ok: false, error: 'client, outcome, and a GHL contact ID are required' });
+      const cfg = await integrationFor(callerWs, client);
+      if (!cfg || !cfg.ghlApiKey) return res.status(200).json({ ok: false, error: 'No GHL API key set for ' + client + '.' });
+      const gr = await supa('records?select=data&type=eq.ghlmap&data->>client=eq.' + encodeURIComponent(client) + '&order=submitted_at.desc&limit=1');
+      const gm = gr.ok ? (((await gr.json())[0]) || {}).data : null;
+      if (!gm || !gm.pipelineId) return res.status(200).json({ ok: false, error: 'No saved GHL mapping for ' + client + ' - map its pipeline first.' });
+      const stage = gm.map && gm.map[outcome];
+      if (!stage) return res.status(200).json({ ok: false, error: '"' + outcome + '" is set to (no move) in this mapping - nothing to test.' });
+      const move = await ghlMove(cfg, contactId, gm.pipelineId, stage, b.hint || '');
+      return res.status(200).json({ ok: !!(move && move.ok), move, stageName: (gm.stageNames && gm.stageNames[stage]) || stage, pipelineName: gm.pipelineName || gm.pipelineId });
     }
     // ---------- SEND a founder-invoice summary to the client's invoicing Slack channel (T-546) ----------
     if (action === 'sendInvoice') {

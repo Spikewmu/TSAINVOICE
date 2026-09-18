@@ -4,5 +4,25 @@
     { "path": "/api/client-digests", "schedule": "0 14 * * *" },
     { "path": "/api/daily-report", "schedule": "0,30 12-17 * * *" },
     { "path": "/api/leaderboard", "schedule": "0,30 12-17 * * *" }
+  ],
+  "headers": [
+    {
+      "source": "/",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }
+      ]
+    },
+    {
+      "source": "/index.html",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }
+      ]
+    },
+    {
+      "source": "/accept.html",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }
+      ]
+    }
   ]
 }
