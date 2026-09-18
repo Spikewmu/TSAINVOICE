@@ -2000,6 +2000,23 @@ If they did not watch: No problem at all, I will send it right over. Can you wat
   </div>
 </div>
 
+<div class="modal" id="dcModal" hidden onclick="if(event.target===this)dcClose()">
+  <div class="modalcard" style="width:min(520px,96vw);max-height:92vh;overflow:auto">
+    <h3 style="margin:0 0 4px">Change commission credit</h3>
+    <p class="hint" id="dcSub" style="margin:0 0 12px"></p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="field"><label>Closer (gets closer commission)</label><select id="dcCloser"></select></div>
+      <div class="field"><label>Setter (gets setter commission)</label><select id="dcSetter"></select></div>
+    </div>
+    <div class="field" style="margin-top:6px"><label>How to apply</label>
+      <label style="display:flex;gap:8px;align-items:flex-start;font-weight:500;margin-top:4px"><input type="radio" name="dcMode" value="comm" checked style="margin-top:3px"><span>Commission only <span class="fieldhelp" style="margin:0;font-weight:400">- keep the original closer on record (dashboards + scorecards unchanged); only the pay report + that rep's My Deals follow it.</span></span></label>
+      <label style="display:flex;gap:8px;align-items:flex-start;font-weight:500;margin-top:6px"><input type="radio" name="dcMode" value="full" style="margin-top:3px"><span>Full reassign <span class="fieldhelp" style="margin:0;font-weight:400">- change the deal's closer/setter outright; everything (commission, My Deals, the close credit) moves to them.</span></span></label>
+    </div>
+    <div class="fieldhelp" style="margin-top:8px">Applies to the close-day cash and all payments on this deal (existing + future).</div>
+    <div class="row-actions" style="margin-top:12px"><button class="btn gold sm" onclick="dcSave()">Save</button><button class="btn ghost sm" onclick="dcClose()">Cancel</button></div>
+  </div>
+</div>
+
 <div class="modal" id="mergeModal" hidden onclick="if(event.target===this)closeMerge()">
   <div class="modalcard" style="width:min(460px,95vw)">
     <h3 style="margin:0 0 2px">Merge <span id="mergeSrcName" style="color:var(--gold)"></span> into another account</h3>
@@ -4695,7 +4712,7 @@ function myDealsForecast(){
   let cash=0, comm=0, n=0, undated=0;
   paymentsCollapsed().filter(p=>p.status==='pending').forEach(p=>{
     if(GLOBAL_CLIENT && p.client!==GLOBAL_CLIENT) return; // follow the global company scope
-    const {rate,involved}=rateFor(p.client,p.rep,p.setter); if(!involved) return;
+    const {rate,involved}=rateFor(p.client,effCloserOf(p),effSetterOf(p)); if(!involved) return;
     let c=(p.amount||0)*rate/100;
     if(!payEarnsCommission(p)) c=0; // front-end-only account, back-end payment -> no commission
     if(inWin(p)){ cash+=p.amount||0; comm+=c; n++; } else if(!dated(p)) undated++;
@@ -4704,7 +4721,7 @@ function myDealsForecast(){
   let earnedCash=0, earnedComm=0;
   paymentsCollapsed().filter(p=>p.status==='confirmed').forEach(p=>{
     if(GLOBAL_CLIENT && p.client!==GLOBAL_CLIENT) return;
-    const {rate,involved}=rateFor(p.client,p.rep,p.setter); if(!involved) return;
+    const {rate,involved}=rateFor(p.client,effCloserOf(p),effSetterOf(p)); if(!involved) return;
     if(!payEarnsCommission(p)) return; // front-end-only + back-end payment -> rep earns nothing
     earnedCash+=p.amount||0; earnedComm+=(p.amount||0)*rate/100;
   });
@@ -4712,7 +4729,7 @@ function myDealsForecast(){
   Object.values(seenD).forEach(d=>{
     if(GLOBAL_CLIENT && String(d.client||'')!==GLOBAL_CLIENT) return;
     const cc=d.cashCollected||0; if(cc<=0) return;
-    const {rate,involved}=rateFor(d.client,d.rep,d.setter); if(!involved) return;
+    const {rate,involved}=rateFor(d.client,effCloserOf(d),effSetterOf(d)); if(!involved) return;
     earnedCash+=cc; earnedComm+=cc*rate/100; // close-day cash is day-0, always front-end -> always earns
   });
   return {cash,comm,n,undated,win,oversight,earnedCash,earnedComm};
@@ -4748,7 +4765,7 @@ function renderMyDeals(){
   const oversight=SESSION&&['admin','director','manager'].includes(SESSION.role);
   const me=String((SESSION&&SESSION.name)||'').trim();
   const seen={}, uniq=[];
-  (RECORDS||[]).filter(x=>x.type==='deal').filter(d=>(oversight||String(d.rep||'').trim()===me) && (!GLOBAL_CLIENT||String(d.client||'')===GLOBAL_CLIENT))
+  (RECORDS||[]).filter(x=>x.type==='deal').filter(d=>(oversight||effCloserOf(d)===me) && (!GLOBAL_CLIENT||String(d.client||'')===GLOBAL_CLIENT))
     .sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.submittedAt||'').localeCompare(a.submittedAt||''))
     .forEach(d=>{ const k=String(d.id||''); if(k&&!seen[k]){ seen[k]=1; uniq.push(d); } });
   if(!uniq.length){ wrap.innerHTML=`<div class="panel" style="padding:20px"><p class="muted" style="margin:0">${oversight?'No closed deals yet.':'You have no closed deals yet. When you close one it shows here, so you can log wires and later payments against it.'}</p></div>`; return; }
@@ -4758,6 +4775,7 @@ function renderMyDeals(){
     const badge=paid?'<span class="chip" style="background:rgba(74,160,80,.15);color:#7bd487">paid in full</span>':(pend>0?`<span class="chip" style="background:rgba(212,175,90,.15);color:var(--gold)">${money(pend)} pending</span>`:(bal>0?`<span class="chip" style="background:rgba(212,175,90,.12);color:var(--gold)">bal ${money(bal)}</span>`:''));
     const barPct=contract>0?Math.min(100,Math.round(collected/contract*100)):0;
     const who=oversight&&String(d.rep||'').trim()!==me?`<div class="muted" style="font-size:11px;margin-top:2px">closer: ${esc(d.rep||'')}</div>`:'';
+    const commOv=(String(d.commRep||'')!==''||String(d.commSetter||'')!=='')?`<div style="font-size:11px;margin-top:2px;color:var(--gold)">commission &rarr; ${esc(effCloserOf(d)||'-')}${d.commSetter?(' / '+esc(effSetterOf(d))):''}</div>`:'';
     const np=nextExpectedPayment(d);
     const nextLine = np ? `<div style="font-size:11px;margin:0 0 8px;color:var(--gold)">&#9203; Next: ${money(np.amount||0)}${np.method?' '+esc(np.method):''} ${np.date?esc(usDate(np.date)):'<span class="muted">(no date)</span>'}</div>` : '';
     return `<div class="panel" style="margin:0;padding:11px 13px">
@@ -4769,8 +4787,8 @@ function renderMyDeals(){
         <div><div class="muted" style="font-size:9.5px;text-transform:uppercase;letter-spacing:.03em">Balance</div><div style="font-size:14px">${money(bal)}</div></div>
       </div>
       <div class="bar" style="height:5px;margin-bottom:8px"><i style="width:${barPct}%"></i></div>
-      ${nextLine}
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><button class="btn gold sm" onclick="openPayments('${esc(String(d.id))}')">Manage payments</button>${who}</div>
+      ${nextLine}${commOv}
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px"><div class="row-actions"><button class="btn gold sm" onclick="openPayments('${esc(String(d.id))}')">Manage payments</button>${oversight?`<button class="btn ghost sm" onclick="openDealCredit('${esc(String(d.id))}')">Credit</button>`:''}</div>${who}</div>
     </div>`;
   }).join('')+`</div>`;
 }
@@ -4790,6 +4808,49 @@ function clientBillingCfg(client){
 // front-end-only accounts (e.g. Snoop): reps earn commission ONLY on payments within 30 days of the close.
 function acctFrontEndOnly(client){ const c=clientBillingCfg(client); return !!(c&&c.frontEndOnly); }
 function dealById(id){ id=String(id||''); if(!id) return null; let best=null; RECORDS.forEach(x=>{ if(x.type==='deal'&&String(x.id||'')===id){ if(!best||(x.submittedAt||'')>(best.submittedAt||'')) best=x; } }); return best; }
+// Effective commission recipient (honors an admin "commission credit" override stored on the deal). Payments inherit their deal's override via dealId.
+function effCloserOf(rec){ if(!rec) return ''; if(rec.type==='payment'){ const d=dealById(rec.dealId); const ov=d&&d.commRep; return String((ov!=null&&ov!=='')?ov:(rec.rep||'')).trim(); } return String((rec.commRep!=null&&rec.commRep!=='')?rec.commRep:(rec.rep||'')).trim(); }
+function effSetterOf(rec){ if(!rec) return ''; if(rec.type==='payment'){ const d=dealById(rec.dealId); const ov=d&&d.commSetter; return String((ov!=null&&ov!=='')?ov:(rec.setter||'')).trim(); } return String((rec.commSetter!=null&&rec.commSetter!=='')?rec.commSetter:(rec.setter||'')).trim(); }
+function dcCanEdit(){ return !!(SESSION && ['admin','director','manager'].includes(SESSION.role)); }
+let DC_DEAL=null;
+function dcRepOptions(role, current){
+  let names=[];
+  try{
+    if(role==='closer'){ const s=new Set(); (repNames('closer')||[]).forEach(n=>s.add(String(n||'').trim())); (USERS_CACHE||[]).forEach(u=>{ if(u&&!u.archived&&['admin','director','manager'].includes(u.role)) s.add(String(u.name||'').trim()); }); names=[...s]; }
+    else { names=(repNames('setter')||[]).map(n=>String(n||'').trim()); }
+  }catch(e){}
+  const cur=String(current||'').trim(); names=names.filter(Boolean); if(cur && !names.includes(cur)) names.push(cur);
+  names=[...new Set(names)].sort((a,b)=>a.localeCompare(b));
+  return '<option value="">- none -</option>'+names.map(n=>`<option${n===cur?' selected':''}>${esc(n)}</option>`).join('');
+}
+function openDealCredit(dealId){
+  if(!dcCanEdit()){ toast('Admins only',true); return; }
+  const d=dealById(dealId); if(!d){ toast('Deal not found',true); return; }
+  DC_DEAL=String(dealId); const g=i=>document.getElementById(i);
+  g('dcSub').innerHTML=`${esc(d.lead||'(no name)')} &middot; ${esc(d.client||'')} &middot; ${esc(usDate(d.date))}. On record: closer <b>${esc(d.rep||'-')}</b>, setter <b>${esc(d.setter||'-')}</b>.`;
+  g('dcCloser').innerHTML=dcRepOptions('closer', effCloserOf(d));
+  g('dcSetter').innerHTML=dcRepOptions('setter', effSetterOf(d));
+  const r=document.querySelector('input[name=dcMode][value=comm]'); if(r) r.checked=true;
+  g('dcModal').hidden=false;
+}
+function dcClose(){ const m=document.getElementById('dcModal'); if(m) m.hidden=true; DC_DEAL=null; }
+async function dcSave(){
+  if(!dcCanEdit()){ toast('Admins only',true); return; }
+  const d=dealById(DC_DEAL); if(!d){ toast('Deal not found',true); return; }
+  const closer=(document.getElementById('dcCloser').value||'').trim(), setter=(document.getElementById('dcSetter').value||'').trim();
+  const mode=(document.querySelector('input[name=dcMode]:checked')||{}).value||'comm';
+  try{
+    if(mode==='full'){
+      await addRecord(Object.assign({}, d, {rep:closer, setter:setter, commRep:'', commSetter:'', by:(SESSION&&SESSION.name)||''}));
+      for(const p of paymentsForDeal(d.id)){ await addRecord(Object.assign({}, p, {rep:closer, setter:setter, commRep:'', commSetter:''})); }
+      toast('Deal reassigned'+(closer?(' to '+closer):''));
+    } else {
+      await addRecord(Object.assign({}, d, {commRep:closer, commSetter:setter, by:(SESSION&&SESSION.name)||''}));
+      toast('Commission credit updated');
+    }
+    dcClose(); renderMyDeals(); try{ if(currentTab()==='invoicing') repCommRender(); }catch(e){}
+  }catch(e){ toast('Save failed: '+((e&&e.message)||e),true); }
+}
 // a payment is "back-end" if collected more than 30 days after its deal closed
 function paymentBackEnd(p){ if(!p||!p.date) return false; const d=dealById(p.dealId); if(!d||!d.date) return false; const close=new Date(String(d.date).slice(0,10)+'T00:00:00'), got=new Date(String(p.date).slice(0,10)+'T00:00:00'); return (got-close) > 30*86400000; }
 // does THIS rep earn commission on this payment? (front-end-only accounts pay nothing on back-end payments)
@@ -5242,15 +5303,17 @@ function repCommData(from,to,client){
   (RECORDS||[]).filter(x=>x.type==='deal' && inP(x.date) && mc(x.client)).forEach(d=>{
     const id=String(d.id||''); if(id&&seen[id])return; if(id)seen[id]=1;
     const cash=d.cashCollected||0; if(!cash) return;
-    if(d.rep) add(closers,d.rep,'closer',{date:d.date,client:d.client||'',lead:d.lead||'',kind:'Deal',cash,rate:repCommRateFor(d.client,'closer')});
-    if(d.setter) add(setters,d.setter,'setter',{date:d.date,client:d.client||'',lead:d.lead||'',kind:'Deal',cash,rate:repCommRateFor(d.client,'setter')});
+    const dc=effCloserOf(d), ds=effSetterOf(d);
+    if(dc) add(closers,dc,'closer',{date:d.date,client:d.client||'',lead:d.lead||'',kind:'Deal',cash,rate:repCommRateFor(d.client,'closer')});
+    if(ds) add(setters,ds,'setter',{date:d.date,client:d.client||'',lead:d.lead||'',kind:'Deal',cash,rate:repCommRateFor(d.client,'setter')});
   });
   paymentsCollapsed().filter(p=>p.status==='confirmed' && inP(p.date) && mc(p.client)).forEach(p=>{
     const cash=p.amount||0; if(!cash) return;
     if(!payEarnsCommission(p)) return; // front-end-only account (e.g. Snoop): no rep commission on a back-end payment (TSA still bills it)
     const kind=(p.method?p.method+' payment':'Payment');
-    if(p.rep) add(closers,p.rep,'closer',{date:p.date,client:p.client||'',lead:p.lead||'',kind,cash,rate:repCommRateFor(p.client,'closer')});
-    if(p.setter) add(setters,p.setter,'setter',{date:p.date,client:p.client||'',lead:p.lead||'',kind,cash,rate:repCommRateFor(p.client,'setter')});
+    const pc=effCloserOf(p), ps=effSetterOf(p);
+    if(pc) add(closers,pc,'closer',{date:p.date,client:p.client||'',lead:p.lead||'',kind,cash,rate:repCommRateFor(p.client,'closer')});
+    if(ps) add(setters,ps,'setter',{date:p.date,client:p.client||'',lead:p.lead||'',kind,cash,rate:repCommRateFor(p.client,'setter')});
   });
   const commOf=o=>{ let c=0; for(const cl in o.byClient) c+=o.byClient[cl]*repCommRateFor(cl,o.role)/100; return c; };
   const finish=map=>Object.values(map).map(o=>{ const commission=commOf(o); return {...o,commission,effRate:o.cash?commission/o.cash*100:0}; }).sort((a,b)=>b.commission-a.commission);
