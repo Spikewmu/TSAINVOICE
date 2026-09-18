@@ -2904,11 +2904,13 @@ function pcFieldsFor(client){ if(!client) return null; let best=null; const cn=n
 function renderPcExtraFields(){
   const wrap=document.getElementById('pcExtraFields'); if(!wrap) return;
   const client=(document.querySelector('#postcallForm [name=client]')||{}).value||'', role=(typeof pcRole==='function'?pcRole():'Closer');
+  const outcome=((document.querySelector('#postcallForm [name=outcome]')||{}).value||'').trim();
+  const skipReq=(typeof PC_NOQUAL!=='undefined'&&PC_NOQUAL.includes(outcome)); // no-conversation outcome -> don't require the qualification answers
   const cfg=pcFieldsFor(client);
   const fields=(cfg&&Array.isArray(cfg.fields)?cfg.fields:[]).filter(f=> !f.role||f.role==='Both'||f.role===role);
   if(!client||!fields.length){ wrap.innerHTML=''; return; }
-  let h=`<div class="formhead" style="margin-top:6px"><b>${esc(client)} lead qualification</b><span class="sub">saved to the lead's GHL fields when you submit</span></div><div class="grid3">`;
-  fields.forEach(f=>{ const opts=Array.isArray(f.options)?f.options:[]; const req=f.required!==false; const rq=req?' data-pcreq="1"':''; const inp = opts.length
+  let h=`<div class="formhead" style="margin-top:6px"><b>${esc(client)} lead qualification</b><span class="sub">${skipReq?'optional for this outcome':"saved to the lead's GHL fields when you submit"}</span></div><div class="grid3">`;
+  fields.forEach(f=>{ const opts=Array.isArray(f.options)?f.options:[]; const req=(f.required!==false)&&!skipReq; const rq=req?' data-pcreq="1"':''; const inp = opts.length
       ? `<select data-pcfield="${esc(f.id)}"${rq}><option value="">-</option>${opts.map(o=>`<option>${esc(o)}</option>`).join('')}</select>`
       : `<input type="text" data-pcfield="${esc(f.id)}"${rq}>`;
     h+=`<div class="field"><label>${esc(f.label||f.name)}${req?' *':''}</label>${inp}</div>`; });
@@ -2922,6 +2924,7 @@ function postcallOutcomeChanged(){
   const em=document.querySelector('#postcallForm [name=leadEmail]'), eml=document.getElementById('pcEmailLabel');
   if(em) em.required=!!won; if(eml) eml.textContent = won ? 'Lead email *' : 'Lead email'; // required only when it's a close
   if(won) postcallClientChanged();
+  try{ renderPcExtraFields(); }catch(_){} // outcome change flips whether the qualification questions are required
 }
 // Post-Call Checkout is role-aware: closers report a call's result (Won reveals the deal fields);
 // setters report what happened on each connected call (no Won/deal fields).
@@ -2929,6 +2932,8 @@ const PC_OUTCOMES={
   Closer:['Won (closed)','Lost','No-show','Follow-up booked','Rescheduled','Disqualified','Canceled'],
   Setter:['Booked (set)','Follow-up booked','Callback scheduled','Not interested','Disqualified','No answer','Hung up','Wrong number']
 };
+// outcomes where the rep likely did NOT have a qualifying conversation - post-call qualification questions are NOT required for these
+const PC_NOQUAL=['Callback scheduled','Not interested','Disqualified','No answer','Hung up','Wrong number','No-show','Lost','Rescheduled','Canceled'];
 function pcRole(){ const i=document.querySelector('#postcallForm [name=role]'); return i?i.value:'Closer'; }
 function setPcRole(r){
   document.querySelectorAll('#pcRoleSeg button').forEach(b=>b.classList.toggle('on',b.dataset.role===r));
