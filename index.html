@@ -444,6 +444,7 @@
     <div class="navsub">
       <button data-tab="dailyreport">Daily Report</button>
       <button data-tab="dayreports">SOD / EOD Reports</button>
+      <button data-tab="hotlist">Hot List</button>
       <button data-tab="reps">Rep Breakdown</button>
       <button data-tab="scorecards">Scorecards</button>
       <button data-tab="mgreod">Manager EOD</button>
@@ -1670,6 +1671,22 @@ If they did not watch: No problem at all, I will send it right over. Can you wat
     </div>
   </section>
 
+  <!-- ===== HOT LIST (T-555) ===== -->
+  <section id="tab-hotlist" hidden>
+    <h2 class="section">Hot List</h2>
+    <p class="hint">Deals close to closing - the whole team can see the projected pipeline at a glance. Reps add their in-progress deals so leadership can back up the forecast. This is <b>projections</b>, separate from confirmed cash in My Deals.</p>
+    <div class="filters" style="align-items:flex-end;flex-wrap:wrap;gap:10px">
+      <div class="field"><label>Status</label><select id="hlStatus" onchange="renderHotList()"><option value="">All</option><option>Open</option><option>Won</option><option>Lost</option></select></div>
+      <div class="field"><label>Rep</label><select id="hlRep" onchange="renderHotList()"><option value="">All reps</option></select></div>
+      <div class="field"><label>Client</label><select id="hlClient" onchange="renderHotList()"><option value="">All clients</option></select></div>
+      <div class="field"><label>Close date</label><div class="rangewrap"><input type="text" id="hlRange_txt" readonly placeholder="Click a start day, then an end day" onclick="rpToggle('hlRange',event)"><input type="hidden" id="hlRange_from"><input type="hidden" id="hlRange_to"><div class="rangepop" id="hlRange_pop" hidden onclick="event.stopPropagation()"></div></div></div>
+      <div class="field"><label>Quick range</label><div class="row-actions"><button class="btn ghost sm" onclick="hlPreset('month')">This month</button><button class="btn ghost sm" onclick="hlPreset('7')">Next 7 days</button><button class="btn ghost sm" onclick="hlPreset('30')">Next 30 days</button><button class="btn ghost sm" onclick="hlPreset('quarter')">This quarter</button><button class="btn ghost sm" onclick="hlPreset('all')">All</button></div></div>
+      <button class="btn gold sm" onclick="hlOpenAdd()">+ Add deal</button>
+    </div>
+    <div id="hlKpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px;margin:12px 0"></div>
+    <div class="panel"><div class="tablewrap"><table id="hlTable"></table></div></div>
+  </section>
+
   <!-- ===== SOD / EOD REPORTS (readable) ===== -->
   <section id="tab-dayreports" hidden>
     <h2 class="section">SOD / EOD Reports</h2>
@@ -1932,6 +1949,24 @@ If they did not watch: No problem at all, I will send it right over. Can you wat
     <p class="hint" id="paySub" style="margin:0 0 12px"></p>
     <div id="payBody"></div>
     <div class="row-actions" style="margin-top:14px"><button class="btn ghost sm" onclick="closePayments()">Close</button></div>
+  </div>
+</div>
+
+<div class="modal" id="hlModal" hidden onclick="if(event.target===this)hlCloseModal()">
+  <div class="modalcard" style="width:min(560px,96vw);max-height:92vh;overflow:auto">
+    <h3 id="hlModalTitle" style="margin:0 0 12px">New hot list deal</h3>
+    <div class="field"><label>Prospect name *</label><input id="hlProspect" placeholder="Acme Corp"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="field"><label>Client *</label><select id="hlmClient"></select></div>
+      <div class="field"><label>Rep</label><select id="hlmRep"></select></div>
+      <div class="field"><label>Projected closing date</label><div class="rangewrap" style="display:block"><input type="text" id="hlmDate_txt" readonly placeholder="Pick a day" onclick="dayPopToggle('hlmDate',event)" style="width:100%"><input type="hidden" id="hlmDate"><div class="rangepop" id="hlmDate_pop" hidden onclick="event.stopPropagation()"></div></div></div>
+      <div class="field"><label>Probability %</label><input id="hlmProb" type="number" min="0" max="100" value="50"></div>
+      <div class="field"><label>Cash collected</label><input id="hlmCash" type="number" min="0" step="0.01" placeholder="0.00"></div>
+      <div class="field"><label>Revenue (deal size)</label><input id="hlmRevenue" type="number" min="0" step="0.01" placeholder="0.00"></div>
+    </div>
+    <div class="field"><label>Status</label><select id="hlmStatus"><option>Open</option><option>Won</option><option>Lost</option></select></div>
+    <div class="field"><label>Reason it hasn't closed yet</label><textarea id="hlmReason" rows="3" placeholder="Waiting on legal review, needs partner buy-in, etc."></textarea></div>
+    <div class="row-actions" style="margin-top:12px"><button class="btn gold sm" onclick="hlSaveDeal()">Add deal</button><button class="btn ghost sm" onclick="hlCloseModal()">Cancel</button></div>
   </div>
 </div>
 
@@ -2395,14 +2430,14 @@ function startApp(){
 // base tabs a login TIER can see; per-account responsibilities add to this in applyNavAccess()
 function baseAllow(role){
   return ({
-    admin:['dash','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','dayreports','adminreport','recruiting','messages','invoicing','contracts','onbaudit','ghlmap','pcfields','data','users','integrations','settings','reprequests','resources','faq','kickoff','webinarsop'],
-    director:['dash','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','dailyreport','dayreports','recruiting','messages','adminreport','contracts','onbaudit','ghlmap','pcfields','reprequests','resources','faq','kickoff','webinarsop'],
-    manager:['dash','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','speedtolead','dailyreport','dayreports','adminreport','recruiting','messages','reprequests','resources','faq','kickoff','webinarsop'],
+    admin:['dash','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','dayreports','hotlist','adminreport','recruiting','messages','invoicing','contracts','onbaudit','ghlmap','pcfields','data','users','integrations','settings','reprequests','resources','faq','kickoff','webinarsop'],
+    director:['dash','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','dailyreport','dayreports','hotlist','recruiting','messages','adminreport','contracts','onbaudit','ghlmap','pcfields','reprequests','resources','faq','kickoff','webinarsop'],
+    manager:['dash','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','speedtolead','dailyreport','dayreports','hotlist','adminreport','recruiting','messages','reprequests','resources','faq','kickoff','webinarsop'],
     founder:['dash','reprequests','faq'],
     recruiter:['dash','recruiting','messages','timeoff','reprequests','resources','faq','kickoff','webinarsop'],
     webinarteam:['dash','meeting','promises','timeoff','webinar','resources','faq','kickoff','webinarsop'],
-    closer:['dash','mydeals','postcall','sod','eod','training','timeoff','calllog','reps','resources','faq','kickoff','webinarsop'],
-    setter:['dash','mydeals','postcall','sod','eod','training','timeoff','calllog','reps','resources','faq','kickoff','webinarsop']
+    closer:['dash','mydeals','postcall','sod','eod','training','timeoff','calllog','reps','hotlist','resources','faq','kickoff','webinarsop'],
+    setter:['dash','mydeals','postcall','sod','eod','training','timeoff','calllog','reps','hotlist','resources','faq','kickoff','webinarsop']
   })[role] || ['eod'];
 }
 // ---- multi-role: a user can hold several roles (stored as a 'userroles' record); access = the union ----
@@ -2541,9 +2576,9 @@ function showTab(t){
   document.querySelectorAll('#tabs button[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
   document.querySelectorAll('#tabs .navgroup').forEach(g=>{ if(g.querySelector('button[data-tab="'+t+'"]')) g.classList.remove('collapsed'); }); // reveal the active tab's group
 
-  ['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','dayreports','adminreport','reprequests','recruiting','messages','invoicing','contracts','onbaudit','ghlmap','pcfields','data','users','integrations','settings','resources','faq','kickoff','webinarsop','scorecards'].forEach(x=>{ const el=document.getElementById('tab-'+x); if(el) el.hidden = (x!==t); });
+  ['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','dayreports','hotlist','adminreport','reprequests','recruiting','messages','invoicing','contracts','onbaudit','ghlmap','pcfields','data','users','integrations','settings','resources','faq','kickoff','webinarsop','scorecards'].forEach(x=>{ const el=document.getElementById('tab-'+x); if(el) el.hidden = (x!==t); });
   // stale-while-revalidate: render instantly from the cached records, then refresh in the background
-  const render={dash:renderDash, mydeals:renderMyDeals, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, promises:renderPromisesTab, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, mgreodview:renderMgrEodView, contracts:renderContracts, faq:renderFaq, scorecards:renderScorecards, webinar:renderWebinars, calllog:renderCallLog, calendar:renderCalendar, speedtolead:renderSpeedToLead, dailyreport:renderDailyReport, dayreports:renderDayReports, adminreport:renderAdminReport, reprequests:renderRepRequests, recruiting:renderRecruiting, messages:renderMessages, training:renderTraining, invoicing:renderInvoicing, data:renderAll}[t];
+  const render={dash:renderDash, mydeals:renderMyDeals, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, promises:renderPromisesTab, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, mgreodview:renderMgrEodView, contracts:renderContracts, faq:renderFaq, scorecards:renderScorecards, webinar:renderWebinars, calllog:renderCallLog, calendar:renderCalendar, speedtolead:renderSpeedToLead, dailyreport:renderDailyReport, dayreports:renderDayReports, hotlist:renderHotList, adminreport:renderAdminReport, reprequests:renderRepRequests, recruiting:renderRecruiting, messages:renderMessages, training:renderTraining, invoicing:renderInvoicing, data:renderAll}[t];
   if(render){ render(); syncRecords().then(()=>{ if(currentTab()===t) render(); buildGlobalClientSelect(); buildViewAsUserSelect(); updateNavBadges(); renderReminders(); }); }
   updateNavBadges();
   if(t==='data'){ renderDailyEntry(); crInit(); }
@@ -5442,6 +5477,94 @@ function renderDayReports(){
   if(!recs.length){ body.innerHTML=`<p class="muted" style="padding:12px 0">No ${kindLabel} reports submitted for ${esc(usDate(day))}${clientFilter?' at '+esc(clientFilter):''} yet.</p>`; return; }
   const group=(title,arr)=> arr.length?`<div style="font-size:12px;text-transform:uppercase;color:var(--muted);font-weight:700;letter-spacing:.02em;margin:6px 0 8px">${title} (${arr.length})</div>`+arr.map(cardFn).join(''):'';
   body.innerHTML=group('Closers',closers)+group('Setters',setters);
+}
+/* ---------------- Hot List (T-555): rep-flagged projected deals, team-wide forecast on projections ---------------- */
+let HL_EDIT_ID=null;
+function hotDeals(){ const m={}; RECORDS.forEach(x=>{ if(x.type!=='hotdeal'||!x.id) return; if(!m[x.id]||(x.submittedAt||'')>(m[x.id].submittedAt||'')) m[x.id]=x; }); return Object.values(m).filter(d=>!d.deleted); }
+function hlRepNames(){ try{ return [...new Set([...(repNames('closer')||[]),...(repNames('setter')||[])])].sort((a,b)=>String(a).localeCompare(String(b))); }catch(e){ return []; } }
+function hlClients(){ const scope=dashScopeClients(); const all=clientNames().slice().sort((a,b)=>String(a).localeCompare(String(b))); return (scope&&scope.length)?all.filter(c=>scope.includes(c)):all; }
+function hlVisible(){
+  const scope=dashScopeClients();
+  const stf=(document.getElementById('hlStatus')||{}).value||'', rpf=(document.getElementById('hlRep')||{}).value||'', clf=(document.getElementById('hlClient')||{}).value||'';
+  const from=(document.getElementById('hlRange_from')||{}).value||'', to=(document.getElementById('hlRange_to')||{}).value||'';
+  return hotDeals().filter(d=>{
+    if(scope && !scope.includes(String(d.client||''))) return false;
+    if(clf && String(d.client||'')!==clf) return false;
+    if(stf && (d.status||'Open')!==stf) return false;
+    if(rpf && String(d.rep||'')!==rpf) return false;
+    if(from && String(d.closeDate||'')<from) return false;
+    if(to && String(d.closeDate||'')>to) return false;
+    return true;
+  });
+}
+function renderHotList(){
+  const sec=document.getElementById('tab-hotlist'); if(!sec) return;
+  const clients=hlClients();
+  const rc=document.getElementById('hlClient'); if(rc){ const prev=preferGlobal(clients, rc.value||''); rc.innerHTML='<option value="">All clients</option>'+clients.map(c=>`<option${c===prev?' selected':''}>${esc(c)}</option>`).join(''); rc.value=prev; }
+  const rp=document.getElementById('hlRep'); if(rp){ const prev=rp.value; rp.innerHTML='<option value="">All reps</option>'+hlRepNames().map(n=>`<option${n===prev?' selected':''}>${esc(n)}</option>`).join(''); rp.value=prev; }
+  try{ rpAttach('hlRange', renderHotList); }catch(e){}
+  const deals=hlVisible(), open=deals.filter(d=>(d.status||'Open')==='Open');
+  const fc=open.reduce((a,d)=>a+(+d.revenue||0),0), wt=open.reduce((a,d)=>a+(+d.revenue||0)*((+d.prob||0)/100),0), cc=open.reduce((a,d)=>a+(+d.cash||0),0);
+  const kpi=(lbl,val)=>`<div class="panel" style="padding:14px 16px;margin:0"><div class="muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.03em;font-weight:700">${lbl}</div><div style="font-size:24px;font-weight:700;margin-top:3px">${val}</div></div>`;
+  const kw=document.getElementById('hlKpis'); if(kw) kw.innerHTML=kpi('Open deals',open.length)+kpi('Forecasted cash',money(fc))+kpi('Weighted pipeline',money(wt))+kpi('Cash collected',money(cc));
+  const stPill=s=>{ s=s||'Open'; const c=s==='Won'?'good':(s==='Lost'?'warn':''); return `<span class="pill ${c}">${esc(s)}</span>`; };
+  const rows=deals.slice().sort((a,b)=>String(a.closeDate||'').localeCompare(String(b.closeDate||''))).map(d=>{
+    const id=esc(String(d.id));
+    const act=`<span style="white-space:nowrap"><button class="btn sm ghost" title="Mark won" onclick="hlSetStatus('${id}','Won')" style="color:#7bd487;border-color:#3a5a45">&#10003;</button> <button class="btn sm ghost" title="Mark lost" onclick="hlSetStatus('${id}','Lost')" style="color:var(--warn);border-color:var(--warn)">&#10007;</button> <button class="btn sm ghost" title="Edit" onclick="hlOpenEdit('${id}')">&#9998;</button> <button class="btn sm ghost" title="Delete" onclick="hlDelete('${id}')">&#128465;</button></span>`;
+    return `<tr><td><b>${esc(d.prospect||'')}</b>${d.client?`<div class="muted" style="font-size:11px">${esc(d.client)}</div>`:''}</td><td>${esc(d.rep||'-')}</td><td>${d.closeDate?esc(usDate(d.closeDate)):'-'}</td><td class="num">${money(d.revenue||0)}</td><td class="num">${money(d.cash||0)}</td><td>${(+d.prob||0)}%</td><td>${stPill(d.status)}</td><td>${esc(d.reason||'')}</td><td>${act}</td></tr>`;
+  }).join('');
+  const tb=document.getElementById('hlTable'); if(tb) tb.innerHTML=`<thead><tr><th>Prospect</th><th>Rep</th><th>Close date</th><th class="num">Revenue</th><th class="num">Cash collected</th><th>Prob.</th><th>Status</th><th>Reason</th><th></th></tr></thead><tbody>${rows||`<tr><td colspan="9" class="muted" style="padding:14px">No hot deals yet. Click <b>Add deal</b> to flag a projected deal.</td></tr>`}</tbody>`;
+}
+function hlPreset(p){ const t=todayLocal(); let from='',to='';
+  if(p==='month'){ from=t.slice(0,7)+'-01'; const y=+t.slice(0,4),m=+t.slice(5,7),last=new Date(y,m,0).getDate(); to=`${y}-${String(m).padStart(2,'0')}-${String(last).padStart(2,'0')}`; }
+  else if(p==='7'){ from=t; to=isoOffset(t,7); }
+  else if(p==='30'){ from=t; to=isoOffset(t,30); }
+  else if(p==='quarter'){ const y=+t.slice(0,4),m=+t.slice(5,7),qs=Math.floor((m-1)/3)*3+1,qe=qs+2,last=new Date(y,qe,0).getDate(); from=`${y}-${String(qs).padStart(2,'0')}-01`; to=`${y}-${String(qe).padStart(2,'0')}-${String(last).padStart(2,'0')}`; }
+  const f=document.getElementById('hlRange_from'),tt=document.getElementById('hlRange_to'); if(f)f.value=from; if(tt)tt.value=to;
+  try{ const st=__rp['hlRange']=__rp['hlRange']||{}; st.start=from; st.end=to; rpSync('hlRange'); }catch(e){}
+  renderHotList();
+}
+function hlFillModalSelects(){
+  const mc=document.getElementById('hlmClient'); if(mc) mc.innerHTML='<option value="">-</option>'+hlClients().map(c=>`<option>${esc(c)}</option>`).join('');
+  const mr=document.getElementById('hlmRep'); if(mr) mr.innerHTML='<option value="">-</option>'+hlRepNames().map(n=>`<option>${esc(n)}</option>`).join('');
+}
+function hlOpenAdd(){
+  HL_EDIT_ID=null; hlFillModalSelects();
+  const g=i=>document.getElementById(i);
+  g('hlModalTitle').textContent='New hot list deal';
+  g('hlProspect').value=''; g('hlmProb').value='50'; g('hlmCash').value=''; g('hlmRevenue').value=''; g('hlmStatus').value='Open'; g('hlmReason').value='';
+  if(g('hlmClient')) g('hlmClient').value=preferGlobal(hlClients(), (document.getElementById('hlClient')||{}).value||'');
+  if(g('hlmRep')) g('hlmRep').value=repMode()?((SESSION&&SESSION.name)||''):'';
+  if(g('hlmDate')) g('hlmDate').value=''; dayPickAttach('hlmDate', ()=>{}); dayPickSync('hlmDate');
+  g('hlModal').hidden=false;
+}
+function hlOpenEdit(id){
+  const d=hotDeals().find(x=>String(x.id)===String(id)); if(!d) return; HL_EDIT_ID=String(id); hlFillModalSelects();
+  const g=i=>document.getElementById(i);
+  g('hlModalTitle').textContent='Edit hot list deal';
+  g('hlProspect').value=d.prospect||''; g('hlmProb').value=(d.prob!=null?d.prob:50); g('hlmCash').value=d.cash||''; g('hlmRevenue').value=d.revenue||''; g('hlmStatus').value=d.status||'Open'; g('hlmReason').value=d.reason||'';
+  if(g('hlmClient')) g('hlmClient').value=d.client||''; if(g('hlmRep')) g('hlmRep').value=d.rep||'';
+  if(g('hlmDate')) g('hlmDate').value=(d.closeDate||'').slice(0,10); dayPickAttach('hlmDate', ()=>{}); dayPickSync('hlmDate');
+  g('hlModal').hidden=false;
+}
+function hlCloseModal(){ const m=document.getElementById('hlModal'); if(m) m.hidden=true; HL_EDIT_ID=null; }
+async function hlSaveDeal(){
+  const g=i=>document.getElementById(i);
+  const prospect=(g('hlProspect').value||'').trim(); if(!prospect){ toast('Enter a prospect name',true); return; }
+  const client=(g('hlmClient').value||'').trim(); if(!client){ toast('Pick a client',true); return; }
+  const rec={ type:'hotdeal', id:HL_EDIT_ID||uid(), prospect, client, rep:(g('hlmRep').value||'').trim(), closeDate:(g('hlmDate').value||''), prob:Math.max(0,Math.min(100,parseInt(g('hlmProb').value,10)||0)), cash:parseFloat(g('hlmCash').value)||0, revenue:parseFloat(g('hlmRevenue').value)||0, status:g('hlmStatus').value||'Open', reason:(g('hlmReason').value||'').trim() };
+  await addRecord(rec); hlCloseModal(); toast(HL_EDIT_ID?'Deal updated':'Deal added'); renderHotList();
+}
+async function hlSetStatus(id,status){
+  const d=hotDeals().find(x=>String(x.id)===String(id)); if(!d) return;
+  const rec={...d}; delete rec.submittedAt; delete rec.submittedET; rec.id=d.id; rec.status=status;
+  await addRecord(rec); renderHotList();
+}
+async function hlDelete(id){
+  const d=hotDeals().find(x=>String(x.id)===String(id)); if(!d) return;
+  if(!confirm('Remove this hot list deal for '+(d.prospect||'this prospect')+'?')) return;
+  const rec={...d}; delete rec.submittedAt; delete rec.submittedET; rec.id=d.id; rec.deleted=true;
+  await addRecord(rec); renderHotList();
 }
 /* ---------------- admin report: submission compliance across setters/closers/managers ---------------- */
 // everyone assigned as a webinar/setter/closer manager on any client = who should submit a Manager EOD
