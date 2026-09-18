@@ -497,6 +497,7 @@
     <button class="navhead"><svg class="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4-3 7-7 8-4-1-7-4-7-8V6z"/></svg><span class="nlabel">Admin</span><svg class="nchev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
     <div class="navsub">
       <button data-tab="invoicing">Invoicing</button>
+      <button data-tab="repcommrates">Rep Commission Breakdown</button>
       <button data-tab="contracts">Contracts</button>
       <button data-tab="mgreodview">Manager EODs</button>
       <button data-tab="onbaudit">Onboarding Audit</button>
@@ -1129,6 +1130,29 @@
     <h2 class="section">Manager EODs</h2>
     <p class="hint">Every manager's submitted end-of-day report - the numbers they reported for each offer plus their constraint note. Shows the latest per manager, account and day, and follows the company selector at the top of the page.</p>
     <div class="panel"><div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px"><h3 style="margin:0">Manager EOD review <span style="font-weight:400;color:var(--muted);font-size:12px">- what each manager reported + their constraint note (latest per manager, account &amp; day)</span></h3><div class="seg" id="mgrVSeg"><button onclick="setMgrVDay('')">All recent</button><button onclick="setMgrVDay('today')">Today</button><button onclick="setMgrVDay('yesterday')">Yesterday</button></div></div><div class="tablewrap" style="margin-top:10px"><table id="mgrEodTable"></table></div></div>
+  </section>
+
+  <!-- ===== REP COMMISSION BREAKDOWN (per-rep pay rates) ===== -->
+  <section id="tab-repcommrates" hidden>
+    <h2 class="section">Rep Commission Breakdown</h2>
+    <p class="hint">Set the commission % each rep earns on cash collected. <b>Defaults</b> apply to everyone unless you override a specific rep below. This is what TSA pays the <b>reps</b> (separate from what a client pays TSA - that's on Contracts). Super Admin only.</p>
+    <div class="panel" style="padding:18px;max-width:520px">
+      <h3 style="margin:0 0 4px">Default rates</h3>
+      <p class="fieldhelp" style="margin:0 0 12px">Applied to any rep without a specific override.</p>
+      <div class="grid2" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="field"><label>Setter default (%)</label><input type="number" id="rcDefSetter" step="0.1" min="0" placeholder="3"></div>
+        <div class="field"><label>Closer default (%)</label><input type="number" id="rcDefCloser" step="0.1" min="0" placeholder="7"></div>
+      </div>
+      <div class="row-actions" style="margin-top:10px"><button class="btn gold sm" onclick="saveCommDefaults()">Save defaults</button></div>
+    </div>
+    <div class="panel" style="padding:18px;margin-top:16px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px">
+        <h3 style="margin:0">Per-rep overrides</h3>
+        <button class="btn gold sm" onclick="saveRepCommRates()">Save all rates</button>
+      </div>
+      <p class="fieldhelp" style="margin:6px 0 12px">Leave a cell blank to use the default. Only closers show a closer rate; only setters show a setter rate (hybrids show both).</p>
+      <div class="tablewrap"><table id="rcTable"></table></div>
+    </div>
   </section>
 
   <!-- ===== CONTRACTS (lender view) ===== -->
@@ -2485,7 +2509,7 @@ function startApp(){
 // base tabs a login TIER can see; per-account responsibilities add to this in applyNavAccess()
 function baseAllow(role){
   return ({
-    admin:['dash','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','dayreports','hotlist','adminreport','recruiting','messages','invoicing','contracts','onbaudit','ghlmap','pcfields','data','users','integrations','settings','reprequests','resources','faq','kickoff','webinarsop'],
+    admin:['dash','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','dayreports','hotlist','adminreport','recruiting','messages','invoicing','repcommrates','contracts','onbaudit','ghlmap','pcfields','data','users','integrations','settings','reprequests','resources','faq','kickoff','webinarsop'],
     director:['dash','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','dailyreport','dayreports','hotlist','recruiting','messages','adminreport','contracts','onbaudit','ghlmap','pcfields','reprequests','resources','faq','kickoff','webinarsop'],
     manager:['dash','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','speedtolead','dailyreport','dayreports','hotlist','adminreport','recruiting','messages','reprequests','resources','faq','kickoff','webinarsop'],
     founder:['dash','hotlist','reprequests'],
@@ -2634,9 +2658,9 @@ function showTab(t){
   document.querySelectorAll('#tabs button[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
   document.querySelectorAll('#tabs .navgroup').forEach(g=>{ if(g.querySelector('button[data-tab="'+t+'"]')) g.classList.remove('collapsed'); }); // reveal the active tab's group
 
-  ['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','dayreports','hotlist','adminreport','reprequests','recruiting','messages','invoicing','contracts','onbaudit','ghlmap','pcfields','data','users','integrations','settings','resources','faq','kickoff','webinarsop','scorecards'].forEach(x=>{ const el=document.getElementById('tab-'+x); if(el) el.hidden = (x!==t); });
+  ['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','dayreports','hotlist','adminreport','reprequests','recruiting','messages','invoicing','repcommrates','contracts','onbaudit','ghlmap','pcfields','data','users','integrations','settings','resources','faq','kickoff','webinarsop','scorecards'].forEach(x=>{ const el=document.getElementById('tab-'+x); if(el) el.hidden = (x!==t); });
   // stale-while-revalidate: render instantly from the cached records, then refresh in the background
-  const render={dash:renderDash, mydeals:renderMyDeals, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, promises:renderPromisesTab, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, mgreodview:renderMgrEodView, contracts:renderContracts, faq:renderFaq, scorecards:renderScorecards, webinar:renderWebinars, calllog:renderCallLog, calendar:renderCalendar, speedtolead:renderSpeedToLead, dailyreport:renderDailyReport, dayreports:renderDayReports, hotlist:renderHotList, adminreport:renderAdminReport, reprequests:renderRepRequests, recruiting:renderRecruiting, messages:renderMessages, training:renderTraining, invoicing:renderInvoicing, data:renderAll}[t];
+  const render={dash:renderDash, mydeals:renderMyDeals, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, promises:renderPromisesTab, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, mgreodview:renderMgrEodView, contracts:renderContracts, faq:renderFaq, scorecards:renderScorecards, webinar:renderWebinars, calllog:renderCallLog, calendar:renderCalendar, speedtolead:renderSpeedToLead, dailyreport:renderDailyReport, dayreports:renderDayReports, hotlist:renderHotList, adminreport:renderAdminReport, repcommrates:renderRepCommRates, reprequests:renderRepRequests, recruiting:renderRecruiting, messages:renderMessages, training:renderTraining, invoicing:renderInvoicing, data:renderAll}[t];
   if(render){ render(); syncRecords().then(()=>{ if(currentTab()===t) render(); buildGlobalClientSelect(); buildViewAsUserSelect(); updateNavBadges(); renderReminders(); }); }
   updateNavBadges();
   if(t==='data'){ renderDailyEntry(); crInit(); }
@@ -4712,9 +4736,9 @@ function myDealsForecast(){
   const inWin=p=>{ if(win==='all') return true; const d=dated(p); return d?d<=cutoff:false; };
   // Does this record credit the viewer, and at what combined commission rate? (data can carry trailing spaces)
   const rateFor=(client,rep,set)=>{ const r=String(rep||'').trim(), st=String(set||'').trim(); let rate=0;
-    if(oversight){ if(r) rate+=repCommRateFor(client,'closer'); if(st) rate+=repCommRateFor(client,'setter'); return {rate, involved:!!(r||st)}; }
-    if(r===me) return {rate:repCommRateFor(client,'closer'), involved:true};
-    if(st===me) return {rate:repCommRateFor(client,'setter'), involved:true};
+    if(oversight){ if(r) rate+=repRate(r,'closer'); if(st) rate+=repRate(st,'setter'); return {rate, involved:!!(r||st)}; }
+    if(r===me) return {rate:repRate(r,'closer'), involved:true};
+    if(st===me) return {rate:repRate(st,'setter'), involved:true};
     return {rate:0, involved:false};
   };
   // EXPECTED = commission on PENDING payments not yet received (windowed by expected date)
@@ -5296,6 +5320,55 @@ function drCopySlack(){
 let REPCOMM_VIEW=null; // null = summary view; {role, rep} = one rep's statement
 // the commission rate for a rep on an offer: the offer's rep-comp rate if set, else the default from Settings
 function repCommRateFor(client, role){ const cfg=clientBillingCfg(client); if(role==='closer') return (cfg&&cfg.closerRate!=null)?cfg.closerRate:(CFG.closerRate||0); return (cfg&&cfg.setterRate!=null)?cfg.setterRate:(CFG.setterRate||0); }
+// ---- Per-rep commission rates (Rep Commission Breakdown): default set/close %, overridable per specific rep ----
+function commDefaultRate(role){ return role==='closer' ? (CFG.closerRate!=null?CFG.closerRate:7) : (CFG.setterRate!=null?CFG.setterRate:3); }
+let _repRateCache={n:-1,m:{}};
+function repCommOverride(name){ const k=nrmName(name); if(!k) return null; if(_repRateCache.n!==RECORDS.length) _repRateCache={n:RECORDS.length,m:{}}; if(k in _repRateCache.m) return _repRateCache.m[k]; let best=null; RECORDS.forEach(x=>{ if(x.type==='repcommrate' && nrmName(x.rep)===k){ if(!best||(x.submittedAt||'')>(best.submittedAt||'')) best=x; } }); _repRateCache.m[k]=best; return best; }
+function repRate(name, role){ const o=repCommOverride(name); if(o){ const v=(role==='closer')?o.closerRate:o.setterRate; if(v!=null&&v!=='') return Number(v); } return commDefaultRate(role); }
+function rcCanEdit(){ return !!(SESSION && SESSION.role==='admin'); }
+function renderRepCommRates(){
+  const sec=document.getElementById('tab-repcommrates'); if(!sec) return;
+  const ds=document.getElementById('rcDefSetter'), dc=document.getElementById('rcDefCloser');
+  if(ds) ds.value=(CFG.setterRate!=null?CFG.setterRate:3);
+  if(dc) dc.value=(CFG.closerRate!=null?CFG.closerRate:7);
+  const reps=[];
+  (USERS_CACHE||[]).forEach(u=>{ if(!u||u.archived||!u.username) return; let roles=[]; try{ roles=(typeof rolesFor==='function'?rolesFor(u.username):null)||[u.role]; }catch(e){ roles=[u.role]; } const isC=roles.includes('closer'), isS=roles.includes('setter'); if(isC||isS) reps.push({name:u.name||u.username, isC, isS}); });
+  reps.sort((a,b)=>String(a.name).localeCompare(String(b.name)));
+  const t=document.getElementById('rcTable'); if(!t) return;
+  const val=v=>(v!=null&&v!=='')?esc(v):'';
+  const rows=reps.map(r=>{ const o=repCommOverride(r.name)||{};
+    const sCell=r.isS?`<input type="number" step="0.1" min="0" class="rcS" data-rep="${esc(r.name)}" value="${val(o.setterRate)}" placeholder="${commDefaultRate('setter')}" style="width:90px">`:'<span class="muted">-</span>';
+    const cCell=r.isC?`<input type="number" step="0.1" min="0" class="rcC" data-rep="${esc(r.name)}" value="${val(o.closerRate)}" placeholder="${commDefaultRate('closer')}" style="width:90px">`:'<span class="muted">-</span>';
+    const roleLbl=[r.isC?'Closer':'',r.isS?'Setter':''].filter(Boolean).join(' + ');
+    return `<tr><td><b>${esc(r.name)}</b></td><td class="muted">${roleLbl}</td><td>${sCell}</td><td>${cCell}</td></tr>`;
+  }).join('');
+  t.innerHTML=`<thead><tr><th>Rep</th><th>Role</th><th>Setter %</th><th>Closer %</th></tr></thead><tbody>${rows||'<tr><td colspan="4" class="muted" style="padding:14px">No closers or setters in the roster yet.</td></tr>'}</tbody>`;
+}
+async function saveCommDefaults(){
+  if(!rcCanEdit()){ toast('Super Admin only',true); return; }
+  const s=parseFloat(document.getElementById('rcDefSetter').value), c=parseFloat(document.getElementById('rcDefCloser').value);
+  if(!isNaN(s)) CFG.setterRate=s; if(!isNaN(c)) CFG.closerRate=c;
+  try{ await saveWsConfig(); toast('Default rates saved'); renderRepCommRates(); try{ if(currentTab()==='invoicing') repCommRender(); }catch(e){} }
+  catch(e){ toast('Save failed: '+((e&&e.message)||e),true); }
+}
+async function saveRepCommRates(){
+  if(!rcCanEdit()){ toast('Super Admin only',true); return; }
+  const map={};
+  document.querySelectorAll('#rcTable .rcS').forEach(el=>{ const n=el.getAttribute('data-rep'); (map[n]=map[n]||{}).setterRate=(el.value===''?null:parseFloat(el.value)); });
+  document.querySelectorAll('#rcTable .rcC').forEach(el=>{ const n=el.getAttribute('data-rep'); (map[n]=map[n]||{}).closerRate=(el.value===''?null:parseFloat(el.value)); });
+  let n=0;
+  try{
+    for(const name in map){ const cur=repCommOverride(name)||{}, nv=map[name];
+      const newC=('closerRate'in nv)?nv.closerRate:(cur.closerRate!=null?cur.closerRate:null);
+      const newS=('setterRate'in nv)?nv.setterRate:(cur.setterRate!=null?cur.setterRate:null);
+      const curC=cur.closerRate!=null?cur.closerRate:null, curS=cur.setterRate!=null?cur.setterRate:null;
+      if(newC===curC && newS===curS) continue;
+      await addRecord({type:'repcommrate', rep:name, closerRate:(newC==null?null:Number(newC)), setterRate:(newS==null?null:Number(newS)), by:(SESSION&&SESSION.name)||''}); n++;
+    }
+    toast(n?('Saved rates for '+n+' rep'+(n===1?'':'s')):'No changes'); renderRepCommRates();
+    try{ if(currentTab()==='invoicing') repCommRender(); }catch(e){}
+  }catch(e){ toast('Save failed: '+((e&&e.message)||e),true); }
+}
 // semi-monthly rep pay cycles, paid in arrears (~15-day lag):
 //   earnings 1st-15th  -> paid the 30th (last day) of the SAME month
 //   earnings 16th-EOM  -> paid the 15th of the NEXT month
@@ -5332,18 +5405,18 @@ function repCommData(from,to,client){
     const id=String(d.id||''); if(id&&seen[id])return; if(id)seen[id]=1;
     const cash=d.cashCollected||0; if(!cash) return;
     const dc=effCloserOf(d), ds=effSetterOf(d);
-    if(dc) add(closers,dc,'closer',{date:d.date,client:d.client||'',lead:d.lead||'',kind:'Deal',cash,rate:repCommRateFor(d.client,'closer')});
-    if(ds) add(setters,ds,'setter',{date:d.date,client:d.client||'',lead:d.lead||'',kind:'Deal',cash,rate:repCommRateFor(d.client,'setter')});
+    if(dc) add(closers,dc,'closer',{date:d.date,client:d.client||'',lead:d.lead||'',kind:'Deal',cash,rate:repRate(dc,'closer')});
+    if(ds) add(setters,ds,'setter',{date:d.date,client:d.client||'',lead:d.lead||'',kind:'Deal',cash,rate:repRate(ds,'setter')});
   });
   paymentsCollapsed().filter(p=>p.status==='confirmed' && inP(p.date) && mc(p.client)).forEach(p=>{
     const cash=p.amount||0; if(!cash) return;
     if(!payEarnsCommission(p)) return; // front-end-only account (e.g. Snoop): no rep commission on a back-end payment (TSA still bills it)
     const kind=(p.method?p.method+' payment':'Payment');
     const pc=effCloserOf(p), ps=effSetterOf(p);
-    if(pc) add(closers,pc,'closer',{date:p.date,client:p.client||'',lead:p.lead||'',kind,cash,rate:repCommRateFor(p.client,'closer')});
-    if(ps) add(setters,ps,'setter',{date:p.date,client:p.client||'',lead:p.lead||'',kind,cash,rate:repCommRateFor(p.client,'setter')});
+    if(pc) add(closers,pc,'closer',{date:p.date,client:p.client||'',lead:p.lead||'',kind,cash,rate:repRate(pc,'closer')});
+    if(ps) add(setters,ps,'setter',{date:p.date,client:p.client||'',lead:p.lead||'',kind,cash,rate:repRate(ps,'setter')});
   });
-  const commOf=o=>{ let c=0; for(const cl in o.byClient) c+=o.byClient[cl]*repCommRateFor(cl,o.role)/100; return c; };
+  const commOf=o=>o.cash*repRate(o.rep,o.role)/100; // per-rep rate (override or default), same regardless of client
   const finish=map=>Object.values(map).map(o=>{ const commission=commOf(o); return {...o,commission,effRate:o.cash?commission/o.cash*100:0}; }).sort((a,b)=>b.commission-a.commission);
   return {closers:finish(closers), setters:finish(setters)};
 }
