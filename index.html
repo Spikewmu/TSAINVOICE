@@ -469,6 +469,7 @@
       <button data-tab="mgreodview">Manager EODs</button>
       <button data-tab="onbaudit">Onboarding Audit</button>
       <button data-tab="ghlmap">GHL Mapping</button>
+      <button data-tab="pcfields">Post-Call Fields</button>
       <button data-tab="data">Data + Export</button>
       <button data-tab="users">Users</button>
       <button data-tab="integrations">Integrations</button>
@@ -884,6 +885,7 @@
         <div id="pcSchedRemain" class="fieldhelp" style="margin-top:8px"></div>
       </div>
       <div class="field full closerPc"><label>Fathom recording link</label><input type="url" name="fathom" placeholder="https://fathom.video/share/..."><span class="fieldhelp">Go to <a href="https://www.fathom.ai/" target="_blank" rel="noopener" class="linklike">fathom.ai</a> -> open the call -> three dots -> Copy share link.</span></div>
+      <div class="full" id="pcExtraFields"></div>
       <div class="field full"><label>Notes</label><input type="text" name="notes" placeholder="what tripped it up, next step, anything your manager should know"></div>
       <div class="full row-actions"><button class="btn gold" type="submit">Submit post-call</button></div>
     </form>
@@ -1724,6 +1726,18 @@ If they did not watch: No problem at all, I will send it right over. Can you wat
     <div id="gmBody"></div>
   </section>
 
+  <!-- ===== POST-CALL FIELDS ===== -->
+  <section id="tab-pcfields" hidden>
+    <h2 class="section">Post-Call Fields</h2>
+    <p class="hint">Add client-specific questions to the Post-Call Checkout that write straight into that client's <b>GHL custom fields</b>. Pick a client, pull their fields, choose which become questions and who answers them. When a setter or closer submits the post-call for that client, their answers update the lead in GHL. This is <b>per client</b> - only clients you set up here get extra questions. Admins only.</p>
+    <div class="filters" style="align-items:flex-end">
+      <div class="field"><label>Client</label><select id="pfClient" onchange="pfClientChange()"></select></div>
+      <button class="btn gold sm" id="pfFetchBtn" onclick="pfFetch()">Pull custom fields from GHL</button>
+    </div>
+    <div id="pfStatus" class="fieldhelp" style="margin:6px 0"></div>
+    <div id="pfBody"></div>
+  </section>
+
   <!-- ===== INTEGRATIONS ===== -->
   <section id="tab-integrations" hidden>
     <h2 class="section">Integrations</h2>
@@ -2381,8 +2395,8 @@ function startApp(){
 // base tabs a login TIER can see; per-account responsibilities add to this in applyNavAccess()
 function baseAllow(role){
   return ({
-    admin:['dash','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','dayreports','adminreport','recruiting','messages','invoicing','contracts','onbaudit','ghlmap','data','users','integrations','settings','reprequests','resources','faq','kickoff','webinarsop'],
-    director:['dash','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','dailyreport','dayreports','recruiting','messages','adminreport','contracts','onbaudit','ghlmap','reprequests','resources','faq','kickoff','webinarsop'],
+    admin:['dash','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','dayreports','adminreport','recruiting','messages','invoicing','contracts','onbaudit','ghlmap','pcfields','data','users','integrations','settings','reprequests','resources','faq','kickoff','webinarsop'],
+    director:['dash','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','dailyreport','dayreports','recruiting','messages','adminreport','contracts','onbaudit','ghlmap','pcfields','reprequests','resources','faq','kickoff','webinarsop'],
     manager:['dash','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','speedtolead','dailyreport','dayreports','adminreport','recruiting','messages','reprequests','resources','faq','kickoff','webinarsop'],
     founder:['dash','reprequests','faq'],
     recruiter:['dash','recruiting','messages','timeoff','reprequests','resources','faq','kickoff','webinarsop'],
@@ -2527,7 +2541,7 @@ function showTab(t){
   document.querySelectorAll('#tabs button[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
   document.querySelectorAll('#tabs .navgroup').forEach(g=>{ if(g.querySelector('button[data-tab="'+t+'"]')) g.classList.remove('collapsed'); }); // reveal the active tab's group
 
-  ['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','dayreports','adminreport','reprequests','recruiting','messages','invoicing','contracts','onbaudit','ghlmap','data','users','integrations','settings','resources','faq','kickoff','webinarsop','scorecards'].forEach(x=>{ const el=document.getElementById('tab-'+x); if(el) el.hidden = (x!==t); });
+  ['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','dayreports','adminreport','reprequests','recruiting','messages','invoicing','contracts','onbaudit','ghlmap','pcfields','data','users','integrations','settings','resources','faq','kickoff','webinarsop','scorecards'].forEach(x=>{ const el=document.getElementById('tab-'+x); if(el) el.hidden = (x!==t); });
   // stale-while-revalidate: render instantly from the cached records, then refresh in the background
   const render={dash:renderDash, mydeals:renderMyDeals, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, promises:renderPromisesTab, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, mgreodview:renderMgrEodView, contracts:renderContracts, faq:renderFaq, scorecards:renderScorecards, webinar:renderWebinars, calllog:renderCallLog, calendar:renderCalendar, speedtolead:renderSpeedToLead, dailyreport:renderDailyReport, dayreports:renderDayReports, adminreport:renderAdminReport, reprequests:renderRepRequests, recruiting:renderRecruiting, messages:renderMessages, training:renderTraining, invoicing:renderInvoicing, data:renderAll}[t];
   if(render){ render(); syncRecords().then(()=>{ if(currentTab()===t) render(); buildGlobalClientSelect(); buildViewAsUserSelect(); updateNavBadges(); renderReminders(); }); }
@@ -2538,6 +2552,7 @@ function showTab(t){
   if(t==='integrations'){ renderIntegrations(); }
   if(t==='onbaudit'){ renderOnbAudit(); }
   if(t==='ghlmap'){ renderGhlMap(); }
+  if(t==='pcfields'){ renderPcFieldsTab(); }
   if(t==='sod'){ renderSodTab(); }
   renderReminders();
 }
@@ -2861,6 +2876,7 @@ async function submitPostCall(e){ e.preventDefault(); const btn=e.target.querySe
     if(o.role==='Setter' && !(o.setter||'').trim()) o.setter=o.rep; // a setter's post-call credits themselves
     won=/^Won/.test(o.outcome||'');
     if(won && !(o.leadEmail||'').trim()){ toast('Lead email is required on a Won close - it matches the deal to the CRM contact.',true); return; }
+    const gf={}; document.querySelectorAll('#pcExtraFields [data-pcfield]').forEach(el=>{ if(el && el.value!=='') gf[el.getAttribute('data-pcfield')]=el.value; }); if(Object.keys(gf).length) o.ghlFields=gf; // Post-Call Fields -> written to GHL custom fields on server push
     await addRecord(o); // every call logs a post-call record
     if(won){ // a win ALSO logs a closed deal so it flows into cash / leaderboards / invoicing
       const d=num({type:'deal',role:'Closer',date:o.date,client:o.client,lead:o.lead,leadEmail:o.leadEmail||'',rep:o.rep,setter:o.setter||'',source:o.source||'',product:o.product||'',callType:o.callType||'',contractValue:o.contractValue||0,cashCollected:o.cashCollected||0,depositCollected:o.depositCollected||0,fathom:o.fathom||'',notes:o.notes||'',closedDeals:1});
@@ -2879,6 +2895,22 @@ function postcallClientChanged(){
   const prods = cs && cs.value ? productsForClient(cs.value) : (CFG.products||[]);
   const cur=ps.value; ps.innerHTML='<option value="">-</option>'+prods.map(p=>`<option>${esc(p)}</option>`).join(''); if(cur) ps.value=cur;
   scopeSetterFor('#postcallForm');
+  try{ renderPcExtraFields(); }catch(_){}
+}
+// Post-Call Fields: a client can have extra qualification questions (mapped to its GHL fields) that appear on the form
+function pcFieldsFor(client){ if(!client) return null; let best=null; const cn=nrm(client); RECORDS.forEach(x=>{ if(x.type==='pcfields'&&nrm(x.client)===cn){ if(!best||(x.submittedAt||'')>(best.submittedAt||'')) best=x; } }); return best; }
+function renderPcExtraFields(){
+  const wrap=document.getElementById('pcExtraFields'); if(!wrap) return;
+  const client=(document.querySelector('#postcallForm [name=client]')||{}).value||'', role=(typeof pcRole==='function'?pcRole():'Closer');
+  const cfg=pcFieldsFor(client);
+  const fields=(cfg&&Array.isArray(cfg.fields)?cfg.fields:[]).filter(f=> !f.role||f.role==='Both'||f.role===role);
+  if(!client||!fields.length){ wrap.innerHTML=''; return; }
+  let h=`<div class="formhead" style="margin-top:6px"><b>${esc(client)} lead qualification</b><span class="sub">saved to the lead's GHL fields when you submit</span></div><div class="grid3">`;
+  fields.forEach(f=>{ const opts=Array.isArray(f.options)?f.options:[]; const inp = opts.length
+      ? `<select data-pcfield="${esc(f.id)}"><option value="">-</option>${opts.map(o=>`<option>${esc(o)}</option>`).join('')}</select>`
+      : `<input type="text" data-pcfield="${esc(f.id)}">`;
+    h+=`<div class="field"><label>${esc(f.label||f.name)}</label>${inp}</div>`; });
+  wrap.innerHTML=h+`</div>`;
 }
 function postcallOutcomeChanged(){
   const sel=document.querySelector('#postcallForm [name=outcome]'), won = sel && /^Won/.test(sel.value||''), dq = sel && /^Disqualified/.test(sel.value||''), fu = sel && /(Follow-up booked|Callback scheduled|Rescheduled)/.test(sel.value||'');
@@ -2903,6 +2935,7 @@ function setPcRole(r){
   document.querySelectorAll('#postcallForm .closerPc').forEach(e=>e.hidden = r!=='Closer'); // setters don't credit a separate setter
   const os=document.querySelector('#postcallForm [name=outcome]');
   if(os){ const cur=os.value, list=PC_OUTCOMES[r]||PC_OUTCOMES.Closer; os.innerHTML='<option value="">-</option>'+list.map(o=>`<option>${esc(o)}</option>`).join(''); os.value=list.includes(cur)?cur:''; }
+  try{ renderPcExtraFields(); }catch(_){}
   if(!repMode()){ // admins/managers pick the rep; reps stay locked to their own name via applyIdentity
     const repSel=document.querySelector('#postcallForm [name=rep]');
     if(repSel){ let items=r==='Setter'?repNames('setter'):repNames('closer'); const ldr=leaderNames(); if(ldr.length) items=[...ldr.filter(n=>!items.includes(n)),...items]; repSel.innerHTML='<option value="">-</option>'+items.map(i=>`<option>${esc(i)}</option>`).join(''); }
@@ -5499,6 +5532,55 @@ async function gmSave(){
   const autoMove=!!((document.getElementById('gmAuto')||{}).checked);
   await addRecord({type:'ghlmap',client,pipelineId:pipe.id,pipelineName:pipe.name,map,stageNames,autoMove});
   toast('GHL mapping saved for '+client);
+}
+/* ===== Admin > Post-Call Fields: per-client post-call questions mapped to the client's GHL custom fields ===== */
+let PF_FIELDS=null, PF_LOADED_CLIENT='';
+function renderPcFieldsTab(){
+  const sel=document.getElementById('pfClient'); if(sel){ const clients=clientNames().slice().sort((a,b)=>String(a).localeCompare(String(b))); const prev=preferGlobal(clients, sel.value||''); sel.innerHTML='<option value="">Select a client</option>'+clients.map(c=>`<option${c===prev?' selected':''}>${esc(c)}</option>`).join(''); sel.value=prev; }
+  const cur=(sel&&sel.value)||''; if(cur!==PF_LOADED_CLIENT){ PF_FIELDS=null; PF_LOADED_CLIENT=''; }
+  pfRenderBody();
+}
+function pfClientChange(){ PF_FIELDS=null; PF_LOADED_CLIENT=''; const st=document.getElementById('pfStatus'); if(st) st.textContent=''; pfRenderBody(); }
+async function pfFetch(){
+  const client=(document.getElementById('pfClient')||{}).value||''; if(!client){ toast('Pick a client first',true); return; }
+  const st=document.getElementById('pfStatus'), btn=document.getElementById('pfFetchBtn'); if(btn) btn.disabled=true; if(st){ st.textContent='Pulling custom fields from GHL...'; st.style.color='var(--muted)'; }
+  const j=await gmApi('ghlFields',{client}); if(btn) btn.disabled=false;
+  if(!j||!j.ok){ if(st){ st.textContent=(j&&j.error)||'Could not load fields'; st.style.color='var(--warn)'; } PF_FIELDS=null; PF_LOADED_CLIENT=''; pfRenderBody(); return; }
+  PF_FIELDS=j.fields||[]; PF_LOADED_CLIENT=client;
+  if(st){ st.textContent=`Loaded ${PF_FIELDS.length} custom field${PF_FIELDS.length===1?'':'s'} from ${esc(client)}'s GHL.`; st.style.color='var(--good)'; }
+  pfRenderBody();
+}
+function pfRenderBody(){
+  const body=document.getElementById('pfBody'); if(!body) return;
+  const client=(document.getElementById('pfClient')||{}).value||'';
+  if(!client){ body.innerHTML='<p class="muted" style="padding:8px 0">Select a client, then pull their GHL custom fields to choose which become post-call questions.</p>'; return; }
+  const saved=pcFieldsFor(client); const savedMap={}; if(saved&&Array.isArray(saved.fields)) saved.fields.forEach(f=>savedMap[f.id]=f);
+  let list=null, fromSaved=false;
+  if(PF_FIELDS) list=PF_FIELDS;
+  else if(saved&&Array.isArray(saved.fields)&&saved.fields.length){ list=saved.fields.slice(); fromSaved=true; }
+  if(!list){ body.innerHTML='<p class="muted" style="padding:8px 0">Click <b>Pull custom fields from GHL</b> to load this client\'s fields.</p>'; return; }
+  if(!list.length){ body.innerHTML='<p class="hint">No custom fields found in this client\'s GHL.</p>'; return; }
+  let h=`<div class="panel" style="padding:12px 14px">`;
+  h+= fromSaved
+    ? `<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:4px"><div style="font-weight:700">Post-call questions for ${esc(client)}</div><button class="btn ghost sm" onclick="pfFetch()">Refresh / add fields from GHL</button></div><div class="muted" style="font-size:11.5px;margin-bottom:10px">Showing your saved questions. Pull from GHL to add more fields or refresh options.</div>`
+    : `<div style="font-weight:700;margin-bottom:4px">Choose which GHL fields become post-call questions</div><div class="muted" style="font-size:11.5px;margin-bottom:10px">Tick a field to add it to the Post-Call Checkout for ${esc(client)}. Its answer writes back to that GHL field on submit.</div>`;
+  list.forEach(f=>{ const sv=savedMap[f.id]; const on=fromSaved?true:!!sv; const label=(sv&&sv.label)||f.name||f.key||f.id; const role=(sv&&sv.role)||'Setter'; const opts=Array.isArray(f.options)&&f.options.length?f.options:((sv&&sv.options)||[]);
+    h+=`<div class="panel" style="margin:0 0 8px;padding:10px 12px" data-pffield="${esc(f.id)}" data-pfkey="${esc(f.key||'')}" data-pfname="${esc(f.name||'')}" data-pfdtype="${esc(f.dataType||'')}" data-pfopts="${esc(JSON.stringify(opts))}">
+      <label style="display:flex;align-items:center;gap:8px;font-weight:600;font-size:13.5px"><input type="checkbox" class="pfInc" ${on?'checked':''} style="width:16px;height:16px;flex:0 0 auto"> ${esc(f.name||f.key||f.id)}</label>
+      <div class="muted" style="font-size:11px;margin:2px 0 8px">${esc(f.dataType||'field')}${opts.length?(' - options: '+esc(opts.slice(0,6).join(', '))+(opts.length>6?'...':'')):' - free text'}</div>
+      <div class="filters" style="margin:0"><div class="field" style="flex:2"><label>Question label on the form</label><input class="pfLabel" value="${esc(label)}"></div><div class="field" style="max-width:160px"><label>Who answers</label><select class="pfRole">${['Setter','Closer','Both'].map(r=>`<option${role===r?' selected':''}>${r}</option>`).join('')}</select></div></div>
+    </div>`; });
+  h+=`<div class="row-actions" style="margin-top:10px"><button class="btn gold sm" onclick="pfSave()">Save questions</button></div><p class="fieldhelp" style="margin-top:8px">Reps see only the ticked questions for their role. On submit the answers write to the lead's GHL custom fields (the client's GHL must be connected under Integrations > CRM push).</p></div>`;
+  body.innerHTML=h;
+}
+async function pfSave(){
+  const client=(document.getElementById('pfClient')||{}).value||''; if(!client){ toast('Pick a client',true); return; }
+  const out=[];
+  document.querySelectorAll('#pfBody [data-pffield]').forEach(card=>{ const inc=card.querySelector('.pfInc'); if(!inc||!inc.checked) return;
+    let opts=[]; try{ opts=JSON.parse(card.getAttribute('data-pfopts')||'[]'); }catch(e){}
+    out.push({ id:card.getAttribute('data-pffield'), key:card.getAttribute('data-pfkey')||'', name:card.getAttribute('data-pfname')||'', dataType:card.getAttribute('data-pfdtype')||'', options:opts, label:(card.querySelector('.pfLabel')||{}).value||'', role:(card.querySelector('.pfRole')||{}).value||'Setter' }); });
+  await addRecord({type:'pcfields',client,fields:out});
+  toast('Saved '+out.length+' post-call question'+(out.length===1?'':'s')+' for '+client);
 }
 async function renderOnbAudit(){
   const wrap=document.getElementById('onbAuditBody'); if(!wrap) return;

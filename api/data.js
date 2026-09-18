@@ -253,6 +253,16 @@ async function ghlPush(cfg, rec, contactIdOverride) {
     if (rec.source) await fetch(base + '/contacts/' + id, { method: 'PUT', headers: H, body: JSON.stringify({ source: rec.source }) }).catch(() => { });
     const tsaTag = rec.type === 'deal' ? 'tsa - closed deal' : 'tsa - post-call'; // append (never replaces existing tags) so the marketer can filter TSA outcomes
     await fetch(base + '/contacts/' + id + '/tags' + (v2 ? '' : '/'), { method: 'POST', headers: H, body: JSON.stringify({ tags: [tsaTag] }) }).catch(() => { });
+    // Post-Call Fields: write the rep's answers back to the contact's GHL custom fields (map is fieldId -> value)
+    if (rec.ghlFields && typeof rec.ghlFields === 'object') {
+      const entries = Object.entries(rec.ghlFields).filter(e => e[1] !== '' && e[1] != null);
+      if (entries.length) {
+        try {
+          if (v2) await fetch(base + '/contacts/' + id, { method: 'PUT', headers: H, body: JSON.stringify({ customFields: entries.map(e => ({ id: e[0], value: e[1] })) }) });
+          else { const cf = {}; entries.forEach(e => { cf[e[0]] = e[1]; }); await fetch(base + '/contacts/' + id, { method: 'PUT', headers: H, body: JSON.stringify({ customField: cf }) }); }
+        } catch (e) { }
+      }
+    }
     return { ok: true, contactId: id };
   } catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
 }
@@ -271,6 +281,27 @@ async function ghlPipelines(cfg) {
     const j = await r.json().catch(() => ({}));
     const pipelines = (j.pipelines || []).map(p => ({ id: p.id, name: p.name, stages: (p.stages || []).map(st => ({ id: st.id, name: st.name })) }));
     return { ok: true, pipelines };
+  } catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
+}
+
+// list a client's GHL custom fields (id/name/key/type/options) for the Post-Call Fields feature. Token stays server-side.
+async function ghlFields(cfg) {
+  if (!cfg || !cfg.ghlApiKey) return { ok: false, error: 'no GHL API key set for this client' };
+  try {
+    const key = String(cfg.ghlApiKey || ''), v2 = /^pit-/i.test(key), loc = String(cfg.ghlLocationId || '').trim();
+    const H = v2 ? { Authorization: 'Bearer ' + key, Version: '2021-07-28' } : { Authorization: 'Bearer ' + key };
+    if (v2 && !loc) return { ok: false, error: 'This is a v2 Private Integration token - set the Location ID on Integrations first.' };
+    const url = v2 ? 'https://services.leadconnectorhq.com/locations/' + encodeURIComponent(loc) + '/customFields'
+                   : 'https://rest.gohighlevel.com/v1/custom-fields/';
+    const r = await fetch(url, { headers: H });
+    if (!r.ok) { const t = await r.text(); return { ok: false, error: 'GHL custom-fields lookup failed (' + r.status + ') ' + t.slice(0, 140) }; }
+    const j = await r.json().catch(() => ({}));
+    const raw = j.customFields || j.customField || [];
+    const fields = raw.filter(f => f && f.id).map(f => ({
+      id: f.id, name: f.name || f.fieldKey || f.id, key: f.fieldKey || f.key || '', dataType: f.dataType || f.type || '',
+      options: Array.isArray(f.picklistOptions) ? f.picklistOptions : (Array.isArray(f.options) ? f.options : [])
+    }));
+    return { ok: true, fields };
   } catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
 }
 
@@ -337,7 +368,7 @@ export default async function handler(req, res) {
       if (!r.ok) { const t = await r.text(); return res.status(200).json({ ok: false, error: 'db ' + r.status + ' ' + t.slice(0, 160) }); }
       if (rec.type === 'eod' || rec.type === 'mgreod') await eodToSlack(rec); // mirror the submitted report to the client's Slack, if enabled
       else if (rec.type === 'deal' || rec.type === 'postcall' || rec.type === 'sod') await eventToSlack(rec); // New closed deal / Post-call / SOD projection feeds
-      if (rec.type === 'postcall' || rec.type === 'deal') { try { const gcfg = await integrationFor(rec.ws, rec.client); if (gcfg && gcfg.ghlEnabled && gcfg.ghlApiKey) await ghlPush(gcfg, rec); } catch (e) { } } // push the disposition back to the client's GHL (paid/organic attribution loop)
+      if (rec.type === 'postcall' || rec.type === 'deal') { try { const gcfg = await integrationFor(rec.ws, rec.client); const hasFields = rec.ghlFields && Object.keys(rec.ghlFields).length; if (gcfg && gcfg.ghlApiKey && (gcfg.ghlEnabled || hasFields)) await ghlPush(gcfg, rec); } catch (e) { } } // push the disposition back to the client's GHL (paid/organic attribution loop); also fires when a post-call carries Post-Call Fields answers even if disposition-push is off
       return res.status(200).json({ ok: true });
     }
     // ---------- RESEND a record's Slack post (e.g. a closed deal whose channel wasn't connected at submit time) ----------
@@ -382,6 +413,16 @@ export default async function handler(req, res) {
       const cfg = await integrationFor(callerWs, client);
       if (!cfg || !cfg.ghlApiKey) return res.status(200).json({ ok: false, error: 'No GHL API key set for ' + client + ' - add it on Integrations > CRM push (GHL) first.' });
       const out = await ghlPipelines(cfg);
+      return res.status(200).json(out);
+    }
+    // ---------- list a client's GHL custom fields (Admin > Post-Call Fields) ----------
+    if (action === 'ghlFields') {
+      if (s && !['admin', 'director'].includes(s.role)) return res.status(200).json({ ok: false, error: 'Admins only' });
+      const client = String(b.client || q.client || '').trim();
+      if (!client) return res.status(200).json({ ok: false, error: 'client required' });
+      const cfg = await integrationFor(callerWs, client);
+      if (!cfg || !cfg.ghlApiKey) return res.status(200).json({ ok: false, error: 'No GHL API key set for ' + client + ' - add it on Integrations > CRM push (GHL) first.' });
+      const out = await ghlFields(cfg);
       return res.status(200).json(out);
     }
     // ---------- SEND a founder-invoice summary to the client's invoicing Slack channel (T-546) ----------
