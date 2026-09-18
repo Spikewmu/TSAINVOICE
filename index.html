@@ -120,6 +120,14 @@
   .modal{position:fixed;inset:0;background:rgba(0,0,0,.55);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;z-index:200;padding:20px}
   .modalcard{background:#1b1610;border:1px solid var(--border);border-radius:14px;padding:22px 22px 20px;width:min(400px,94vw);box-shadow:0 24px 70px rgba(0,0,0,.55)}
   .modalcard label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px}
+  /* deal commission-credit modal: selectable option cards */
+  .modalcard .dcOpt{display:flex;gap:11px;align-items:flex-start;border:1px solid var(--border);border-radius:10px;padding:12px 13px;margin:0 0 8px;cursor:pointer;font-weight:500;color:var(--ink);transition:border-color .12s,background .12s}
+  .modalcard .dcOpt:hover{border-color:var(--gold)}
+  .modalcard .dcOpt input[type=radio]{width:16px;height:16px;flex:0 0 auto;margin:2px 0 0;accent-color:var(--gold)}
+  .modalcard .dcOpt>span{display:block}
+  .modalcard .dcOpt .dcOptTitle{display:block;font-weight:700;font-size:13.5px;color:var(--ink)}
+  .modalcard .dcOpt .fieldhelp{display:block;margin:2px 0 0;font-weight:400;line-height:1.45}
+  .modalcard .dcOpt:has(input:checked){border-color:var(--gold);background:var(--gold-soft)}
   .modalcard input{width:100%}
   /* role checkboxes: clean left-aligned rows (override the modal's full-width input rule) */
   #rolesBoxes label{display:flex;align-items:center;gap:10px;margin:0;font-size:14px;color:var(--ink);cursor:pointer}
@@ -2008,11 +2016,11 @@ If they did not watch: No problem at all, I will send it right over. Can you wat
       <div class="field"><label>Closer (gets closer commission)</label><select id="dcCloser"></select></div>
       <div class="field"><label>Setter (gets setter commission)</label><select id="dcSetter"></select></div>
     </div>
-    <div class="field" style="margin-top:6px"><label>How to apply</label>
-      <label style="display:flex;gap:8px;align-items:flex-start;font-weight:500;margin-top:4px"><input type="radio" name="dcMode" value="comm" checked style="margin-top:3px"><span>Commission only <span class="fieldhelp" style="margin:0;font-weight:400">- keep the original closer on record (dashboards + scorecards unchanged); only the pay report + that rep's My Deals follow it.</span></span></label>
-      <label style="display:flex;gap:8px;align-items:flex-start;font-weight:500;margin-top:6px"><input type="radio" name="dcMode" value="full" style="margin-top:3px"><span>Full reassign <span class="fieldhelp" style="margin:0;font-weight:400">- change the deal's closer/setter outright; everything (commission, My Deals, the close credit) moves to them.</span></span></label>
+    <div style="margin-top:10px"><label style="display:block;font-size:12px;color:var(--muted);margin-bottom:6px">How to apply</label>
+      <label class="dcOpt"><input type="radio" name="dcMode" value="comm" checked><span><span class="dcOptTitle">Commission only</span><span class="fieldhelp">Keep the original closer on record (dashboards + scorecards unchanged); only the pay report and that rep's My Deals follow it.</span></span></label>
+      <label class="dcOpt"><input type="radio" name="dcMode" value="full"><span><span class="dcOptTitle">Full reassign</span><span class="fieldhelp">Change the deal's closer/setter outright; everything (commission, My Deals, the close credit) moves to them.</span></span></label>
     </div>
-    <div class="fieldhelp" style="margin-top:8px">Applies to the close-day cash and all payments on this deal (existing + future).</div>
+    <div class="fieldhelp" style="margin:2px 0 0">Applies to the close-day cash and all payments on this deal (existing + future).</div>
     <div class="row-actions" style="margin-top:12px"><button class="btn gold sm" onclick="dcSave()">Save</button><button class="btn ghost sm" onclick="dcClose()">Cancel</button></div>
   </div>
 </div>
@@ -4788,7 +4796,7 @@ function renderMyDeals(){
       </div>
       <div class="bar" style="height:5px;margin-bottom:8px"><i style="width:${barPct}%"></i></div>
       ${nextLine}${commOv}
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px"><div class="row-actions"><button class="btn gold sm" onclick="openPayments('${esc(String(d.id))}')">Manage payments</button>${oversight?`<button class="btn ghost sm" onclick="openDealCredit('${esc(String(d.id))}')">Credit</button>`:''}</div>${who}</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px"><div class="row-actions"><button class="btn gold sm" onclick="openPayments('${esc(String(d.id))}')">Manage payments</button>${dcCanEdit()?`<button class="btn ghost sm" onclick="openDealCredit('${esc(String(d.id))}')">Credit</button>`:''}</div>${who}</div>
     </div>`;
   }).join('')+`</div>`;
 }
@@ -4811,7 +4819,7 @@ function dealById(id){ id=String(id||''); if(!id) return null; let best=null; RE
 // Effective commission recipient (honors an admin "commission credit" override stored on the deal). Payments inherit their deal's override via dealId.
 function effCloserOf(rec){ if(!rec) return ''; if(rec.type==='payment'){ const d=dealById(rec.dealId); const ov=d&&d.commRep; return String((ov!=null&&ov!=='')?ov:(rec.rep||'')).trim(); } return String((rec.commRep!=null&&rec.commRep!=='')?rec.commRep:(rec.rep||'')).trim(); }
 function effSetterOf(rec){ if(!rec) return ''; if(rec.type==='payment'){ const d=dealById(rec.dealId); const ov=d&&d.commSetter; return String((ov!=null&&ov!=='')?ov:(rec.setter||'')).trim(); } return String((rec.commSetter!=null&&rec.commSetter!=='')?rec.commSetter:(rec.setter||'')).trim(); }
-function dcCanEdit(){ return !!(SESSION && ['admin','director','manager'].includes(SESSION.role)); }
+function dcCanEdit(){ return !!(SESSION && SESSION.role==='admin'); } // Super Admin only (Steve + Robb)
 let DC_DEAL=null;
 function dcRepOptions(role, current){
   let names=[];
