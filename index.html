@@ -823,7 +823,7 @@
             <div class="field"><label>TSA override (%)</label><input type="number" id="invOverrideRate" step="0.1" placeholder="e.g. 3"></div>
           </div>
         </div>
-        <label style="display:flex;gap:8px;align-items:flex-start;margin-top:12px;font-weight:500"><input type="checkbox" id="invFrontEndOnly" style="margin-top:3px"><span>Front-end only <span class="fieldhelp" style="margin:0;font-weight:400">- reps earn commission <b>only</b> on payments collected within 30 days of the close (e.g. Snoop). TSA still bills the client on later payments; the rep just isn't paid on them. Leave off for normal accounts, where reps are paid on recurring / back-end payments too.</span></span></label>
+        <label style="display:flex;gap:8px;align-items:flex-start;margin-top:12px;font-weight:500"><input type="checkbox" id="invFrontEndOnly" style="width:20px;height:20px;flex:0 0 auto;margin:1px 2px 0 0;accent-color:var(--gold);cursor:pointer"><span>Front-end only <span class="fieldhelp" style="margin:0;font-weight:400">- reps earn commission <b>only</b> on payments collected within 30 days of the close (e.g. Snoop). TSA still bills the client on later payments; the rep just isn't paid on them. Leave off for normal accounts, where reps are paid on recurring / back-end payments too.</span></span></label>
         <div class="row-actions" style="margin-top:10px"><button class="btn gold sm" onclick="saveClientBilling()">Save client rate</button></div>
       </div>
       <div class="panel" style="padding:18px;max-width:760px;margin-top:16px">
@@ -3514,7 +3514,7 @@ function renderContracts(){
   let pastDue=0; Object.keys(monthTSA).forEach(k=>{ if(k<firstKey) pastDue+=monthTSA[k]; }); // overdue scheduled income rolls into this month
   for(let i=0;i<6;i++){ const d=new Date(d0.getFullYear(),d0.getMonth()+i,1), key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; let amt=fcMonth+(monthTSA[key]||0); if(i===0) amt+=pastDue; months.push({label:d.toLocaleString('en-US',{month:'short',year:'numeric'}), amt}); }
   const next12=fcMonth*12+expOut; // recurring for the year + all outstanding one-time income
-  const card=(l,v)=>`<div class="kpi" style="flex:1;min-width:160px"><div class="lbl">${l}</div><div class="val">${v}</div></div>`;
+  const card=(l,v)=>`<div class="kpi" style="flex:1;min-width:160px;display:flex;flex-direction:column"><div class="lbl" style="min-height:2.6em">${l}</div><div class="val" style="margin-top:auto">${v}</div></div>`;
   const cards=document.getElementById('conCards'); if(cards) cards.innerHTML=card('Active contracts',active.length)+card('Forecast TSA revenue / mo',money(fcMonth))+card('Expected TSA (outstanding)',money(expOut))+card('Actual TSA ('+esc(rng.label)+')',money(actual))+card('Next 12 mo (recurring + o/s)',money(next12));
   const t=document.getElementById('conTable'); if(t) t.innerHTML=`<thead><tr><th>Client</th><th>Status</th><th class="num">Front-end</th><th class="num">Back-end</th><th class="num">Forecast TSA/mo</th><th class="num">Actual TSA</th><th class="num">Expected (o/s)</th><th></th></tr></thead><tbody>${rows}</tbody>`;
   const fc=document.getElementById('conForecast'); if(fc) fc.innerHTML=`<thead><tr>${months.map(m=>`<th class="num">${esc(m.label)}</th>`).join('')}<th class="num">Next 12 mo</th></tr></thead><tbody><tr>${months.map(m=>`<td class="num">${money(m.amt)}</td>`).join('')}<td class="num"><b>${money(next12)}</b></td></tr></tbody>`;
