@@ -415,6 +415,7 @@
     <button class="navhead"><svg class="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14v-2a8 8 0 0116 0v2"/><rect x="2" y="14" width="4" height="6" rx="1"/><rect x="18" y="14" width="4" height="6" rx="1"/></svg><span class="nlabel">Setter / Closer tools</span><svg class="nchev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
     <div class="navsub">
       <button data-tab="mydeals">My Deals & Payments</button>
+      <button data-tab="hotlist">Hot List</button>
       <button data-tab="postcall">Post-Call Checkout</button>
       <button data-tab="sod">Start of Day</button>
       <button data-tab="eod">End of Day</button>
@@ -444,7 +445,6 @@
     <div class="navsub">
       <button data-tab="dailyreport">Daily Report</button>
       <button data-tab="dayreports">SOD / EOD Reports</button>
-      <button data-tab="hotlist">Hot List</button>
       <button data-tab="reps">Rep Breakdown</button>
       <button data-tab="scorecards">Scorecards</button>
       <button data-tab="mgreod">Manager EOD</button>
@@ -1681,7 +1681,7 @@ If they did not watch: No problem at all, I will send it right over. Can you wat
       <div class="field"><label>Client</label><select id="hlClient" onchange="renderHotList()"><option value="">All clients</option></select></div>
       <div class="field"><label>Close date</label><div class="rangewrap"><input type="text" id="hlRange_txt" readonly placeholder="Click a start day, then an end day" onclick="rpToggle('hlRange',event)"><input type="hidden" id="hlRange_from"><input type="hidden" id="hlRange_to"><div class="rangepop" id="hlRange_pop" hidden onclick="event.stopPropagation()"></div></div></div>
       <div class="field"><label>Quick range</label><div class="row-actions"><button class="btn ghost sm" onclick="hlPreset('month')">This month</button><button class="btn ghost sm" onclick="hlPreset('7')">Next 7 days</button><button class="btn ghost sm" onclick="hlPreset('30')">Next 30 days</button><button class="btn ghost sm" onclick="hlPreset('quarter')">This quarter</button><button class="btn ghost sm" onclick="hlPreset('all')">All</button></div></div>
-      <button class="btn gold sm" onclick="hlOpenAdd()">+ Add deal</button>
+      <button class="btn gold sm" id="hlAddBtn" onclick="hlOpenAdd()">+ Add deal</button>
     </div>
     <div id="hlKpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px;margin:12px 0"></div>
     <div class="panel"><div class="tablewrap"><table id="hlTable"></table></div></div>
@@ -5480,6 +5480,8 @@ function renderDayReports(){
 }
 /* ---------------- Hot List (T-555): rep-flagged projected deals, team-wide forecast on projections ---------------- */
 let HL_EDIT_ID=null;
+// who can add/edit hot deals: super admin, director, managers, and closers (incl. hybrids). Setters are view-only.
+function hlCanAdd(){ return !!(SESSION && (['admin','director','manager'].includes(SESSION.role) || (typeof hasRole==='function' && hasRole(SESSION.username,'closer')))); }
 function hotDeals(){ const m={}; RECORDS.forEach(x=>{ if(x.type!=='hotdeal'||!x.id) return; if(!m[x.id]||(x.submittedAt||'')>(m[x.id].submittedAt||'')) m[x.id]=x; }); return Object.values(m).filter(d=>!d.deleted); }
 function hlRepNames(){ try{ return [...new Set([...(repNames('closer')||[]),...(repNames('setter')||[])])].sort((a,b)=>String(a).localeCompare(String(b))); }catch(e){ return []; } }
 function hlClients(){ const scope=dashScopeClients(); const all=clientNames().slice().sort((a,b)=>String(a).localeCompare(String(b))); return (scope&&scope.length)?all.filter(c=>scope.includes(c)):all; }
@@ -5503,6 +5505,7 @@ function renderHotList(){
   const rc=document.getElementById('hlClient'); if(rc){ const prev=preferGlobal(clients, rc.value||''); rc.innerHTML='<option value="">All clients</option>'+clients.map(c=>`<option${c===prev?' selected':''}>${esc(c)}</option>`).join(''); rc.value=prev; }
   const rp=document.getElementById('hlRep'); if(rp){ const prev=rp.value; rp.innerHTML='<option value="">All reps</option>'+hlRepNames().map(n=>`<option${n===prev?' selected':''}>${esc(n)}</option>`).join(''); rp.value=prev; }
   try{ rpAttach('hlRange', renderHotList); }catch(e){}
+  const canAdd=hlCanAdd(); const ab=document.getElementById('hlAddBtn'); if(ab) ab.style.display=canAdd?'':'none';
   const deals=hlVisible(), open=deals.filter(d=>(d.status||'Open')==='Open');
   const fc=open.reduce((a,d)=>a+(+d.revenue||0),0), wt=open.reduce((a,d)=>a+(+d.revenue||0)*((+d.prob||0)/100),0), cc=open.reduce((a,d)=>a+(+d.cash||0),0);
   const kpi=(lbl,val)=>`<div class="panel" style="padding:14px 16px;margin:0"><div class="muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.03em;font-weight:700">${lbl}</div><div style="font-size:24px;font-weight:700;margin-top:3px">${val}</div></div>`;
@@ -5510,7 +5513,7 @@ function renderHotList(){
   const stPill=s=>{ s=s||'Open'; const c=s==='Won'?'good':(s==='Lost'?'warn':''); return `<span class="pill ${c}">${esc(s)}</span>`; };
   const rows=deals.slice().sort((a,b)=>String(a.closeDate||'').localeCompare(String(b.closeDate||''))).map(d=>{
     const id=esc(String(d.id));
-    const act=`<span style="white-space:nowrap"><button class="btn sm ghost" title="Mark won" onclick="hlSetStatus('${id}','Won')" style="color:#7bd487;border-color:#3a5a45">&#10003;</button> <button class="btn sm ghost" title="Mark lost" onclick="hlSetStatus('${id}','Lost')" style="color:var(--warn);border-color:var(--warn)">&#10007;</button> <button class="btn sm ghost" title="Edit" onclick="hlOpenEdit('${id}')">&#9998;</button> <button class="btn sm ghost" title="Delete" onclick="hlDelete('${id}')">&#128465;</button></span>`;
+    const act=canAdd?`<span style="white-space:nowrap"><button class="btn sm ghost" title="Mark won" onclick="hlSetStatus('${id}','Won')" style="color:#7bd487;border-color:#3a5a45">&#10003;</button> <button class="btn sm ghost" title="Mark lost" onclick="hlSetStatus('${id}','Lost')" style="color:var(--warn);border-color:var(--warn)">&#10007;</button> <button class="btn sm ghost" title="Edit" onclick="hlOpenEdit('${id}')">&#9998;</button> <button class="btn sm ghost" title="Delete" onclick="hlDelete('${id}')">&#128465;</button></span>`:'';
     return `<tr><td><b>${esc(d.prospect||'')}</b>${d.client?`<div class="muted" style="font-size:11px">${esc(d.client)}</div>`:''}</td><td>${esc(d.rep||'-')}</td><td>${d.closeDate?esc(usDate(d.closeDate)):'-'}</td><td class="num">${money(d.revenue||0)}</td><td class="num">${money(d.cash||0)}</td><td>${(+d.prob||0)}%</td><td>${stPill(d.status)}</td><td>${esc(d.reason||'')}</td><td>${act}</td></tr>`;
   }).join('');
   const tb=document.getElementById('hlTable'); if(tb) tb.innerHTML=`<thead><tr><th>Prospect</th><th>Rep</th><th>Close date</th><th class="num">Revenue</th><th class="num">Cash collected</th><th>Prob.</th><th>Status</th><th>Reason</th><th></th></tr></thead><tbody>${rows||`<tr><td colspan="9" class="muted" style="padding:14px">No hot deals yet. Click <b>Add deal</b> to flag a projected deal.</td></tr>`}</tbody>`;
@@ -5529,6 +5532,7 @@ function hlFillModalSelects(){
   const mr=document.getElementById('hlmRep'); if(mr) mr.innerHTML='<option value="">-</option>'+hlRepNames().map(n=>`<option>${esc(n)}</option>`).join('');
 }
 function hlOpenAdd(){
+  if(!hlCanAdd()){ toast('Setters can view the hot list but not add deals',true); return; }
   HL_EDIT_ID=null; hlFillModalSelects();
   const g=i=>document.getElementById(i);
   g('hlModalTitle').textContent='New hot list deal';
@@ -5549,6 +5553,7 @@ function hlOpenEdit(id){
 }
 function hlCloseModal(){ const m=document.getElementById('hlModal'); if(m) m.hidden=true; HL_EDIT_ID=null; }
 async function hlSaveDeal(){
+  if(!hlCanAdd()){ toast('Not allowed',true); return; }
   const g=i=>document.getElementById(i);
   const prospect=(g('hlProspect').value||'').trim(); if(!prospect){ toast('Enter a prospect name',true); return; }
   const client=(g('hlmClient').value||'').trim(); if(!client){ toast('Pick a client',true); return; }
@@ -5556,11 +5561,13 @@ async function hlSaveDeal(){
   await addRecord(rec); hlCloseModal(); toast(HL_EDIT_ID?'Deal updated':'Deal added'); renderHotList();
 }
 async function hlSetStatus(id,status){
+  if(!hlCanAdd()){ toast('Not allowed',true); return; }
   const d=hotDeals().find(x=>String(x.id)===String(id)); if(!d) return;
   const rec={...d}; delete rec.submittedAt; delete rec.submittedET; rec.id=d.id; rec.status=status;
   await addRecord(rec); renderHotList();
 }
 async function hlDelete(id){
+  if(!hlCanAdd()){ toast('Not allowed',true); return; }
   const d=hotDeals().find(x=>String(x.id)===String(id)); if(!d) return;
   if(!confirm('Remove this hot list deal for '+(d.prospect||'this prospect')+'?')) return;
   const rec={...d}; delete rec.submittedAt; delete rec.submittedET; rec.id=d.id; rec.deleted=true;
