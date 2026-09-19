@@ -1133,9 +1133,9 @@
   <!-- ===== PAYOUTS (what TSA owes reps each pay cycle) ===== -->
   <section id="tab-payouts" hidden>
     <h2 class="section">Payouts</h2>
-    <p class="hint">What TSA owes setters &amp; closers this pay cycle. Reps are paid twice a month: the <b>1st-15th</b> cycle pays on the <b>last day of the month</b>, the <b>16th-EOM</b> cycle pays the <b>15th of next month</b>. Mark each rep paid as you send it. Super Admin only.</p>
+    <p class="hint">What TSA owes setters &amp; closers on the <b>upcoming payday</b> (defaults to the next one). Reps are paid twice a month, in arrears: earnings <b>1st-15th</b> pay on the <b>last day of the month</b>; earnings <b>16th-EOM</b> pay the <b>15th of next month</b>. Mark each rep paid as you send it. Super Admin only.</p>
     <div class="filters" style="align-items:flex-end;gap:12px">
-      <div class="field"><label>Pay cycle</label><div class="seg" id="poSeg"><button onclick="poSetCycle('cur')">This cycle</button><button onclick="poSetCycle('last')">Last cycle</button><button onclick="poSetCycle('prev')">&#8592; Previous</button></div></div>
+      <div class="field"><label>Payday</label><div class="seg" id="poSeg"><button onclick="poSetCycle('next')">Next payout</button><button onclick="poSetCycle('earlier')">&#8592; Earlier</button><button onclick="poSetCycle('later')">Later &#8594;</button></div></div>
       <span id="poCycleLbl" class="tag" style="align-self:flex-end;margin-bottom:2px"></span>
     </div>
     <div id="poKpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin:12px 0"></div>
@@ -5388,11 +5388,15 @@ function payCycle(refIso){
 function payCyclePrev(refIso){ const c=payCycle(refIso), before=new Date(c.from+'T00:00:00'); before.setDate(before.getDate()-1); return payCycle(isoLocal(before)); }
 function payCycleForRange(from,to){ const c=payCycle(from); return (c.from===from&&c.to===to)?c:null; } // is this range a standard pay cycle?
 /* ---- Payouts page: per-cycle rep commissions owed, with paid/unpaid tracking (payout records) ---- */
-let PO_CYCLE=null, PO_SEG='cur';
+let PO_CYCLE=null;
 function poCanEdit(){ return !!(SESSION && SESSION.role==='admin'); }
-function poCycleObj(){ return PO_CYCLE||payCycle(); }
+// The NEXT payout = the just-completed cycle whose pay date is the upcoming payday (reps are paid in arrears).
+// On the 16th-EOM you're earning that cycle (pays 15th next month), but the next money OUT is the prior 1st-15th cycle (pays end of month).
+function nextPayoutCycle(){ return payCyclePrev(); }
+function payCycleNext(refIso){ const c=payCycle(refIso), a=new Date(c.to+'T00:00:00'); a.setDate(a.getDate()+1); return payCycle(isoLocal(a)); }
+function poCycleObj(){ return PO_CYCLE||nextPayoutCycle(); }
 function poKey(c){ return c.from+'|'+c.to; }
-function poSetCycle(which){ PO_SEG=which; if(which==='cur') PO_CYCLE=payCycle(); else if(which==='last') PO_CYCLE=payCyclePrev(); else if(which==='prev') PO_CYCLE=payCyclePrev(poCycleObj().from); renderPayouts(); }
+function poSetCycle(which){ if(which==='next') PO_CYCLE=nextPayoutCycle(); else if(which==='earlier') PO_CYCLE=payCyclePrev(poCycleObj().from); else if(which==='later') PO_CYCLE=payCycleNext(poCycleObj().to); renderPayouts(); }
 function poStatusMap(){ const m={}; (RECORDS||[]).forEach(x=>{ if(x.type!=='payout'||!x.rep) return; const k=(x.cycle||'')+'|'+nrmName(x.rep)+'|'+(x.role||''); if(!m[k]||(x.submittedAt||'')>(m[k].submittedAt||'')) m[k]=x; }); return m; }
 function poStatus(map,ck,rep,role){ return map[ck+'|'+nrmName(rep)+'|'+role]||null; }
 async function markPayout(rep,role,amount,paid){ if(!poCanEdit()){ toast('Super Admin only',true); return; } const c=poCycleObj();
@@ -5408,8 +5412,9 @@ async function poMarkAll(role){ if(!poCanEdit()){ toast('Super Admin only',true)
 function renderPayouts(){
   const sec=document.getElementById('tab-payouts'); if(!sec) return;
   const c=poCycleObj(), data=repCommData(c.from,c.to,''), map=poStatusMap(), ck=poKey(c);
-  const lbl=document.getElementById('poCycleLbl'); if(lbl) lbl.textContent=`${usDate(c.from)} - ${usDate(c.to)} · pay ${usDate(c.pay)}`;
-  document.querySelectorAll('#poSeg button').forEach((b,i)=>b.classList.toggle('on', (PO_SEG==='cur'&&i===0)||(PO_SEG==='last'&&i===1)||(PO_SEG==='prev'&&i===2)));
+  const lbl=document.getElementById('poCycleLbl'); if(lbl) lbl.textContent=`Payday ${usDate(c.pay)} · earnings ${usDate(c.from)} - ${usDate(c.to)}`;
+  const isNext=poKey(poCycleObj())===poKey(nextPayoutCycle());
+  document.querySelectorAll('#poSeg button').forEach((b,i)=>b.classList.toggle('on', i===0 && isNext));
   const head=`<thead><tr><th>Rep</th><th class="num">Cash collected</th><th class="num">Rate</th><th class="num">Commission</th><th>Status</th><th></th></tr></thead>`;
   const rowsFor=(list,role)=>list.filter(o=>o.commission>0.0001).map(o=>{
     const st=poStatus(map,ck,o.rep,role), paid=!!(st&&st.paid);
