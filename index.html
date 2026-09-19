@@ -497,6 +497,7 @@
     <button class="navhead"><svg class="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg><span class="nlabel">Billing</span><svg class="nchev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
     <div class="navsub">
       <button data-tab="invoicing">Invoicing</button>
+      <button data-tab="payouts">Payouts</button>
       <button data-tab="repcommrates">Rep Commission Breakdown</button>
       <button data-tab="contracts">Contracts</button>
     </div>
@@ -1127,6 +1128,19 @@
     <h2 class="section">Manager EODs</h2>
     <p class="hint">Every manager's submitted end-of-day report - the numbers they reported for each offer plus their constraint note. Shows the latest per manager, account and day, and follows the company selector at the top of the page.</p>
     <div class="panel"><div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px"><h3 style="margin:0">Manager EOD review <span style="font-weight:400;color:var(--muted);font-size:12px">- what each manager reported + their constraint note (latest per manager, account &amp; day)</span></h3><div class="seg" id="mgrVSeg"><button onclick="setMgrVDay('')">All recent</button><button onclick="setMgrVDay('today')">Today</button><button onclick="setMgrVDay('yesterday')">Yesterday</button></div></div><div class="tablewrap" style="margin-top:10px"><table id="mgrEodTable"></table></div></div>
+  </section>
+
+  <!-- ===== PAYOUTS (what TSA owes reps each pay cycle) ===== -->
+  <section id="tab-payouts" hidden>
+    <h2 class="section">Payouts</h2>
+    <p class="hint">What TSA owes setters &amp; closers this pay cycle. Reps are paid twice a month: the <b>1st-15th</b> cycle pays on the <b>last day of the month</b>, the <b>16th-EOM</b> cycle pays the <b>15th of next month</b>. Mark each rep paid as you send it. Super Admin only.</p>
+    <div class="filters" style="align-items:flex-end;gap:12px">
+      <div class="field"><label>Pay cycle</label><div class="seg" id="poSeg"><button onclick="poSetCycle('cur')">This cycle</button><button onclick="poSetCycle('last')">Last cycle</button><button onclick="poSetCycle('prev')">&#8592; Previous</button></div></div>
+      <span id="poCycleLbl" class="tag" style="align-self:flex-end;margin-bottom:2px"></span>
+    </div>
+    <div id="poKpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin:12px 0"></div>
+    <div class="panel" style="margin:0 0 14px"><div style="display:flex;justify-content:space-between;align-items:baseline;padding:12px 14px 0;gap:8px;flex-wrap:wrap"><h3 style="margin:0">Closers</h3><button class="btn ghost sm" onclick="poMarkAll('closer')">Mark all paid</button></div><div class="tablewrap"><table id="poCloserTable"></table></div></div>
+    <div class="panel"><div style="display:flex;justify-content:space-between;align-items:baseline;padding:12px 14px 0;gap:8px;flex-wrap:wrap"><h3 style="margin:0">Setters</h3><button class="btn ghost sm" onclick="poMarkAll('setter')">Mark all paid</button></div><div class="tablewrap"><table id="poSetterTable"></table></div></div>
   </section>
 
   <!-- ===== REP COMMISSION BREAKDOWN (per-rep pay rates) ===== -->
@@ -2506,7 +2520,7 @@ function startApp(){
 // base tabs a login TIER can see; per-account responsibilities add to this in applyNavAccess()
 function baseAllow(role){
   return ({
-    admin:['dash','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','dayreports','hotlist','adminreport','recruiting','messages','invoicing','repcommrates','contracts','onbaudit','ghlmap','pcfields','data','users','integrations','settings','reprequests','resources','faq','kickoff','webinarsop'],
+    admin:['dash','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','dayreports','hotlist','adminreport','recruiting','messages','invoicing','payouts','repcommrates','contracts','onbaudit','ghlmap','pcfields','data','users','integrations','settings','reprequests','resources','faq','kickoff','webinarsop'],
     director:['dash','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','dailyreport','dayreports','hotlist','recruiting','messages','adminreport','contracts','onbaudit','ghlmap','pcfields','reprequests','resources','faq','kickoff','webinarsop'],
     manager:['dash','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','speedtolead','dailyreport','dayreports','hotlist','adminreport','recruiting','messages','reprequests','resources','faq','kickoff','webinarsop'],
     founder:['dash','hotlist','reprequests'],
@@ -2655,9 +2669,9 @@ function showTab(t){
   document.querySelectorAll('#tabs button[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
   document.querySelectorAll('#tabs .navgroup').forEach(g=>{ if(g.querySelector('button[data-tab="'+t+'"]')) g.classList.remove('collapsed'); }); // reveal the active tab's group
 
-  ['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','dayreports','hotlist','adminreport','reprequests','recruiting','messages','invoicing','repcommrates','contracts','onbaudit','ghlmap','pcfields','data','users','integrations','settings','resources','faq','kickoff','webinarsop','scorecards'].forEach(x=>{ const el=document.getElementById('tab-'+x); if(el) el.hidden = (x!==t); });
+  ['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','dayreports','hotlist','adminreport','reprequests','recruiting','messages','invoicing','payouts','repcommrates','contracts','onbaudit','ghlmap','pcfields','data','users','integrations','settings','resources','faq','kickoff','webinarsop','scorecards'].forEach(x=>{ const el=document.getElementById('tab-'+x); if(el) el.hidden = (x!==t); });
   // stale-while-revalidate: render instantly from the cached records, then refresh in the background
-  const render={dash:renderDash, mydeals:renderMyDeals, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, promises:renderPromisesTab, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, mgreodview:renderMgrEodView, contracts:renderContracts, faq:renderFaq, scorecards:renderScorecards, webinar:renderWebinars, calllog:renderCallLog, calendar:renderCalendar, speedtolead:renderSpeedToLead, dailyreport:renderDailyReport, dayreports:renderDayReports, hotlist:renderHotList, adminreport:renderAdminReport, repcommrates:renderRepCommRates, reprequests:renderRepRequests, recruiting:renderRecruiting, messages:renderMessages, training:renderTraining, invoicing:renderInvoicing, data:renderAll}[t];
+  const render={dash:renderDash, mydeals:renderMyDeals, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, promises:renderPromisesTab, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, mgreodview:renderMgrEodView, contracts:renderContracts, faq:renderFaq, scorecards:renderScorecards, webinar:renderWebinars, calllog:renderCallLog, calendar:renderCalendar, speedtolead:renderSpeedToLead, dailyreport:renderDailyReport, dayreports:renderDayReports, hotlist:renderHotList, adminreport:renderAdminReport, payouts:renderPayouts, repcommrates:renderRepCommRates, reprequests:renderRepRequests, recruiting:renderRecruiting, messages:renderMessages, training:renderTraining, invoicing:renderInvoicing, data:renderAll}[t];
   if(render){ render(); syncRecords().then(()=>{ if(currentTab()===t) render(); buildGlobalClientSelect(); buildViewAsUserSelect(); updateNavBadges(); renderReminders(); }); }
   updateNavBadges();
   if(t==='data'){ renderDailyEntry(); crInit(); }
@@ -5373,6 +5387,43 @@ function payCycle(refIso){
 }
 function payCyclePrev(refIso){ const c=payCycle(refIso), before=new Date(c.from+'T00:00:00'); before.setDate(before.getDate()-1); return payCycle(isoLocal(before)); }
 function payCycleForRange(from,to){ const c=payCycle(from); return (c.from===from&&c.to===to)?c:null; } // is this range a standard pay cycle?
+/* ---- Payouts page: per-cycle rep commissions owed, with paid/unpaid tracking (payout records) ---- */
+let PO_CYCLE=null, PO_SEG='cur';
+function poCanEdit(){ return !!(SESSION && SESSION.role==='admin'); }
+function poCycleObj(){ return PO_CYCLE||payCycle(); }
+function poKey(c){ return c.from+'|'+c.to; }
+function poSetCycle(which){ PO_SEG=which; if(which==='cur') PO_CYCLE=payCycle(); else if(which==='last') PO_CYCLE=payCyclePrev(); else if(which==='prev') PO_CYCLE=payCyclePrev(poCycleObj().from); renderPayouts(); }
+function poStatusMap(){ const m={}; (RECORDS||[]).forEach(x=>{ if(x.type!=='payout'||!x.rep) return; const k=(x.cycle||'')+'|'+nrmName(x.rep)+'|'+(x.role||''); if(!m[k]||(x.submittedAt||'')>(m[k].submittedAt||'')) m[k]=x; }); return m; }
+function poStatus(map,ck,rep,role){ return map[ck+'|'+nrmName(rep)+'|'+role]||null; }
+async function markPayout(rep,role,amount,paid){ if(!poCanEdit()){ toast('Super Admin only',true); return; } const c=poCycleObj();
+  try{ await addRecord({type:'payout', cycle:poKey(c), payDate:c.pay, rep, role, amount:Number(amount)||0, paid:!!paid, paidAt:paid?new Date().toISOString():'', by:(SESSION&&SESSION.name)||''}); renderPayouts(); }
+  catch(e){ toast('Failed: '+((e&&e.message)||e),true); } }
+async function poMarkAll(role){ if(!poCanEdit()){ toast('Super Admin only',true); return; }
+  const c=poCycleObj(), data=repCommData(c.from,c.to,''), list=(role==='closer'?data.closers:data.setters), map=poStatusMap(), ck=poKey(c);
+  const todo=list.filter(o=>o.commission>0.0001).filter(o=>{ const st=poStatus(map,ck,o.rep,role); return !(st&&st.paid); });
+  if(!todo.length){ toast('All '+role+'s already marked paid'); return; }
+  if(!confirm('Mark '+todo.length+' '+role+' payout'+(todo.length===1?'':'s')+' as paid?')) return;
+  try{ for(const o of todo){ await addRecord({type:'payout', cycle:ck, payDate:c.pay, rep:o.rep, role, amount:o.commission, paid:true, paidAt:new Date().toISOString(), by:(SESSION&&SESSION.name)||''}); } toast('Marked '+todo.length+' paid'); renderPayouts(); }
+  catch(e){ toast('Failed: '+((e&&e.message)||e),true); } }
+function renderPayouts(){
+  const sec=document.getElementById('tab-payouts'); if(!sec) return;
+  const c=poCycleObj(), data=repCommData(c.from,c.to,''), map=poStatusMap(), ck=poKey(c);
+  const lbl=document.getElementById('poCycleLbl'); if(lbl) lbl.textContent=`${usDate(c.from)} - ${usDate(c.to)} · pay ${usDate(c.pay)}`;
+  document.querySelectorAll('#poSeg button').forEach((b,i)=>b.classList.toggle('on', (PO_SEG==='cur'&&i===0)||(PO_SEG==='last'&&i===1)||(PO_SEG==='prev'&&i===2)));
+  const head=`<thead><tr><th>Rep</th><th class="num">Cash collected</th><th class="num">Rate</th><th class="num">Commission</th><th>Status</th><th></th></tr></thead>`;
+  const rowsFor=(list,role)=>list.filter(o=>o.commission>0.0001).map(o=>{
+    const st=poStatus(map,ck,o.rep,role), paid=!!(st&&st.paid);
+    const badge=paid?`<span class="pill good">Paid${st.paidAt?' · '+esc(usDate(st.paidAt)):''}</span>`:`<span class="pill warn">Unpaid</span>`;
+    const act=paid?`<button class="btn ghost sm" onclick="markPayout('${jsStr(o.rep)}','${role}',${o.commission},false)">Undo</button>`:`<button class="btn gold sm" onclick="markPayout('${jsStr(o.rep)}','${role}',${o.commission},true)">Mark paid</button>`;
+    return `<tr><td><b>${esc(o.rep)}</b></td><td class="num">${money(o.cash)}</td><td class="num">${Math.round(o.effRate*10)/10}%</td><td class="num">${money(o.commission)}</td><td>${badge}</td><td>${act}</td></tr>`;
+  }).join('');
+  const ct=document.getElementById('poCloserTable'); if(ct) ct.innerHTML=head+`<tbody>${rowsFor(data.closers,'closer')||`<tr><td colspan="6" class="muted" style="padding:14px">No closer commissions this cycle.</td></tr>`}</tbody>`;
+  const stt=document.getElementById('poSetterTable'); if(stt) stt.innerHTML=head+`<tbody>${rowsFor(data.setters,'setter')||`<tr><td colspan="6" class="muted" style="padding:14px">No setter commissions this cycle.</td></tr>`}</tbody>`;
+  const all=[...data.closers.map(o=>({...o,role:'closer'})),...data.setters.map(o=>({...o,role:'setter'}))].filter(o=>o.commission>0.0001);
+  let total=0,paidSum=0; all.forEach(o=>{ total+=o.commission; const st=poStatus(map,ck,o.rep,o.role); if(st&&st.paid) paidSum+=o.commission; });
+  const kpi=(l,v,accent)=>`<div class="panel hlkpi${accent?' accent':''}"><div class="lbl">${l}</div><div class="val">${v}</div></div>`;
+  const kw=document.getElementById('poKpis'); if(kw) kw.innerHTML=kpi('Total to pay',money(total))+kpi('Paid',money(paidSum))+kpi('Remaining',money(total-paidSum),true);
+}
 function repCommInit(){
   const cs=document.getElementById('rcmClient'); if(cs){ const cur=cs.value; cs.innerHTML='<option value="">All offers</option>'+clientNames().map(c=>`<option>${esc(c)}</option>`).join(''); cs.value=preferGlobal(clientNames(), cur); }
   const f=document.getElementById('rcmFrom'), t=document.getElementById('rcmTo'), c=payCycle();
