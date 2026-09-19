@@ -5402,6 +5402,7 @@ function poKey(c){ return c.from+'|'+c.to; }
 function poSetCycle(which){ if(which==='next') PO_CYCLE=nextPayoutCycle(); else if(which==='earlier') PO_CYCLE=payCyclePrev(poCycleObj().from); else if(which==='later') PO_CYCLE=payCycleNext(poCycleObj().to); renderPayouts(); }
 function poStatusMap(){ const m={}; (RECORDS||[]).forEach(x=>{ if(x.type!=='payout'||!x.rep) return; const k=(x.cycle||'')+'|'+nrmName(x.rep)+'|'+(x.role||''); if(!m[k]||(x.submittedAt||'')>(m[k].submittedAt||'')) m[k]=x; }); return m; }
 function poStatus(map,ck,rep,role){ return map[ck+'|'+nrmName(rep)+'|'+role]||null; }
+function poToggle(id){ const el=document.getElementById(id); if(el) el.hidden=!el.hidden; }
 async function markPayout(rep,role,amount,paid){ if(!poCanEdit()){ toast('Super Admin only',true); return; } const c=poCycleObj();
   try{ await addRecord({type:'payout', cycle:poKey(c), payDate:c.pay, rep, role, amount:Number(amount)||0, paid:!!paid, paidAt:paid?new Date().toISOString():'', by:(SESSION&&SESSION.name)||''}); renderPayouts(); }
   catch(e){ toast('Failed: '+((e&&e.message)||e),true); } }
@@ -5422,11 +5423,14 @@ function renderPayouts(){
   const big=document.getElementById('poPaydayBig'); if(big) big.textContent=fmtLong(c.pay);
   const sub=document.getElementById('poCycleSub'); if(sub) sub.textContent=`Earnings ${usDate(c.from)} - ${usDate(c.to)}`;
   const head=`<thead><tr><th>Rep</th><th class="num">Cash collected</th><th class="num">Rate</th><th class="num">Commission</th><th>Status</th><th></th></tr></thead>`;
-  const rowsFor=(list,role)=>list.filter(o=>o.commission>0.0001).map(o=>{
-    const st=poStatus(map,ck,o.rep,role), paid=!!(st&&st.paid);
+  const rowsFor=(list,role)=>list.filter(o=>o.commission>0.0001).map((o,idx)=>{
+    const st=poStatus(map,ck,o.rep,role), paid=!!(st&&st.paid), rid=role+'-'+idx;
     const badge=paid?`<span class="pill good">Paid${st.paidAt?' · '+esc(usDate(st.paidAt)):''}</span>`:`<span class="pill warn">Unpaid</span>`;
     const act=paid?`<button class="btn ghost sm" onclick="markPayout('${jsStr(o.rep)}','${role}',${o.commission},false)">Undo</button>`:`<button class="btn gold sm" onclick="markPayout('${jsStr(o.rep)}','${role}',${o.commission},true)">Mark paid</button>`;
-    return `<tr><td><b>${esc(o.rep)}</b></td><td class="num">${money(o.cash)}</td><td class="num">${Math.round(o.effRate*10)/10}%</td><td class="num">${money(o.commission)}</td><td>${badge}</td><td>${act}</td></tr>`;
+    const items=(o.items||[]).slice().sort((a,b)=>String(a.date||'').localeCompare(String(b.date||'')));
+    const itemRows=items.map(it=>`<tr><td style="padding:5px 8px;color:var(--muted);white-space:nowrap">${esc(usDate(it.date))}</td><td style="padding:5px 8px">${esc(it.lead||'-')}${it.client?`<span class="muted"> · ${esc(it.client)}</span>`:''}</td><td style="padding:5px 8px;color:var(--muted)">${esc(it.kind||'')}</td><td class="num" style="padding:5px 8px">${money(it.cash)}</td><td class="num" style="padding:5px 8px">${(it.rate||0)}%</td><td class="num" style="padding:5px 8px;font-weight:600">${money((it.cash||0)*(it.rate||0)/100)}</td></tr>`).join('');
+    const detail=`<tr class="poDetail" id="pod-${rid}" hidden><td colspan="6" style="padding:0 10px 12px;background:rgba(255,255,255,.02)"><div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:8px 0 4px">Deals &amp; payments behind this payout (${items.length})</div><table style="width:100%;border-collapse:collapse;font-size:12.5px"><thead><tr style="color:var(--muted);border-bottom:1px solid var(--border)"><th style="text-align:left;padding:4px 8px">Date</th><th style="text-align:left;padding:4px 8px">Prospect</th><th style="text-align:left;padding:4px 8px">Type</th><th style="text-align:right;padding:4px 8px">Cash</th><th style="text-align:right;padding:4px 8px">Rate</th><th style="text-align:right;padding:4px 8px">Commission</th></tr></thead><tbody>${itemRows||'<tr><td colspan="6" class="muted" style="padding:6px 8px">No line items.</td></tr>'}</tbody></table></td></tr>`;
+    return `<tr><td><button class="linklike" onclick="poToggle('pod-${rid}')" title="Show the deals behind this payout">${esc(o.rep)} <span style="font-size:9px;opacity:.7">&#9660;</span></button></td><td class="num">${money(o.cash)}</td><td class="num">${Math.round(o.effRate*10)/10}%</td><td class="num" style="font-weight:700">${money(o.commission)}</td><td>${badge}</td><td>${act}</td></tr>`+detail;
   }).join('');
   const ct=document.getElementById('poCloserTable'); if(ct) ct.innerHTML=head+`<tbody>${rowsFor(data.closers,'closer')||`<tr><td colspan="6" class="muted" style="padding:14px">No closer commissions this cycle.</td></tr>`}</tbody>`;
   const stt=document.getElementById('poSetterTable'); if(stt) stt.innerHTML=head+`<tbody>${rowsFor(data.setters,'setter')||`<tr><td colspan="6" class="muted" style="padding:14px">No setter commissions this cycle.</td></tr>`}</tbody>`;
