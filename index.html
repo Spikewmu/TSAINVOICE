@@ -1136,7 +1136,10 @@
     <p class="hint">What TSA owes setters &amp; closers on the <b>upcoming payday</b> (defaults to the next one). Reps are paid twice a month, in arrears: earnings <b>1st-15th</b> pay on the <b>last day of the month</b>; earnings <b>16th-EOM</b> pay the <b>15th of next month</b>. Mark each rep paid as you send it. Super Admin only.</p>
     <div class="filters" style="align-items:flex-end;gap:12px">
       <div class="field"><label>Payday</label><div class="seg" id="poSeg"><button onclick="poSetCycle('next')">Next payout</button><button onclick="poSetCycle('earlier')">&#8592; Earlier</button><button onclick="poSetCycle('later')">Later &#8594;</button></div></div>
-      <span id="poCycleLbl" class="tag" style="align-self:flex-end;margin-bottom:2px"></span>
+    </div>
+    <div class="panel accent" style="margin:14px 0 2px;padding:16px 20px;display:flex;align-items:baseline;gap:16px;flex-wrap:wrap;background:linear-gradient(160deg,#241d10,#17130d);border-color:var(--gold-soft)">
+      <div><div id="poPaydayKicker" style="font-size:12px;text-transform:uppercase;letter-spacing:.06em;font-weight:700;color:var(--gold-2)">Next payday</div><div id="poPaydayBig" style="font-family:var(--serif);font-size:30px;font-weight:800;color:var(--gold-2);line-height:1.05;margin-top:2px"></div></div>
+      <div id="poCycleSub" class="muted" style="font-size:13px"></div>
     </div>
     <div id="poKpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin:12px 0"></div>
     <div class="panel" style="margin:0 0 14px"><div style="display:flex;justify-content:space-between;align-items:baseline;padding:12px 14px 0;gap:8px;flex-wrap:wrap"><h3 style="margin:0">Closers</h3><button class="btn ghost sm" onclick="poMarkAll('closer')">Mark all paid</button></div><div class="tablewrap"><table id="poCloserTable"></table></div></div>
@@ -5412,9 +5415,12 @@ async function poMarkAll(role){ if(!poCanEdit()){ toast('Super Admin only',true)
 function renderPayouts(){
   const sec=document.getElementById('tab-payouts'); if(!sec) return;
   const c=poCycleObj(), data=repCommData(c.from,c.to,''), map=poStatusMap(), ck=poKey(c);
-  const lbl=document.getElementById('poCycleLbl'); if(lbl) lbl.textContent=`Payday ${usDate(c.pay)} · earnings ${usDate(c.from)} - ${usDate(c.to)}`;
   const isNext=poKey(poCycleObj())===poKey(nextPayoutCycle());
   document.querySelectorAll('#poSeg button').forEach((b,i)=>b.classList.toggle('on', i===0 && isNext));
+  const fmtLong=iso=>{ const p=String(iso||'').split('-').map(Number); return (p.length===3)?new Date(p[0],p[1]-1,p[2]).toLocaleDateString('en-US',{weekday:'short',month:'long',day:'numeric',year:'numeric'}):usDate(iso); };
+  const kick=document.getElementById('poPaydayKicker'); if(kick) kick.textContent=isNext?'Next payday':'Payday';
+  const big=document.getElementById('poPaydayBig'); if(big) big.textContent=fmtLong(c.pay);
+  const sub=document.getElementById('poCycleSub'); if(sub) sub.textContent=`Earnings ${usDate(c.from)} - ${usDate(c.to)}`;
   const head=`<thead><tr><th>Rep</th><th class="num">Cash collected</th><th class="num">Rate</th><th class="num">Commission</th><th>Status</th><th></th></tr></thead>`;
   const rowsFor=(list,role)=>list.filter(o=>o.commission>0.0001).map(o=>{
     const st=poStatus(map,ck,o.rep,role), paid=!!(st&&st.paid);
