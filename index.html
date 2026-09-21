@@ -435,6 +435,7 @@
 <div class="shell">
 <nav class="tabs" id="tabs">
   <button data-tab="dash" class="active">Dashboard</button>
+  <button data-tab="halloffame" id="navHallOfFameBtn">Hall of Fame</button>
   <div class="navgroup collapsed">
     <button class="navhead"><svg class="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/></svg><span class="nlabel">Meetings</span><svg class="nchev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
     <div class="navsub">
@@ -1749,6 +1750,47 @@ If they did not watch: No problem at all, I will send it right over. Can you wat
   </section>
 
   <!-- ===== HOT LIST (T-555) ===== -->
+  <!-- ===== HALL OF FAME ===== -->
+  <section id="tab-halloffame" hidden>
+    <style>
+      #tab-halloffame .hofsub{color:var(--muted);margin:2px 0 16px;max-width:760px}
+      #tab-halloffame .hofgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(430px,1fr));gap:16px}
+      @media(max-width:640px){#tab-halloffame .hofgrid{grid-template-columns:1fr}}
+      #tab-halloffame .hofcard{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:20px 22px}
+      #tab-halloffame .hofcard.award{background:linear-gradient(180deg,var(--surface-2),var(--surface))}
+      #tab-halloffame .hofhead{display:flex;gap:14px;align-items:flex-start}
+      #tab-halloffame .hoficon{width:46px;height:46px;flex:0 0 46px;border-radius:12px;background:var(--gold-soft);display:flex;align-items:center;justify-content:center;font-size:23px}
+      #tab-halloffame .hoftitle{font-family:var(--serif);font-size:21px;color:var(--gold-2);font-weight:700;line-height:1.15}
+      #tab-halloffame .hoftitle.sm{font-size:17px;color:var(--ink);font-family:inherit;font-weight:700}
+      #tab-halloffame .hofeyebrow{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:700;margin-bottom:3px}
+      #tab-halloffame .hofdesc{color:var(--muted);font-size:13px;margin-top:3px}
+      #tab-halloffame .hofsublbl{color:var(--muted);font-size:11.5px;margin-top:2px}
+      #tab-halloffame .hofbadge{display:inline-block;margin-top:9px;padding:4px 10px;border:1px solid var(--gold);color:var(--gold-2);border-radius:999px;font-size:11.5px;font-weight:600}
+      #tab-halloffame .hofrole{align-self:flex-start;padding:3px 10px;border:1px solid var(--border);border-radius:999px;font-size:11px;color:var(--muted);white-space:nowrap}
+      #tab-halloffame .hoflabel{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:700;margin:16px 0 8px}
+      #tab-halloffame .hofboard{margin-top:14px;display:flex;flex-direction:column;gap:6px}
+      #tab-halloffame .hofrow,#tab-halloffame .hofind{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:10px;background:var(--surface-2)}
+      #tab-halloffame .hofind{margin-bottom:6px}
+      #tab-halloffame .hofrow.top{background:var(--gold-soft);border:1px solid var(--gold)}
+      #tab-halloffame .hofrank{width:22px;text-align:center;font-weight:800;color:var(--muted);font-variant-numeric:tabular-nums;flex:0 0 auto}
+      #tab-halloffame .hofrow.top .hofrank{color:var(--gold-2)}
+      #tab-halloffame .hofname{flex:1;font-weight:600;color:var(--ink);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      #tab-halloffame .hofval{font-weight:800;color:var(--gold-2);font-variant-numeric:tabular-nums;white-space:nowrap}
+      #tab-halloffame .hofwhen{color:var(--muted);font-size:11.5px;width:92px;text-align:right;flex:0 0 auto}
+      #tab-halloffame .hofempty{border:1px dashed var(--border);border-radius:10px;padding:16px;text-align:center;color:var(--muted);font-style:italic;font-size:13px;margin-top:14px}
+    </style>
+    <h2 class="section">Hall of Fame</h2>
+    <p class="hofsub">All-time records and elite awards. Break one and your name goes up here.<span id="hofScopeNote"></span></p>
+    <div class="seg" id="hofSeg" style="margin-bottom:16px">
+      <button class="on" onclick="hofBoard('awards')">Awards</button>
+      <button onclick="hofBoard('sales')">Sales</button>
+      <button onclick="hofBoard('calls')">Calls</button>
+      <button onclick="hofBoard('outreach')">Outreach</button>
+      <button onclick="hofBoard('meetings')">Meetings</button>
+    </div>
+    <div id="hofBody"></div>
+  </section>
+
   <section id="tab-hotlist" hidden>
     <h2 class="section">Hot List</h2>
     <p class="hint">Deals close to closing - the whole team can see the projected pipeline at a glance. Reps add their in-progress deals so leadership can back up the forecast. This is <b>projections</b>, separate from confirmed cash in My Deals.</p>
@@ -2523,14 +2565,14 @@ function startApp(){
 // base tabs a login TIER can see; per-account responsibilities add to this in applyNavAccess()
 function baseAllow(role){
   return ({
-    admin:['dash','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','dayreports','hotlist','adminreport','recruiting','messages','invoicing','payouts','repcommrates','contracts','onbaudit','ghlmap','pcfields','data','users','integrations','settings','reprequests','resources','faq','kickoff','webinarsop'],
-    director:['dash','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','dailyreport','dayreports','hotlist','recruiting','messages','adminreport','contracts','onbaudit','ghlmap','pcfields','reprequests','resources','faq','kickoff','webinarsop'],
-    manager:['dash','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','speedtolead','dailyreport','dayreports','hotlist','adminreport','recruiting','messages','reprequests','resources','faq','kickoff','webinarsop'],
+    admin:['dash','halloffame','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','dayreports','hotlist','adminreport','recruiting','messages','invoicing','payouts','repcommrates','contracts','onbaudit','ghlmap','pcfields','data','users','integrations','settings','reprequests','resources','faq','kickoff','webinarsop'],
+    director:['dash','halloffame','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','dailyreport','dayreports','hotlist','recruiting','messages','adminreport','contracts','onbaudit','ghlmap','pcfields','reprequests','resources','faq','kickoff','webinarsop'],
+    manager:['dash','halloffame','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','speedtolead','dailyreport','dayreports','hotlist','adminreport','recruiting','messages','reprequests','resources','faq','kickoff','webinarsop'],
     founder:['dash','hotlist','reprequests'],
     recruiter:['dash','recruiting','messages','timeoff','reprequests','resources','faq','kickoff','webinarsop'],
     webinarteam:['dash','meeting','promises','timeoff','webinar','resources','faq','kickoff','webinarsop'],
-    closer:['dash','mydeals','postcall','sod','eod','training','timeoff','calllog','reps','hotlist','resources','faq','kickoff','webinarsop'],
-    setter:['dash','mydeals','postcall','sod','eod','training','timeoff','calllog','reps','hotlist','resources','faq','kickoff','webinarsop']
+    closer:['dash','halloffame','mydeals','postcall','sod','eod','training','timeoff','calllog','reps','hotlist','resources','faq','kickoff','webinarsop'],
+    setter:['dash','halloffame','mydeals','postcall','sod','eod','training','timeoff','calllog','reps','hotlist','resources','faq','kickoff','webinarsop']
   })[role] || ['eod'];
 }
 // ---- multi-role: a user can hold several roles (stored as a 'userroles' record); access = the union ----
@@ -2672,9 +2714,9 @@ function showTab(t){
   document.querySelectorAll('#tabs button[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
   document.querySelectorAll('#tabs .navgroup').forEach(g=>{ if(g.querySelector('button[data-tab="'+t+'"]')) g.classList.remove('collapsed'); }); // reveal the active tab's group
 
-  ['dash','mydeals','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','dayreports','hotlist','adminreport','reprequests','recruiting','messages','invoicing','payouts','repcommrates','contracts','onbaudit','ghlmap','pcfields','data','users','integrations','settings','resources','faq','kickoff','webinarsop','scorecards'].forEach(x=>{ const el=document.getElementById('tab-'+x); if(el) el.hidden = (x!==t); });
+  ['dash','halloffame','mydeals','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','dayreports','hotlist','adminreport','reprequests','recruiting','messages','invoicing','payouts','repcommrates','contracts','onbaudit','ghlmap','pcfields','data','users','integrations','settings','resources','faq','kickoff','webinarsop','scorecards'].forEach(x=>{ const el=document.getElementById('tab-'+x); if(el) el.hidden = (x!==t); });
   // stale-while-revalidate: render instantly from the cached records, then refresh in the background
-  const render={dash:renderDash, mydeals:renderMyDeals, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, promises:renderPromisesTab, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, mgreodview:renderMgrEodView, contracts:renderContracts, faq:renderFaq, scorecards:renderScorecards, webinar:renderWebinars, calllog:renderCallLog, calendar:renderCalendar, speedtolead:renderSpeedToLead, dailyreport:renderDailyReport, dayreports:renderDayReports, hotlist:renderHotList, adminreport:renderAdminReport, payouts:renderPayouts, repcommrates:renderRepCommRates, reprequests:renderRepRequests, recruiting:renderRecruiting, messages:renderMessages, training:renderTraining, invoicing:renderInvoicing, data:renderAll}[t];
+  const render={dash:renderDash, halloffame:renderHallOfFame, mydeals:renderMyDeals, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, promises:renderPromisesTab, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, mgreodview:renderMgrEodView, contracts:renderContracts, faq:renderFaq, scorecards:renderScorecards, webinar:renderWebinars, calllog:renderCallLog, calendar:renderCalendar, speedtolead:renderSpeedToLead, dailyreport:renderDailyReport, dayreports:renderDayReports, hotlist:renderHotList, adminreport:renderAdminReport, payouts:renderPayouts, repcommrates:renderRepCommRates, reprequests:renderRepRequests, recruiting:renderRecruiting, messages:renderMessages, training:renderTraining, invoicing:renderInvoicing, data:renderAll}[t];
   if(render){ render(); syncRecords().then(()=>{ if(currentTab()===t) render(); buildGlobalClientSelect(); buildViewAsUserSelect(); updateNavBadges(); renderReminders(); }); }
   updateNavBadges();
   if(t==='data'){ renderDailyEntry(); crInit(); }
@@ -5802,6 +5844,110 @@ function hlVisible(){
     if(to && String(d.closeDate||'')>to) return false;
     return true;
   });
+}
+/* ---------------- Hall of Fame (T-594): all-time records + elite awards, scoped by company ----------------
+   Ported from the old HQ. Records compute live from the data we already collect (deals + confirmed payments
+   for money, latest-per-day EOD reports for activity). Ranked descending = the legacy board: the all-time
+   best sits on top, prior holders below. Empty metrics degrade to a "no record yet" state. */
+let HOF_BOARD='awards';
+function hofBoard(b){ HOF_BOARD=b; renderHallOfFame(); }
+function hofScopeClients(){ if(GLOBAL_CLIENT) return [GLOBAL_CLIENT]; const sc=dashScopeClients(); return (sc&&sc.length)?sc.filter(c=>c!==' none'):null; } // null = every in-scope company
+function hofIn(client,scope){ return !scope || scope.includes(String(client||'')); }
+const hofMonth=x=>String(x.date||'').slice(0,7), hofDay=x=>String(x.date||'').slice(0,10), hofYear=x=>String(x.date||'').slice(0,4);
+function hofFmtWhen(p){ if(!p) return ''; if(p.length===7){ const a=p.split('-'); return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][(+a[1])-1]+' '+a[0]; } if(p.length===4) return p; return usDate(p); }
+// money items: deals (close-day cash) + confirmed additional payments, attributed to the effective closer (respects credit overrides)
+function hofMoneyItems(scope){
+  const items=[], deals={};
+  (RECORDS||[]).forEach(x=>{ if(x.type!=='deal') return; const id=String(x.id||''); if(!id) return; const p=deals[id]; if(!p||(x.submittedAt||'')>(p.submittedAt||'')) deals[id]=x; });
+  Object.values(deals).forEach(d=>{ if(!hofIn(d.client,scope)) return; const rep=effCloserOf(d); if(!rep||!d.date) return; items.push({rep,date:String(d.date).slice(0,10),cash:Number(d.cashCollected)||0,contract:Number(d.contractValue)||0,isDeal:true}); });
+  paymentsCollapsed().forEach(p=>{ if(p.status!=='confirmed'||!hofIn(p.client,scope)) return; const rep=effCloserOf(p); if(!rep||!p.date) return; items.push({rep,date:String(p.date).slice(0,10),cash:Number(p.amount)||0,contract:0,isDeal:false}); });
+  return items;
+}
+// latest EOD per rep/client/day/role, in scope
+function hofEods(scope){
+  const latest={};
+  (RECORDS||[]).forEach(x=>{ if(x.type!=='eod'||!hofIn(x.client,scope)) return; const k=[(x.rep||'').trim().toLowerCase(),(x.client||'').trim().toLowerCase(),(x.date||'').slice(0,10),(x.role||'')].join('|'); const p=latest[k]; if(!p||(x.submittedAt||'')>(p.submittedAt||'')) latest[k]=x; });
+  return Object.values(latest);
+}
+// best single period (month/day/year) per rep, by summed value; returns {rep:{period,value}}
+function hofBestBy(items,repFn,valFn,periodFn){
+  const agg={};
+  items.forEach(it=>{ const r=(repFn(it)||'').trim(); if(!r) return; const p=periodFn(it); if(!p) return; (agg[r]||(agg[r]={}))[p]=(agg[r][p]||0)+(valFn(it)||0); });
+  const best={};
+  Object.keys(agg).forEach(r=>{ let bp=null,bv=-Infinity; Object.keys(agg[r]).forEach(p=>{ if(agg[r][p]>bv){bv=agg[r][p];bp=p;} }); if(bp!=null&&bv>0) best[r]={period:bp,value:bv}; });
+  return best;
+}
+// best rate period per rep (numerator/denominator), only counting periods that meet the minimum-denominator qualifier
+function hofBestRate(items,repFn,numFn,denFn,periodFn,minDen){
+  const agg={};
+  items.forEach(it=>{ const r=(repFn(it)||'').trim(); if(!r) return; const p=periodFn(it); if(!p) return; const o=(agg[r]||(agg[r]={}))[p]||(agg[r][p]={n:0,d:0}); o.n+=numFn(it)||0; o.d+=denFn(it)||0; });
+  const best={};
+  Object.keys(agg).forEach(r=>{ let bp=null,bv=-1; Object.keys(agg[r]).forEach(p=>{ const o=agg[r][p]; if(o.d>=minDen&&o.d>0){ const rt=o.n/o.d; if(rt>bv){bv=rt;bp=p;} } }); if(bp!=null&&bv>=0) best[r]={period:bp,value:bv}; });
+  return best;
+}
+function hofRankRows(best,fmt){
+  const arr=Object.keys(best).map(r=>({rep:r,period:best[r].period,value:best[r].value})).sort((a,b)=>b.value-a.value).slice(0,5);
+  if(!arr.length) return '<div class="hofempty">No record set yet. Be the first.</div>';
+  return '<div class="hofboard">'+arr.map((o,i)=>`<div class="hofrow${i===0?' top':''}"><span class="hofrank">${i===0?'&#9733;':(i+1)}</span><span class="hofname">${esc(o.rep)}</span><span class="hofval">${fmt(o.value)}</span><span class="hofwhen">${esc(hofFmtWhen(o.period))}</span></div>`).join('')+'</div>';
+}
+function hofRecCard(icon,eyebrow,title,sub,role,best,fmt){
+  return `<div class="hofcard"><div class="hofhead"><div class="hoficon">${icon}</div><div style="flex:1;min-width:0"><div class="hofeyebrow">${esc(eyebrow)}</div><div class="hoftitle sm">${esc(title)}</div>${sub?`<div class="hofsublbl">${esc(sub)}</div>`:''}</div><span class="hofrole">${esc(role)}</span></div>${hofRankRows(best,fmt)}</div>`;
+}
+function hofThresh(best,min,fmt){ return Object.keys(best).map(r=>({rep:r,period:best[r].period,value:best[r].value})).filter(o=>o.value>=min).sort((a,b)=>b.value-a.value).map(o=>({rep:o.rep,period:o.period,note:fmt(o.value)})); }
+function hofAwardCard(icon,name,desc,badge,inductees){
+  const body=inductees.length? inductees.map(o=>`<div class="hofind"><span class="hofrank">&#9733;</span><span class="hofname">${esc(o.rep)}</span><span class="hofval">${esc(o.note||'')}</span><span class="hofwhen">${esc(hofFmtWhen(o.period))}</span></div>`).join('') : '<div class="hofempty">No one has earned this yet. Be the first.</div>';
+  return `<div class="hofcard award"><div class="hofhead"><div class="hoficon">${icon}</div><div style="flex:1;min-width:0"><div class="hoftitle">${esc(name)}</div><div class="hofdesc">${esc(desc)}</div><span class="hofbadge">${esc(badge)}</span></div></div><div class="hoflabel">Inductees</div>${body}</div>`;
+}
+function renderHallOfFame(){
+  const sec=document.getElementById('tab-halloffame'); if(!sec) return;
+  const seg=document.getElementById('hofSeg'); if(seg) seg.querySelectorAll('button').forEach(b=>b.classList.toggle('on',(b.textContent||'').trim().toLowerCase()===HOF_BOARD));
+  const note=document.getElementById('hofScopeNote'); if(note) note.textContent = GLOBAL_CLIENT?(' Showing '+GLOBAL_CLIENT+'.'):' Showing every company. Pick one up top to scope the board.';
+  const body=document.getElementById('hofBody'); if(!body) return;
+  const scope=hofScopeClients();
+  const mi=hofMoneyItems(scope), deals=mi.filter(x=>x.isDeal), eods=hofEods(scope);
+  const cE=eods.filter(x=>String(x.role)==='Closer'), sE=eods.filter(x=>String(x.role)==='Setter');
+  const rep=x=>x.rep, ev=(x,k)=>Number(x[k])||0;
+  const cnt=v=>Math.round(v).toLocaleString(), pct=v=>(v*100).toFixed(1)+'%';
+  let cards='';
+  if(HOF_BOARD==='awards'){
+    // Rhino: 3+ closed deals in a single day, averaging $1,000+/deal
+    const g={}; deals.forEach(d=>{ const k=d.rep+'|'+d.date; const o=g[k]||(g[k]={rep:d.rep,day:d.date,n:0,cash:0}); o.n++; o.cash+=d.cash; });
+    const rhinoBest={}; Object.values(g).forEach(o=>{ if(o.n>=3 && (o.cash/o.n)>=1000){ const b=rhinoBest[o.rep]; if(!b||o.n>b.n) rhinoBest[o.rep]=o; } });
+    const rhino=Object.values(rhinoBest).sort((a,b)=>b.n-a.n).map(o=>({rep:o.rep,period:o.day,note:o.n+' deals &middot; '+money(Math.round(o.cash/o.n))+' avg'}));
+    const monthCash=hofBestBy(mi,rep,x=>x.cash,hofMonth), monthContract=hofBestBy(deals,rep,x=>x.contract,hofMonth), yearCash=hofBestBy(mi,rep,x=>x.cash,hofYear);
+    cards =
+      hofAwardCard('&#129423;','Rhino Award','Charge through 3 deals in a single day.','3+ deals / day &middot; $1,000+ avg / deal',rhino) +
+      hofAwardCard('&#128142;','Century Club','$100,000 cash collected in a calendar month.','$100,000 cash collected / month',hofThresh(monthCash,100000,money)) +
+      hofAwardCard('&#9935;','Gold Digger','$1,000,000 contracted in a calendar month.','$1,000,000 contract value / month',hofThresh(monthContract,1000000,money)) +
+      hofAwardCard('&#127963;','President’s Club','$1,000,000 cash collected in a calendar year.','$1,000,000 cash collected / year',hofThresh(yearCash,1000000,money));
+  } else if(HOF_BOARD==='sales'){
+    cards =
+      hofRecCard('&#128176;','Monthly record','Most Cash Collected (Month)','','Closer',hofBestBy(mi,rep,x=>x.cash,hofMonth),money) +
+      hofRecCard('&#128200;','Monthly record','Highest Contract Value (Month)','','Closer',hofBestBy(deals,rep,x=>x.contract,hofMonth),money) +
+      hofRecCard('&#127942;','Monthly record','Most Closed Deals (Month)','','Closer',hofBestBy(deals,rep,()=>1,hofMonth),cnt) +
+      hofRecCard('&#128230;','Monthly record','Most Units Sold (Month)','','Closer',hofBestBy(cE,rep,x=>ev(x,'aosiSold')+ev(x,'productBSold'),hofMonth),cnt) +
+      hofRecCard('&#128181;','Daily record','Biggest Cash Day','','Closer',hofBestBy(mi,rep,x=>x.cash,hofDay),money) +
+      hofRecCard('&#128293;','Daily record','Most Deals in a Day','','Closer',hofBestBy(deals,rep,()=>1,hofDay),cnt) +
+      hofRecCard('&#127919;','Monthly record','Best Close Rate on Connected Calls (Month)','Minimum 10 connected calls','Closer',hofBestRate(cE,rep,x=>ev(x,'closedDeals'),x=>ev(x,'connectedCalls'),hofMonth,10),pct) +
+      hofRecCard('&#129309;','Monthly record','Most Referrals Collected (Month)','','Closer',{},cnt);
+  } else if(HOF_BOARD==='calls'){
+    cards =
+      hofRecCard('&#127919;','Monthly record','Best Close Rate (Month)','Minimum 10 connected calls','Closer',hofBestRate(cE,rep,x=>ev(x,'closedDeals'),x=>ev(x,'connectedMeetings'),hofMonth,10),pct) +
+      hofRecCard('&#128064;','Monthly record','Best Show Rate (Month)','Minimum 10 sales calls set','Closer',hofBestRate(cE,rep,x=>ev(x,'connectedMeetings'),x=>ev(x,'connectedMeetings')+ev(x,'noShows'),hofMonth,10),pct) +
+      hofRecCard('&#128222;','Monthly record','Most Connected Meetings (Month)','','Closer',hofBestBy(cE,rep,x=>ev(x,'connectedMeetings'),hofMonth),cnt);
+  } else if(HOF_BOARD==='outreach'){
+    const out=x=>ev(x,'newOutreach')+ev(x,'followUpOutreach');
+    cards =
+      hofRecCard('&#128227;','Monthly record','Most Outreach (Month)','','Setter',hofBestBy(sE,rep,out,hofMonth),cnt) +
+      hofRecCard('&#9889;','Daily record','Most Outreach in a Day','','Setter',hofBestBy(sE,rep,out,hofDay),cnt) +
+      hofRecCard('&#127381;','Monthly record','Most New Outreach (Month)','','Setter',hofBestBy(sE,rep,x=>ev(x,'newOutreach'),hofMonth),cnt);
+  } else if(HOF_BOARD==='meetings'){
+    cards =
+      hofRecCard('&#128197;','Monthly record','Most Sales Calls Set (Month)','','Setter',hofBestBy(sE,rep,x=>ev(x,'callsSet'),hofMonth),cnt) +
+      hofRecCard('&#127919;','Monthly record','Best Set Rate (Month)','Minimum 20 calls offered','Setter',hofBestRate(sE,rep,x=>ev(x,'callsSet'),x=>ev(x,'connectedCalls'),hofMonth,20),pct) +
+      hofRecCard('&#9889;','Daily record','Most Calls Set in a Day','','Setter',hofBestBy(sE,rep,x=>ev(x,'callsSet'),hofDay),cnt);
+  }
+  body.innerHTML='<div class="hofgrid">'+cards+'</div>';
 }
 function renderHotList(){
   const sec=document.getElementById('tab-hotlist'); if(!sec) return;
