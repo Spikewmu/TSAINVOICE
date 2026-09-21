@@ -7500,12 +7500,13 @@ async function recMessage(){
 const REP_ONB_DEFAULT={
   passPct:80,
   modules:[
-    {id:'m1',title:'Welcome to The Sales Agency',body:'Who we are, how we work, and what great looks like here. Read this, then mark it complete.\n\n(Add your welcome video or doc link under Edit curriculum.)',link:''},
-    {id:'m2',title:'Know the offer + the client',body:'You cannot sell what you do not understand. Learn the offer you are assigned to, who it is for, and the transformation it delivers.',link:''},
-    {id:'m3',title:'The sales framework / script',body:'Our call flow start to finish: open, discovery, pitch, price, close. Study the framework and internalize the flow.',link:''},
-    {id:'m4',title:'Objection handling',body:'The common objections (money, time, spouse, "think about it") and how to acknowledge, isolate, and handle each without being pushy.',link:''},
-    {id:'m5',title:'Tools + daily flow',body:'The dashboard, GHL, logging a Post-Call Checkout after every call, and submitting your End of Day numbers.',link:''},
-    {id:'m6',title:'Compliance + the do-not list',body:'Contact only through approved channels, never use personal contact info you found elsewhere, honor opt-outs, and follow the do-not list.',link:''}
+    {id:'welcome',title:'Welcome to The Sales Agency',body:'Who we are, how we work, and what great looks like here. Watch this, then mark it complete.\n\n(Add your welcome video under Edit curriculum.)',link:''},
+    {id:'culture',title:'How we work + culture',body:'You are a banker: between calls you are dialing leads, not waiting for the phone to ring. Marketing hands you opportunity; what you do with it is on you. You are paid on both setting and closing, at the rate negotiated with you. This is the mindset that separates the reps who win here.',link:''},
+    {id:'sod',title:'Start of Day',body:'Every day starts with your Start of Day in Sales HQ: your calls on the calendar and what you are committing to. This is how leadership sees the day taking shape. Here is exactly where to find it and how to fill it out.',link:''},
+    {id:'postcall',title:'Post-Call Checkout',body:'Log a Post-Call Checkout after every single call - it is how the whole system knows what happened and moves the lead. Closers: you can also log a call you set yourself, so you earn on both the set and the close (as negotiated with you). Here is how to fill it out for a setter call and a closer call.',link:''},
+    {id:'eod',title:'End of Day',body:'End every day with your End of Day numbers in Sales HQ. This is non-negotiable - it is how you get credit for your work and how we spot what to fix. Here is where to find it and what each field means.',link:''},
+    {id:'hotlist',title:'Hot List',body:'Your Hot List is the deals you are working and expect to close - who, how much, and when. Keep it current so leadership can back up the forecast. Here is how to add and update your deals.',link:''},
+    {id:'compliance',title:'Compliance + the do-not list',body:'Contact only through approved channels, never use personal contact info you found elsewhere, honor opt-outs, and follow the do-not list.',link:''}
   ],
   quiz:[
     {q:'When do you log a call outcome?',options:['Immediately after each call','At the end of the day','Only if it closed','You do not'],answer:0},
@@ -7564,7 +7565,21 @@ async function repResetProgress(username){
   await Promise.all(keys.map(k=>addRecord({type:'reponb',user:username,name:nm,key:k,done:false,at:new Date().toISOString(),reset:true})));
   toast('Onboarding reset for '+nm); renderTraining();
 }
-async function repMarkModule(id){ await addRecord({type:'reponb',user:(SESSION&&SESSION.username)||'',name:(SESSION&&SESSION.name)||'',key:id,done:true,at:new Date().toISOString()}); renderTraining(); }
+async function repMarkModule(id){ await addRecord({type:'reponb',user:(SESSION&&SESSION.username)||'',name:(SESSION&&SESSION.name)||'',key:id,done:true,at:new Date().toISOString()}); await autoTrainingStep((SESSION&&SESSION.username)||''); renderTraining(); }
+// when a rep finishes their training modules (or passes the cert), auto-tick the onboarding checklist's Training step
+async function autoTrainingStep(username){
+  try{
+    username=String(username||'').trim(); if(!username) return;
+    const cfg=repEffectiveConfig(username);
+    const allMods=cfg.modules.length>0 && repModulesDone(username,cfg)>=cfg.modules.length;
+    if(!(allMods || repGraduated(username))) return;
+    const u=userByName(username)||{username,name:username}, cur=repOnboardFor(username)||{};
+    if(cur.training) return; // already marked
+    const rec={type:'reponboard', username:(u.username||username), name:(u.name||username)};
+    ONBOARD_STEPS.forEach(([k])=>{ rec[k]=!!cur[k]; }); rec.training=true;
+    await addRecord(rec);
+  }catch(_){}
+}
 async function repMarkTask(tid){ await addRecord({type:'reponb',user:(SESSION&&SESSION.username)||'',name:(SESSION&&SESSION.name)||'',key:'task:'+tid,done:true,at:new Date().toISOString()}); renderTraining(); }
 async function repSubmitIntake(){
   const fields=repIntakeFields(), data={};
@@ -7643,6 +7658,7 @@ async function submitQuiz(){
   const score=Math.round(correct/cfg.quiz.length*100), passed=score>=cfg.passPct;
   document.getElementById('quizResult').innerHTML=`You scored <b>${score}%</b> (${correct}/${cfg.quiz.length}). `+(passed?'<span style="color:var(--good,#3ddc84)">Passed - you are certified!</span>':'<span style="color:var(--warn)">Not quite. Review the modules and try again.</span>');
   await addRecord({type:'reponb',user:(SESSION&&SESSION.username)||'',name:(SESSION&&SESSION.name)||'',key:'quiz',done:passed,passed,score,at:new Date().toISOString()});
+  if(passed) await autoTrainingStep((SESSION&&SESSION.username)||'');
   if(passed) setTimeout(renderTraining,1400); else setTimeout(()=>{ QUIZ_ANS={}; renderTraining(); },2600);
 }
 function repStageLabel(user,cfg,p){
