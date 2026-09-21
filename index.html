@@ -2146,14 +2146,21 @@ If they did not watch: No problem at all, I will send it right over. Can you wat
 <div class="modal" id="offModal" hidden onclick="if(event.target===this)offClose()">
   <div class="modalcard" style="width:min(520px,96vw);max-height:92vh;overflow:auto">
     <h3 style="margin:0 0 4px">Offboard <span id="offName"></span></h3>
-    <p class="hint" style="margin:0 0 12px">Sales HQ will deactivate their login, set their termination date to today, and drop them from the roster + all pickers. Confirm you've handled the handoff first. All their history is kept and you can reactivate anytime.</p>
+    <style>
+      #offModal .offrow{display:flex;align-items:center;gap:12px;font-size:14px;cursor:pointer;padding:12px 14px;border:1px solid var(--border);border-radius:10px;background:var(--surface-2);transition:border-color .12s,background .12s}
+      #offModal .offrow:hover{border-color:var(--gold-soft)}
+      #offModal .offrow:has(.offchk:checked){border-color:var(--gold);background:var(--gold-soft)}
+      #offModal .offchk{width:18px;height:18px;flex:0 0 auto;accent-color:var(--gold);cursor:pointer;margin:0}
+    </style>
+    <p class="hint" style="margin:0 0 4px">Sales HQ will deactivate their login, set their termination date to today, and drop them from the roster + all pickers. Confirm you've handled the handoff first. All their history is kept and you can reactivate anytime.</p>
+    <div class="fieldhelp" style="margin:0 0 12px;color:var(--gold-2)">Check each step to enable Offboard.</div>
     <div style="display:flex;flex-direction:column;gap:10px">
-      <label style="display:flex;align-items:flex-start;gap:9px;font-size:13.5px;cursor:pointer"><input type="checkbox" class="offchk" onchange="offToggle()" style="margin-top:2px"> Reassigned their leads to an active rep</label>
-      <label style="display:flex;align-items:flex-start;gap:9px;font-size:13.5px;cursor:pointer"><input type="checkbox" class="offchk" onchange="offToggle()" style="margin-top:2px"> Moved their calendar events / bookings to an active rep</label>
-      <label style="display:flex;align-items:flex-start;gap:9px;font-size:13.5px;cursor:pointer"><input type="checkbox" class="offchk" onchange="offToggle()" style="margin-top:2px"> Removed them from the client's Slack channels</label>
-      <label style="display:flex;align-items:flex-start;gap:9px;font-size:13.5px;cursor:pointer"><input type="checkbox" class="offchk" onchange="offToggle()" style="margin-top:2px"> Removed from any founder-specific programs</label>
+      <label class="offrow"><input type="checkbox" class="offchk" onchange="offToggle()"><span>Reassigned their leads to an active rep</span></label>
+      <label class="offrow"><input type="checkbox" class="offchk" onchange="offToggle()"><span>Moved their calendar events / bookings to an active rep</span></label>
+      <label class="offrow"><input type="checkbox" class="offchk" onchange="offToggle()"><span>Removed them from the client's Slack channels</span></label>
+      <label class="offrow"><input type="checkbox" class="offchk" onchange="offToggle()"><span>Removed from any founder-specific programs</span></label>
     </div>
-    <div class="fieldhelp" style="margin:12px 0 0">After you confirm, you'll be asked separately whether to also delete them from GHL (that step names the exact accounts and cannot be undone).</div>
+    <div class="fieldhelp" style="margin:14px 0 0">After you confirm, you'll be asked separately whether to also delete them from GHL (that step names the exact accounts and cannot be undone).</div>
     <div class="row-actions" style="margin-top:14px"><button class="btn gold sm" id="offConfirmBtn" onclick="offConfirm()" disabled style="opacity:.5;cursor:not-allowed">Offboard</button><button class="btn ghost sm" onclick="offClose()">Cancel</button></div>
   </div>
 </div>
