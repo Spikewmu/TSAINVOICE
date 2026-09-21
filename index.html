@@ -30,6 +30,12 @@
   ::-webkit-scrollbar-thumb{background:rgba(201,162,74,.30);border:2px solid transparent;background-clip:padding-box;border-radius:8px}
   ::-webkit-scrollbar-thumb:hover{background:rgba(201,162,74,.58);background-clip:padding-box}
   ::-webkit-scrollbar-corner{background:transparent}
+  /* Hover tooltips (T-602): a styled tip on any element carrying data-tip, and a small "?" info badge (tipq) */
+  [data-tip]{position:relative}
+  [data-tip]:hover::after{content:attr(data-tip);position:absolute;left:50%;bottom:calc(100% + 9px);transform:translateX(-50%);background:var(--surface-2);color:var(--ink);border:1px solid var(--gold);border-radius:8px;padding:8px 11px;font-size:12px;font-weight:400;white-space:normal;width:max-content;max-width:250px;z-index:120;box-shadow:var(--shadow);pointer-events:none;line-height:1.45;text-transform:none;letter-spacing:normal;text-align:left}
+  [data-tip]:hover::before{content:'';position:absolute;left:50%;bottom:calc(100% + 3px);transform:translateX(-50%);border:6px solid transparent;border-top-color:var(--gold);z-index:120;pointer-events:none}
+  .tiplbl{cursor:help;border-bottom:1px dotted var(--muted)}
+  .tipq{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;border:1px solid var(--muted);color:var(--muted);font-size:10px;font-weight:700;margin-left:5px;cursor:help;vertical-align:middle;line-height:1}
   body{margin:0;background:radial-gradient(1100px 620px at 12% -8%,rgba(201,162,74,.11),transparent 58%),radial-gradient(1000px 560px at 100% -5%,rgba(150,110,50,.10),transparent 55%),var(--ground);background-attachment:fixed;color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.5}
   header.app{position:sticky;top:0;z-index:20;background:rgba(16,13,9,.72);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border-bottom:1px solid var(--glass-brd);color:#fff;padding:14px 20px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
   header.app .brand{font-family:var(--serif);font-weight:700;letter-spacing:.01em;font-size:19px;display:flex;align-items:center;gap:9px}
@@ -805,6 +811,7 @@
           <button class="btn ghost sm" onclick="invPrevWeek()">&#8592; Previous week</button>
           <button class="btn ghost sm" onclick="invPrint()">&#128424; Print / save PDF</button>
           <button class="btn ghost sm" id="invSendBtn" onclick="invSendToBilling()">&#128228; Send to billing</button>
+          <button class="btn ghost sm" id="invPaidBtn" onclick="invMarkPaid()">&#10003; Mark paid</button>
         </div>
         <div class="grid3" style="gap:12px;margin-top:12px;border-top:1px solid var(--border);padding-top:12px">
           <div class="field"><label>Override billed amount ($)</label><input type="number" id="invOverrideCash" min="0" step="0.01" placeholder="blank = use cash collected"><span class="fieldhelp">Bill on this figure instead of cash collected (e.g. bill $10,000 when $10,500 was collected). Applies to this client + period only.</span></div>
@@ -1436,7 +1443,7 @@ If they did not watch: No problem at all, I will send it right over. Can you wat
         <div class="field"><label>How many</label><input type="number" id="rrqCount" min="1" step="1" value="1"></div>
         <div class="field" style="position:relative"><label>Needed by <span class="muted" style="font-weight:400">- optional</span></label><div class="rangewrap"><input type="text" id="rrqBy_txt" readonly placeholder="Pick a day" onclick="dayPopToggle('rrqBy',event)"><input type="hidden" id="rrqBy"><div class="rangepop" id="rrqBy_pop" hidden onclick="event.stopPropagation()"></div></div></div>
       </div>
-      <div class="field"><label>Notes <span class="muted" style="font-weight:400">- optional</span></label><input id="rrqNotes" placeholder="e.g. high-volume dialer, M&A experience, specific timezone..."></div>
+      <div class="field"><label>Why are you requesting these reps? <span class="muted" style="font-weight:400">- what will they work on, and what is driving the need (lead volume, coverage, replacing someone)?</span></label><input id="rrqNotes" placeholder="e.g. 40+ new leads/day going uncalled after 3pm ET; need a closer to cover the webinar bookings"></div>
       <div class="row-actions" style="margin-top:8px"><button class="btn gold" id="rrqSubmit" onclick="submitRepReq()">Submit request</button></div>
     </div>
     <div id="rrqBody" style="margin-top:16px"></div>
@@ -2243,6 +2250,54 @@ function money(n){ return (n||0).toLocaleString('en-US',{style:'currency',curren
 function pct(n){ return (isFinite(n)?Math.round(n*100):0)+'%'; }
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+// ---- Hover tooltips (T-602): keyed by label text so KPIs/stats/table headers explain themselves without editing each render ----
+function tip(text){ return `<span class="tipq" data-tip="${esc(text)}">?</span>`; } // inline "?" info badge helper for new UI
+const HQ_TIPS={
+  'open deals':'Open deals currently flagged on the Hot List.',
+  'forecasted cash':'Sum of the revenue on all OPEN Hot List deals (not weighted by probability).',
+  'weighted pipeline':'Sum of each open deal’s revenue times its probability, so a 50% $10k deal counts as $5k.',
+  'cash collected':'Money actually collected in the period: deal close-day cash plus any confirmed follow-on payments.',
+  'contract value':'Total signed contract value for the period (before payments come in).',
+  'revenue contracted':'Total signed contract value (before payments).',
+  'deposits collected':'Deposits/down-payments collected in the period.',
+  'closed deals':'Number of deals closed (won) in the period.',
+  'connected meetings':'Sales calls that were actually taken (prospect showed up).',
+  'connected meetings (calls taken)':'Sales calls that were actually taken (prospect showed up).',
+  'show rate':'Share of scheduled sales calls where the prospect showed up.',
+  'close rate':'Deals closed divided by connected (taken) sales calls.',
+  'call utilization':'Meetings on the calendar versus the rep’s available call slots.',
+  'call utilization (capacity)':'Meetings on the calendar versus the rep’s available call slots.',
+  'speed to lead':'Average time from a new lead arriving to the first call attempt.',
+  '% reached under 1 min':'Share of new leads first dialed within one minute of arriving (the real speed signal).',
+  'sales calls set':'Number of sales calls the setters booked.',
+  'sales calls offered':'Connected calls where the setter pitched booking a sales call.',
+  'calls set':'Number of sales calls booked.',
+  'new outreach':'First-touch dials to brand-new leads.',
+  'follow-up outreach':'Dials to leads already contacted before.',
+  'total dials':'All outbound dials (new plus follow-up).',
+  'actual tsa':'TSA’s rev-share on the cash the client actually collected in this period (accrual).',
+  'collected':'What TSA has actually banked (invoices marked Paid), all-time.',
+  'collected to date':'Total TSA revenue actually banked across all clients (invoices marked Paid).',
+  'forecast tsa revenue / mo':'Expected monthly TSA revenue = your expected monthly client collections times the rev-share %.',
+  'forecast tsa/mo':'Expected monthly TSA revenue for this client = expected monthly collections times the rev-share %.',
+  'expected tsa (outstanding)':'TSA’s rev-share on the client’s still-owed (outstanding) balance.',
+  'expected (o/s)':'TSA’s rev-share on this client’s outstanding (still-owed) balance.',
+  'front-end':'Rev-share % TSA earns on front-end (close-day and within-30-day) cash.',
+  'back-end':'Rev-share % TSA earns on back-end cash (payments 30+ days after close).',
+  'next 12 mo (recurring + o/s)':'Projected next-12-months TSA revenue: recurring forecast for the year plus all outstanding one-time income.',
+  'active contracts':'Contracts currently marked active.',
+  'total due':'Amount this client owes on this invoice.',
+  'total to pay':'Total commission owed to reps this pay cycle.',
+  'remaining':'Commission still unpaid for this pay cycle.',
+  'commission':'What the rep earns: cash collected times their commission rate.'
+};
+function hqApplyTooltips(root){
+  try{ (root||document).querySelectorAll('.kpi .lbl, .lbl, .stat .lbl, #conTable thead th, .hofeyebrow').forEach(el=>{
+    if(el.dataset.tipset) return;
+    const key=(el.textContent||'').trim().toLowerCase().replace(/\s+/g,' ');
+    const t=HQ_TIPS[key]; if(t){ el.setAttribute('data-tip',t); if(el.classList.contains('lbl')) el.classList.add('tiplbl'); el.dataset.tipset='1'; }
+  }); }catch(_){}
+}
 async function sha(s){ const b=await crypto.subtle.digest('SHA-256', new TextEncoder().encode('tsa|'+s)); return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join(''); }
 
 /* ---------------- backend (Apps Script) ---------------- */
@@ -2568,7 +2623,7 @@ function baseAllow(role){
     admin:['dash','halloffame','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','dayreports','hotlist','adminreport','recruiting','messages','invoicing','payouts','repcommrates','contracts','onbaudit','ghlmap','pcfields','data','users','integrations','settings','reprequests','resources','faq','kickoff','webinarsop'],
     director:['dash','halloffame','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','dailyreport','dayreports','hotlist','recruiting','messages','adminreport','contracts','onbaudit','ghlmap','pcfields','reprequests','resources','faq','kickoff','webinarsop'],
     manager:['dash','halloffame','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','speedtolead','dailyreport','dayreports','hotlist','adminreport','recruiting','messages','reprequests','resources','faq','kickoff','webinarsop'],
-    founder:['dash','hotlist','reprequests'],
+    founder:['dash','hotlist'],
     recruiter:['dash','recruiting','messages','timeoff','reprequests','resources','faq','kickoff','webinarsop'],
     webinarteam:['dash','meeting','promises','timeoff','webinar','resources','faq','kickoff','webinarsop'],
     closer:['dash','halloffame','mydeals','postcall','sod','eod','training','timeoff','calllog','reps','hotlist','resources','faq','kickoff','webinarsop'],
@@ -2717,8 +2772,9 @@ function showTab(t){
   ['dash','halloffame','mydeals','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','dayreports','hotlist','adminreport','reprequests','recruiting','messages','invoicing','payouts','repcommrates','contracts','onbaudit','ghlmap','pcfields','data','users','integrations','settings','resources','faq','kickoff','webinarsop','scorecards'].forEach(x=>{ const el=document.getElementById('tab-'+x); if(el) el.hidden = (x!==t); });
   // stale-while-revalidate: render instantly from the cached records, then refresh in the background
   const render={dash:renderDash, halloffame:renderHallOfFame, mydeals:renderMyDeals, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, promises:renderPromisesTab, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, mgreodview:renderMgrEodView, contracts:renderContracts, faq:renderFaq, scorecards:renderScorecards, webinar:renderWebinars, calllog:renderCallLog, calendar:renderCalendar, speedtolead:renderSpeedToLead, dailyreport:renderDailyReport, dayreports:renderDayReports, hotlist:renderHotList, adminreport:renderAdminReport, payouts:renderPayouts, repcommrates:renderRepCommRates, reprequests:renderRepRequests, recruiting:renderRecruiting, messages:renderMessages, training:renderTraining, invoicing:renderInvoicing, data:renderAll}[t];
-  if(render){ render(); syncRecords().then(()=>{ if(currentTab()===t) render(); buildGlobalClientSelect(); buildViewAsUserSelect(); updateNavBadges(); renderReminders(); }); }
+  if(render){ render(); hqApplyTooltips(); syncRecords().then(()=>{ if(currentTab()===t){ render(); hqApplyTooltips(); } buildGlobalClientSelect(); buildViewAsUserSelect(); updateNavBadges(); renderReminders(); }); }
   updateNavBadges();
+  setTimeout(hqApplyTooltips,0); // catch tabs whose render runs outside the map above
   if(t==='data'){ renderDailyEntry(); crInit(); }
   if(t==='users'){ renderUsers(); usersApplySecState(); }
   if(t==='settings'){ loadSettingsForm(); }
@@ -3565,10 +3621,11 @@ function renderContracts(){
   const host=document.getElementById('tab-contracts'); if(!host) return;
   const rng=conRanges()[CON_PERIOD]||conRanges().thismonth;
   const list=contractsEffective(), active=list.filter(c=>c.active!==false);
-  let fcMonth=0, actual=0, expOut=0, anyTBD=false; const monthTSA={};
+  let fcMonth=0, actual=0, expOut=0, totCollected=0, anyTBD=false; const monthTSA={};
   const rows=list.map(c=>{
     const app=conMatchClient(c), fmo=conMonthlyForecast(c);
     if(c.active!==false) fcMonth+=fmo;
+    const collected=tsaCollectedFor(app||c.client); if(c.active!==false) totCollected+=collected;
     const cash=conCashFor(app,rng.from,rng.to);
     const feR=(c.feTBD||c.feRate==null)?null:(Number(c.feRate)||0);
     const act=(cash!=null&&feR!=null)?cash*feR/100:null;
@@ -3586,17 +3643,19 @@ function renderContracts(){
       +`<td class="num" style="white-space:nowrap">${conRateLabel(c.beRate,c.beTBD)}${c.beMonthly?`<div class="muted" style="font-size:11px">of ${money(c.beMonthly)}/mo</div>`:''}</td>`
       +`<td class="num"><b>${money(fmo)}</b></td>`
       +`<td class="num">${act!=null?money(act):'<span class="muted">'+(app?money(0):'-')+'</span>'}</td>`
+      +`<td class="num">${collected>0?'<b>'+money(collected)+'</b>':'<span class="muted">-</span>'}</td>`
       +`<td class="num" style="white-space:nowrap">${(eo!=null&&outstanding>0)?`<b>${money(eo)}</b><div class="muted" style="font-size:11px">of ${money(outstanding)} o/s</div>`:'<span class="muted">-</span>'}</td>`
       +`<td><button class="btn ghost sm" onclick="conEdit('${jsStr(c.client)}')">Edit</button></td></tr>`;
   }).join('');
+  const totalRow=`<tr style="border-top:2px solid var(--gold);font-weight:800"><td>Total <span class="muted" style="font-weight:400;font-size:11px">- active</span></td><td></td><td></td><td></td><td class="num">${money(fcMonth)}</td><td class="num">${money(actual)}</td><td class="num" style="color:var(--gold-2)">${money(totCollected)}</td><td class="num">${money(expOut)}</td><td></td></tr>`;
   const months=[], d0=new Date(); d0.setDate(1);
   const firstKey=`${d0.getFullYear()}-${String(d0.getMonth()+1).padStart(2,'0')}`;
   let pastDue=0; Object.keys(monthTSA).forEach(k=>{ if(k<firstKey) pastDue+=monthTSA[k]; }); // overdue scheduled income rolls into this month
   for(let i=0;i<6;i++){ const d=new Date(d0.getFullYear(),d0.getMonth()+i,1), key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; let amt=fcMonth+(monthTSA[key]||0); if(i===0) amt+=pastDue; months.push({label:d.toLocaleString('en-US',{month:'short',year:'numeric'}), amt}); }
   const next12=fcMonth*12+expOut; // recurring for the year + all outstanding one-time income
   const card=(l,v)=>`<div class="kpi" style="flex:1;min-width:160px;display:flex;flex-direction:column"><div class="lbl" style="min-height:2.6em">${l}</div><div class="val" style="margin-top:auto">${v}</div></div>`;
-  const cards=document.getElementById('conCards'); if(cards) cards.innerHTML=card('Active contracts',active.length)+card('Forecast TSA revenue / mo',money(fcMonth))+card('Expected TSA (outstanding)',money(expOut))+card('Actual TSA ('+esc(rng.label)+')',money(actual))+card('Next 12 mo (recurring + o/s)',money(next12));
-  const t=document.getElementById('conTable'); if(t) t.innerHTML=`<thead><tr><th>Client</th><th>Status</th><th class="num">Front-end</th><th class="num">Back-end</th><th class="num">Forecast TSA/mo</th><th class="num">Actual TSA</th><th class="num">Expected (o/s)</th><th></th></tr></thead><tbody>${rows}</tbody>`;
+  const cards=document.getElementById('conCards'); if(cards) cards.innerHTML=card('Active contracts',active.length)+card('Forecast TSA revenue / mo',money(fcMonth))+card('Collected to date <span style="font-weight:400;font-size:11px;color:var(--muted)">(paid invoices)</span>',money(totCollected))+card('Expected TSA (outstanding)',money(expOut))+card('Actual TSA ('+esc(rng.label)+')',money(actual))+card('Next 12 mo (recurring + o/s)',money(next12));
+  const t=document.getElementById('conTable'); if(t) t.innerHTML=`<thead><tr><th>Client</th><th>Status</th><th class="num">Front-end</th><th class="num">Back-end</th><th class="num">Forecast TSA/mo</th><th class="num">Actual TSA</th><th class="num" title="What TSA has actually banked (invoices marked paid), all-time">Collected</th><th class="num">Expected (o/s)</th><th></th></tr></thead><tbody>${rows}${totalRow}</tbody>`;
   const fc=document.getElementById('conForecast'); if(fc) fc.innerHTML=`<thead><tr>${months.map(m=>`<th class="num">${esc(m.label)}</th>`).join('')}<th class="num">Next 12 mo</th></tr></thead><tbody><tr>${months.map(m=>`<td class="num">${money(m.amt)}</td>`).join('')}<td class="num"><b>${money(next12)}</b></td></tr></tbody>`;
   const note=document.getElementById('conNote'); if(note) note.style.display=anyTBD?'':'none';
 }
@@ -5038,14 +5097,28 @@ function invApprovalFor(client,from,to){
 }
 function invStatusPill(client,from,to){
   const a=invApprovalFor(client,from,to), st=a&&a.status;
+  if(st==='paid'){ return `<div style="display:inline-block;margin-top:5px;font-size:11px;color:#fff;background:#2f8f5b;border:1px solid #2f8f5b;border-radius:20px;padding:2px 10px" title="Paid${a.amount!=null?' '+money(a.amount):''}${a.by?' - marked by '+esc(a.by):''}${a.at?' on '+esc(usDate(a.at)):''}">&#10003; Paid${a.amount!=null?' '+money(a.amount):''}</div>`; }
   if(st==='approved'||st==='sent'){ const lbl=st==='sent'?'Sent':'Approved', c=st==='sent'?'#2f8f5b':'#c9a227', bg=st==='sent'?'#e8f5ee':'#fbf4e0';
     return `<div style="display:inline-block;margin-top:5px;font-size:11px;color:${c};background:${bg};border:1px solid ${c};border-radius:20px;padding:2px 10px" title="${lbl} by ${esc(a.by||'-')}${a.at?' on '+esc(usDate(a.at)):''}">${lbl}</div>`; }
   return '<div style="display:inline-block;margin-top:5px;font-size:11px;color:#6b7488;border:1px solid #e6e9ef;border-radius:20px;padding:2px 10px">Draft</div>';
 }
 async function setInvStatus(status){
   const li=LAST_INVOICE; if(!li||!li.client) return false;
-  await addRecord({type:'invoiceapproval', client:li.client, from:li.from, to:li.to, status, by:(SESSION&&SESSION.name)||'', at:new Date().toISOString()});
+  const rec={type:'invoiceapproval', client:li.client, from:li.from, to:li.to, status, by:(SESSION&&SESSION.name)||'', at:new Date().toISOString()};
+  if(status==='paid') rec.amount=li.amountDue||0; // stamp what TSA actually banked so Contracts can total collected revenue
+  await addRecord(rec);
   return true;
+}
+// latest invoiceapproval per client+period; used to total what TSA has actually collected (paid invoices)
+function invPaidRecords(){ const m={}; (RECORDS||[]).forEach(x=>{ if(x.type!=='invoiceapproval')return; const k=[nrmName(x.client),String(x.from||'').slice(0,10),String(x.to||'').slice(0,10)].join('|'); if(!m[k]||(x.submittedAt||'')>(m[k].submittedAt||'')) m[k]=x; }); return Object.values(m).filter(r=>r.status==='paid'); }
+function tsaCollectedFor(client){ const ck=nrmName(client); return invPaidRecords().filter(r=>nrmName(r.client)===ck).reduce((s,r)=>s+(Number(r.amount)||0),0); }
+async function invMarkPaid(){
+  if(!invAllowed()){ toast('Admins only',true); return; }
+  const li=LAST_INVOICE; if(!li||!li.client){ toast('Generate an invoice first.',true); return; }
+  const cur=invApprovalFor(li.client,li.from,li.to);
+  if(cur&&cur.status==='paid'){ if(!confirm('This invoice is already marked paid. Revert it to Sent?')) return; await setInvStatus('sent'); toast('Reverted to Sent'); }
+  else { await setInvStatus('paid'); toast('Marked paid - '+money(li.amountDue||0)+' collected'); }
+  invPreview();
 }
 async function approveInvoice(){
   if(!invAllowed()){ toast('Admins only',true); return; }
@@ -5128,7 +5201,7 @@ async function invSendToBilling(){
   try{
     const hdr={'Content-Type':'application/json'}; if(SESSION&&SESSION.token) hdr['x-session-token']=SESSION.token; else if(SESSION&&SESSION.pw) hdr['x-admin-pass']=SESSION.pw;
     const bi=(typeof billingInfo==='function'?billingInfo():null)||{};
-    const remit={beneficiary:bi.name||'', bank:bi.bank||'', bankAddr:bi.bankAddr||'', acctType:bi.acctType||'', routing:bi.routing||'', account:bi.acct||'', swift:bi.swift||'', reference:bi.reference||''};
+    const remit={beneficiary:bi.name||'', bank:bi.bank||'', bankAddr:bi.bankAddr||'', acctType:bi.acctType||'', routing:bi.routing||'', account:bi.acct||'', swift:bi.swift||'', reference:(li.payRef||bi.reference||'')};
     const pdfBase64=await invoiceToPdfBase64(); // exact-match PDF captured from the on-screen invoice (null falls back to the server-built PDF)
     const r=await fetch('/api/data?action=sendInvoice',{method:'POST',headers:hdr,body:JSON.stringify({client:li.client,from:li.from,to:li.to,cash:li.cashCollected,amount:li.amountDue,rateDesc:li.rateDesc,deals:li.deals,remit,pdfBase64})});
     const j=await r.json();
@@ -5167,18 +5240,19 @@ function genFounderInvoice(client,from,to){
   let amountDue=0, rateDesc='', noCfg=false;
   if(con && (con.feRate!=null || con.beRate!=null)){        // Contracts page drives it
     const feR=con.feRate!=null?con.feRate:0, beR=con.beRate!=null?con.beRate:0;
-    if(overridden){ amountDue=Math.round(ov.billedCash*feR)/100; rateDesc=`${feR}% of ${money(ov.billedCash)} (billed override, from contract)`; }
+    if(overridden){ amountDue=Math.round(ov.billedCash*feR)/100; rateDesc=`${feR}% of the billed amount (from contract)`; }
     else { amountDue=Math.round((feCash*feR+beCash*beR))/100; rateDesc=(beCash>0 && beR!==feR)?`${feR}% front-end + ${beR}% back-end of cash collected (from contract)`:`${feR}% of cash collected (from contract)`; }
   } else if(cfg){                                            // fallback: Billing settings flat / rep-comp
     const mode=cfg.mode||'flat', pct=mode==='repcomp'?((cfg.closerRate||0)+(cfg.setterRate||0)+(cfg.overrideRate||0)):(cfg.flatRate||0);
     amountDue=Math.round(billBase*pct)/100;
-    rateDesc=`${pct}% of ${overridden?money(billBase)+' (billed override)':'cash collected'}${mode==='repcomp'?' (rep comp + override)':''}`;
+    rateDesc=`${pct}% of ${overridden?'the billed amount':'cash collected'}${mode==='repcomp'?' (rep comp + override)':''}`;
     noCfg=!pct;
   } else { noCfg=true; }
-  try{ LAST_INVOICE={client,from,to,cashCollected,amountDue,rateDesc,deals:uniqDeals.length}; }catch(_){}
+  const payRef='TSA - '+client; // dynamic per-company wire reference so an incoming wire is matchable to this client (T-607)
+  try{ LAST_INVOICE={client,from,to,cashCollected,amountDue,rateDesc,deals:uniqDeals.length,payRef}; }catch(_){}
   const slug=(client.match(/[A-Za-z0-9]+/g)||[]).map(w=>w[0]).join('').toUpperCase();
   const initials=slug.slice(0,3)||'IN', invNo=`INV-${slug.slice(0,4)||'INV'}-${to.replace(/-/g,'')}`;
-  const bi=billingInfo();
+  const bi=Object.assign({}, billingInfo()||{}, {reference:payRef}); // force the dynamic reference on this invoice's remit block
   const period=`${esc(usDate(from))} &ndash; ${esc(usDate(to))}`;
   // stat tiles (only the enabled ones, per the Billing-settings toggles)
   const statVals={ closedDeals:uniqDeals.length, cashCollected:money(cashCollected), contractValue:money(totalRevenue), depositCollected:money(s.depositCollected), connectedMeetings:s.connectedMeetings, showRate:Math.round(s.showRate*100)+'%', callsOffered:callsOffered.toLocaleString(), callsSet:callsSet.toLocaleString(), newOutreach:newOut.toLocaleString(), followUpOutreach:fuOut.toLocaleString() };
@@ -5216,7 +5290,7 @@ function genFounderInvoice(client,from,to){
         </tr></thead>
         <tbody><tr>
           <td style="padding:12px 8px;color:#6b7488;border-bottom:1px solid #eef1f6">Services</td>
-          <td style="padding:12px 8px;color:#2b3242;border-bottom:1px solid #eef1f6">Sales team services${noCfg?'':' - '+rateDesc} (${period})</td>
+          <td style="padding:12px 8px;color:#2b3242;border-bottom:1px solid #eef1f6">Sales team services${noCfg?'':' - '+rateDesc} (${period})${overridden?`<div style="margin-top:6px;font-size:12px;color:#b4632a;font-weight:600">Billing override: billing on ${money(billBase)} <span style="color:#8a93a6;font-weight:500">(actual cash collected ${money(cashCollected)})</span>${ov.note?'<br><span style="color:#8a93a6;font-weight:500">'+esc(ov.note)+'</span>':''}</div>`:''}</td>
           <td style="padding:12px 8px;text-align:right;color:#6b7488;border-bottom:1px solid #eef1f6">1</td>
           <td style="padding:12px 8px;text-align:right;font-weight:700;color:#1a2b4a;border-bottom:1px solid #eef1f6;font-variant-numeric:tabular-nums">${money(amountDue)}</td>
         </tr></tbody>
@@ -5225,10 +5299,10 @@ function genFounderInvoice(client,from,to){
         <div style="font-size:13px;font-weight:700;color:#c9a227;text-transform:uppercase;letter-spacing:.04em">Total due</div>
         <div style="font-size:26px;font-weight:900;color:#c9a227;font-variant-numeric:tabular-nums">${money(amountDue)}</div>
       </div>
-      ${overridden?`<div style="margin-top:8px;text-align:right;font-size:12px;color:#6b7488">Billed on <b style="color:#1a2b4a">${money(billBase)}</b> (override)${ov.note?' &ndash; '+esc(ov.note):''}. Actual cash collected: <b style="color:#1a2b4a">${money(cashCollected)}</b>.</div>`:''}
       ${noCfg?`<div style="margin-top:10px;font-size:12px;color:#b4632a">No billing rate for this client - set the rev-share % on its Contract (Admin &rarr; Contracts), or a rate under Billing settings, to compute the amount due.</div>`:''}
       <div style="border-top:1px solid #eef1f6;margin:18px 0 12px"></div>
-      <div style="font-size:12px;color:#8a93a6">Notes</div>
+      <div style="margin-top:6px;padding:10px 12px;border:1px solid #e6e9ef;border-radius:10px;background:#faf7ee"><span style="font-size:11px;color:#8a93a6;text-transform:uppercase;letter-spacing:.04em;font-weight:600">Payment reference</span><div style="font-weight:800;color:#1a2b4a;font-size:15px;font-variant-numeric:tabular-nums">${esc(payRef)}</div><div style="font-size:11.5px;color:#8a93a6;margin-top:2px">Put this on the wire so we can match your payment.</div></div>
+      <div style="font-size:12px;color:#8a93a6;margin-top:14px">Notes</div>
       <div style="font-size:13px;color:#2b3242">Net 7. Wire or ACH preferred - payment details on file. Thank you for your continued partnership.</div>
       ${wireLine}
     `)}
@@ -5651,8 +5725,8 @@ function invEmailVerify(){
 // TSA's wire/ACH remit details as a labeled block (shared by the founder invoice + the $1 verification wire)
 function remitBlockHtml(bi){
   bi=bi||{};
-  const row=(l,v)=> v?`<tr><td style="padding:2px 16px 2px 0;color:#8a93a6;white-space:nowrap;vertical-align:top">${esc(l)}</td><td style="padding:2px 0;color:#2b3242;font-weight:600">${esc(v)}</td></tr>`:'';
-  const rows=row('Beneficiary',bi.name)+row('Bank',bi.bank)+row('Bank address',bi.bankAddr)+row('Routing (ABA / wire)',bi.routing)+row('Account number',bi.acct)+row('Account type',bi.acctType)+row('SWIFT / BIC',bi.swift)+row('Reference',bi.reference);
+  const row=(l,v,hi)=> v?`<tr><td style="padding:2px 16px 2px 0;color:#8a93a6;white-space:nowrap;vertical-align:top">${esc(l)}</td><td style="padding:2px 0;color:${hi?'#b4632a':'#2b3242'};font-weight:${hi?'800':'600'}">${esc(v)}</td></tr>`:'';
+  const rows=row('Beneficiary',bi.name)+row('Bank',bi.bank)+row('Bank address',bi.bankAddr)+row('Routing (ABA / wire)',bi.routing)+row('Account number',bi.acct)+row('Account type',bi.acctType)+row('SWIFT / BIC',bi.swift)+row('Reference',bi.reference,true);
   if(!rows) return '';
   return `<div style="margin-top:12px"><div style="font-size:12px;color:#8a93a6;margin-bottom:5px;text-transform:uppercase;letter-spacing:.04em;font-weight:600">Remit payment to</div>
     <table style="border-collapse:collapse;font-size:12.5px">${rows}</table></div>`;
@@ -6634,6 +6708,10 @@ async function submitRepReq(){
     toast('Rep request submitted'); renderRepRequests(); }
   catch(e){ toast('Could not submit: '+((e&&e.message)||e),true); }
   finally{ btnBusy(btn,false); } }
+async function replyRepReq(id){ const cur=collapseRepReq().find(r=>r.id===id); if(!cur) return;
+  const txt=prompt('Reply to this request (visible to whoever submitted it):', cur.replyNote||''); if(txt===null) return;
+  await addRecord(Object.assign({},cur,{replyNote:String(txt||'').trim(), replyBy:(SESSION&&SESSION.name)||'', replyAt:new Date().toISOString()}));
+  toast('Reply saved'); renderRepRequests(); if(currentTab()==='recruiting') renderRepReqQueue(); }
 async function fillRepReq(id){ const cur=collapseRepReq().find(r=>r.id===id); if(!cur) return;
   const who=prompt(`Who did you place for this ${cur.role} request on ${cur.client}? (name)`); if(who===null) return;
   await addRecord(Object.assign({},cur,{status:'filled', filledBy:(SESSION&&SESSION.name)||'', filledInfo:String(who||'').trim(), filledAt:new Date().toISOString()}));
@@ -6651,7 +6729,9 @@ function rrqCard(r){
   const acts=[]; const meName=nrmName((SESSION&&SESSION.name)||'');
   if(r.status!=='filled' && rrqCanFill()) acts.push(`<button class="btn gold sm" onclick="fillRepReq('${r.id}')">Mark filled</button>`);
   if(r.status==='filled' && rrqCanFill()) acts.push(`<button class="btn ghost sm" onclick="reopenRepReq('${r.id}')">Reopen</button>`);
+  if(rrqCanFill()) acts.push(`<button class="btn ghost sm" onclick="replyRepReq('${r.id}')">${r.replyNote?'Edit reply':'Reply'}</button>`);
   if(rrqCanFill() || nrmName(r.by)===meName) acts.push(`<button class="btn ghost sm" onclick="cancelRepReq('${r.id}')">Remove</button>`);
+  const reply = r.replyNote?`<div style="margin-top:8px;padding:8px 10px;border-left:3px solid var(--gold);background:var(--surface-2);border-radius:0 8px 8px 0"><div class="muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.03em">Reply${r.replyBy?' from '+esc(r.replyBy):''}${r.replyAt?' · '+usDate(r.replyAt):''}</div><div style="font-size:13px;color:var(--ink);margin-top:2px">${esc(r.replyNote)}</div></div>`:'';
   const filled = r.status==='filled'?`<div class="pill good" style="margin-top:8px;display:inline-block">Filled${r.filledInfo?': '+esc(r.filledInfo):''}${r.filledAt?' · '+usDate(r.filledAt):''}${r.filledBy?' by '+esc(r.filledBy):''}</div>`:'';
   return `<div class="panel" style="margin:0 0 10px;padding:14px 16px${overdue?';border-color:var(--bad)':''}">
     <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:baseline">
@@ -6662,7 +6742,7 @@ function rrqCard(r){
     <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-top:9px">
       <span class="muted" style="font-size:12px">requested by ${esc(r.by||'-')}</span>
       <div class="row-actions">${acts.join('')}</div>
-    </div>${filled}</div>`;
+    </div>${reply}${filled}</div>`;
 }
 function renderRepRequests(){
   const form=document.getElementById('rrqForm');
