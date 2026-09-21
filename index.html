@@ -2307,6 +2307,16 @@ const HQ_TIPS={
   'back-end':'Rev-share % TSA earns on back-end cash (payments 30+ days after close).',
   'next 12 mo (recurring + o/s)':'Projected next-12-months TSA revenue: recurring forecast for the year plus all outstanding one-time income.',
   'active contracts':'Contracts currently marked active.',
+  'tsa cash collected':'TSA’s own revenue: what we actually banked (invoices marked Paid) in this period.',
+  'client cash collected':'Total cash the clients’ sales teams collected in this period (the sales volume we run).',
+  'commissions paid to reps':'Total commission owed/paid to setters and closers in this period.',
+  'contracted':'Total contract value signed in this period (before payments come in).',
+  'calls booked':'Sales calls the setters booked in this period.',
+  'calls taken':'Sales calls actually taken (prospect showed) in this period.',
+  'dials':'Total outbound dials (new plus follow-up) in this period.',
+  'connection rate':'Connected calls divided by total dials.',
+  'booking rate':'Sales calls booked divided by connected calls.',
+  'accounts':'Active client accounts.',
   'total due':'Amount this client owes on this invoice.',
   'total to pay':'Total commission owed to reps this pay cycle.',
   'remaining':'Commission still unpaid for this pay cycle.',
@@ -6099,7 +6109,8 @@ function renderHallOfFame(){
 let MASTER_PERIOD='month';
 const MASTER_METRICS=[
   {k:'accounts', lbl:'Accounts', fmt:v=>Math.round(v).toLocaleString()},
-  {k:'cash', lbl:'Cash collected', fmt:money},
+  {k:'tsaCollected', lbl:'TSA cash collected', fmt:money},
+  {k:'cash', lbl:'Client cash collected', fmt:money},
   {k:'commission', lbl:'Commissions paid to reps', fmt:money},
   {k:'contracted', lbl:'Contracted', fmt:money},
   {k:'callsBooked', lbl:'Calls booked', fmt:v=>Math.round(v).toLocaleString()},
@@ -6130,8 +6141,9 @@ function masterStats(from,to){
   let dials=0,conn=0,sets=0,taken=0,noshow=0;
   Object.values(eod).forEach(x=>{ dials+=(Number(x.newOutreach)||0)+(Number(x.followUpOutreach)||0); conn+=Number(x.connectedCalls)||0; sets+=Number(x.callsSet)||0; taken+=Number(x.connectedMeetings)||0; noshow+=Number(x.noShows)||0; });
   let commission=0; try{ const rc=repCommData(from,to,''); commission=[...rc.closers,...rc.setters].reduce((a,o)=>a+o.commission,0); }catch(_){}
+  let tsaCollected=0; try{ invPaidRecords().forEach(r=>{ const d=String(r.at||'').slice(0,10); if(d&&d>=from&&d<=to) tsaCollected+=Number(r.amount)||0; }); }catch(_){} // what TSA actually banked (invoices marked Paid, by pay date)
   let accounts=0; try{ accounts=contractsEffective().filter(c=>c.active!==false).length || clientNames().length; }catch(_){ try{ accounts=clientNames().length; }catch(e){} }
-  return { accounts, dials, connRate:dials?conn/dials:0, callsBooked:sets, bookingRate:conn?sets/conn:0, callsTaken:taken, showRate:(taken+noshow)?taken/(taken+noshow):0, closeRate:taken?closed/taken:0, cash, contracted, commission };
+  return { accounts, dials, connRate:dials?conn/dials:0, callsBooked:sets, bookingRate:conn?sets/conn:0, callsTaken:taken, showRate:(taken+noshow)?taken/(taken+noshow):0, closeRate:taken?closed/taken:0, cash, tsaCollected, contracted, commission };
 }
 function mSelectedMetrics(){ try{ const v=JSON.parse(localStorage.getItem('tsa_master_metrics')||'null'); if(Array.isArray(v)&&v.length) return v; }catch(_){} return MASTER_METRICS.map(x=>x.k); }
 function mSetPeriod(p){ MASTER_PERIOD=p; renderMaster(); }
