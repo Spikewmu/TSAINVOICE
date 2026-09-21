@@ -1154,10 +1154,11 @@
     <p class="hint">Set the commission % each rep earns on cash collected. <b>Defaults</b> apply to everyone unless you override a specific rep below. This is what TSA pays the <b>reps</b> (separate from what a client pays TSA - that's on Contracts). Super Admin only.</p>
     <div class="panel" style="padding:18px;max-width:520px">
       <h3 style="margin:0 0 4px">Default rates</h3>
-      <p class="fieldhelp" style="margin:0 0 12px">Applied to any rep without a specific override.</p>
-      <div class="grid2" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <p class="fieldhelp" style="margin:0 0 12px">Applied to any rep without a specific override. The <b>manager override</b> is what TSA pays sales managers on their teams' cash; it feeds the Master dashboard's net revenue.</p>
+      <div class="grid2" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
         <div class="field"><label>Setter default (%)</label><input type="number" id="rcDefSetter" step="0.1" min="0" placeholder="3"></div>
         <div class="field"><label>Closer default (%)</label><input type="number" id="rcDefCloser" step="0.1" min="0" placeholder="7"></div>
+        <div class="field"><label>Manager override (%)</label><input type="number" id="rcDefMgr" step="0.1" min="0" placeholder="0"></div>
       </div>
       <div class="row-actions" style="margin-top:10px"><button class="btn gold sm" onclick="saveCommDefaults()">Save defaults</button></div>
     </div>
@@ -1168,6 +1169,14 @@
       </div>
       <p class="fieldhelp" style="margin:6px 0 12px">Leave a cell blank to use the default. Only closers show a closer rate; only setters show a setter rate (hybrids show both).</p>
       <div class="tablewrap"><table id="rcTable"></table></div>
+    </div>
+    <div class="panel" style="padding:18px;margin-top:16px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px">
+        <h3 style="margin:0">Manager overrides</h3>
+        <button class="btn gold sm" onclick="saveMgrOverrides()">Save overrides</button>
+      </div>
+      <p class="fieldhelp" style="margin:6px 0 12px">The override % each sales manager earns on the cash their teams collect (the accounts they manage). Blank uses the default above. Feeds the Master dashboard's net revenue.</p>
+      <div class="tablewrap"><table id="rcMgrTable"></table></div>
     </div>
   </section>
 
@@ -2245,7 +2254,7 @@ const DEFAULT_CFG = {
   closers:[],
   setters:[], // real reps come from the user roster (USERS_CACHE), never a hardcoded seed - see repNames()
   products:["Retainer","DWY","DFY","Partnership","Other"],
-  goal:2000000, closerRate:7, setterRate:3,
+  goal:2000000, closerRate:7, setterRate:3, mgrOverrideRate:0,
   endpoint:"https://script.google.com/macros/s/AKfycbzOjSVJ7gj4V6kcrbiAodGmoA884imoyvD9j-teTlxMZgGH9OYcR3q7pXUAeqCYGeS1/exec",
   // Records (deals/eod/postcall/clients/teams/onboarding) live in Supabase Postgres = fast.
   // The Supabase key is NOT stored here anymore: the Apps Script backend hands it to the app
@@ -2308,6 +2317,10 @@ const HQ_TIPS={
   'next 12 mo (recurring + o/s)':'Projected next-12-months TSA revenue: recurring forecast for the year plus all outstanding one-time income.',
   'active contracts':'Contracts currently marked active.',
   'tsa cash collected':'TSA’s own revenue: what we actually banked (invoices marked Paid) in this period.',
+  'tsa revenue (billed)':'TSA’s revenue earned this period: the rev-share % on client cash collected (what we can bill), before it is collected.',
+  'outstanding (tsa)':'TSA revenue earned but not yet banked (billed minus collected).',
+  'manager overrides':'What TSA pays sales managers on their teams’ cash (per-manager override % set on Rep Commission Breakdown).',
+  'net after commissions':'TSA revenue after paying setters, closers, and manager overrides.',
   'client cash collected':'Total cash the clients’ sales teams collected in this period (the sales volume we run).',
   'commissions paid to reps':'Total commission owed/paid to setters and closers in this period.',
   'contracted':'Total contract value signed in this period (before payments come in).',
@@ -2424,8 +2437,8 @@ function currentWsName(){ const r=wsRecord(); return (r&&r.name) || (currentWs()
 // per-workspace business settings (goal, payout rates, offers) live in a 'wsconfig' record so a team's
 // config is shared across its members and isolated from other teams (not per-browser localStorage).
 function wsConfigRec(){ const ws=currentWs(); let best=null; RECORDS.forEach(x=>{ if(x.type==='wsconfig' && x.ws===ws){ if(!best||(x.submittedAt||'')>(best.submittedAt||'')) best=x; } }); return best; }
-function applyWsConfig(){ const c=wsConfigRec(); if(!c) return; if(c.goal!=null) CFG.goal=c.goal; if(c.closerRate!=null) CFG.closerRate=c.closerRate; if(c.setterRate!=null) CFG.setterRate=c.setterRate; if(Array.isArray(c.products)) CFG.products=c.products; }
-function saveWsConfig(){ return addRecord({type:'wsconfig', goal:CFG.goal, closerRate:CFG.closerRate, setterRate:CFG.setterRate, products:Array.isArray(CFG.products)?CFG.products:[]}); }
+function applyWsConfig(){ const c=wsConfigRec(); if(!c) return; if(c.goal!=null) CFG.goal=c.goal; if(c.closerRate!=null) CFG.closerRate=c.closerRate; if(c.setterRate!=null) CFG.setterRate=c.setterRate; if(c.mgrOverrideRate!=null) CFG.mgrOverrideRate=c.mgrOverrideRate; if(Array.isArray(c.products)) CFG.products=c.products; }
+function saveWsConfig(){ return addRecord({type:'wsconfig', goal:CFG.goal, closerRate:CFG.closerRate, setterRate:CFG.setterRate, mgrOverrideRate:CFG.mgrOverrideRate, products:Array.isArray(CFG.products)?CFG.products:[]}); }
 /* ---- plan + trial gating (billing drops into this later) ---- */
 const PLAN_SEATS={trial:5,starter:5,growth:15,scale:40,internal:99999};
 const PLAN_NAMES={trial:'Free trial',starter:'Starter',growth:'Growth',scale:'Scale',internal:'Internal'};
@@ -5531,12 +5544,16 @@ function commDefaultRate(role){ return role==='closer' ? (CFG.closerRate!=null?C
 let _repRateCache={n:-1,m:{}};
 function repCommOverride(name){ const k=nrmName(name); if(!k) return null; if(_repRateCache.n!==RECORDS.length) _repRateCache={n:RECORDS.length,m:{}}; if(k in _repRateCache.m) return _repRateCache.m[k]; let best=null; RECORDS.forEach(x=>{ if(x.type==='repcommrate' && nrmName(x.rep)===k){ if(!best||(x.submittedAt||'')>(best.submittedAt||'')) best=x; } }); _repRateCache.m[k]=best; return best; }
 function repRate(name, role){ const o=repCommOverride(name); if(o){ const v=(role==='closer')?o.closerRate:o.setterRate; if(v!=null&&v!=='') return Number(v); } return commDefaultRate(role); }
+// per-manager override rate (what TSA pays a sales manager on their teams' cash); falls back to the default
+function mgrOverrideFor(name){ let best=null; (RECORDS||[]).forEach(x=>{ if(x.type!=='mgroverride'||nrmName(x.name)!==nrmName(name))return; if(!best||String(x.submittedAt||'')>String(best.submittedAt||'')) best=x; }); return (best&&best.rate!=null)?Number(best.rate):(CFG.mgrOverrideRate!=null?CFG.mgrOverrideRate:0); }
+function mgrOverrideRaw(name){ let best=null; (RECORDS||[]).forEach(x=>{ if(x.type!=='mgroverride'||nrmName(x.name)!==nrmName(name))return; if(!best||String(x.submittedAt||'')>String(best.submittedAt||'')) best=x; }); return (best&&best.rate!=null)?Number(best.rate):null; } // explicit override only (blank = use default)
 function rcCanEdit(){ return !!(SESSION && SESSION.role==='admin'); }
 function renderRepCommRates(){
   const sec=document.getElementById('tab-repcommrates'); if(!sec) return;
-  const ds=document.getElementById('rcDefSetter'), dc=document.getElementById('rcDefCloser');
+  const ds=document.getElementById('rcDefSetter'), dc=document.getElementById('rcDefCloser'), dm=document.getElementById('rcDefMgr');
   if(ds) ds.value=(CFG.setterRate!=null?CFG.setterRate:3);
   if(dc) dc.value=(CFG.closerRate!=null?CFG.closerRate:7);
+  if(dm) dm.value=(CFG.mgrOverrideRate!=null?CFG.mgrOverrideRate:0);
   const reps=[];
   (USERS_CACHE||[]).forEach(u=>{ if(!u||u.archived||!u.username) return; let roles=[]; try{ roles=(typeof rolesFor==='function'?rolesFor(u.username):null)||[u.role]; }catch(e){ roles=[u.role]; } const isC=roles.includes('closer'), isS=roles.includes('setter'); if(isC||isS) reps.push({name:u.name||u.username, isC, isS}); });
   reps.sort((a,b)=>String(a.name).localeCompare(String(b.name)));
@@ -5549,11 +5566,34 @@ function renderRepCommRates(){
     return `<tr><td><b>${esc(r.name)}</b></td><td class="muted">${roleLbl}</td><td>${sCell}</td><td>${cCell}</td></tr>`;
   }).join('');
   t.innerHTML=`<thead><tr><th>Rep</th><th>Role</th><th>Setter %</th><th>Closer %</th></tr></thead><tbody>${rows||'<tr><td colspan="4" class="muted" style="padding:14px">No closers or setters in the roster yet.</td></tr>'}</tbody>`;
+  // Manager overrides table
+  const mt=document.getElementById('rcMgrTable');
+  if(mt){
+    const mgrs=[];
+    (USERS_CACHE||[]).forEach(u=>{ if(!u||u.archived||!u.username) return; let roles=[]; try{ roles=(typeof rolesFor==='function'?rolesFor(u.username):null)||[u.role]; }catch(e){ roles=[u.role]; } if(roles.includes('manager')) mgrs.push({name:u.name||u.username, user:u}); });
+    mgrs.sort((a,b)=>String(a.name).localeCompare(String(b.name)));
+    const mdef=(CFG.mgrOverrideRate!=null?CFG.mgrOverrideRate:0);
+    const mrows=mgrs.map(m=>{ const rate=mgrOverrideRaw(m.name); const clients=managedClientsForUser(m.user); const cl=clients.length?clients.join(', '):'no accounts assigned';
+      return `<tr><td><b>${esc(m.name)}</b></td><td class="muted" style="font-size:12px">${esc(cl)}</td><td><input type="number" step="0.1" min="0" class="rcM" data-rep="${esc(m.name)}" value="${(rate!=null&&rate!=='')?esc(rate):''}" placeholder="${mdef}" style="width:90px"></td></tr>`;
+    }).join('');
+    mt.innerHTML=`<thead><tr><th>Manager</th><th>Accounts</th><th>Override %</th></tr></thead><tbody>${mrows||'<tr><td colspan="3" class="muted" style="padding:14px">No managers in the roster yet.</td></tr>'}</tbody>`;
+  }
+}
+async function saveMgrOverrides(){
+  if(!rcCanEdit()){ toast('Super Admin only',true); return; }
+  const els=document.querySelectorAll('#rcMgrTable .rcM'); let n=0;
+  try{
+    for(const el of els){ const name=el.getAttribute('data-rep'); const raw=el.value; const val=(raw===''?null:parseFloat(raw)); const cur=mgrOverrideRaw(name);
+      if((cur==null&&val==null)||(cur!=null&&val!=null&&Number(cur)===Number(val))) continue; // unchanged
+      await addRecord({type:'mgroverride', name, rate:(val==null?null:Number(val)), by:(SESSION&&SESSION.name)||''}); n++;
+    }
+    toast(n?('Saved '+n+' manager override'+(n===1?'':'s')):'No changes'); renderRepCommRates();
+  }catch(e){ toast('Save failed: '+((e&&e.message)||e),true); }
 }
 async function saveCommDefaults(){
   if(!rcCanEdit()){ toast('Super Admin only',true); return; }
-  const s=parseFloat(document.getElementById('rcDefSetter').value), c=parseFloat(document.getElementById('rcDefCloser').value);
-  if(!isNaN(s)) CFG.setterRate=s; if(!isNaN(c)) CFG.closerRate=c;
+  const s=parseFloat(document.getElementById('rcDefSetter').value), c=parseFloat(document.getElementById('rcDefCloser').value), m=parseFloat((document.getElementById('rcDefMgr')||{}).value);
+  if(!isNaN(s)) CFG.setterRate=s; if(!isNaN(c)) CFG.closerRate=c; if(!isNaN(m)) CFG.mgrOverrideRate=m;
   try{ await saveWsConfig(); toast('Default rates saved'); renderRepCommRates(); try{ if(currentTab()==='invoicing') repCommRender(); }catch(e){} }
   catch(e){ toast('Save failed: '+((e&&e.message)||e),true); }
 }
@@ -6109,9 +6149,13 @@ function renderHallOfFame(){
 let MASTER_PERIOD='month';
 const MASTER_METRICS=[
   {k:'accounts', lbl:'Accounts', fmt:v=>Math.round(v).toLocaleString()},
+  {k:'tsaRevenue', lbl:'TSA revenue (billed)', fmt:money},
   {k:'tsaCollected', lbl:'TSA cash collected', fmt:money},
-  {k:'cash', lbl:'Client cash collected', fmt:money},
+  {k:'outstanding', lbl:'Outstanding (TSA)', fmt:money},
   {k:'commission', lbl:'Commissions paid to reps', fmt:money},
+  {k:'managerOverride', lbl:'Manager overrides', fmt:money},
+  {k:'net', lbl:'Net after commissions', fmt:money},
+  {k:'cash', lbl:'Client cash collected', fmt:money},
   {k:'contracted', lbl:'Contracted', fmt:money},
   {k:'callsBooked', lbl:'Calls booked', fmt:v=>Math.round(v).toLocaleString()},
   {k:'callsTaken', lbl:'Calls taken', fmt:v=>Math.round(v).toLocaleString()},
@@ -6133,17 +6177,23 @@ function masterRange(p){
 }
 function masterStats(from,to){
   const inR=d=>{ d=String(d||'').slice(0,10); return d && d>=from && d<=to; };
-  let cash=0, contracted=0, closed=0; const deals={};
+  let cash=0, contracted=0, closed=0, tsaRevenue=0; const deals={};
+  const rateFor=(client,back)=>{ try{ const con=contractRatesFor(client); if(con&&(con.feRate!=null||con.beRate!=null)) return back?(con.beRate||0):(con.feRate||0); const cfg=clientBillingCfg(client); if(cfg) return (cfg.mode||'flat')==='repcomp'?((cfg.closerRate||0)+(cfg.setterRate||0)+(cfg.overrideRate||0)):(cfg.flatRate||0); }catch(_){} return 0; };
+  const clientCash={}; // cash by client in period, for per-manager override attribution
   (RECORDS||[]).forEach(x=>{ if(x.type!=='deal') return; const id=String(x.id||''); if(!id) return; const p=deals[id]; if(!p||(x.submittedAt||'')>(p.submittedAt||'')) deals[id]=x; });
-  Object.values(deals).forEach(d=>{ if(!inR(d.date)) return; cash+=Number(d.cashCollected)||0; contracted+=Number(d.contractValue)||0; closed+=1; });
-  paymentsCollapsed().forEach(p=>{ if(p.status==='confirmed'&&inR(p.date)) cash+=Number(p.amount)||0; });
+  Object.values(deals).forEach(d=>{ if(!inR(d.date)) return; const c=Number(d.cashCollected)||0; cash+=c; contracted+=Number(d.contractValue)||0; closed+=1; tsaRevenue+=c*rateFor(d.client,false)/100; clientCash[d.client]=(clientCash[d.client]||0)+c; });
+  paymentsCollapsed().forEach(p=>{ if(p.status==='confirmed'&&inR(p.date)){ const c=Number(p.amount)||0; cash+=c; tsaRevenue+=c*rateFor(p.client,(typeof paymentBackEnd==='function'&&paymentBackEnd(p)))/100; clientCash[p.client]=(clientCash[p.client]||0)+c; } });
   const eod={}; (RECORDS||[]).forEach(x=>{ if(x.type!=='eod'||!inR(x.date)) return; const k=[(x.rep||'').trim().toLowerCase(),(x.client||'').trim().toLowerCase(),(x.date||'').slice(0,10),(x.role||'')].join('|'); const p=eod[k]; if(!p||(x.submittedAt||'')>(p.submittedAt||'')) eod[k]=x; });
   let dials=0,conn=0,sets=0,taken=0,noshow=0;
   Object.values(eod).forEach(x=>{ dials+=(Number(x.newOutreach)||0)+(Number(x.followUpOutreach)||0); conn+=Number(x.connectedCalls)||0; sets+=Number(x.callsSet)||0; taken+=Number(x.connectedMeetings)||0; noshow+=Number(x.noShows)||0; });
   let commission=0; try{ const rc=repCommData(from,to,''); commission=[...rc.closers,...rc.setters].reduce((a,o)=>a+o.commission,0); }catch(_){}
   let tsaCollected=0; try{ invPaidRecords().forEach(r=>{ const d=String(r.at||'').slice(0,10); if(d&&d>=from&&d<=to) tsaCollected+=Number(r.amount)||0; }); }catch(_){} // what TSA actually banked (invoices marked Paid, by pay date)
   let accounts=0; try{ accounts=contractsEffective().filter(c=>c.active!==false).length || clientNames().length; }catch(_){ try{ accounts=clientNames().length; }catch(e){} }
-  return { accounts, dials, connRate:dials?conn/dials:0, callsBooked:sets, bookingRate:conn?sets/conn:0, callsTaken:taken, showRate:(taken+noshow)?taken/(taken+noshow):0, closeRate:taken?closed/taken:0, cash, tsaCollected, contracted, commission };
+  let managerOverride=0; // per-manager: each manager's override % applied to the cash on the clients they manage
+  try{ (USERS_CACHE||[]).forEach(u=>{ if(!u||u.archived||!u.username) return; let roles=[]; try{ roles=(typeof rolesFor==='function'?rolesFor(u.username):null)||[u.role]; }catch(e){ roles=[u.role]; } if(!roles.includes('manager')) return; const rate=mgrOverrideFor(u.name||u.username); if(!rate) return; const teamCash=managedClientsForUser(u).reduce((s,c)=>s+(clientCash[c]||0),0); managerOverride+=teamCash*rate/100; }); }catch(_){}
+  const net=tsaRevenue-commission-managerOverride;           // TSA revenue after paying setters, closers, and managers
+  const outstanding=Math.max(0, tsaRevenue-tsaCollected);    // TSA revenue earned but not yet banked
+  return { accounts, dials, connRate:dials?conn/dials:0, callsBooked:sets, bookingRate:conn?sets/conn:0, callsTaken:taken, showRate:(taken+noshow)?taken/(taken+noshow):0, closeRate:taken?closed/taken:0, cash, tsaRevenue, tsaCollected, outstanding, contracted, commission, managerOverride, net };
 }
 function mSelectedMetrics(){ try{ const v=JSON.parse(localStorage.getItem('tsa_master_metrics')||'null'); if(Array.isArray(v)&&v.length) return v; }catch(_){} return MASTER_METRICS.map(x=>x.k); }
 function mSetPeriod(p){ MASTER_PERIOD=p; renderMaster(); }
