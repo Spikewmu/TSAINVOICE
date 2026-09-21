@@ -1145,7 +1145,8 @@
     </div>
     <div id="poKpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin:12px 0"></div>
     <div class="panel" style="margin:0 0 14px"><div style="display:flex;justify-content:space-between;align-items:baseline;padding:12px 14px 0;gap:8px;flex-wrap:wrap"><h3 style="margin:0">Closers</h3><button class="btn ghost sm" onclick="poMarkAll('closer')">Mark all paid</button></div><div class="tablewrap"><table id="poCloserTable"></table></div></div>
-    <div class="panel"><div style="display:flex;justify-content:space-between;align-items:baseline;padding:12px 14px 0;gap:8px;flex-wrap:wrap"><h3 style="margin:0">Setters</h3><button class="btn ghost sm" onclick="poMarkAll('setter')">Mark all paid</button></div><div class="tablewrap"><table id="poSetterTable"></table></div></div>
+    <div class="panel" style="margin:0 0 14px"><div style="display:flex;justify-content:space-between;align-items:baseline;padding:12px 14px 0;gap:8px;flex-wrap:wrap"><h3 style="margin:0">Setters</h3><button class="btn ghost sm" onclick="poMarkAll('setter')">Mark all paid</button></div><div class="tablewrap"><table id="poSetterTable"></table></div></div>
+    <div class="panel"><div style="display:flex;justify-content:space-between;align-items:baseline;padding:12px 14px 0;gap:8px;flex-wrap:wrap"><h3 style="margin:0">Managers <span class="muted" style="font-weight:400;font-size:12px">- override on their teams' cash</span></h3><button class="btn ghost sm" onclick="poMarkAll('manager')">Mark all paid</button></div><div class="tablewrap"><table id="poMgrTable"></table></div></div>
   </section>
 
   <!-- ===== REP COMMISSION BREAKDOWN (per-rep pay rates) ===== -->
@@ -5642,8 +5643,24 @@ function poToggle(id){ const el=document.getElementById(id); if(el) el.hidden=!e
 async function markPayout(rep,role,amount,paid){ if(!poCanEdit()){ toast('Super Admin only',true); return; } const c=poCycleObj();
   try{ await addRecord({type:'payout', cycle:poKey(c), payDate:c.pay, rep, role, amount:Number(amount)||0, paid:!!paid, paidAt:paid?new Date().toISOString():'', by:(SESSION&&SESSION.name)||''}); renderPayouts(); }
   catch(e){ toast('Failed: '+((e&&e.message)||e),true); } }
+// per-manager override pay for a cycle: their override % on the (billed) cash their managed accounts collected
+function poManagerData(from,to){
+  const inP=d=>{ d=String(d||'').slice(0,10); return d && d>=from && d<=to; };
+  const clientCash={}, seen={};
+  (RECORDS||[]).filter(x=>x.type==='deal'&&inP(x.date)).forEach(d=>{ const id=String(d.id||''); if(id&&seen[id])return; if(id)seen[id]=1; const c=lineBilled('d:'+id,Number(d.cashCollected)||0); if(!c)return; clientCash[d.client]=(clientCash[d.client]||0)+c; });
+  paymentsCollapsed().filter(p=>p.status==='confirmed'&&inP(p.date)).forEach(p=>{ const c=lineBilled('p:'+String(p.pid||p.id||''),Number(p.amount)||0); if(!c)return; clientCash[p.client]=(clientCash[p.client]||0)+c; });
+  const out=[];
+  (USERS_CACHE||[]).forEach(u=>{ if(!u||u.archived||!u.username)return; let roles=[]; try{ roles=(typeof rolesFor==='function'?rolesFor(u.username):null)||[u.role]; }catch(e){ roles=[u.role]; } if(!roles.includes('manager'))return;
+    const name=u.name||u.username, rate=mgrOverrideFor(name); if(!rate)return;
+    let cash=0; const items=[]; managedClientsForUser(u).forEach(cl=>{ const cc=clientCash[cl]||0; if(cc>0){ cash+=cc; items.push({client:cl,cash:cc,rate}); } });
+    if(cash<=0) return;
+    out.push({rep:name, role:'manager', cash, rate, effRate:rate, commission:cash*rate/100, items});
+  });
+  return out.sort((a,b)=>b.commission-a.commission);
+}
 async function poMarkAll(role){ if(!poCanEdit()){ toast('Super Admin only',true); return; }
-  const c=poCycleObj(), data=repCommData(c.from,c.to,''), list=(role==='closer'?data.closers:data.setters), map=poStatusMap(), ck=poKey(c);
+  const c=poCycleObj(), map=poStatusMap(), ck=poKey(c);
+  const list=(role==='manager')?poManagerData(c.from,c.to):(function(){ const data=repCommData(c.from,c.to,''); return role==='closer'?data.closers:data.setters; })();
   const todo=list.filter(o=>o.commission>0.0001).filter(o=>{ const st=poStatus(map,ck,o.rep,role); return !(st&&st.paid); });
   if(!todo.length){ toast('All '+role+'s already marked paid'); return; }
   if(!confirm('Mark '+todo.length+' '+role+' payout'+(todo.length===1?'':'s')+' as paid?')) return;
@@ -5664,13 +5681,24 @@ function renderPayouts(){
     const badge=paid?`<span class="pill good">Paid${st.paidAt?' · '+esc(usDate(st.paidAt)):''}</span>`:`<span class="pill warn">Unpaid</span>`;
     const act=paid?`<button class="btn ghost sm" onclick="markPayout('${jsStr(o.rep)}','${role}',${o.commission},false)">Undo</button>`:`<button class="btn gold sm" onclick="markPayout('${jsStr(o.rep)}','${role}',${o.commission},true)">Mark paid</button>`;
     const items=(o.items||[]).slice().sort((a,b)=>String(a.date||'').localeCompare(String(b.date||'')));
-    const itemRows=items.map(it=>`<tr><td style="padding:5px 8px;color:var(--muted);white-space:nowrap">${esc(usDate(it.date))}</td><td style="padding:5px 8px">${esc(it.lead||'-')}${it.client?`<span class="muted"> · ${esc(it.client)}</span>`:''}</td><td style="padding:5px 8px;color:var(--muted)">${esc(it.kind||'')}</td><td class="num" style="padding:5px 8px">${money(it.cash)}</td><td class="num" style="padding:5px 8px">${(it.rate||0)}%</td><td class="num" style="padding:5px 8px;font-weight:600">${money((it.cash||0)*(it.rate||0)/100)}</td></tr>`).join('');
+    const itemRows=items.map(it=>`<tr><td style="padding:5px 8px;color:var(--muted);white-space:nowrap">${esc(usDate(it.date))}</td><td style="padding:5px 8px">${esc(it.lead||'-')}${it.client?`<span class="muted"> · ${esc(it.client)}</span>`:''}</td><td style="padding:5px 8px;color:var(--muted)">${esc(it.kind||'')}</td><td class="num" style="padding:5px 8px">${money(it.cash)}${(it.raw!=null&&Math.abs(it.raw-it.cash)>0.001)?` <span class="muted" style="text-decoration:line-through">${money(it.raw)}</span>`:''}</td><td class="num" style="padding:5px 8px">${(it.rate||0)}%</td><td class="num" style="padding:5px 8px;font-weight:600">${money((it.cash||0)*(it.rate||0)/100)}</td></tr>`).join('');
     const detail=`<tr class="poDetail" id="pod-${rid}" hidden><td colspan="6" style="padding:0 10px 12px;background:rgba(255,255,255,.02)"><div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:8px 0 4px">Deals &amp; payments behind this payout (${items.length})</div><table style="width:100%;border-collapse:collapse;font-size:12.5px"><thead><tr style="color:var(--muted);border-bottom:1px solid var(--border)"><th style="text-align:left;padding:4px 8px">Date</th><th style="text-align:left;padding:4px 8px">Prospect</th><th style="text-align:left;padding:4px 8px">Type</th><th style="text-align:right;padding:4px 8px">Cash</th><th style="text-align:right;padding:4px 8px">Rate</th><th style="text-align:right;padding:4px 8px">Commission</th></tr></thead><tbody>${itemRows||'<tr><td colspan="6" class="muted" style="padding:6px 8px">No line items.</td></tr>'}</tbody></table></td></tr>`;
-    return `<tr><td><button class="linklike" onclick="poToggle('pod-${rid}')" title="Show the deals behind this payout">${esc(o.rep)} <span style="font-size:9px;opacity:.7">&#9660;</span></button></td><td class="num">${money(o.cash)}</td><td class="num">${Math.round(o.effRate*10)/10}%</td><td class="num" style="font-weight:700">${money(o.commission)}</td><td>${badge}</td><td>${act}</td></tr>`+detail;
+    return `<tr><td><button class="linklike" onclick="poToggle('pod-${rid}')" title="Show the deals behind this payout">${esc(o.rep)} <span style="font-size:9px;opacity:.7">&#9660;</span></button></td><td class="num">${money(o.cash)}${o.adjusted?`<div style="font-size:10.5px;color:var(--warn)" title="Reduced by a per-line billing override">adjusted from ${money(o.rawCash)}</div>`:''}</td><td class="num">${Math.round(o.effRate*10)/10}%</td><td class="num" style="font-weight:700">${money(o.commission)}</td><td>${badge}</td><td>${act}</td></tr>`+detail;
+  }).join('');
+  // Managers: override on the cash their teams collected this cycle (per-manager rate, follows per-line billing overrides)
+  const mgrHead=`<thead><tr><th>Manager</th><th class="num">Team cash</th><th class="num">Rate</th><th class="num">Override</th><th>Status</th><th></th></tr></thead>`;
+  const mgrRows=poManagerData(c.from,c.to).filter(o=>o.commission>0.0001).map((o,idx)=>{
+    const st=poStatus(map,ck,o.rep,'manager'), paid=!!(st&&st.paid), rid='manager-'+idx;
+    const badge=paid?`<span class="pill good">Paid${st.paidAt?' · '+esc(usDate(st.paidAt)):''}</span>`:`<span class="pill warn">Unpaid</span>`;
+    const act=paid?`<button class="btn ghost sm" onclick="markPayout('${jsStr(o.rep)}','manager',${o.commission},false)">Undo</button>`:`<button class="btn gold sm" onclick="markPayout('${jsStr(o.rep)}','manager',${o.commission},true)">Mark paid</button>`;
+    const itemRows=(o.items||[]).map(it=>`<tr><td style="padding:5px 8px">${esc(it.client||'-')}</td><td class="num" style="padding:5px 8px">${money(it.cash)}</td><td class="num" style="padding:5px 8px">${(it.rate||0)}%</td><td class="num" style="padding:5px 8px;font-weight:600">${money((it.cash||0)*(it.rate||0)/100)}</td></tr>`).join('');
+    const detail=`<tr class="poDetail" id="pod-${rid}" hidden><td colspan="6" style="padding:0 10px 12px;background:rgba(255,255,255,.02)"><div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:8px 0 4px">Accounts behind this override (${(o.items||[]).length})</div><table style="width:100%;border-collapse:collapse;font-size:12.5px"><thead><tr style="color:var(--muted);border-bottom:1px solid var(--border)"><th style="text-align:left;padding:4px 8px">Account</th><th style="text-align:right;padding:4px 8px">Team cash</th><th style="text-align:right;padding:4px 8px">Rate</th><th style="text-align:right;padding:4px 8px">Override</th></tr></thead><tbody>${itemRows||'<tr><td colspan="4" class="muted" style="padding:6px 8px">No accounts with cash this cycle.</td></tr>'}</tbody></table></td></tr>`;
+    return `<tr><td><button class="linklike" onclick="poToggle('pod-${rid}')" title="Show the accounts behind this override">${esc(o.rep)} <span style="font-size:9px;opacity:.7">&#9660;</span></button></td><td class="num">${money(o.cash)}</td><td class="num">${o.rate}%</td><td class="num" style="font-weight:700">${money(o.commission)}</td><td>${badge}</td><td>${act}</td></tr>`+detail;
   }).join('');
   const ct=document.getElementById('poCloserTable'); if(ct) ct.innerHTML=head+`<tbody>${rowsFor(data.closers,'closer')||`<tr><td colspan="6" class="muted" style="padding:14px">No closer commissions this cycle.</td></tr>`}</tbody>`;
   const stt=document.getElementById('poSetterTable'); if(stt) stt.innerHTML=head+`<tbody>${rowsFor(data.setters,'setter')||`<tr><td colspan="6" class="muted" style="padding:14px">No setter commissions this cycle.</td></tr>`}</tbody>`;
-  const all=[...data.closers.map(o=>({...o,role:'closer'})),...data.setters.map(o=>({...o,role:'setter'}))].filter(o=>o.commission>0.0001);
+  const mgt=document.getElementById('poMgrTable'); if(mgt) mgt.innerHTML=mgrHead+`<tbody>${mgrRows||`<tr><td colspan="6" class="muted" style="padding:14px">No manager overrides this cycle. Set each manager's override % on Rep Commission Breakdown.</td></tr>`}</tbody>`;
+  const all=[...data.closers.map(o=>({...o,role:'closer'})),...data.setters.map(o=>({...o,role:'setter'})),...poManagerData(c.from,c.to).map(o=>({...o,role:'manager'}))].filter(o=>o.commission>0.0001);
   let total=0,paidSum=0; all.forEach(o=>{ total+=o.commission; const st=poStatus(map,ck,o.rep,o.role); if(st&&st.paid) paidSum+=o.commission; });
   const kpi=(l,v,accent)=>`<div class="panel hlkpi${accent?' accent':''}"><div class="lbl">${l}</div><div class="val">${v}</div></div>`;
   const kw=document.getElementById('poKpis'); if(kw) kw.innerHTML=kpi('Total to pay',money(total))+kpi('Paid',money(paidSum))+kpi('Remaining',money(total-paidSum),true);
@@ -5694,25 +5722,25 @@ function repCommData(from,to,client){
   const inP=d=>{ d=String(d||'').slice(0,10); return d && d>=from && d<=to; };
   const ck=client?String(client).trim().toLowerCase():'', mc=c=> !ck || String(c||'').trim().toLowerCase()===ck;
   const closers={}, setters={};
-  const add=(map,name,role,it)=>{ name=String(name||'').trim(); if(!name) return; const o=map[name]||(map[name]={rep:name,role,cash:0,byClient:{},items:[]}); o.cash+=it.cash; o.byClient[it.client]=(o.byClient[it.client]||0)+it.cash; o.items.push(it); };
+  const add=(map,name,role,it)=>{ name=String(name||'').trim(); if(!name) return; const o=map[name]||(map[name]={rep:name,role,cash:0,rawCash:0,byClient:{},items:[]}); o.cash+=it.cash; o.rawCash+=(it.raw!=null?it.raw:it.cash); o.byClient[it.client]=(o.byClient[it.client]||0)+it.cash; o.items.push(it); };
   const seen={};
   (RECORDS||[]).filter(x=>x.type==='deal' && inP(x.date) && mc(x.client)).forEach(d=>{
     const id=String(d.id||''); if(id&&seen[id])return; if(id)seen[id]=1;
-    const cash=lineBilled('d:'+id, Number(d.cashCollected)||0); if(!cash) return; // commission follows any per-line billing override
+    const raw=Number(d.cashCollected)||0, cash=lineBilled('d:'+id, raw); if(!raw && !cash) return; // commission follows any per-line billing override
     const dc=effCloserOf(d), ds=effSetterOf(d);
-    if(dc) add(closers,dc,'closer',{date:d.date,client:d.client||'',lead:d.lead||'',kind:'Deal',cash,rate:repRate(dc,'closer')});
-    if(ds) add(setters,ds,'setter',{date:d.date,client:d.client||'',lead:d.lead||'',kind:'Deal',cash,rate:repRate(ds,'setter')});
+    if(dc) add(closers,dc,'closer',{date:d.date,client:d.client||'',lead:d.lead||'',kind:'Deal',cash,raw,rate:repRate(dc,'closer')});
+    if(ds) add(setters,ds,'setter',{date:d.date,client:d.client||'',lead:d.lead||'',kind:'Deal',cash,raw,rate:repRate(ds,'setter')});
   });
   paymentsCollapsed().filter(p=>p.status==='confirmed' && inP(p.date) && mc(p.client)).forEach(p=>{
-    const cash=lineBilled('p:'+String(p.pid||p.id||''), Number(p.amount)||0); if(!cash) return; // commission follows any per-line billing override
+    const raw=Number(p.amount)||0, cash=lineBilled('p:'+String(p.pid||p.id||''), raw); if(!raw && !cash) return; // commission follows any per-line billing override
     if(!payEarnsCommission(p)) return; // front-end-only account (e.g. Snoop): no rep commission on a back-end payment (TSA still bills it)
     const kind=(p.method?p.method+' payment':'Payment');
     const pc=effCloserOf(p), ps=effSetterOf(p);
-    if(pc) add(closers,pc,'closer',{date:p.date,client:p.client||'',lead:p.lead||'',kind,cash,rate:repRate(pc,'closer')});
-    if(ps) add(setters,ps,'setter',{date:p.date,client:p.client||'',lead:p.lead||'',kind,cash,rate:repRate(ps,'setter')});
+    if(pc) add(closers,pc,'closer',{date:p.date,client:p.client||'',lead:p.lead||'',kind,cash,raw,rate:repRate(pc,'closer')});
+    if(ps) add(setters,ps,'setter',{date:p.date,client:p.client||'',lead:p.lead||'',kind,cash,raw,rate:repRate(ps,'setter')});
   });
   const commOf=o=>o.cash*repRate(o.rep,o.role)/100; // per-rep rate (override or default), same regardless of client
-  const finish=map=>Object.values(map).map(o=>{ const commission=commOf(o); return {...o,commission,effRate:o.cash?commission/o.cash*100:0}; }).sort((a,b)=>b.commission-a.commission);
+  const finish=map=>Object.values(map).map(o=>{ const commission=commOf(o); return {...o,commission,effRate:o.cash?commission/o.cash*100:0, adjusted:(Math.abs((o.rawCash||0)-(o.cash||0))>0.001)}; }).sort((a,b)=>b.commission-a.commission);
   return {closers:finish(closers), setters:finish(setters)};
 }
 function repCommRender(){
@@ -6181,8 +6209,8 @@ function masterStats(from,to){
   const rateFor=(client,back)=>{ try{ const con=contractRatesFor(client); if(con&&(con.feRate!=null||con.beRate!=null)) return back?(con.beRate||0):(con.feRate||0); const cfg=clientBillingCfg(client); if(cfg) return (cfg.mode||'flat')==='repcomp'?((cfg.closerRate||0)+(cfg.setterRate||0)+(cfg.overrideRate||0)):(cfg.flatRate||0); }catch(_){} return 0; };
   const clientCash={}; // cash by client in period, for per-manager override attribution
   (RECORDS||[]).forEach(x=>{ if(x.type!=='deal') return; const id=String(x.id||''); if(!id) return; const p=deals[id]; if(!p||(x.submittedAt||'')>(p.submittedAt||'')) deals[id]=x; });
-  Object.values(deals).forEach(d=>{ if(!inR(d.date)) return; const c=Number(d.cashCollected)||0; cash+=c; contracted+=Number(d.contractValue)||0; closed+=1; tsaRevenue+=c*rateFor(d.client,false)/100; clientCash[d.client]=(clientCash[d.client]||0)+c; });
-  paymentsCollapsed().forEach(p=>{ if(p.status==='confirmed'&&inR(p.date)){ const c=Number(p.amount)||0; cash+=c; tsaRevenue+=c*rateFor(p.client,(typeof paymentBackEnd==='function'&&paymentBackEnd(p)))/100; clientCash[p.client]=(clientCash[p.client]||0)+c; } });
+  Object.values(deals).forEach(d=>{ if(!inR(d.date)) return; const c=Number(d.cashCollected)||0, b=lineBilled('d:'+String(d.id||''),c); cash+=c; contracted+=Number(d.contractValue)||0; closed+=1; tsaRevenue+=b*rateFor(d.client,false)/100; clientCash[d.client]=(clientCash[d.client]||0)+b; });
+  paymentsCollapsed().forEach(p=>{ if(p.status==='confirmed'&&inR(p.date)){ const c=Number(p.amount)||0, b=lineBilled('p:'+String(p.pid||p.id||''),c); cash+=c; tsaRevenue+=b*rateFor(p.client,(typeof paymentBackEnd==='function'&&paymentBackEnd(p)))/100; clientCash[p.client]=(clientCash[p.client]||0)+b; } });
   const eod={}; (RECORDS||[]).forEach(x=>{ if(x.type!=='eod'||!inR(x.date)) return; const k=[(x.rep||'').trim().toLowerCase(),(x.client||'').trim().toLowerCase(),(x.date||'').slice(0,10),(x.role||'')].join('|'); const p=eod[k]; if(!p||(x.submittedAt||'')>(p.submittedAt||'')) eod[k]=x; });
   let dials=0,conn=0,sets=0,taken=0,noshow=0;
   Object.values(eod).forEach(x=>{ dials+=(Number(x.newOutreach)||0)+(Number(x.followUpOutreach)||0); conn+=Number(x.connectedCalls)||0; sets+=Number(x.callsSet)||0; taken+=Number(x.connectedMeetings)||0; noshow+=Number(x.noShows)||0; });
