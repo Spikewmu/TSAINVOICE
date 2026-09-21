@@ -2143,6 +2143,21 @@ If they did not watch: No problem at all, I will send it right over. Can you wat
   </div>
 </div>
 
+<div class="modal" id="offModal" hidden onclick="if(event.target===this)offClose()">
+  <div class="modalcard" style="width:min(520px,96vw);max-height:92vh;overflow:auto">
+    <h3 style="margin:0 0 4px">Offboard <span id="offName"></span></h3>
+    <p class="hint" style="margin:0 0 12px">Sales HQ will deactivate their login, set their termination date to today, and drop them from the roster + all pickers. Confirm you've handled the handoff first. All their history is kept and you can reactivate anytime.</p>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <label style="display:flex;align-items:flex-start;gap:9px;font-size:13.5px;cursor:pointer"><input type="checkbox" class="offchk" onchange="offToggle()" style="margin-top:2px"> Reassigned their leads to an active rep</label>
+      <label style="display:flex;align-items:flex-start;gap:9px;font-size:13.5px;cursor:pointer"><input type="checkbox" class="offchk" onchange="offToggle()" style="margin-top:2px"> Moved their calendar events / bookings to an active rep</label>
+      <label style="display:flex;align-items:flex-start;gap:9px;font-size:13.5px;cursor:pointer"><input type="checkbox" class="offchk" onchange="offToggle()" style="margin-top:2px"> Removed them from the client's Slack channels</label>
+      <label style="display:flex;align-items:flex-start;gap:9px;font-size:13.5px;cursor:pointer"><input type="checkbox" class="offchk" onchange="offToggle()" style="margin-top:2px"> Removed from any founder-specific programs</label>
+    </div>
+    <div class="fieldhelp" style="margin:12px 0 0">After you confirm, you'll be asked separately whether to also delete them from GHL (that step names the exact accounts and cannot be undone).</div>
+    <div class="row-actions" style="margin-top:14px"><button class="btn gold sm" id="offConfirmBtn" onclick="offConfirm()" disabled style="opacity:.5;cursor:not-allowed">Offboard</button><button class="btn ghost sm" onclick="offClose()">Cancel</button></div>
+  </div>
+</div>
+
 <div class="modal" id="mergeModal" hidden onclick="if(event.target===this)closeMerge()">
   <div class="modalcard" style="width:min(460px,95vw)">
     <h3 style="margin:0 0 2px">Merge <span id="mergeSrcName" style="color:var(--gold)"></span> into another account</h3>
@@ -4953,16 +4968,51 @@ function myDealsForecastHtml(){
     </div>
   </div>`;
 }
+// Rep-facing payout view (T-606): what THIS rep will be paid on the upcoming payday vs the one after, with the deals behind it.
+let MY_PAYCHECK='upcoming';
+function setMyPaycheck(w){ MY_PAYCHECK=w; renderMyDeals(); }
+function myPayoutHtml(){
+  const me=String((SESSION&&SESSION.name)||'').trim(); if(!me) return '';
+  if(SESSION && ['admin','director'].includes(SESSION.role)) return ''; // leaders use the full Payouts page
+  const cyc = MY_PAYCHECK==='next' ? payCycle() : nextPayoutCycle();
+  let data; try{ data=repCommData(cyc.from,cyc.to,''); }catch(e){ return ''; }
+  const mine=[...data.closers.filter(o=>nrmName(o.rep)===nrmName(me)), ...data.setters.filter(o=>nrmName(o.rep)===nrmName(me))];
+  const total=mine.reduce((s,o)=>s+o.commission,0);
+  const items=[]; mine.forEach(o=>o.items.forEach(it=>items.push(Object.assign({role:o.role,effRate:o.effRate},it))));
+  items.sort((a,b)=>String(a.date||'').localeCompare(String(b.date||'')));
+  const fmtLong=iso=>{ const p=String(iso||'').split('-').map(Number); return (p.length===3)?new Date(p[0],p[1]-1,p[2]).toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'}):usDate(iso); };
+  const rows=items.map(it=>`<tr>
+    <td style="padding:6px 8px;color:var(--muted);white-space:nowrap">${esc(usDate(it.date))}</td>
+    <td style="padding:6px 8px">${esc(it.lead||'-')}${it.client?`<span class="muted"> · ${esc(it.client)}</span>`:''}</td>
+    <td style="padding:6px 8px;color:var(--muted)">${it.role==='setter'?'Set':'Close'}${it.kind&&it.kind!=='Deal'?' · '+esc(it.kind):''}</td>
+    <td class="num" style="padding:6px 8px">${money(it.cash)}${(it.raw!=null&&Math.abs(it.raw-it.cash)>0.001)?` <span class="muted" style="text-decoration:line-through">${money(it.raw)}</span>`:''}</td>
+    <td class="num" style="padding:6px 8px">${(it.rate||0)}%</td>
+    <td class="num" style="padding:6px 8px;font-weight:600">${money((it.cash||0)*(it.rate||0)/100)}</td></tr>`).join('');
+  const upOn=MY_PAYCHECK==='upcoming';
+  return `<div class="panel" style="margin:0 0 14px;padding:0;overflow:hidden">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;padding:14px 16px 0">
+      <div class="muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.03em">My payouts</div>
+      <div class="seg"><button class="${upOn?'on':''}" onclick="setMyPaycheck('upcoming')">Upcoming paycheck</button><button class="${!upOn?'on':''}" onclick="setMyPaycheck('next')">Next paycheck</button></div>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin:12px 16px;padding:14px 18px;border-radius:12px;background:linear-gradient(180deg,var(--surface-2),var(--surface));border:1px solid var(--gold-soft)">
+      <div><div class="muted" style="font-size:10px;text-transform:uppercase;letter-spacing:.05em">${upOn?'Payday':'Following payday'}</div><div style="font-family:var(--serif);font-size:24px;color:var(--gold-2);line-height:1.1">${fmtLong(cyc.pay)}</div><div class="muted" style="font-size:12px">Earnings ${usDate(cyc.from)} - ${usDate(cyc.to)}</div></div>
+      <div style="text-align:right"><div class="muted" style="font-size:10px;text-transform:uppercase;letter-spacing:.05em">You get paid</div><div style="font-size:30px;font-weight:900;color:var(--gold-2);font-variant-numeric:tabular-nums">${money(total)}</div></div>
+    </div>
+    ${items.length?`<div class="tablewrap" style="padding:0 6px 8px"><table style="width:100%;border-collapse:collapse;font-size:12.5px"><thead><tr style="color:var(--muted);border-bottom:1px solid var(--border)"><th style="text-align:left;padding:6px 8px">Date</th><th style="text-align:left;padding:6px 8px">Prospect</th><th style="text-align:left;padding:6px 8px">Role</th><th style="text-align:right;padding:6px 8px">Cash</th><th style="text-align:right;padding:6px 8px">Rate</th><th style="text-align:right;padding:6px 8px">Commission</th></tr></thead><tbody>${rows}</tbody></table></div>`:'<p class="muted" style="padding:4px 18px 16px;margin:0">Nothing on this paycheck yet. Cash you collect this cycle shows here.</p>'}
+  </div>`;
+}
 function renderMyDeals(){
   const wrap=document.getElementById('myDealsWrap'); if(!wrap) return;
   const oversight=SESSION&&['admin','director','manager'].includes(SESSION.role);
   const me=String((SESSION&&SESSION.name)||'').trim();
+  const isRep=SESSION&&(SESSION.role==='closer'||SESSION.role==='setter');
+  const topHtml=(isRep?myPayoutHtml():'')+myDealsForecastHtml();
   const seen={}, uniq=[];
   (RECORDS||[]).filter(x=>x.type==='deal').filter(d=>(oversight||effCloserOf(d)===me) && (!GLOBAL_CLIENT||String(d.client||'')===GLOBAL_CLIENT))
     .sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.submittedAt||'').localeCompare(a.submittedAt||''))
     .forEach(d=>{ const k=String(d.id||''); if(k&&!seen[k]){ seen[k]=1; uniq.push(d); } });
-  if(!uniq.length){ wrap.innerHTML=`<div class="panel" style="padding:20px"><p class="muted" style="margin:0">${oversight?'No closed deals yet.':'You have no closed deals yet. When you close one it shows here, so you can log wires and later payments against it.'}</p></div>`; return; }
-  wrap.innerHTML=myDealsForecastHtml()+`<div class="cards" style="grid-template-columns:repeat(auto-fill,minmax(250px,290px));gap:10px">`+uniq.map(d=>{
+  if(!uniq.length){ wrap.innerHTML=topHtml+`<div class="panel" style="padding:20px"><p class="muted" style="margin:0">${oversight?'No closed deals yet.':'No closed deals to manage yet. Your payout and commission are shown above; deals you close show here so you can log wires and later payments.'}</p></div>`; return; }
+  wrap.innerHTML=topHtml+`<div class="cards" style="grid-template-columns:repeat(auto-fill,minmax(250px,290px));gap:10px">`+uniq.map(d=>{
     const contract=d.contractValue||0, collected=dealCollected(d), pend=dealPending(d), bal=Math.max(0,contract-collected);
     const paid=contract>0&&collected>=contract;
     const badge=paid?'<span class="chip" style="background:rgba(74,160,80,.15);color:#7bd487">paid in full</span>':(pend>0?`<span class="chip" style="background:rgba(212,175,90,.15);color:var(--gold)">${money(pend)} pending</span>`:(bal>0?`<span class="chip" style="background:rgba(212,175,90,.12);color:var(--gold)">bal ${money(bal)}</span>`:''));
@@ -8112,7 +8162,7 @@ function userRowHTML(u, isAdmin){
     : (canManage
         ? (u.archived
             ? `${editBtn} <button class="btn sm ghost" style="color:var(--good);border-color:var(--good)" onclick="archiveUser('${esc(u.username)}',false)">Reactivate</button>`
-            : `${editBtn} <button class="btn sm ghost" onclick="resetPassword('${esc(u.username)}')">Reset password</button> <button class="btn sm ghost" style="color:var(--warn);border-color:var(--warn)" onclick="archiveUser('${esc(u.username)}',true)" title="Deactivate their login + hide them, but keep all their data. Reversible.">Offboard</button>`)
+            : `${editBtn} <button class="btn sm ghost" onclick="resetPassword('${esc(u.username)}')">Reset password</button> <button class="btn sm ghost" style="color:var(--warn);border-color:var(--warn)" onclick="openOffboard('${esc(u.username)}')" title="Deactivate their login + hide them, but keep all their data. Reversible.">Offboard</button>`)
         : '');
   const myRoles = u.master?['admin']:rolesFor(u.username);
   const chips = (myRoles.length?myRoles:['closer']).map(r=>`<span class="pill">${esc(roleLabel(r))}</span>`).join(' ');
@@ -8615,19 +8665,36 @@ async function importUsers(){
 // soft-deactivate (archive) or restore (un-archive) a user: blocks their login + hides them, but keeps all their data. Reversible.
 async function archiveUser(username, archive){
   if(!canManageUser(username)){ toast('You can only offboard Sales Managers and below',true); return; }
+  if(archive){ openOffboard(username); return; } // offboard now goes through the interactive checklist (T-599)
+  if(!confirm('Reactivate '+username+'?\n\nRestores their login and puts them back on the active roster.')) return;
+  await runArchive(username, false);
+}
+// the actual offboard/reactivate execution (server call + termination stamp + GHL step), split out so the checklist can gate it
+async function runArchive(username, archive){
   const act=archive?'archiveUser':'unarchiveUser';
-  const msg = archive
-    ? 'Offboard '+username+'?\n\nSales HQ will automatically:\n  • Deactivate their login (signed out, can’t log back in)\n  • Set their termination date to today\n  • Drop them from the active roster + all pickers\n\nNext you’ll be asked, in a SEPARATE confirm, whether to also delete them from GHL.\n\nYou still need to do these manually:\n  • Reassign their leads + calendar events to an active rep\n  • Remove them from Slack channels + any founder-specific programs\n\nAll their reports, deals and history stay. You can reactivate them anytime.'
-    : 'Reactivate '+username+'?\n\nRestores their login and puts them back on the active roster.';
-  if(!confirm(msg)) return;
   if(SESSION && SESSION.token){ const res=await authApi({action:act, token:SESSION.token, username}); if(!res||!res.ok){ toast((res&&res.error)||'Could not update',true); return; } }
   else if(CFG.endpoint){ const res=await api({action:act, ...authFields(), username}); if(!res||!res.ok){ toast('Could not update',true); return; } }
   else { LOCAL_USERS=LOCAL_USERS.map(x=>x.username===username?{...x,archived:archive}:x); save(LS.users,LOCAL_USERS); }
-  // auto-stamp the termination date on offboard (so retention/accountability treat today as their end date) - only if none set yet
   if(archive){ try{ const m=repMetaFor(username)||{}, u=userByName(username); if(!m.endDate){ await addRecord({type:'repmeta', username, name:(u&&u.name)||username, startDate:m.startDate||'', endDate:todayLocal(), mgr:m.mgr||'', daysOff:Array.isArray(m.daysOff)?m.daysOff:[], reason:m.reason||'', email:m.email||''}); } }catch(_){} }
   toast(archive?'Offboarded - login deactivated, termination date set to today':'Reactivated - login restored'); renderUsers();
-  // GHL removal is DESTRUCTIVE + external, so it is its OWN explicit confirm (admin-only) - never fires from the offboard click alone
   if(archive && SESSION && SESSION.role==='admin'){ try{ await offboardGhl(username); }catch(_){} }
+}
+// Interactive offboard checklist (T-599): the manager must confirm the handoff before HQ deactivates + (optionally) removes from GHL
+let OFF_USER=null;
+function openOffboard(username){
+  if(!canManageUser(username)){ toast('You can only offboard Sales Managers and below',true); return; }
+  OFF_USER=username; const u=userByName(username)||{username};
+  const nm=document.getElementById('offName'); if(nm) nm.textContent=(u.name||username);
+  document.querySelectorAll('#offModal .offchk').forEach(c=>{ c.checked=false; });
+  offToggle();
+  const mo=document.getElementById('offModal'); if(mo) mo.hidden=false;
+}
+function offClose(){ const mo=document.getElementById('offModal'); if(mo) mo.hidden=true; OFF_USER=null; }
+function offToggle(){ const all=[...document.querySelectorAll('#offModal .offchk')].every(c=>c.checked); const b=document.getElementById('offConfirmBtn'); if(b){ b.disabled=!all; b.style.opacity=all?'1':'.5'; b.style.cursor=all?'pointer':'not-allowed'; } }
+async function offConfirm(){
+  const u=OFF_USER; if(!u) return;
+  if(![...document.querySelectorAll('#offModal .offchk')].every(c=>c.checked)){ toast('Confirm each handoff step first',true); return; }
+  offClose(); await runArchive(u, true);
 }
 // Separate, explicit "delete from GHL" step for an offboarded rep. Deletes their GHL user from each of their
 // client locations, but ONLY after a distinct confirm that names the accounts + warns it cannot be undone.
