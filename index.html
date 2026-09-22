@@ -4189,6 +4189,11 @@ function managedClients(){ return managedClientsForUser(SESSION); }
 function dashScopeClients(){
   if(!SESSION) return null;
   const r=SESSION.role;
+  // Role-only preview (View as...): an admin previewing a role is NOT that person, so don't lock to their own team
+  // assignments (which would force one company). Follow the top company selector instead - blank = no company defaulted.
+  if(typeof VIEW_AS_REAL!=='undefined' && VIEW_AS_REAL && !(typeof VIEW_AS_USER!=='undefined' && VIEW_AS_USER)){
+    return GLOBAL_CLIENT ? [GLOBAL_CLIENT] : null;
+  }
   if(r==='founder'||r==='closer'||r==='setter'){
     const t=teamsFor(SESSION.username);
     if(t.length) return t;
