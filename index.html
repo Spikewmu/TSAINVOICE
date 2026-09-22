@@ -1313,7 +1313,7 @@ If they did not watch: No problem at all, I will send it right over. Can you wat
   <!-- ===== FAQ ===== -->
   <section id="tab-faq" hidden>
     <h2 class="section">FAQ</h2>
-    <p class="hint">Ask a question about an account. The client (or an admin) answers it, and it is saved to the <b>master FAQ</b> for everyone - so the same question never has to be asked twice. Becomes the onboarding quiz source over time.</p>
+    <p class="hint">Ask a question about an account. The client (or an admin) answers it, and it is saved to <b>that account's FAQ</b> - reps assigned to the account see it, so the same question never has to be asked twice. Admins see every account's here. Becomes the onboarding quiz source over time.</p>
     <div class="panel" id="faqAskPanel" hidden>
       <h3 style="margin:0 0 10px">Ask a question</h3>
       <div style="padding:0 2px">
@@ -1323,7 +1323,7 @@ If they did not watch: No problem at all, I will send it right over. Can you wat
       </div>
     </div>
     <div class="panel"><h3 style="margin:0 0 8px">Open questions <span style="font-weight:400;color:var(--muted);font-size:12px">- awaiting an answer</span></h3><div id="faqOpen"></div></div>
-    <div class="panel"><h3 style="margin:0 0 8px">Master FAQ <span style="font-weight:400;color:var(--muted);font-size:12px">- answered</span></h3><input id="faqSearch" placeholder="Search the FAQ" oninput="renderFaq()" style="max-width:340px;margin-bottom:12px"><div id="faqAnswered"></div></div>
+    <div class="panel"><h3 style="margin:0 0 8px">Master FAQ <span style="font-weight:400;color:var(--muted);font-size:12px">- answered</span></h3><div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px"><input id="faqSearch" placeholder="Search the FAQ" oninput="renderFaq()" style="max-width:340px"><select id="faqClientFilter" onchange="renderFaq()" style="display:none;max-width:280px"></select></div><div id="faqAnswered"></div></div>
   </section>
 
   <!-- ===== WEBINAR ===== -->
@@ -3760,7 +3760,13 @@ function renderFaq(){
   const ask=document.getElementById('faqAskPanel'); if(ask) ask.hidden=!faqCanAsk();
   const sb=document.getElementById('faqSeedSalonBtn'); if(sb) sb.style.display=faqIsAdmin()?'':'none';
   const sel=document.getElementById('faqClient'); if(sel){ const opts=faqMyClients(), cur=sel.value; sel.innerHTML=opts.map(c=>`<option>${esc(c)}</option>`).join(''); if(cur&&opts.includes(cur)) sel.value=cur; }
-  const all=faqVisible();
+  let all=faqVisible();
+  // admin account filter: scope the view to one account (reps are already scoped to their own accounts)
+  const cf=document.getElementById('faqClientFilter');
+  if(cf){ const show=faqIsAdmin()||faqMyClients().length>1; cf.style.display=show?'':'none';
+    if(show){ const clients=[...new Set(all.map(x=>String(x.client||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b)); const cur=cf.value; cf.innerHTML='<option value="">All accounts</option>'+clients.map(c=>`<option${nrmName(c)===nrmName(cur)?' selected':''}>${esc(c)}</option>`).join(''); }
+    const fv=(cf.value||'').trim(); if(fv) all=all.filter(x=>nrmName(x.client)===nrmName(fv));
+  }
   const openBox=document.getElementById('faqOpen');
   if(openBox){ const open=all.filter(x=>x.status!=='answered').sort((a,b)=>(b.submittedAt||'').localeCompare(a.submittedAt||'')); openBox.innerHTML=open.length?open.map(faqOpenCard).join(''):'<p class="muted" style="padding:6px 2px;margin:0">No open questions.</p>'; }
   const box=document.getElementById('faqAnswered');
