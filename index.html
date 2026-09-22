@@ -1323,7 +1323,7 @@ If they did not watch: No problem at all, I will send it right over. Can you wat
       </div>
     </div>
     <div class="panel"><h3 style="margin:0 0 8px">Open questions <span style="font-weight:400;color:var(--muted);font-size:12px">- awaiting an answer</span></h3><div id="faqOpen"></div></div>
-    <div class="panel"><h3 style="margin:0 0 8px">Master FAQ <span style="font-weight:400;color:var(--muted);font-size:12px">- answered</span></h3><div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px"><input id="faqSearch" placeholder="Search the FAQ" oninput="renderFaq()" style="max-width:340px"><select id="faqClientFilter" onchange="renderFaq()" style="display:none;max-width:280px"></select></div><div id="faqAnswered"></div></div>
+    <div class="panel"><h3 style="margin:0 0 8px">Master FAQ <span style="font-weight:400;color:var(--muted);font-size:12px">- answered</span></h3><input id="faqSearch" placeholder="Search the FAQ" oninput="renderFaq()" style="max-width:340px;margin-bottom:12px"><div id="faqAnswered"></div></div>
   </section>
 
   <!-- ===== WEBINAR ===== -->
@@ -3761,13 +3761,8 @@ function renderFaq(){
   const sb=document.getElementById('faqSeedSalonBtn'); if(sb) sb.style.display=faqIsAdmin()?'':'none';
   const sel=document.getElementById('faqClient'); if(sel){ const opts=faqMyClients(), cur=sel.value; sel.innerHTML=opts.map(c=>`<option>${esc(c)}</option>`).join(''); sel.value=preferGlobal(opts,cur)||(opts.includes(cur)?cur:(opts[0]||'')); }
   let all=faqVisible();
-  // the top company selector scopes the FAQ for everyone (admins included), so it never shows other accounts' entries
+  // the top company selector is the single scope: pick a company to see just its FAQ; "All companies" shows everything (admin overview)
   if(GLOBAL_CLIENT) all=all.filter(x=>nrmName(x.client)===nrmName(GLOBAL_CLIENT));
-  // manual account filter (admin) - only relevant when NO global company is picked; otherwise the global scope wins
-  const cf=document.getElementById('faqClientFilter');
-  if(cf){ const show=!GLOBAL_CLIENT && (faqIsAdmin()||faqMyClients().length>1); cf.style.display=show?'':'none';
-    if(show){ const clients=[...new Set(faqVisible().map(x=>String(x.client||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b)); const cur=cf.value; cf.innerHTML='<option value="">All accounts</option>'+clients.map(c=>`<option${nrmName(c)===nrmName(cur)?' selected':''}>${esc(c)}</option>`).join(''); const fv=(cf.value||'').trim(); if(fv) all=all.filter(x=>nrmName(x.client)===nrmName(fv)); }
-  }
   const openBox=document.getElementById('faqOpen');
   if(openBox){ const open=all.filter(x=>x.status!=='answered').sort((a,b)=>(b.submittedAt||'').localeCompare(a.submittedAt||'')); openBox.innerHTML=open.length?open.map(faqOpenCard).join(''):'<p class="muted" style="padding:6px 2px;margin:0">No open questions.</p>'; }
   const box=document.getElementById('faqAnswered');
