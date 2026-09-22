@@ -1319,7 +1319,7 @@ If they did not watch: No problem at all, I will send it right over. Can you wat
       <div style="padding:0 2px">
         <div class="filters" style="margin:0 0 8px;align-items:flex-end"><div class="field"><label>Account</label><select id="faqClient"></select></div></div>
         <textarea id="faqQ" rows="2" style="width:100%" placeholder="What do you want to know? (e.g. can we offer a price drop? what is the refund policy?)"></textarea>
-        <div class="row-actions" style="margin-top:10px"><button class="btn gold" onclick="submitFaq()">Submit question</button></div>
+        <div class="row-actions" style="margin-top:10px"><button class="btn gold" onclick="submitFaq()">Submit question</button><button class="btn ghost sm" id="faqSeedSalonBtn" style="display:none" onclick="seedSalonSuites()" title="One-time: load the Salon Suites product Q&amp;A + a Know-the-offer training module onto the selected account">Seed Salon Suites Q&amp;A</button></div>
       </div>
     </div>
     <div class="panel"><h3 style="margin:0 0 8px">Open questions <span style="font-weight:400;color:var(--muted);font-size:12px">- awaiting an answer</span></h3><div id="faqOpen"></div></div>
@@ -3758,12 +3758,46 @@ function faqAnsCard(x){
 }
 function renderFaq(){
   const ask=document.getElementById('faqAskPanel'); if(ask) ask.hidden=!faqCanAsk();
+  const sb=document.getElementById('faqSeedSalonBtn'); if(sb) sb.style.display=faqIsAdmin()?'':'none';
   const sel=document.getElementById('faqClient'); if(sel){ const opts=faqMyClients(), cur=sel.value; sel.innerHTML=opts.map(c=>`<option>${esc(c)}</option>`).join(''); if(cur&&opts.includes(cur)) sel.value=cur; }
   const all=faqVisible();
   const openBox=document.getElementById('faqOpen');
   if(openBox){ const open=all.filter(x=>x.status!=='answered').sort((a,b)=>(b.submittedAt||'').localeCompare(a.submittedAt||'')); openBox.innerHTML=open.length?open.map(faqOpenCard).join(''):'<p class="muted" style="padding:6px 2px;margin:0">No open questions.</p>'; }
   const box=document.getElementById('faqAnswered');
   if(box){ const q=((document.getElementById('faqSearch')||{}).value||'').toLowerCase(); let ans=all.filter(x=>x.status==='answered').sort((a,b)=>(b.answeredAt||'').localeCompare(a.answeredAt||'')); if(q) ans=ans.filter(x=>((x.question||'')+' '+(x.answer||'')).toLowerCase().includes(q)); box.innerHTML=ans.length?ans.map(faqAnsCard).join(''):'<p class="muted" style="padding:6px 2px;margin:0">No answered questions yet.</p>'; }
+}
+// One-time seeder (admin): loads the Salon Suites product Q&A into the FAQ + a "Know the offer" training module
+// onto the account selected in the FAQ dropdown. Skips any Q already present. Built from the 9-22 product-knowledge call.
+const SALON_FAQ=[
+  ['How much money can you make with salon suites?','Roughly $5,000 to $40,000+ per month depending on how many suites are filled - Snoop’s own locations run around $5,000/week. On a setting call, frame it around what THEY need to make, not a fixed number ("how much would you need to make for this to make sense?").'],
+  ['How much time does it take to run?','It’s a passive-income business - about 2-4 hours a week. That light time commitment is a big part of the appeal.'],
+  ['Do I have to micromanage staff?','No. You rent suites to beauty professionals; you are not managing their day-to-day. If someone wants to micromanage, this is not the right fit - people get into this to get away from that.'],
+  ['How much does it cost to get started?','Roughly $100,000-$150,000 in business funding, and Snoop helps clients secure that funding. Do NOT lead with the funding number on a setting call - keep the setter conversation about fit and getting them to the webinar.'],
+  ['Will this work in my area / is it oversaturated?','Salon suites is still a newer concept, so it is not oversaturated anywhere. It works great in B and C size cities and in big metros alike.'],
+  ['Can I do this as a side hustle / passive income?','Yes - it is a strong side business because it needs only a few hours a week and is not micromanaged.'],
+  ['How much can one location make?','Up to about $10,000-$20,000 a week per location when it is filled.'],
+  ['What is the National Salon Suites Conference?','Snoop’s annual conference (Atlanta, Oct 23-25). Setters are not responsible for the conference - if a conference/vendor lead lands in the sales agency it was mistagged; flag it to be moved.'],
+  ['What is my job as a setter on this offer?','Days 1-14: get them registered and excited for the webinar, then confirm on the day so they show up. Day 15+: book the sales call and make sure they are excited and have the finance, desire, and urgency. Keep it simple - do not over-inform; Snoop handles the product knowledge on the webinar.']
+];
+const SALON_OFFER_MODULE={ id:'ss_offer', title:'Know the offer - Salon Suites', body:'Salon Suites (Snoop): a passive-income business where the owner rents out salon suites to beauty professionals. ~2-4 hrs/week, NOT micromanaged. Owners can make ~$5k-$40k/month (up to $10k-$20k/week per filled location). Startup is ~$100k-$150k in business funding, which Snoop helps clients secure (do not quote the funding number on setting calls). Newer concept, not oversaturated; works in B/C cities and metros. Snoop = 9 years in the space and runs the annual National Salon Suites Conference. Setter flow: days 1-14 push to the webinar; day 15+ book the sales call. See the FAQ for the common prospect questions and how to answer them.', link:'' };
+async function seedSalonSuites(){
+  if(!faqIsAdmin()){ toast('Admins only',true); return; }
+  const client=(document.getElementById('faqClient')||{}).value||'';
+  if(!client){ toast('Pick the Salon Suites account in the dropdown first',true); return; }
+  if(!confirm('Seed the Salon Suites product Q&A ('+SALON_FAQ.length+' answered questions) and a "Know the offer" training module onto "'+client+'"?\n\nQuestions already on this account are skipped. You can edit or remove any of them afterward.')) return;
+  const existing=new Set(collapseFaq().filter(x=>nrmName(x.client)===nrmName(client)).map(x=>String(x.question||'').trim().toLowerCase()));
+  const now=new Date().toISOString(), by=(SESSION&&SESSION.name)||'';
+  let added=0;
+  for(const [q,a] of SALON_FAQ){ if(existing.has(q.trim().toLowerCase())) continue; await addRecord({type:'faq', id:uid(), question:q, client, status:'answered', answer:a, answeredBy:by, answeredAt:now, by}); added++; }
+  // add the Know-the-offer module to the client's curriculum add-on (if not already there)
+  try{
+    const cc=repClientOnbConfig(client)||{modules:[],quiz:[]};
+    if(!cc.modules.some(m=>m.id===SALON_OFFER_MODULE.id || nrmName(m.title)===nrmName(SALON_OFFER_MODULE.title))){
+      cc.modules.push(Object.assign({},SALON_OFFER_MODULE));
+      await addRecord({type:'reponbconfig', client, config:JSON.stringify({modules:cc.modules, quiz:cc.quiz||[]}), by});
+    }
+  }catch(_){}
+  toast('Seeded '+added+' FAQ answer'+(added===1?'':'s')+' + Know-the-offer module for '+client+(added<SALON_FAQ.length?' (skipped existing)':'')); renderFaq();
 }
 /* ===== Rep Scorecards + ramp milestones (T-439) ===== */
 let SC_PERIOD='month', SC_RANGE=null;
