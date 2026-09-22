@@ -3759,13 +3759,14 @@ function faqAnsCard(x){
 function renderFaq(){
   const ask=document.getElementById('faqAskPanel'); if(ask) ask.hidden=!faqCanAsk();
   const sb=document.getElementById('faqSeedSalonBtn'); if(sb) sb.style.display=faqIsAdmin()?'':'none';
-  const sel=document.getElementById('faqClient'); if(sel){ const opts=faqMyClients(), cur=sel.value; sel.innerHTML=opts.map(c=>`<option>${esc(c)}</option>`).join(''); if(cur&&opts.includes(cur)) sel.value=cur; }
+  const sel=document.getElementById('faqClient'); if(sel){ const opts=faqMyClients(), cur=sel.value; sel.innerHTML=opts.map(c=>`<option>${esc(c)}</option>`).join(''); sel.value=preferGlobal(opts,cur)||(opts.includes(cur)?cur:(opts[0]||'')); }
   let all=faqVisible();
-  // admin account filter: scope the view to one account (reps are already scoped to their own accounts)
+  // the top company selector scopes the FAQ for everyone (admins included), so it never shows other accounts' entries
+  if(GLOBAL_CLIENT) all=all.filter(x=>nrmName(x.client)===nrmName(GLOBAL_CLIENT));
+  // manual account filter (admin) - only relevant when NO global company is picked; otherwise the global scope wins
   const cf=document.getElementById('faqClientFilter');
-  if(cf){ const show=faqIsAdmin()||faqMyClients().length>1; cf.style.display=show?'':'none';
-    if(show){ const clients=[...new Set(all.map(x=>String(x.client||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b)); const cur=cf.value; cf.innerHTML='<option value="">All accounts</option>'+clients.map(c=>`<option${nrmName(c)===nrmName(cur)?' selected':''}>${esc(c)}</option>`).join(''); }
-    const fv=(cf.value||'').trim(); if(fv) all=all.filter(x=>nrmName(x.client)===nrmName(fv));
+  if(cf){ const show=!GLOBAL_CLIENT && (faqIsAdmin()||faqMyClients().length>1); cf.style.display=show?'':'none';
+    if(show){ const clients=[...new Set(faqVisible().map(x=>String(x.client||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b)); const cur=cf.value; cf.innerHTML='<option value="">All accounts</option>'+clients.map(c=>`<option${nrmName(c)===nrmName(cur)?' selected':''}>${esc(c)}</option>`).join(''); const fv=(cf.value||'').trim(); if(fv) all=all.filter(x=>nrmName(x.client)===nrmName(fv)); }
   }
   const openBox=document.getElementById('faqOpen');
   if(openBox){ const open=all.filter(x=>x.status!=='answered').sort((a,b)=>(b.submittedAt||'').localeCompare(a.submittedAt||'')); openBox.innerHTML=open.length?open.map(faqOpenCard).join(''):'<p class="muted" style="padding:6px 2px;margin:0">No open questions.</p>'; }
