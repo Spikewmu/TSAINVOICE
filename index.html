@@ -513,6 +513,7 @@
     <button class="navhead"><svg class="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4-3 7-7 8-4-1-7-4-7-8V6z"/></svg><span class="nlabel">Admin</span><svg class="nchev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
     <div class="navsub">
       <button data-tab="master">Master dashboard</button>
+      <button data-tab="sample">Sample Dashboard</button>
       <button data-tab="mgreodview">Manager EODs</button>
       <button data-tab="onbaudit">Onboarding Audit</button>
       <button data-tab="ghlmap">GHL Mapping</button>
@@ -1829,6 +1830,28 @@ If they did not watch: No problem at all, I will send it right over. Can you wat
     </div>
   </section>
 
+  <!-- ===== SAMPLE (demo) DASHBOARD ===== -->
+  <section id="tab-sample" hidden>
+    <style>
+      #tab-sample .sbadge{display:inline-flex;align-items:center;gap:6px;background:var(--gold);color:#241c08;font-weight:800;font-size:11px;letter-spacing:.06em;text-transform:uppercase;padding:4px 10px;border-radius:999px}
+      #tab-sample .swarn{margin:10px 0 18px;padding:10px 14px;border:1px dashed var(--gold-soft);border-radius:10px;color:var(--muted);font-size:12.5px;background:var(--surface)}
+      #tab-sample .sgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;margin:10px 0 22px}
+      #tab-sample .skpi{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px 18px}
+      #tab-sample .skpi .lbl{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;font-weight:600}
+      #tab-sample .skpi .val{font-size:26px;font-weight:800;color:var(--ink);margin-top:5px;font-variant-numeric:tabular-nums}
+      #tab-sample h3.ssec{font-family:var(--serif);color:var(--gold-2);margin:6px 0 2px}
+      #tab-sample table{width:100%;border-collapse:collapse;font-size:13px}
+      #tab-sample th{text-align:left;color:var(--muted);font-weight:600;padding:8px;border-bottom:1px solid var(--border);font-size:11px;text-transform:uppercase;letter-spacing:.03em}
+      #tab-sample td{padding:9px 8px;border-bottom:1px solid var(--border)}
+    </style>
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <h2 class="section" style="margin-bottom:0">Sample Dashboard</h2>
+      <span class="sbadge">Sample data</span>
+    </div>
+    <div class="swarn">This is a demo view for walkthroughs. Every name and number here is made up - <b>no real customer information, and no financial data</b> (cash, commission, or revenue) is shown. Use this when screen-sharing the platform with someone outside the team.</div>
+    <div id="sampleBody"></div>
+  </section>
+
   <section id="tab-hotlist" hidden>
     <h2 class="section">Hot List</h2>
     <p class="hint">Deals close to closing - the whole team can see the projected pipeline at a glance. Reps add their in-progress deals so leadership can back up the forecast. This is <b>projections</b>, separate from confirmed cash in My Deals.</p>
@@ -2687,9 +2710,9 @@ function startApp(){
 // base tabs a login TIER can see; per-account responsibilities add to this in applyNavAccess()
 function baseAllow(role){
   return ({
-    admin:['dash','halloffame','master','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','dayreports','hotlist','adminreport','recruiting','messages','invoicing','payouts','repcommrates','contracts','onbaudit','ghlmap','pcfields','data','users','integrations','settings','reprequests','resources','faq','kickoff','webinarsop'],
-    director:['dash','halloffame','master','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','dailyreport','dayreports','hotlist','recruiting','messages','adminreport','contracts','onbaudit','ghlmap','pcfields','reprequests','resources','faq','kickoff','webinarsop'],
-    manager:['dash','halloffame','master','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','speedtolead','dailyreport','dayreports','hotlist','adminreport','recruiting','messages','reprequests','resources','faq','kickoff','webinarsop'],
+    admin:['dash','halloffame','master','sample','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','dayreports','hotlist','adminreport','recruiting','messages','invoicing','payouts','repcommrates','contracts','onbaudit','ghlmap','pcfields','data','users','integrations','settings','reprequests','resources','faq','kickoff','webinarsop'],
+    director:['dash','halloffame','master','sample','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','dailyreport','dayreports','hotlist','recruiting','messages','adminreport','contracts','onbaudit','ghlmap','pcfields','reprequests','resources','faq','kickoff','webinarsop'],
+    manager:['dash','halloffame','master','sample','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','speedtolead','dailyreport','dayreports','hotlist','adminreport','recruiting','messages','reprequests','resources','faq','kickoff','webinarsop'],
     founder:['dash','hotlist'],
     recruiter:['dash','recruiting','messages','timeoff','reprequests','resources','faq','kickoff','webinarsop'],
     webinarteam:['dash','meeting','promises','timeoff','webinar','resources','faq','kickoff','webinarsop'],
@@ -2836,9 +2859,9 @@ function showTab(t){
   document.querySelectorAll('#tabs button[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
   document.querySelectorAll('#tabs .navgroup').forEach(g=>{ if(g.querySelector('button[data-tab="'+t+'"]')) g.classList.remove('collapsed'); }); // reveal the active tab's group
 
-  ['dash','halloffame','master','mydeals','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','dayreports','hotlist','adminreport','reprequests','recruiting','messages','invoicing','payouts','repcommrates','contracts','onbaudit','ghlmap','pcfields','data','users','integrations','settings','resources','faq','kickoff','webinarsop','scorecards'].forEach(x=>{ const el=document.getElementById('tab-'+x); if(el) el.hidden = (x!==t); });
+  ['dash','halloffame','master','sample','mydeals','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','dayreports','hotlist','adminreport','reprequests','recruiting','messages','invoicing','payouts','repcommrates','contracts','onbaudit','ghlmap','pcfields','data','users','integrations','settings','resources','faq','kickoff','webinarsop','scorecards'].forEach(x=>{ const el=document.getElementById('tab-'+x); if(el) el.hidden = (x!==t); });
   // stale-while-revalidate: render instantly from the cached records, then refresh in the background
-  const render={dash:renderDash, halloffame:renderHallOfFame, master:renderMaster, mydeals:renderMyDeals, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, promises:renderPromisesTab, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, mgreodview:renderMgrEodView, contracts:renderContracts, faq:renderFaq, scorecards:renderScorecards, webinar:renderWebinars, calllog:renderCallLog, calendar:renderCalendar, speedtolead:renderSpeedToLead, dailyreport:renderDailyReport, dayreports:renderDayReports, hotlist:renderHotList, adminreport:renderAdminReport, payouts:renderPayouts, repcommrates:renderRepCommRates, reprequests:renderRepRequests, recruiting:renderRecruiting, messages:renderMessages, training:renderTraining, invoicing:renderInvoicing, data:renderAll}[t];
+  const render={dash:renderDash, halloffame:renderHallOfFame, master:renderMaster, sample:renderSample, mydeals:renderMyDeals, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, promises:renderPromisesTab, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, mgreodview:renderMgrEodView, contracts:renderContracts, faq:renderFaq, scorecards:renderScorecards, webinar:renderWebinars, calllog:renderCallLog, calendar:renderCalendar, speedtolead:renderSpeedToLead, dailyreport:renderDailyReport, dayreports:renderDayReports, hotlist:renderHotList, adminreport:renderAdminReport, payouts:renderPayouts, repcommrates:renderRepCommRates, reprequests:renderRepRequests, recruiting:renderRecruiting, messages:renderMessages, training:renderTraining, invoicing:renderInvoicing, data:renderAll}[t];
   if(render){ render(); hqApplyTooltips(); syncRecords().then(()=>{ if(currentTab()===t){ render(); hqApplyTooltips(); } buildGlobalClientSelect(); buildViewAsUserSelect(); updateNavBadges(); renderReminders(); }); }
   updateNavBadges();
   setTimeout(hqApplyTooltips,0); // catch tabs whose render runs outside the map above
@@ -6332,6 +6355,47 @@ function renderMaster(){
   const tl=document.getElementById('mToggleList'); if(tl) tl.innerHTML=MASTER_METRICS.map(mt=>`<label><input type="checkbox" ${sel.includes(mt.k)?'checked':''} onchange="mToggleMetric('${mt.k}',this.checked)"> ${esc(mt.lbl)}</label>`).join('');
   const sub=document.getElementById('mBrandSub'); if(sub) sub.textContent=`${s.accounts} account${s.accounts===1?'':'s'} · ${rng.label}`;
   const grid=document.getElementById('mGrid'); if(grid) grid.innerHTML=MASTER_METRICS.filter(mt=>sel.includes(mt.k)).map(mt=>`<div class="mstat"><div class="lbl">${esc(mt.lbl)}</div><div class="val">${mt.fmt(s[mt.k])}</div></div>`).join('') || '<div class="muted" style="padding:10px">No metrics selected. Use Customize metrics to turn some on.</div>';
+}
+/* ---------------- Sample (demo) dashboard: fake data, no real customer info, no financials ----------------
+   For screen-sharing the platform with people outside the team. Fully self-contained - reads nothing from RECORDS. */
+function renderSample(){
+  const sec=document.getElementById('tab-sample'); if(!sec) return;
+  const body=document.getElementById('sampleBody'); if(!body) return;
+  const closers=[
+    {name:'Jordan Ellis', calls:46, closes:11, shows:41, noshows:7, util:0.74},
+    {name:'Morgan Vale',  calls:39, closes:8,  shows:34, noshows:9, util:0.68},
+    {name:'Casey Rowan',  calls:33, closes:6,  shows:27, noshows:8, util:0.61}
+  ];
+  const setters=[
+    {name:'Riley Chen',   dials:842, conn:104, sets:34, convos:47, hours:39},
+    {name:'Sam Okafor',   dials:713, conn:88,  sets:27, convos:38, hours:35},
+    {name:'Avery Brooks', dials:668, conn:71,  sets:22, convos:29, hours:33}
+  ];
+  const cSum=closers.reduce((a,o)=>({calls:a.calls+o.calls,closes:a.closes+o.closes,shows:a.shows+o.shows,noshows:a.noshows+o.noshows,util:a.util+o.util}),{calls:0,closes:0,shows:0,noshows:0,util:0});
+  const sSum=setters.reduce((a,o)=>({dials:a.dials+o.dials,conn:a.conn+o.conn,sets:a.sets+o.sets,convos:a.convos+o.convos,hours:a.hours+o.hours}),{dials:0,conn:0,sets:0,convos:0,hours:0});
+  const pct=v=>Math.round(v*100)+'%', n=v=>Math.round(v).toLocaleString();
+  const kpi=(l,v)=>`<div class="skpi"><div class="lbl">${l}</div><div class="val">${v}</div></div>`;
+  const closerK=[kpi('Closed deals',n(cSum.closes)),kpi('Close %',pct(cSum.calls?cSum.closes/cSum.calls:0)),kpi('Calls taken',n(cSum.calls)),kpi('Show %',pct((cSum.shows+cSum.noshows)?cSum.shows/(cSum.shows+cSum.noshows):0)),kpi('Call utilization',pct(cSum.util/closers.length))].join('');
+  const setterK=[kpi('Total dials',n(sSum.dials)),kpi('Connected calls',n(sSum.conn)),kpi('Connection %',pct(sSum.dials?sSum.conn/sSum.dials:0)),kpi('Calls set',n(sSum.sets)),kpi('Book %',pct(sSum.conn?sSum.sets/sSum.conn:0)),kpi('Convos 4m+',n(sSum.convos)),kpi('Hours dialing',n(sSum.hours))].join('');
+  const closerRows=closers.slice().sort((a,b)=>b.closes-a.closes).map(o=>`<tr><td><b>${esc(o.name)}</b></td><td>Closer</td><td class="num">${o.calls}</td><td class="num">${o.closes}</td><td class="num">${pct(o.calls?o.closes/o.calls:0)}</td><td class="num">${pct((o.shows+o.noshows)?o.shows/(o.shows+o.noshows):0)}</td></tr>`).join('');
+  const setterRows=setters.slice().sort((a,b)=>b.sets-a.sets).map(o=>`<tr><td><b>${esc(o.name)}</b></td><td>Setter</td><td class="num">${n(o.dials)}</td><td class="num">${o.conn}</td><td class="num">${pct(o.dials?o.conn/o.dials:0)}</td><td class="num">${o.sets}</td></tr>`).join('');
+  const hot=[
+    {prospect:'Prospect A', rep:'Jordan Ellis', date:'in 2 days',  prob:80, status:'Open'},
+    {prospect:'Prospect B', rep:'Morgan Vale',  date:'in 5 days',  prob:60, status:'Open'},
+    {prospect:'Prospect C', rep:'Casey Rowan',  date:'next week',  prob:40, status:'Open'},
+    {prospect:'Prospect D', rep:'Jordan Ellis', date:'yesterday',  prob:100, status:'Won'}
+  ];
+  const stPill=s=>s==='Won'?'<span class="pill good">Won</span>':(s==='Lost'?'<span class="pill" style="color:var(--bad);border-color:var(--bad)">Lost</span>':'<span class="pill" style="color:var(--gold);border-color:var(--gold-soft)">Open</span>');
+  const hotRows=hot.map(d=>`<tr><td><b>${esc(d.prospect)}</b></td><td>${esc(d.rep)}</td><td>${esc(d.date)}</td><td class="num">${d.prob}%</td><td>${stPill(d.status)}</td></tr>`).join('');
+  body.innerHTML=
+    `<h3 class="ssec">Demo Company - live performance</h3><div class="muted" style="font-size:12px;margin-bottom:6px">Sample account &middot; today</div>`
+    +`<div style="font-weight:700;color:var(--gold-2);margin:14px 0 2px">Closers - activity</div><div class="sgrid">${closerK}</div>`
+    +`<div style="font-weight:700;color:var(--gold-2);margin:2px 0 2px">Setters - activity</div><div class="sgrid">${setterK}</div>`
+    +`<h3 class="ssec" style="margin-top:8px">Team leaderboard</h3>`
+    +`<div class="panel" style="padding:10px 12px;margin:8px 0 16px"><div style="overflow-x:auto"><table><thead><tr><th>Rep</th><th>Role</th><th class="num">Dials</th><th class="num">Connects</th><th class="num">Conn %</th><th class="num">Sets</th></tr></thead><tbody>${setterRows}</tbody></table></div></div>`
+    +`<div class="panel" style="padding:10px 12px;margin:0 0 16px"><div style="overflow-x:auto"><table><thead><tr><th>Rep</th><th>Role</th><th class="num">Calls</th><th class="num">Closes</th><th class="num">Close %</th><th class="num">Show %</th></tr></thead><tbody>${closerRows}</tbody></table></div></div>`
+    +`<h3 class="ssec">Hot list <span style="font-weight:400;color:var(--muted);font-size:12px">- projected deals (no dollar values shown)</span></h3>`
+    +`<div class="panel" style="padding:10px 12px;margin-top:8px"><div style="overflow-x:auto"><table><thead><tr><th>Prospect</th><th>Rep</th><th>Close date</th><th class="num">Probability</th><th>Status</th></tr></thead><tbody>${hotRows}</tbody></table></div></div>`;
 }
 function renderHotList(){
   const sec=document.getElementById('tab-hotlist'); if(!sec) return;
