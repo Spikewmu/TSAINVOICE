@@ -105,19 +105,33 @@ async function eventToSlack(rec) {
     const cfg = await integrationFor(rec.ws, rec.client); if (!cfg) return;
     const who = rec.rep || rec.by || 'Someone';
     if (rec.type === 'deal') {
-      if (!cfg.dealSlack) return;
+      if (!cfg.dealSlack && !cfg.onboardingSlack) return;
       const L = (label, val) => (val !== undefined && val !== null && String(val).trim() !== '') ? `\n*${label}:* ${String(val).trim()}` : ''; // only show a line if it has a value
       const dp = String(rec.date || '').slice(0, 10).split('-'); const dateStr = dp.length === 3 ? (Number(dp[1]) + '-' + Number(dp[2]) + '-' + dp[0]) : ''; // 2026-09-07 -> 9-7-2026
       const setterLine = (rec.setter && String(rec.setter).trim()) ? `\n*Setter:* ${String(rec.setter).trim()}` : '\n*Setter:* self-booked';
-      const body = `🎉 *NEW CLOSED DEAL*${rec.client ? '  ·  *' + rec.client + '*' : ''}`
-        + `\n${who} (Closer)`
-        + L('Contact', rec.lead) + L('Email', rec.leadEmail) + L('Date', dateStr) + L('Offer', rec.product)
-        + (rec.contractValue ? `\n*Contract value:* ${money(rec.contractValue)}` : '')
-        + (rec.cashCollected ? `\n*Cash collected:* ${money(rec.cashCollected)}` : '')
-        + (rec.depositCollected ? `\n*Deposit:* ${money(rec.depositCollected)}` : '')
-        + L('Source', rec.source) + setterLine + L('Notes', rec.notes);
-      await postChan(cfg.dealSlack, `New closed deal${rec.client ? ' · ' + rec.client : ''} · ${money(rec.cashCollected)} (${who})`,
-        [{ type: 'section', text: { type: 'mrkdwn', text: body } }]);
+      // internal "new closed deal" team feed
+      if (cfg.dealSlack) {
+        const body = `🎉 *NEW CLOSED DEAL*${rec.client ? '  ·  *' + rec.client + '*' : ''}`
+          + `\n${who} (Closer)`
+          + L('Contact', rec.lead) + L('Email', rec.leadEmail) + L('Date', dateStr) + L('Offer', rec.product)
+          + (rec.contractValue ? `\n*Contract value:* ${money(rec.contractValue)}` : '')
+          + (rec.cashCollected ? `\n*Cash collected:* ${money(rec.cashCollected)}` : '')
+          + (rec.depositCollected ? `\n*Deposit:* ${money(rec.depositCollected)}` : '')
+          + L('Source', rec.source) + setterLine + L('Notes', rec.notes);
+        await postChan(cfg.dealSlack, `New closed deal${rec.client ? ' · ' + rec.client : ''} · ${money(rec.cashCollected)} (${who})`,
+          [{ type: 'section', text: { type: 'mrkdwn', text: body } }]);
+      }
+      // buyer-onboarding trigger (T-593): fires the moment the closer submits, so the new customer's access/welcome can start
+      if (cfg.onboardingSlack) {
+        const ob = `🎉 *NEW CUSTOMER - START ONBOARDING*${rec.client ? '  ·  *' + rec.client + '*' : ''}`
+          + L('Customer', rec.lead) + L('Email', rec.leadEmail) + L('Offer', rec.product)
+          + (rec.contractValue ? `\n*Contract:* ${money(rec.contractValue)}` : '')
+          + (rec.cashCollected ? `\n*Collected:* ${money(rec.cashCollected)}` : '')
+          + L('Closed by', who) + L('Date', dateStr)
+          + `\n_Send their access / welcome and book the kickoff._`;
+        await postChan(cfg.onboardingSlack, `New customer to onboard${rec.client ? ' · ' + rec.client : ''}${rec.lead ? ' · ' + rec.lead : ''}`,
+          [{ type: 'section', text: { type: 'mrkdwn', text: ob } }]);
+      }
     } else if (rec.type === 'postcall') {
       const dest = (rec.role === 'Setter' ? (cfg.postcallSetterSlack || cfg.postcallSlack) : (cfg.postcallCloserSlack || cfg.postcallSlack));
       if (!dest) return;

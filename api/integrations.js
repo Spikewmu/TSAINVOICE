@@ -48,18 +48,18 @@ const SLACK_APPS = {
   sod: { id: 'SLACK_CLIENT_ID_SOD', secret: 'SLACK_CLIENT_SECRET_SOD' },
   eod: { id: 'SLACK_CLIENT_ID_EOD', secret: 'SLACK_CLIENT_SECRET_EOD' }
 };
-const appKeyForField = f => (f === 'deal') ? f : (f === 'postcall' || f === 'postcallSetter' || f === 'postcallCloser') ? 'postcall' : (f === 'sod' || f === 'sodSetter' || f === 'sodCloser') ? 'sod' : (f === 'setter' || f === 'closer' || f === 'mgr' || f === 'slack' || f === 'dailyReport' || f === 'invoicing' || f === 'leaderboard') ? 'eod' : 'default'; // dailyReport + invoicing + leaderboard + fallback use the EOD app ('default' app isn't configured)
+const appKeyForField = f => (f === 'deal') ? f : (f === 'postcall' || f === 'postcallSetter' || f === 'postcallCloser') ? 'postcall' : (f === 'sod' || f === 'sodSetter' || f === 'sodCloser') ? 'sod' : (f === 'setter' || f === 'closer' || f === 'mgr' || f === 'slack' || f === 'dailyReport' || f === 'invoicing' || f === 'leaderboard' || f === 'onboarding') ? 'eod' : 'default'; // dailyReport + invoicing + leaderboard + onboarding + fallback use the EOD app ('default' app isn't configured)
 const slackAppId = k => { const a = SLACK_APPS[k]; return a && process.env[a.id]; };
 const slackApps = () => Object.fromEntries(Object.keys(SLACK_APPS).map(k => [k, !!slackAppId(k)]));
 const keepOr = (val, prev) => (val === '') ? '' : ((val && val !== '__keep__') ? String(val) : (prev || ''));
 const pubCfg = d => ({ key: d.key, ws: d.ws, client: d.client || '', eodToSlack: !!d.eodToSlack,
   slack: d.slackWebhook || '', setter: d.eodSetterSlack || '', closer: d.eodCloserSlack || '', mgr: d.eodMgrSlack || '',
-  deal: d.dealSlack || '', postcall: d.postcallSlack || '', postcallSetter: d.postcallSetterSlack || '', postcallCloser: d.postcallCloserSlack || '', sod: d.sodSlack || '', sodSetter: d.sodSetterSlack || '', sodCloser: d.sodCloserSlack || '',
+  deal: d.dealSlack || '', onboarding: d.onboardingSlack || '', postcall: d.postcallSlack || '', postcallSetter: d.postcallSetterSlack || '', postcallCloser: d.postcallCloserSlack || '', sod: d.sodSlack || '', sodSetter: d.sodSetterSlack || '', sodCloser: d.sodCloserSlack || '',
   dailyReport: d.dailyReportSlack || '', dailyReportOn: !!d.dailyReportOn, dailyReportTime: d.dailyReportTime || '09:30',
   leaderboard: d.leaderboardSlack || '', leaderboardOn: !!d.leaderboardOn, leaderboardTime: d.leaderboardTime || '10:00',
   invoicing: d.invoicingSlack || '', invoicingPdf: !!(d.invoicingSlackBot && d.invoicingSlackChanId),
   // the connected Slack channel name per source (captured at OAuth connect), for display
-  chan: { slack: d.slackWebhookChan||'', setter: d.eodSetterSlackChan||'', closer: d.eodCloserSlackChan||'', mgr: d.eodMgrSlackChan||'', deal: d.dealSlackChan||'', postcall: d.postcallSlackChan||'', postcallSetter: d.postcallSetterSlackChan||'', postcallCloser: d.postcallCloserSlackChan||'', sod: d.sodSlackChan||'', sodSetter: d.sodSetterSlackChan||'', sodCloser: d.sodCloserSlackChan||'', dailyReport: d.dailyReportSlackChan||'', leaderboard: d.leaderboardSlackChan||'', invoicing: d.invoicingSlackChan||'' },
+  chan: { slack: d.slackWebhookChan||'', setter: d.eodSetterSlackChan||'', closer: d.eodCloserSlackChan||'', mgr: d.eodMgrSlackChan||'', deal: d.dealSlackChan||'', onboarding: d.onboardingSlackChan||'', postcall: d.postcallSlackChan||'', postcallSetter: d.postcallSetterSlackChan||'', postcallCloser: d.postcallCloserSlackChan||'', sod: d.sodSlackChan||'', sodSetter: d.sodSetterSlackChan||'', sodCloser: d.sodCloserSlackChan||'', dailyReport: d.dailyReportSlackChan||'', leaderboard: d.leaderboardSlackChan||'', invoicing: d.invoicingSlackChan||'' },
   ghl: !!d.ghlApiKey, ghlLocation: d.ghlLocationId || '', ghlEnabled: !!d.ghlEnabled }); // ghlApiKey itself is write-only, never returned
 const pubHook = (d, req) => ({ id: d.id, key: d.key, ws: d.ws, client: d.client || '', name: d.name || 'Webhook', processor: d.processor || 'generic', enabled: d.enabled !== false, template: d.template || DEFAULT_TEMPLATE, hasSlack: !!d.slackWebhook, slack: d.slackWebhook || '', token: d.token, inbound: baseUrl(req) + '/api/hook?t=' + d.token });
 const chanDest = u => (/discord(app)?\.com\/api\/webhooks\//i.test(String(u || '')) && !/\/slack\/?$/i.test(String(u))) ? String(u).replace(/\/+$/, '') + '/slack' : u; // Discord accepts Slack payloads at /slack
@@ -174,6 +174,7 @@ export default async function handler(req, res) {
         eodCloserSlack: keepOr(b.eodCloserSlack, cur && cur.eodCloserSlack),
         eodMgrSlack: keepOr(b.eodMgrSlack, cur && cur.eodMgrSlack),
         dealSlack: keepOr(b.dealSlack, cur && cur.dealSlack),
+        onboardingSlack: keepOr(b.onboardingSlack, cur && cur.onboardingSlack),
         postcallSlack: keepOr(b.postcallSlack, cur && cur.postcallSlack),
         postcallSetterSlack: keepOr(b.postcallSetterSlack, cur && cur.postcallSetterSlack),
         postcallCloserSlack: keepOr(b.postcallCloserSlack, cur && cur.postcallCloserSlack),
@@ -192,7 +193,7 @@ export default async function handler(req, res) {
         ghlEnabled: b.ghlEnabled != null ? !!b.ghlEnabled : !!(cur && cur.ghlEnabled),
         eodToSlack: b.eodToSlack != null ? !!b.eodToSlack : !!(cur && cur.eodToSlack), updatedAt: now };
       // preserve the connected Slack CHANNEL NAMES (captured at OAuth connect, not part of this save form) - otherwise Save routing wipes them
-      ['slackWebhookChan', 'eodSetterSlackChan', 'eodCloserSlackChan', 'eodMgrSlackChan', 'dealSlackChan', 'postcallSlackChan', 'postcallSetterSlackChan', 'postcallCloserSlackChan', 'sodSlackChan', 'sodSetterSlackChan', 'sodCloserSlackChan', 'dailyReportSlackChan', 'leaderboardSlackChan', 'invoicingSlackChan', 'invoicingSlackBot', 'invoicingSlackChanId'].forEach(k => { if (cur && cur[k] != null) rec[k] = cur[k]; });
+      ['slackWebhookChan', 'eodSetterSlackChan', 'eodCloserSlackChan', 'eodMgrSlackChan', 'dealSlackChan', 'onboardingSlackChan', 'postcallSlackChan', 'postcallSetterSlackChan', 'postcallCloserSlackChan', 'sodSlackChan', 'sodSetterSlackChan', 'sodCloserSlackChan', 'dailyReportSlackChan', 'leaderboardSlackChan', 'invoicingSlackChan', 'invoicingSlackBot', 'invoicingSlackChanId'].forEach(k => { if (cur && cur[k] != null) rec[k] = cur[k]; });
       const r = await supa('records', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ rid: rec.id, type: 'integration', submitted_at: now, data: rec }) });
       if (!r || !r.ok) return res.status(200).json({ ok: false, error: 'db write failed' });
       return res.status(200).json({ ok: true, config: pubCfg(rec) });
@@ -238,7 +239,7 @@ export default async function handler(req, res) {
       const cfgs = await allByType('integration'); const cur = cfgs[key];
       if (!cur) return res.status(200).json({ ok: false, error: 'Save/connect a channel first' });
       if (!mayTouch(cur)) return res.status(200).json({ ok: false, error: 'not your client' });
-      const FIELD_MAP = { slack: 'slackWebhook', setter: 'eodSetterSlack', closer: 'eodCloserSlack', mgr: 'eodMgrSlack', deal: 'dealSlack', postcall: 'postcallSlack', postcallSetter: 'postcallSetterSlack', postcallCloser: 'postcallCloserSlack', sod: 'sodSlack', sodSetter: 'sodSetterSlack', sodCloser: 'sodCloserSlack', dailyReport: 'dailyReportSlack', leaderboard: 'leaderboardSlack', invoicing: 'invoicingSlack' };
+      const FIELD_MAP = { slack: 'slackWebhook', setter: 'eodSetterSlack', closer: 'eodCloserSlack', mgr: 'eodMgrSlack', deal: 'dealSlack', onboarding: 'onboardingSlack', postcall: 'postcallSlack', postcallSetter: 'postcallSetterSlack', postcallCloser: 'postcallCloserSlack', sod: 'sodSlack', sodSetter: 'sodSetterSlack', sodCloser: 'sodCloserSlack', dailyReport: 'dailyReportSlack', leaderboard: 'leaderboardSlack', invoicing: 'invoicingSlack' };
       const dest = cur[FIELD_MAP[String(b.field || 'slack')] || 'slackWebhook'] || '';
       if (!dest) return res.status(200).json({ ok: false, error: 'Nothing connected on this channel yet' });
       const label = String(b.label || 'this feed').slice(0, 80);
@@ -250,6 +251,9 @@ export default async function handler(req, res) {
       if (field === 'deal') {
         text = `New closed deal · ${client} · ${money(2500)} (Alex)`;
         bodyTxt = `💰 *New closed deal* · ${money(2500)}\n*Closer:* Alex\n*Setter:* Jordan\n*Account:* ${client}\n*Product:* Sample Offer\n*Contract:* ${money(6000)}`;
+      } else if (field === 'onboarding') {
+        text = `New customer to onboard · Sample Buyer · ${client}`;
+        bodyTxt = `🎉 *New customer - start onboarding* · ${client}\n*Customer:* Sample Buyer  ·  buyer@example.com\n*Offer:* Sample Offer  ·  *Contract:* ${money(6000)}  ·  *Collected:* ${money(2500)}\n*Closer:* Alex  ·  *Closed:* ${new Date().toISOString().slice(0, 10)}\nSend their access / welcome + book the kickoff.`;
       } else if (field === 'postcallSetter' || field === 'postcallCloser') {
         const role = field === 'postcallSetter' ? 'Setter' : 'Closer', who = role === 'Setter' ? 'Jordan' : 'Alex';
         text = `Post-call · ${who} · ${client} · Booked`;
