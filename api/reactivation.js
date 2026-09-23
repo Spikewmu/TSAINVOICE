@@ -67,7 +67,36 @@ async function userAssignedLocations(username) {
   return locs;
 }
 // pull calendar events for one v2 client in [fromMs,toMs]; returns normalized events
-async function pullCalV2(cfg, fromMs, toMs) {
+// Classify a booking/lead as ads-driven vs organic from GHL attribution fields. Returns 'ADS'|'ORGANIC'|''.
+function classifyBookingSource(strings) {
+  const s = (strings || []).filter(Boolean).join(' | ').toLowerCase();
+  if (!s.trim()) return '';
+  const ads = /\b(fb|facebook|ig|instagram|meta|tiktok|snapchat|youtube\s*ads?|yt\s*ads?|google\s*ads?|adwords|bing\s*ads?|paid|ppc|cpc|cpm|retarget|campaign|ads?|utm)\b/;
+  const org = /\b(organic|referral|refer|direct|word[\s-]*of[\s-]*mouth|seo|organic\s*search|website\s*form|opt[\s-]*in\s*form|manual|import)\b/;
+  if (ads.test(s)) return 'ADS';
+  if (org.test(s)) return 'ORGANIC';
+  return '';
+}
+// Enrich events in place with the contact's source + ads/organic segment. One GET per unique contact, capped concurrency.
+async function enrichEventSources(base, H, events) {
+  const ids = [...new Set(events.map(e => e.contactId).filter(Boolean))];
+  const srcMap = {};
+  const pool = 6;
+  for (let i = 0; i < ids.length; i += pool) {
+    await Promise.all(ids.slice(i, i + pool).map(async id => {
+      try {
+        const r = await jretry(base + '/contacts/' + encodeURIComponent(id), { headers: H });
+        const c = (r.j && (r.j.contact || r.j)) || {};
+        const a = c.attributionSource || {}, la = c.lastAttributionSource || {};
+        const raw = c.source || a.utmSource || a.sessionSource || a.medium || la.utmSource || la.sessionSource || '';
+        const seg = classifyBookingSource([c.source, a.utmSource, a.utmMedium, a.utmCampaign, a.sessionSource, a.medium, a.referrer, la.utmSource, la.sessionSource, la.medium]);
+        srcMap[id] = { source: String(raw || '').slice(0, 60), seg };
+      } catch (e) { srcMap[id] = { source: '', seg: '' }; }
+    }));
+  }
+  events.forEach(e => { const m = srcMap[e.contactId]; if (m) { e.source = m.source; e.seg = m.seg; } });
+}
+async function pullCalV2(cfg, fromMs, toMs, withSource) {
   const { loc, base, H } = ghlCtx(cfg);
   const clientName = cfg.client || cfg.key || loc;
   const cal = await jretry(base + '/calendars/?locationId=' + encodeURIComponent(loc), { headers: H });
@@ -85,7 +114,9 @@ async function pullCalV2(cfg, fromMs, toMs) {
   ((list.j && list.j.users) || []).forEach(u => { usrMap[u.id] = u.name || ((u.firstName || '') + ' ' + (u.lastName || '')).trim() || u.email; });
   const missing = [...uids].filter(id => !usrMap[id]);
   await Promise.all(missing.map(id => jretry(base + '/users/' + encodeURIComponent(id), { headers: H }).then(u => { const d = (u.j && (u.j.user || u.j)) || {}; usrMap[id] = d.name || ((d.firstName || '') + ' ' + (d.lastName || '')).trim() || d.email || ''; }).catch(() => {})));
-  return raw.map(({ c, e }) => ({ client: clientName, calendar: c.name, title: e.title, lead: e.title, status: e.appointmentStatus || e.status, start: e.startTime, end: e.endTime, bookedWith: usrMap[e.assignedUserId] || '', contactId: e.contactId }));
+  const out = raw.map(({ c, e }) => ({ client: clientName, calendar: c.name, title: e.title, lead: e.title, status: e.appointmentStatus || e.status, start: e.startTime, end: e.endTime, bookedWith: usrMap[e.assignedUserId] || '', contactId: e.contactId }));
+  if (withSource) { try { await enrichEventSources(base, H, out); } catch (e) {} }
+  return out;
 }
 function ghlCtx(cfg) {
   const key = String(cfg.ghlApiKey || ''), v2 = /^pit-/i.test(key), loc = String(cfg.ghlLocationId || '').trim();
@@ -173,7 +204,9 @@ export default async function handler(req, res) {
       const from = b.from || q.from, to = b.to || q.to;
       if (!from || !to) return res.status(200).json({ ok: false, error: 'from and to (ISO dates) required' });
       const fromMs = new Date(from).getTime(), toMs = new Date(to).getTime();
-      const cacheKey = 'cal:' + from + ':' + to;
+      const withSource = !!(b.withSource || q.withSource);
+      const onlyClient = String(b.client || q.client || '').trim();
+      const cacheKey = 'cal:' + from + ':' + to + (withSource ? ':src' : '') + (onlyClient ? ':' + onlyClient.toLowerCase() : '');
       const force = !!(b.force || q.force);
       if (!force) { // serve a fresh (<15 min) cached result so repeat loads are instant
         try {
@@ -187,8 +220,9 @@ export default async function handler(req, res) {
       for (const cfg of cfgs) {
         const v2 = /^pit-/i.test(String(cfg.ghlApiKey || ''));
         const label = cfg.client || cfg.key;
+        if (onlyClient && String(label).toLowerCase() !== onlyClient.toLowerCase()) continue; // scope enrichment to one client
         if (!v2) { skipped.push({ client: label, reason: 'v1 (not yet supported)' }); continue; }
-        try { const evs = await pullCalV2(cfg, fromMs, toMs); all.push(...evs); clients.push({ client: label, count: evs.length }); }
+        try { const evs = await pullCalV2(cfg, fromMs, toMs, withSource); all.push(...evs); clients.push({ client: label, count: evs.length }); }
         catch (e) { skipped.push({ client: label, reason: String((e && e.message) || e).slice(0, 120) }); }
       }
       all.sort((a, b2) => String(a.start).localeCompare(String(b2.start)));

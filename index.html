@@ -236,7 +236,7 @@
   .rangepop .rpday.only{background:var(--gold);color:#1a1508;font-weight:700;border-radius:7px}
   .rangepop .rpfoot{display:flex;justify-content:space-between;align-items:center;margin-top:8px;font-size:11px;color:var(--muted)}
   .kpi.splclk{transition:border-color .1s,transform .1s} .kpi.splclk:hover{border-color:var(--gold);transform:translateY(-1px)}
-  #dashSpeedToggle button.on{background:var(--gold-soft);color:var(--gold);border-color:var(--gold)}
+  #dashSpeedToggle button.on,#dashBookedToggle button.on{background:var(--gold-soft);color:var(--gold);border-color:var(--gold)}
   /* retro dial-up spinner for the Speed to Lead load */
   .dialspin{width:36px;height:36px;border-radius:50%;flex:none;background:conic-gradient(var(--gold) 0 25%, rgba(201,162,74,.15) 0 100%);-webkit-mask:radial-gradient(circle 12px at center, transparent 97%, #000 100%);mask:radial-gradient(circle 12px at center, transparent 97%, #000 100%);animation:dialspin .9s steps(8) infinite}
   @keyframes dialspin{to{transform:rotate(360deg)}}
@@ -566,6 +566,14 @@
       </div>
       <div class="cards" id="dashSpeedKpis" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));margin:0"></div>
       <div id="dashSpeedLeads" style="margin-top:14px" hidden></div>
+    </div>
+    <div class="panel" id="dashBookedPanel" style="margin:0 0 16px" hidden>
+      <div style="display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+        <h3 style="margin:0">Booked calls <span style="font-weight:400;color:var(--muted);font-size:12px">- appointments booked, split by ads vs organic</span></h3>
+        <div class="row-actions" id="dashBookedToggle"><button class="btn ghost sm" data-w="today" onclick="dashBooked('today')">Today</button><button class="btn ghost sm" data-w="yesterday" onclick="dashBooked('yesterday')">Yesterday</button><button class="btn ghost sm" data-w="week" onclick="dashBooked('week')">This week</button><button class="btn ghost sm" data-w="month" onclick="dashBooked('month')">This month</button></div>
+      </div>
+      <div class="cards" id="dashBookedKpis" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));margin:0"></div>
+      <div id="dashBookedList" style="margin-top:14px" hidden></div>
     </div>
     <div class="cards" style="grid-template-columns:repeat(auto-fit,minmax(340px,1fr))">
       <div class="panel" style="margin:0"><h3>Closer leaderboard <span style="font-weight:400;color:var(--muted);font-size:12px">- by cash collected</span></h3><div class="tablewrap"><table id="lbClosers"></table></div></div>
@@ -4499,6 +4507,7 @@ function renderDash(){
   renderActivityChart(recs);
   renderOutcomeMix();
   dashSpeedInit();
+  dashBookedInit();
   renderLeaderboard(recs);
   renderBreakdownTables(recs, {setterEl:'dashSetterTable', closerEl:'dashCloserTable', rm:(SESSION&&(SESSION.role==='founder'||repMode())), clickable:false});
   renderClients(recs); renderDeals(recs);
@@ -4780,6 +4789,70 @@ function dashSpeedView(v, force){
   lz.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px;margin-bottom:6px"><div style="font-weight:700;color:var(--gold-2)">${title} <span class="muted" style="font-weight:400;font-size:12px">- ${rows.length} lead${rows.length===1?'':'s'}</span></div><a class="linklike" style="cursor:pointer;font-size:12px" onclick="dashSpeedView('${v}')">&#10005; close</a></div>`
     +`<div class="tablewrap"><table><thead><tr><th>Lead</th><th>Came in</th><th>1st call</th><th class="num">Gap</th><th>Rep</th></tr></thead><tbody>`
     +(rows.length?rows.map(r=>`<tr><td>${link(r.id)?`<a href="${link(r.id)}" target="_blank" rel="noopener" class="linklike" title="Open this contact in GHL">${esc(r.name||'-')} &#8599;</a>`:esc(r.name||'-')}</td><td style="white-space:nowrap;font-size:12px">${esc(splTs(r.created))}</td><td style="white-space:nowrap;font-size:12px">${r.firstCall?esc(splTs(r.firstCall)):'<span style="color:var(--warn)">none</span>'}</td><td class="num">${gap(r)}</td><td>${esc(r.rep||'')}</td></tr>`).join(''):`<tr><td colspan="5" class="muted" style="padding:14px">${v==='uncalled'?'Every lead in this window got a call.':'No leads in this view.'}</td></tr>`)+`</tbody></table></div>`;
+  lz.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+/* ---- dashboard Booked-calls panel: appointments booked in the window, split ads vs organic (T-613) ---- */
+let __dashBookedWin='today', __dashBookedClient='', __dashBookedLoc='', __dashBookedBusy=false, __dashBookedLast=null, __dashBookedView='';
+async function dashBookedInit(){
+  const panel=document.getElementById('dashBookedPanel'); if(!panel) return;
+  if(typeof SAMPLE_MODE!=='undefined' && SAMPLE_MODE){ panel.hidden=true; return; } // demo mode: no live GHL pulls
+  if(!(SESSION && ['admin','manager','founder'].includes(SESSION.role))){ panel.hidden=true; return; }
+  const founder = SESSION.role==='founder';
+  const clientName = founder ? ((teamsFor(SESSION.username)[0])||'') : ((document.getElementById('fClient')||{}).value||'');
+  if(!clientName){ panel.hidden=true; return; } // needs a specific account (per-client GHL pull)
+  if(!__splClients.length){ try{ const res=await splApi({action:'speedToLeadClients'}); __splClients=(res&&res.clients)||[]; }catch(e){} }
+  const match=(__splClients||[]).find(c=>String(c.client).toLowerCase()===String(clientName).toLowerCase());
+  if(!match){ panel.hidden=true; return; } // no v2 GHL connection for this client
+  const changed=(__dashBookedClient!==clientName); __dashBookedClient=clientName; __dashBookedLoc=match.locationId; panel.hidden=false;
+  if(changed || !((document.getElementById('dashBookedKpis')||{}).innerHTML||'').trim()) dashBooked(__dashBookedWin);
+}
+async function dashBooked(win){
+  __dashBookedWin=win;
+  document.querySelectorAll('#dashBookedToggle button').forEach(b=>b.classList.toggle('on', b.dataset.w===win));
+  const k=document.getElementById('dashBookedKpis'); if(!k||!__dashBookedClient) return;
+  if(__dashBookedBusy) return; __dashBookedBusy=true; k.innerHTML=splSpinner();
+  const {from,to}=dashSpeedRange(win); const toPad=isoOffset(to,1); // pad the far edge so same-day-evening bookings aren't cut by UTC midnight
+  try{
+    const hdr={'Content-Type':'application/json'}; if(SESSION&&SESSION.token) hdr['x-session-token']=SESSION.token; else if(SESSION&&SESSION.pw) hdr['x-admin-pass']=SESSION.pw;
+    const res=await fetch('/api/reactivation',{method:'POST',headers:hdr,body:JSON.stringify({action:'calendarEvents',from,to:toPad,client:__dashBookedClient,withSource:true})});
+    const j=await res.json();
+    if(!j||!j.ok){ k.innerHTML='<div class="muted" style="grid-column:1/-1;padding:14px">Could not load booked calls'+(j&&j.error?': '+esc(j.error):'')+'</div>'; return; }
+    const evs=(j.events||[]).filter(e=>{ const d=calLocalDate(e.start); return d>=from && d<=to; });
+    __dashBookedLast={from,to,events:evs}; __dashBookedView=''; const lz=document.getElementById('dashBookedList'); if(lz){ lz.hidden=true; lz.innerHTML=''; }
+    dashBookedRenderKpis();
+  }catch(e){ k.innerHTML='<div class="muted" style="grid-column:1/-1;padding:14px">Booked calls error</div>'; }
+  finally{ __dashBookedBusy=false; }
+}
+function dashBookedStats(evs){ let ads=0,org=0,unk=0; evs.forEach(e=>{ const s=String(e.seg||'').toUpperCase(); if(s==='ADS') ads++; else if(s==='ORGANIC') org++; else unk++; }); return { total:evs.length, ads, org, unk }; }
+function dashBookedRenderKpis(){
+  const k=document.getElementById('dashBookedKpis'), d=__dashBookedLast; if(!k||!d) return;
+  const s=dashBookedStats(d.events), clk='cursor:pointer" title="Click to list these bookings';
+  const pctOf=n=> s.total?Math.round(n/s.total*100)+'%':'0%';
+  k.innerHTML=`
+    <div class="kpi splclk" style="${clk}" onclick="dashBookedView('all')"><div class="lbl">Calls booked</div><div class="val">${s.total} <span style="font-size:14px">&rsaquo;</span></div></div>
+    <div class="kpi splclk" style="${clk}" onclick="dashBookedView('ads')"><div class="lbl">🎯 From ads</div><div class="val">${s.ads}<span style="font-size:15px;color:var(--muted)"> · ${pctOf(s.ads)}</span> <span style="font-size:14px">&rsaquo;</span></div></div>
+    <div class="kpi splclk" style="${clk}" onclick="dashBookedView('organic')"><div class="lbl">🌱 Organic</div><div class="val">${s.org}<span style="font-size:15px;color:var(--muted)"> · ${pctOf(s.org)}</span> <span style="font-size:14px">&rsaquo;</span></div></div>
+    <div class="kpi splclk" style="${clk}" onclick="dashBookedView('unknown')"><div class="lbl">Unknown source</div><div class="val" style="color:${s.unk?'var(--warn)':'inherit'}">${s.unk}${s.unk?' <span style="font-size:14px">&rsaquo;</span>':''}</div></div>`;
+}
+function dashBookedView(v, force){
+  const lz=document.getElementById('dashBookedList'); if(!lz||!__dashBookedLast) return;
+  if(!force && __dashBookedView===v){ __dashBookedView=''; lz.hidden=true; lz.innerHTML=''; return; }
+  __dashBookedView=v;
+  let rows=(__dashBookedLast.events||[]).slice();
+  if(v==='ads') rows=rows.filter(e=>String(e.seg||'').toUpperCase()==='ADS');
+  else if(v==='organic') rows=rows.filter(e=>String(e.seg||'').toUpperCase()==='ORGANIC');
+  else if(v==='unknown') rows=rows.filter(e=>!/^(ADS|ORGANIC)$/i.test(String(e.seg||'')));
+  rows.sort((a,b)=>String(a.start).localeCompare(String(b.start)));
+  rows=rows.slice(0,120);
+  const loc=__dashBookedLoc, link=id=> (id&&loc)?('https://app.gohighlevel.com/v2/location/'+encodeURIComponent(loc)+'/contacts/detail/'+encodeURIComponent(id)):'';
+  const segChip=e=>{ const s=String(e.seg||'').toUpperCase(); if(s==='ADS') return '<span style="font-size:10px;padding:1px 6px;border-radius:8px;background:rgba(201,162,39,.18);color:var(--gold,#c9a227)">🎯 ADS</span>'; if(s==='ORGANIC') return '<span style="font-size:10px;padding:1px 6px;border-radius:8px;background:rgba(95,193,162,.18);color:#5fc1a2">🌱 ORGANIC</span>'; return '<span class="muted" style="font-size:11px">-</span>'; };
+  const title=(v==='ads'?'🎯 Booked from ads':(v==='organic'?'🌱 Booked organic':(v==='unknown'?'Unknown source':'All booked calls')));
+  lz.hidden=false;
+  lz.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px;margin-bottom:6px"><div style="font-weight:700;color:var(--gold-2)">${title} <span class="muted" style="font-weight:400;font-size:12px">- ${rows.length} booking${rows.length===1?'':'s'} &middot; times in ${esc(calTzLabel())}</span></div><a class="linklike" style="cursor:pointer;font-size:12px" onclick="dashBookedView('${v}')">&#10005; close</a></div>`
+    +`<div class="tablewrap"><table><thead><tr><th>Lead</th><th>When</th><th>Rep</th><th>Source</th><th>Status</th></tr></thead><tbody>`
+    +(rows.length?rows.map(e=>{ const bw=String(e.bookedWith||'').trim(); const rep=(bw && !/^[A-Za-z0-9]{15,}$/.test(bw))?bw:''; const lead=String(e.lead||e.title||'-');
+      return `<tr><td>${link(e.contactId)?`<a href="${link(e.contactId)}" target="_blank" rel="noopener" class="linklike" title="Open this contact in GHL">${esc(lead)} &#8599;</a>`:esc(lead)}</td><td style="white-space:nowrap;font-size:12px">${esc(usDate(calLocalDate(e.start)))} &middot; ${esc(calFmtT(e.start))}</td><td>${esc(rep||'<span class="muted">unassigned</span>')}</td><td style="font-size:12px">${segChip(e)}${e.source?' <span class="muted">'+esc(e.source)+'</span>':''}</td><td>${calStatusBadge(e.status)}</td></tr>`;
+    }).join(''):`<tr><td colspan="5" class="muted" style="padding:14px">No bookings in this view.</td></tr>`)+`</tbody></table></div>`;
   lz.scrollIntoView({behavior:'smooth',block:'nearest'});
 }
 function splTs(iso){ if(!iso) return ''; const dt=new Date(iso); if(isNaN(dt)) return String(iso).slice(0,16); return (dt.getMonth()+1)+'/'+dt.getDate()+' '+dt.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}); }
