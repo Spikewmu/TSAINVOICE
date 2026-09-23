@@ -763,12 +763,42 @@
       #playbookWrap .pbbody li{margin:5px 0}
       #playbookWrap .pbbody p{margin:11px 0}
       #playbookWrap .pbbody a{color:var(--gold-2)}
+      /* rich content rendered in the reading pane */
+      #playbookWrap .pbbody table{border-collapse:collapse;width:100%;margin:14px 0;font-size:13.5px;display:block;overflow-x:auto}
+      #playbookWrap .pbbody th,#playbookWrap .pbbody td{border:1px solid var(--glass-brd);padding:8px 11px;text-align:left;vertical-align:top}
+      #playbookWrap .pbbody th{background:var(--gold-soft);color:var(--gold-2);font-weight:700}
+      #playbookWrap .pbbody img{max-width:100%;height:auto;border-radius:8px;margin:10px 0;border:1px solid var(--glass-brd)}
+      #playbookWrap .pbbody blockquote{border-left:3px solid var(--gold);margin:12px 0;padding:6px 14px;color:var(--muted)}
+      #playbookWrap .pbbody ol{margin:8px 0;padding-left:22px}
       #playbookWrap .pbedit{display:flex;gap:8px;flex-wrap:wrap;margin-top:22px;padding-top:16px;border-top:1px solid var(--glass-brd)}
       @media(max-width:720px){#playbookWrap .pbshell{flex-direction:column}#playbookWrap .pbside{width:auto;border-right:0;border-bottom:1px solid var(--glass-brd);max-height:none}#playbookWrap .pbmain{max-height:none;padding:20px 18px}}
       #pbModal .pbfield{margin-bottom:12px}
+      #pbModal .pbrow{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+      @media(max-width:640px){#pbModal .pbrow{grid-template-columns:1fr}}
       #pbModal label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px;font-weight:600}
-      #pbModal input,#pbModal textarea{width:100%;box-sizing:border-box;background:var(--bg,#100D09);border:1px solid var(--border);border-radius:8px;color:var(--ink);padding:9px 11px;font:inherit}
-      #pbModal textarea{min-height:280px;resize:vertical;line-height:1.5;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px}
+      #pbModal input{width:100%;box-sizing:border-box;background:var(--bg,#100D09);border:1px solid var(--border);border-radius:8px;color:var(--ink);padding:9px 11px;font:inherit}
+      /* audience chips */
+      #pbAudBoxes{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
+      .pbaudchip{display:flex;align-items:center;gap:9px;padding:9px 12px;border:1px solid var(--border);border-radius:8px;cursor:pointer;font-size:13px;background:var(--bg,#100D09);user-select:none}
+      .pbaudchip:hover{border-color:var(--gold)}
+      .pbaudchip input{flex:none;width:16px;height:16px;margin:0}
+      .pbaudchip:has(input:checked){border-color:var(--gold);background:var(--gold-soft);color:var(--gold-2);font-weight:600}
+      /* rich text editor */
+      .pbtoolbar{display:flex;flex-wrap:wrap;gap:4px;align-items:center;padding:6px;border:1px solid var(--border);border-bottom:0;border-radius:8px 8px 0 0;background:var(--glass)}
+      .pbtoolbar button{background:var(--bg,#100D09);border:1px solid var(--border);color:var(--ink);border-radius:6px;padding:5px 9px;font-size:12px;cursor:pointer;line-height:1}
+      .pbtoolbar button:hover{border-color:var(--gold);color:var(--gold-2)}
+      .pbtsep{width:1px;align-self:stretch;background:var(--border);margin:2px 3px}
+      .pbrich{min-height:300px;max-height:50vh;overflow:auto;box-sizing:border-box;border:1px solid var(--border);border-radius:0 0 8px 8px;background:var(--bg,#100D09);color:var(--ink);padding:14px 16px;font-size:14px;line-height:1.65}
+      .pbrich:focus{outline:none;border-color:var(--gold)}
+      .pbrich:empty:before{content:'Write the SOP here...';color:var(--muted)}
+      .pbrich h3{font-size:18px;margin:16px 0 6px} .pbrich h4{font-size:12.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--gold);margin:14px 0 4px}
+      .pbrich ul,.pbrich ol{padding-left:22px;margin:8px 0} .pbrich p{margin:9px 0}
+      .pbrich a{color:var(--gold-2)}
+      .pbrich img{max-width:100%;height:auto;border-radius:8px;margin:8px 0}
+      .pbrich blockquote{border-left:3px solid var(--gold);margin:10px 0;padding:4px 12px;color:var(--muted)}
+      .pbrich table{border-collapse:collapse;width:100%;margin:10px 0;font-size:13px}
+      .pbrich th,.pbrich td{border:1px solid var(--border);padding:6px 9px;text-align:left}
+      .pbrich th{background:var(--gold-soft);color:var(--gold-2)}
     </style>
     <div class="panel" id="playbookPanel">
       <div class="row-actions" id="pbAdminBar" style="justify-content:flex-end;margin-bottom:10px" hidden><button class="btn ghost sm" onclick="pbNewPage()">&#43; New page</button><button class="btn ghost sm" onclick="pbSeed()" id="pbSeedBtn">Load starter SOPs</button></div>
@@ -778,13 +808,32 @@
 
   <!-- Playbook add/edit modal -->
   <div id="pbModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:120;align-items:flex-start;justify-content:center;overflow:auto;padding:40px 16px">
-    <div class="panel" style="max-width:720px;width:100%;margin:0">
+    <div class="panel" style="max-width:880px;width:100%;margin:0">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><h3 id="pbModalTitle" style="margin:0">New playbook page</h3><button class="btn ghost sm" onclick="pbCloseModal()">&#10005;</button></div>
       <input type="hidden" id="pbEditId">
-      <div class="pbfield"><label>Category</label><input id="pbCat" list="pbCatList" placeholder="e.g. No-shows, Onboarding, Objections"><datalist id="pbCatList"></datalist></div>
-      <div class="pbfield"><label>Page title</label><input id="pbTitle" placeholder="e.g. No-show recovery SOP"></div>
-      <div class="pbfield"><label>Audience <span style="font-weight:400">- who this page is for</span></label><div id="pbAudBoxes" style="display:flex;flex-wrap:wrap;gap:10px 16px;padding:2px 0"></div></div>
-      <div class="pbfield"><label>Content <span style="font-weight:400">- plain text. Use ## for a heading, ### for a sub-label, "- " for bullets, **bold**.</span></label><textarea id="pbBody" placeholder="Write the SOP here..."></textarea></div>
+      <div class="pbrow"><div class="pbfield"><label>Category</label><input id="pbCat" list="pbCatList" placeholder="e.g. No-shows, Onboarding, Objections"><datalist id="pbCatList"></datalist></div><div class="pbfield"><label>Page title</label><input id="pbTitle" placeholder="e.g. No-show recovery SOP"></div></div>
+      <div class="pbfield"><label>Audience <span style="font-weight:400">- who this page is for</span></label><div id="pbAudBoxes"></div></div>
+      <div class="pbfield"><label>Content</label>
+        <div class="pbtoolbar" id="pbToolbar">
+          <button type="button" title="Heading" onclick="pbFormatBlock('H3')">H</button>
+          <button type="button" title="Sub-label" onclick="pbFormatBlock('H4')" style="font-size:11px">h</button>
+          <button type="button" title="Normal text" onclick="pbFormatBlock('P')">&para;</button>
+          <span class="pbtsep"></span>
+          <button type="button" title="Bold" onclick="pbExec('bold')" style="font-weight:800">B</button>
+          <button type="button" title="Italic" onclick="pbExec('italic')" style="font-style:italic">I</button>
+          <button type="button" title="Bulleted list" onclick="pbExec('insertUnorderedList')">&bull; List</button>
+          <button type="button" title="Numbered list" onclick="pbExec('insertOrderedList')">1. List</button>
+          <button type="button" title="Quote" onclick="pbFormatBlock('BLOCKQUOTE')">&ldquo; &rdquo;</button>
+          <span class="pbtsep"></span>
+          <button type="button" title="Insert link" onclick="pbInsertLink()">&#128279; Link</button>
+          <button type="button" title="Insert image (URL)" onclick="pbInsertImage()">&#128247; Image</button>
+          <button type="button" title="Insert table" onclick="pbInsertTable()">&#9638; Table</button>
+          <span class="pbtsep"></span>
+          <button type="button" title="Clear formatting" onclick="pbExec('removeFormat')">Clear</button>
+        </div>
+        <div id="pbBodyRich" class="pbrich" contenteditable="true"></div>
+        <span class="fieldhelp">Use the toolbar to format - headings, bold, lists, links, images (paste an image URL), and tables. To add a link or image to selected text, select it first.</span>
+      </div>
       <div class="row-actions" style="justify-content:flex-end"><button class="btn ghost sm" onclick="pbCloseModal()">Cancel</button><button class="btn gold sm" onclick="pbSavePage()">Save page</button></div>
     </div>
   </div>
@@ -4038,13 +4087,45 @@ function pbFormat(body){
   });
   closeUl(); return html||'<p class="muted">No content yet.</p>';
 }
+// Rich content: pages authored with the toolbar are stored as HTML; older pages are plain markdown. Detect + render each.
+function pbIsHtml(s){ return /<(h[1-6]|p|ul|ol|li|table|img|div|blockquote|br|a|strong|em|b|i|u)\b[^>]*>/i.test(String(s||'')); }
+function pbSanitize(html){
+  try{
+    const tpl=document.createElement('template'); tpl.innerHTML=String(html||'');
+    tpl.content.querySelectorAll('script,style,iframe,object,embed,link,meta,form,input,button,textarea').forEach(n=>n.remove());
+    tpl.content.querySelectorAll('*').forEach(n=>{
+      [...n.attributes].forEach(a=>{ const nm=a.name.toLowerCase(), v=a.value||'';
+        if(nm.startsWith('on')) n.removeAttribute(a.name);
+        else if((nm==='href'||nm==='src') && /^\s*(javascript|vbscript):/i.test(v)) n.removeAttribute(a.name);
+      });
+      if(n.tagName==='A'){ n.setAttribute('target','_blank'); n.setAttribute('rel','noopener noreferrer'); }
+    });
+    return tpl.innerHTML;
+  }catch(e){ return esc(String(html||'')); }
+}
+function pbRenderBody(body){ return pbIsHtml(body)? pbSanitize(body) : pbFormat(body); }      // for the reading pane
+function pbEditorHtml(body){ return pbIsHtml(body)? pbSanitize(body) : pbFormat(body); }        // markdown pages become editable rich text
+function pbRichEl(){ return document.getElementById('pbBodyRich'); }
+function pbExec(cmd,val){ const el=pbRichEl(); if(el) el.focus(); try{ document.execCommand(cmd,false,val||null); }catch(e){} }
+function pbFormatBlock(tag){ const el=pbRichEl(); if(el) el.focus(); try{ document.execCommand('formatBlock',false,tag); }catch(e){} }
+function pbInsertLink(){ const url=(prompt('Link URL (https://...)')||'').trim(); if(!url) return; const el=pbRichEl(); if(el) el.focus();
+  const sel=window.getSelection&&window.getSelection(); const hasText=sel && String(sel).trim().length;
+  if(hasText){ try{ document.execCommand('createLink',false,url); }catch(e){} }
+  else { const label=(prompt('Link text',url)||url); try{ document.execCommand('insertHTML',false,'<a href="'+esc(url)+'">'+esc(label)+'</a> '); }catch(e){} }
+}
+function pbInsertImage(){ const url=(prompt('Image URL (https://...)')||'').trim(); if(!url) return; const el=pbRichEl(); if(el) el.focus(); try{ document.execCommand('insertImage',false,url); }catch(e){} }
+function pbInsertTable(){ let cols=parseInt(prompt('Columns?','3'),10); let rows=parseInt(prompt('Rows (excluding the header)?','2'),10);
+  cols=Math.min(Math.max(cols||3,1),8); rows=Math.min(Math.max(rows||2,1),20);
+  let h='<table><thead><tr>'; for(let c=0;c<cols;c++) h+='<th>Header '+(c+1)+'</th>'; h+='</tr></thead><tbody>';
+  for(let r=0;r<rows;r++){ h+='<tr>'; for(let c=0;c<cols;c++) h+='<td>&nbsp;</td>'; h+='</tr>'; } h+='</tbody></table><p><br></p>';
+  const el=pbRichEl(); if(el) el.focus(); try{ document.execCommand('insertHTML',false,h); }catch(e){} }
 // Audiences a page can target. Editors always see every page; everyone else sees "everyone" + their own audience.
 const PB_AUDIENCES=[['everyone','Everyone'],['setters','Setters'],['closers','Closers'],['managers','Managers'],['founders','Founders / clients'],['internal','Admins / internal']];
 function pbRoleAud(){ const r=SESSION&&SESSION.role; if(r==='setter') return 'setters'; if(r==='closer') return 'closers'; if(r==='manager'||r==='webinarteam') return 'managers'; if(r==='founder') return 'founders'; return 'internal'; }
 function pbAud(p){ return (Array.isArray(p.audience)&&p.audience.length)?p.audience:['everyone']; }
 function pbCanSee(p){ if(pbCanEdit()) return true; const a=pbAud(p); return a.includes('everyone')||a.includes(pbRoleAud()); }
 function pbAudLabel(p){ const a=pbAud(p); if(a.includes('everyone')) return 'Everyone'; return a.map(t=>{ const f=PB_AUDIENCES.find(x=>x[0]===t); return f?f[1]:t; }).join(', '); }
-function pbRenderAudBoxes(sel){ sel=(sel&&sel.length)?sel:['everyone']; const box=document.getElementById('pbAudBoxes'); if(!box) return; box.innerHTML=PB_AUDIENCES.map(([v,l])=>`<label style="display:inline-flex;gap:6px;align-items:center;font-size:13px;cursor:pointer"><input type="checkbox" class="pbAud" value="${v}" ${sel.includes(v)?'checked':''} onchange="pbAudSync(this)"> ${esc(l)}</label>`).join(''); }
+function pbRenderAudBoxes(sel){ sel=(sel&&sel.length)?sel:['everyone']; const box=document.getElementById('pbAudBoxes'); if(!box) return; box.innerHTML=PB_AUDIENCES.map(([v,l])=>`<label class="pbaudchip"><input type="checkbox" class="pbAud" value="${v}" ${sel.includes(v)?'checked':''} onchange="pbAudSync(this)"><span>${esc(l)}</span></label>`).join(''); }
 function pbAudSync(cb){ const boxes=[...document.querySelectorAll('#pbAudBoxes .pbAud')];
   if(cb.value==='everyone' && cb.checked){ boxes.forEach(b=>{ if(b.value!=='everyone') b.checked=false; }); }
   else if(cb.value!=='everyone' && cb.checked){ const e=boxes.find(b=>b.value==='everyone'); if(e) e.checked=false; }
@@ -4085,19 +4166,19 @@ function renderPlaybook(){
   // reading pane
   const audLbl=pbAudLabel(active), audChip=(audLbl!=='Everyone')?`<span class="pbaud">${esc(audLbl)}</span>`:'';
   const editBtns=pbCanEdit()?`<div class="pbedit"><button class="btn ghost sm" onclick="pbEditPage('${esc(active.id)}')">Edit page</button><button class="btn ghost sm" style="color:var(--warn);border-color:var(--warn)" onclick="pbDeletePage('${esc(active.id)}')">Delete</button></div>`:'';
-  const main=`<div class="pbdoc"><div class="pbcrumb">${esc(active.category||'General')}</div><div class="pbdochead"><h2>${esc(active.title||'Untitled')}</h2>${audChip}</div><div class="pbbody">${pbFormat(active.body)}</div>${editBtns}</div>`;
+  const main=`<div class="pbdoc"><div class="pbcrumb">${esc(active.category||'General')}</div><div class="pbdochead"><h2>${esc(active.title||'Untitled')}</h2>${audChip}</div><div class="pbbody">${pbRenderBody(active.body)}</div>${editBtns}</div>`;
   wrap.innerHTML=`<div class="pbshell"><nav class="pbside">${side}</nav><div class="pbmain">${main}</div></div>`;
 }
 function pbOpen(id){ PB_OPEN_PAGE=id; renderPlaybook(); const m=document.querySelector('#playbookWrap .pbmain'); if(m) m.scrollTop=0; }
 function pbCloseModal(){ const m=document.getElementById('pbModal'); if(m) m.style.display='none'; }
-function pbNewPage(){ if(!pbCanEdit()) return; document.getElementById('pbModalTitle').textContent='New playbook page'; document.getElementById('pbEditId').value=''; document.getElementById('pbCat').value=(PB_OPEN_CAT||''); document.getElementById('pbTitle').value=''; document.getElementById('pbBody').value=''; pbRenderAudBoxes(['everyone']); document.getElementById('pbModal').style.display='flex'; setTimeout(()=>{ const t=document.getElementById('pbTitle'); if(t)t.focus(); },0); }
-function pbEditPage(id){ if(!pbCanEdit()) return; const p=pbPages().find(x=>x.id===id); if(!p) return; document.getElementById('pbModalTitle').textContent='Edit playbook page'; document.getElementById('pbEditId').value=id; document.getElementById('pbCat').value=p.category||''; document.getElementById('pbTitle').value=p.title||''; document.getElementById('pbBody').value=p.body||''; pbRenderAudBoxes(pbAud(p)); document.getElementById('pbModal').style.display='flex'; }
+function pbNewPage(){ if(!pbCanEdit()) return; document.getElementById('pbModalTitle').textContent='New playbook page'; document.getElementById('pbEditId').value=''; document.getElementById('pbCat').value=(PB_OPEN_CAT||''); document.getElementById('pbTitle').value=''; const re=pbRichEl(); if(re) re.innerHTML=''; pbRenderAudBoxes(['everyone']); document.getElementById('pbModal').style.display='flex'; setTimeout(()=>{ const t=document.getElementById('pbTitle'); if(t)t.focus(); },0); }
+function pbEditPage(id){ if(!pbCanEdit()) return; const p=pbPages().find(x=>x.id===id); if(!p) return; document.getElementById('pbModalTitle').textContent='Edit playbook page'; document.getElementById('pbEditId').value=id; document.getElementById('pbCat').value=p.category||''; document.getElementById('pbTitle').value=p.title||''; const re=pbRichEl(); if(re) re.innerHTML=pbEditorHtml(p.body); pbRenderAudBoxes(pbAud(p)); document.getElementById('pbModal').style.display='flex'; }
 async function pbSavePage(){
   if(!pbCanEdit()){ toast('Admins/Directors only',true); return; }
   const id=document.getElementById('pbEditId').value||uid();
   const category=(document.getElementById('pbCat').value||'').trim()||'General';
   const title=(document.getElementById('pbTitle').value||'').trim();
-  const body=document.getElementById('pbBody').value||'';
+  const re=pbRichEl(); const body=pbSanitize(re? re.innerHTML : '');
   const audience=pbSelectedAud();
   if(!title){ toast('Give the page a title',true); return; }
   const prev=pbPages().find(x=>x.id===id); const order=prev&&prev.order!=null?prev.order:Date.now();
