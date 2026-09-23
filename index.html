@@ -237,6 +237,8 @@
   .rangepop .rpfoot{display:flex;justify-content:space-between;align-items:center;margin-top:8px;font-size:11px;color:var(--muted)}
   .kpi.splclk{transition:border-color .1s,transform .1s} .kpi.splclk:hover{border-color:var(--gold);transform:translateY(-1px)}
   #dashSpeedToggle button.on,#dashBookedToggle button.on{background:var(--gold-soft);color:var(--gold);border-color:var(--gold)}
+  .viewtag{margin-left:12px;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap;background:var(--gold-soft);color:var(--gold);border:1px solid var(--gold)}
+  .viewtag.sample{background:rgba(201,162,39,.14)}
   /* retro dial-up spinner for the Speed to Lead load */
   .dialspin{width:36px;height:36px;border-radius:50%;flex:none;background:conic-gradient(var(--gold) 0 25%, rgba(201,162,74,.15) 0 100%);-webkit-mask:radial-gradient(circle 12px at center, transparent 97%, #000 100%);mask:radial-gradient(circle 12px at center, transparent 97%, #000 100%);animation:dialspin .9s steps(8) infinite}
   @keyframes dialspin{to{transform:rotate(360deg)}}
@@ -411,6 +413,7 @@
   <button class="hamburger" id="hamburger" onclick="toggleNav(event)" aria-label="Menu" title="Menu">&#9776;</button>
   <div class="brand"><span class="dot"></span> Sales HQ</div>
   <div class="sub" id="storeTag"></div>
+  <span id="viewingTag" class="viewtag" hidden></span>
   <select id="gClient" onchange="setGlobalClient(this.value)" title="Scope the whole dashboard to one company" style="display:none;max-width:230px;margin-left:14px"></select>
   <div class="spacer"></div>
   <a class="reminderpill" id="reminderPill" onclick="reminderGo(event)"></a>
@@ -935,7 +938,7 @@
         <button type="button" class="btn ghost sm" onclick="addSchedRow('pcSched')">&#43; Add expected payment</button>
         <div id="pcSchedRemain" class="fieldhelp" style="margin-top:8px"></div>
       </div>
-      <div class="field full closerPc"><label>Fathom recording link</label><input type="url" name="fathom" placeholder="https://fathom.video/share/..."><span class="fieldhelp">Go to <a href="https://www.fathom.ai/" target="_blank" rel="noopener" class="linklike">fathom.ai</a> -> open the call -> three dots -> Copy share link.</span></div>
+      <div class="field full"><label>Call recording link</label><input type="url" name="fathom" placeholder="https://fathom.video/share/...  (or your dialer / GHL recording URL)"><span class="fieldhelp">Paste the recording share link so your manager can review it. Closers: <a href="https://www.fathom.ai/" target="_blank" rel="noopener" class="linklike">Fathom</a> -> open the call -> three dots -> Copy share link. Setters: paste your dialer or GHL call-recording URL.</span></div>
       <div class="full" id="pcExtraFields"></div>
       <div class="field full"><label>Notes</label><input type="text" name="notes" placeholder="what tripped it up, next step, anything your manager should know"></div>
       <div class="full row-actions"><button class="btn gold" type="submit">Submit post-call</button></div>
@@ -2567,7 +2570,15 @@ function renderBilling(){
         +`</div><p class="fieldhelp" style="margin-top:10px">Billing goes live once Stripe is connected - these are the plan tiers (placeholder pricing).</p>`)
     +`</div>`;
 }
-function updateWsBrand(){ const el=document.getElementById('storeTag'); if(el) el.textContent=currentWsName(); renderPlanBanner(); }
+function updateWsBrand(){ const el=document.getElementById('storeTag'); if(el) el.textContent=currentWsName(); updateViewingTag(); renderPlanBanner(); }
+// Header "Viewing: <company>" pill so it's always clear which account is on screen (esp. when scoped or previewing via View-as).
+function updateViewingTag(){
+  const el=document.getElementById('viewingTag'); if(!el) return;
+  const sample=(typeof SAMPLE_MODE!=='undefined' && SAMPLE_MODE);
+  const co = sample ? 'Sample (demo)' : (typeof GLOBAL_CLIENT!=='undefined' ? (GLOBAL_CLIENT||'') : '');
+  el.classList.toggle('sample', !!sample);
+  if(co){ el.textContent='Viewing: '+co; el.hidden=false; } else { el.textContent=''; el.hidden=true; }
+}
 async function addRecord(rec){
   // Sample (demo) mode is view-only: never write demo data to the backend.
   if(typeof SAMPLE_MODE!=='undefined' && SAMPLE_MODE){ toast('Sample mode - demo only, nothing is saved. Switch off Sample to make real changes.',true); return; }
@@ -2783,6 +2794,8 @@ function applyNavAccess(){
   }
   // Recruiting + candidate messaging: TSA always has it; a client workspace sees it only with the Recruiter add-on
   if(!hasRecruiterAddon()){ ['recruiting','messages'].forEach(t=>{ const i=allow.indexOf(t); if(i>=0) allow.splice(i,1); }); }
+  // Sample (demo) mode: hide pages we never show prospects (Contracts = billing/legal)
+  if(typeof SAMPLE_MODE!=='undefined' && SAMPLE_MODE){ ['contracts'].forEach(t=>{ const i=allow.indexOf(t); if(i>=0) allow.splice(i,1); }); }
   document.querySelectorAll('#tabs button[data-tab]').forEach(b=>{ b.hidden = !allow.includes(b.dataset.tab); });
   pruneNavGroups();
   applyFlatNav();
@@ -2866,7 +2879,7 @@ function closeNav(){ const n=document.getElementById('tabs'); if(n) n.classList.
 function showTab(t){
   closeNav();
   try{ if(t) history.replaceState(null,'',location.pathname+location.search+'#'+t); }catch(_){} // deep-link: keep the URL in sync so each page has a shareable link
-  buildGlobalClientSelect(); buildViewAsUserSelect(); hideRedundantClientFilters();
+  buildGlobalClientSelect(); buildViewAsUserSelect(); hideRedundantClientFilters(); updateViewingTag();
   document.querySelectorAll('#tabs button[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
   document.querySelectorAll('#tabs .navgroup').forEach(g=>{ if(g.querySelector('button[data-tab="'+t+'"]')) g.classList.remove('collapsed'); }); // reveal the active tab's group
 
@@ -2930,6 +2943,7 @@ function setGlobalClient(v){
   GLOBAL_CLIENT=v;
   try{ (v && v!==SAMPLE_CLIENT)?localStorage.setItem('tsa_global_client',v):localStorage.removeItem('tsa_global_client'); }catch(e){} // never persist sample mode (its data isn't loaded on refresh)
   const sel=document.getElementById('gClient'); if(sel) sel.value=GLOBAL_CLIENT;
+  updateViewingTag();
   const t=currentTab(); if(t) showTab(t); else renderDash(); // re-render the active tab so its per-tab client filter follows the global scope
   toast(v===SAMPLE_CLIENT?'Sample mode - demo data only, nothing is saved':(GLOBAL_CLIENT?('Scoped to '+GLOBAL_CLIENT):'Showing all companies'));
 }
@@ -2942,11 +2956,13 @@ function enterSampleMode(){
   SAMPLE_BACKUP={records:RECORDS, users:USERS_CACHE, clientList:(function(){ try{ return clientNames(); }catch(e){ return []; } })()};
   const s=buildSampleData();
   RECORDS=s.records; USERS_CACHE=s.users; SAMPLE_MODE=true;
+  try{ applyNavAccess(); }catch(e){} // hide Contracts (and any other demo-hidden pages) right away
 }
 function exitSampleMode(){
   if(!SAMPLE_MODE) return;
   if(SAMPLE_BACKUP){ RECORDS=SAMPLE_BACKUP.records; USERS_CACHE=SAMPLE_BACKUP.users; }
   SAMPLE_BACKUP=null; SAMPLE_MODE=false;
+  try{ applyNavAccess(); }catch(e){} // restore the real nav
   try{ syncRecords(); loadUsers&&loadUsers(); }catch(e){}
 }
 function buildSampleData(){
@@ -3450,12 +3466,36 @@ function calFmtT(iso){ const d=new Date(iso); if(isNaN(d)) return ''; let h=d.ge
 function calLocalDate(iso){ const d=new Date(iso); if(isNaN(d)) return ''; return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function calTzLabel(){ try{ return new Date().toLocaleTimeString('en-US',{timeZoneName:'short'}).split(' ').pop()||''; }catch(e){ return ''; } }
 function calStatusBadge(s){ s=String(s||'').toLowerCase(); let bg='#3a4a63',txt=s||'booked'; if(/confirm|showed|attended/.test(s)) bg='#1f6b45'; else if(/no.?show|cancel|invalid|declin/.test(s)) bg='#7a2e2e'; else if(/book|new|schedul/.test(s)) bg='#2f4a7a'; return '<span style="font-size:10px;padding:1px 6px;border-radius:8px;background:'+bg+';color:#fff;text-transform:capitalize">'+esc(txt)+'</span>'; }
+// Sample-mode calendar: fake weekday meetings across the visible window (never hits GHL).
+function buildSampleCalendar(start,N){
+  const reps=['Jordan Ellis','Morgan Vale','Casey Rowan','Riley Chen'];
+  const leads=['Prospect Alpha','Prospect Bravo','Prospect Charlie','Prospect Delta','Prospect Echo','Prospect Foxtrot','Prospect Golf','Prospect Hotel','Prospect India','Prospect Juliet'];
+  const cals=['Discovery Calls','Sales Calls'], stat=['confirmed','booked','showed','no-show'], hours=[9,11,13,15,16];
+  const evs=[]; let li=0;
+  for(let i=0;i<N;i++){
+    const day=new Date(start); day.setDate(day.getDate()+i); const dow=day.getDay(); if(dow===0||dow===6) continue; // weekdays only
+    const count=2+(i%3);
+    for(let j=0;j<count;j++){
+      const s=new Date(day); s.setHours(hours[j%hours.length],0,0,0); const e=new Date(s); e.setMinutes(30);
+      evs.push({client:SAMPLE_CLIENT, calendar:cals[j%cals.length], title:leads[li%leads.length], lead:leads[li%leads.length], status:stat[(i+j)%stat.length], start:s.toISOString(), end:e.toISOString(), bookedWith:reps[(i+j)%reps.length], contactId:''});
+      li++;
+    }
+  }
+  return evs;
+}
 async function renderCalendar(force){
   if(!__calRef) __calRef=new Date();
   const N=__calView||7; const start=calViewStart(); const endIncl=new Date(start); endIncl.setDate(endIncl.getDate()+N-1);
   const vs=document.getElementById('calViewSel'); if(vs) vs.value=String(N);
   const rangeEl=document.getElementById('calRange'); if(rangeEl) rangeEl.textContent=(N===1?usDate(calYmd(start)):(usDate(calYmd(start))+'  -  '+usDate(calYmd(endIncl))));
   const grid=document.getElementById('calGrid');
+  if(typeof SAMPLE_MODE!=='undefined' && SAMPLE_MODE){ // demo mode: fake meetings, never touch GHL
+    window.__calEvents=buildSampleCalendar(start,N); window.__calWeekKey='sample'; window.__calSkipped=[];
+    const sel=document.getElementById('calClient'); if(sel){ sel.innerHTML='<option value="">All clients</option><option>'+esc(SAMPLE_CLIENT)+'</option>'; sel.value=''; }
+    calPopulateCalendars(); calPopulateReps();
+    const meta=document.getElementById('calMeta'); if(meta){ const a=calYmd(start),b=calYmd(endIncl); const nm=window.__calEvents.filter(e=>{ const k=calLocalDate(e.start); return k>=a&&k<=b; }).length; meta.textContent=nm+' meeting'+(nm===1?'':'s')+' · sample data'; }
+    renderCalendarGrid(); return;
+  }
   const _ff=new Date(start); _ff.setDate(_ff.getDate()-1); const _ft=new Date(start); _ft.setDate(_ft.getDate()+N+1);
   const key=calYmd(_ff)+':'+calYmd(_ft);
   if(force || window.__calWeekKey!==key || !window.__calEvents){
@@ -3543,7 +3583,7 @@ function renderCallLog(){
   const rows=recs.filter(x=>((!from&&!to)||inRange(x.date,from,to))&&(!c||x.client===c)&&(!r||(x.role||'')===r)&&(!rep||String(x.rep||'').trim()===rep)&&(!oc||(x.outcome||'')===oc)&&(!sc||sc.includes(x.client)))
     .sort((a,b)=>((b.date||'')+(b.submittedAt||'')).localeCompare((a.date||'')+(a.submittedAt||'')));
   const cols=`<colgroup><col style="width:9%"><col style="width:15%"><col style="width:13%"><col style="width:12%"><col style="width:23%"><col style="width:10%"><col style="width:11%"><col style="width:7%"></colgroup>`;
-  const head=`${cols}<thead><tr><th>Date</th><th>Client</th><th>Type</th><th>Rep</th><th>Lead</th><th>Source</th><th>Outcome</th><th>Call</th></tr></thead><tbody>`;
+  const head=`${cols}<thead><tr><th>Date</th><th>Client</th><th>Type</th><th>Rep</th><th>Lead</th><th>Source</th><th>Outcome</th><th>Recording</th></tr></thead><tbody>`;
   const body=rows.length?rows.map(x=>{
     const type = x.role==='Setter' ? 'Conversation' : (x.role==='Closer' ? 'Closing call' : (x.role||''));
     const dq=x.dqReason?` <span class="muted" style="font-size:11px">(${esc(x.dqReason)})</span>`:'';
@@ -4845,7 +4885,8 @@ function dashBookedView(v, force){
   rows.sort((a,b)=>String(a.start).localeCompare(String(b.start)));
   rows=rows.slice(0,120);
   const loc=__dashBookedLoc, link=id=> (id&&loc)?('https://app.gohighlevel.com/v2/location/'+encodeURIComponent(loc)+'/contacts/detail/'+encodeURIComponent(id)):'';
-  const segChip=e=>{ const s=String(e.seg||'').toUpperCase(); if(s==='ADS') return '<span style="font-size:10px;padding:1px 6px;border-radius:8px;background:rgba(201,162,39,.18);color:var(--gold,#c9a227)">🎯 ADS</span>'; if(s==='ORGANIC') return '<span style="font-size:10px;padding:1px 6px;border-radius:8px;background:rgba(95,193,162,.18);color:#5fc1a2">🌱 ORGANIC</span>'; return '<span class="muted" style="font-size:11px">-</span>'; };
+  const segWhy=e=>{ const b=String(e.segBy||''); return b==='calendar'?'Classified by the booking calendar name (deterministic)':(b==='attribution'?'Classified by lead attribution (UTM / source keywords)':'Source could not be determined'); };
+  const segChip=e=>{ const s=String(e.seg||'').toUpperCase(), t=esc(segWhy(e)); if(s==='ADS') return '<span title="'+t+'" style="font-size:10px;padding:1px 6px;border-radius:8px;background:rgba(201,162,39,.18);color:var(--gold,#c9a227)">🎯 ADS</span>'; if(s==='ORGANIC') return '<span title="'+t+'" style="font-size:10px;padding:1px 6px;border-radius:8px;background:rgba(95,193,162,.18);color:#5fc1a2">🌱 ORGANIC</span>'; return '<span class="muted" title="'+t+'" style="font-size:11px">-</span>'; };
   const title=(v==='ads'?'🎯 Booked from ads':(v==='organic'?'🌱 Booked organic':(v==='unknown'?'Unknown source':'All booked calls')));
   lz.hidden=false;
   lz.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px;margin-bottom:6px"><div style="font-weight:700;color:var(--gold-2)">${title} <span class="muted" style="font-weight:400;font-size:12px">- ${rows.length} booking${rows.length===1?'':'s'} &middot; times in ${esc(calTzLabel())}</span></div><a class="linklike" style="cursor:pointer;font-size:12px" onclick="dashBookedView('${v}')">&#10005; close</a></div>`

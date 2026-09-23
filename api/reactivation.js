@@ -77,9 +77,23 @@ function classifyBookingSource(strings) {
   if (org.test(s)) return 'ORGANIC';
   return '';
 }
-// Enrich events in place with the contact's source + ads/organic segment. One GET per unique contact, capped concurrency.
+// Classify a booking by its CALENDAR NAME (deterministic, preferred). Returns 'ADS'|'ORGANIC'|''.
+function classifyByCalendar(name) {
+  const s = String(name || '').toLowerCase();
+  if (!s.trim()) return '';
+  if (/\b(ads?|paid|fb|facebook|meta|instagram|\big\b|ppc|cpc|tiktok|adwords|google\s*ads?|youtube\s*ads?|retarget|campaign)\b/.test(s)) return 'ADS';
+  if (/\b(organic|referral|inbound|seo|word[\s-]*of[\s-]*mouth|direct|network)\b/.test(s)) return 'ORGANIC';
+  return '';
+}
+// Enrich events in place with the ads/organic segment. Calendar name decides it first (deterministic, zero API cost);
+// only bookings the calendar can't classify fall back to a contact lookup + attribution keywords. One GET per unique
+// unresolved contact, capped concurrency. Each event gets .seg ('ADS'|'ORGANIC'|''), .source (label) and .segBy.
 async function enrichEventSources(base, H, events) {
-  const ids = [...new Set(events.map(e => e.contactId).filter(Boolean))];
+  // pass 1: calendar-name classification
+  events.forEach(e => { const cs = classifyByCalendar(e.calendar); if (cs) { e.seg = cs; e.segBy = 'calendar'; if (!e.source) e.source = String(e.calendar || '').slice(0, 60); } });
+  // pass 2: contact-attribution fallback for whatever the calendar didn't resolve
+  const need = events.filter(e => !e.seg && e.contactId);
+  const ids = [...new Set(need.map(e => e.contactId))];
   const srcMap = {};
   const pool = 6;
   for (let i = 0; i < ids.length; i += pool) {
@@ -94,7 +108,7 @@ async function enrichEventSources(base, H, events) {
       } catch (e) { srcMap[id] = { source: '', seg: '' }; }
     }));
   }
-  events.forEach(e => { const m = srcMap[e.contactId]; if (m) { e.source = m.source; e.seg = m.seg; } });
+  need.forEach(e => { const m = srcMap[e.contactId]; if (m) { e.source = m.source; e.seg = m.seg; e.segBy = 'attribution'; } });
 }
 async function pullCalV2(cfg, fromMs, toMs, withSource) {
   const { loc, base, H } = ghlCtx(cfg);
