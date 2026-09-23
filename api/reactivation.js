@@ -246,6 +246,41 @@ export default async function handler(req, res) {
     } catch (e) { return res.status(200).json({ ok: false, error: String((e && e.message) || e) }); }
   }
 
+  // Call log: fetch the LAST call recording for a lead straight from the client's GHL (admins only; key stays server-side).
+  // Resolves the contact (by id/email/name) -> finds the latest CALL message -> streams that recording's audio.
+  // On no recording it returns JSON with a contactUrl so the UI can open the contact in GHL instead.
+  if (action === 'crmRecFile') {
+    try {
+      const clientName = String(b.client || q.client || '').trim();
+      const cfgs = await cfgAll();
+      const cfg = cfgs.find(c => String(c.client || c.key || '').toLowerCase() === clientName.toLowerCase());
+      if (!cfg || !/^pit-/i.test(String(cfg.ghlApiKey || ''))) return res.status(200).json({ ok: false, error: 'no v2 GHL connection for ' + (clientName || '(none)') });
+      const { loc, base, H } = ghlCtx(cfg);
+      let cid = String(b.contactId || q.contactId || '').trim();
+      const email = String(b.email || q.email || '').trim().toLowerCase();
+      const name = String(b.name || q.name || '').trim();
+      if (!cid && email) { const sq = await jfetch(base + '/contacts/?locationId=' + encodeURIComponent(loc) + '&query=' + encodeURIComponent(email), { headers: H }); const arr = (sq.j && sq.j.contacts) || []; const c = arr.find(x => String(x.email || '').toLowerCase() === email) || arr[0]; cid = c && c.id; }
+      if (!cid && name) { const sq = await jfetch(base + '/contacts/?locationId=' + encodeURIComponent(loc) + '&query=' + encodeURIComponent(name), { headers: H }); const arr = (sq.j && sq.j.contacts) || []; cid = arr[0] && arr[0].id; }
+      if (!cid) return res.status(200).json({ ok: false, error: 'no matching contact in GHL' });
+      const contactUrl = 'https://app.gohighlevel.com/v2/location/' + encodeURIComponent(loc) + '/contacts/detail/' + encodeURIComponent(cid);
+      // latest CALL message across the contact's recent conversations
+      const conv = await jretry(base + '/conversations/search?locationId=' + encodeURIComponent(loc) + '&contactId=' + encodeURIComponent(cid), { headers: H });
+      const convs = (conv.j && conv.j.conversations) || []; let best = null;
+      for (const cv of convs.slice(0, 4)) {
+        const msgr = await jretry(base + '/conversations/' + encodeURIComponent(cv.id) + '/messages?limit=100', { headers: H });
+        const mm = (msgr.j && msgr.j.messages && (msgr.j.messages.messages || msgr.j.messages)) || [];
+        (Array.isArray(mm) ? mm : []).forEach(m => { const mt = String(m.messageType || m.type || ''); if (/call/i.test(mt)) { const at = m.dateAdded || m.dateUpdated || ''; if (!best || String(at) > String(best.at || '')) best = { id: m.id || m.messageId, at }; } });
+      }
+      if (!best || !best.id) return res.status(200).json({ ok: false, contactUrl, reason: 'No call recording found in GHL - opening the contact instead.' });
+      const rr = await fetch(base + '/conversations/messages/' + encodeURIComponent(best.id) + '/recording?locationId=' + encodeURIComponent(loc), { headers: { Authorization: H.Authorization, Version: H.Version } });
+      if (!rr.ok) return res.status(200).json({ ok: false, contactUrl, reason: 'That call has no stored recording - opening the contact instead.' });
+      const ct = rr.headers.get('content-type') || 'audio/mpeg';
+      const buf = Buffer.from(await rr.arrayBuffer());
+      res.setHeader('Content-Type', ct); res.setHeader('Cache-Control', 'private, max-age=300');
+      return res.status(200).send(buf);
+    } catch (e) { return res.status(200).json({ ok: false, error: String((e && e.message) || e) }); }
+  }
+
   // list the connected v2 clients (client name + locationId) so the Speed-to-Lead UI can offer a picker
   if (action === 'speedToLeadClients') {
     const cfgs = await cfgAll();

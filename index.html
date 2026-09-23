@@ -3584,11 +3584,14 @@ function renderCallLog(){
     .sort((a,b)=>((b.date||'')+(b.submittedAt||'')).localeCompare((a.date||'')+(a.submittedAt||'')));
   const cols=`<colgroup><col style="width:9%"><col style="width:15%"><col style="width:13%"><col style="width:12%"><col style="width:23%"><col style="width:10%"><col style="width:11%"><col style="width:7%"></colgroup>`;
   const head=`${cols}<thead><tr><th>Date</th><th>Client</th><th>Type</th><th>Rep</th><th>Lead</th><th>Source</th><th>Outcome</th><th>Recording</th></tr></thead><tbody>`;
+  const isAdmin=!!(SESSION&&SESSION.role==='admin'), sampleOn=(typeof SAMPLE_MODE!=='undefined'&&SAMPLE_MODE);
   const body=rows.length?rows.map(x=>{
     const type = x.role==='Setter' ? 'Conversation' : (x.role==='Closer' ? 'Closing call' : (x.role||''));
     const dq=x.dqReason?` <span class="muted" style="font-size:11px">(${esc(x.dqReason)})</span>`:'';
     const fu=x.followUpDate?` <span class="muted" style="font-size:11px">&rarr; ${esc(usDate(x.followUpDate))}${x.followUpTime?' '+esc(fmt12(x.followUpTime)):''}</span>`:'';
-    const watch=x.fathom?`<a class="linklike" href="${esc(x.fathom)}" target="_blank" rel="noopener">Watch</a>`:'<span class="muted">-</span>';
+    const watchLink=x.fathom?`<a class="linklike" href="${esc(x.fathom)}" target="_blank" rel="noopener">Watch</a>`:'';
+    const crmBtn=(isAdmin && !sampleOn && (x.client||'') && ((x.leadEmail||'').trim()||(x.lead||'').trim()))?`<button class="btn ghost sm" style="padding:2px 8px;font-size:11px" title="Play the last call recording from this lead's GHL" data-client="${esc(x.client||'')}" data-email="${esc(x.leadEmail||'')}" data-lead="${esc((x.lead||'').trim())}" onclick="crmPlayRecording(this)">&#127911; CRM</button>`:'';
+    const watch=(watchLink+(watchLink&&crmBtn?' ':'')+crmBtn)||'<span class="muted">-</span>';
     const hasNote=!!(x.notes&&x.notes.trim());
     const main=`<tr class="${hasNote?'clmain':''}"><td>${esc(usDate(x.date))}</td><td>${esc(x.client||'')}</td><td>${esc(type)}</td><td>${esc(x.rep||'')}</td><td>${esc(x.lead||'')}${x.leadEmail?'<br><span class="muted" style="font-size:11px">'+esc(x.leadEmail)+'</span>':''}</td><td>${esc(x.source||'')}</td><td>${callLogPill(x.outcome)}${fu}${dq}${(/book|set|callback|schedul/i.test(String(x.outcome||''))&&(x.lead||'').trim())?`<div class="clappt" data-client="${esc(x.client||'')}" data-lead="${esc((x.lead||'').trim().toLowerCase())}" style="font-size:11px;color:var(--gold,#c9a227);margin-top:3px"></div>`:''}</td><td>${watch}</td></tr>`;
     const note=hasNote?`<tr class="clnoterow"><td colspan="8"><span class="cllabel">Notes</span>${esc(x.notes)}</td></tr>`:'';
@@ -3596,6 +3599,22 @@ function renderCallLog(){
   }).join(''):`<tr><td colspan="8" class="muted" style="padding:16px">No calls logged in this range.</td></tr>`;
   document.getElementById('callLogTable').innerHTML=head+body+`</tbody>`;
   enrichCallLogAppointments();
+}
+// Play the lead's last GHL call recording (admins only). Resolves the contact + latest call server-side and streams the
+// audio (key never leaves the server); if there's no recording it opens the contact in GHL instead. Lead email/name go
+// in the POST body, never the URL.
+async function crmPlayRecording(btn){
+  const client=btn.getAttribute('data-client')||'', email=btn.getAttribute('data-email')||'', lead=btn.getAttribute('data-lead')||'';
+  if(!client){ toast('No account on this row',true); return; }
+  const orig=btn.innerHTML; btn.disabled=true; btn.innerHTML='&#8230;';
+  try{
+    const hdr={'Content-Type':'application/json'}; if(SESSION&&SESSION.token) hdr['x-session-token']=SESSION.token; else if(SESSION&&SESSION.pw) hdr['x-admin-pass']=SESSION.pw;
+    const r=await fetch('/api/reactivation',{method:'POST',headers:hdr,body:JSON.stringify({action:'crmRecFile',client,email,name:lead})});
+    const ct=r.headers.get('content-type')||'';
+    if(ct.indexOf('audio')>=0){ const b=await r.blob(); const u=URL.createObjectURL(b); window.open(u,'_blank'); setTimeout(()=>{ try{ URL.revokeObjectURL(u); }catch(e){} },60000); }
+    else { const j=await r.json().catch(()=>({})); if(j&&j.contactUrl){ toast(j.reason||'No recording found - opening the contact in GHL'); window.open(j.contactUrl,'_blank','noopener'); } else { toast((j&&j.error)||'No CRM recording found',true); } }
+  }catch(e){ toast('CRM lookup failed',true); }
+  finally{ btn.disabled=false; btn.innerHTML=orig; }
 }
 // Fill each booked/set Call Log row with the real GHL appointment (which rep's calendar + when), matched by client + lead name.
 async function enrichCallLogAppointments(){
