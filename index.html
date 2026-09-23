@@ -730,7 +730,56 @@
       <div class="rrule"><span class="rk">3</span><p><b class="rem">Match the tone to the offer.</b> Casual and warm for B2C; buttoned-up and punctual for accredited or high-level B2B. Same steps, different voice.</p></div>
       <div class="rrule" style="margin-bottom:0"><span class="rk">4</span><p><b class="rem">After 9pm is fine.</b> If a message needs to go out at night, send it. Don't let the clock be the reason a call doesn't show.</p></div>
     </div>
+
+    <!-- ===== PLAYBOOK (SOPs by category) ===== -->
+    <style>
+      #playbookWrap .pbcat{border:1px solid var(--glass-brd);border-radius:12px;margin-bottom:10px;overflow:hidden;background:var(--glass)}
+      #playbookWrap .pbcathead{display:flex;align-items:center;gap:10px;padding:13px 16px;cursor:pointer;user-select:none}
+      #playbookWrap .pbcathead:hover{background:var(--gold-soft)}
+      #playbookWrap .pbcathead .pbchev{transition:transform .18s;color:var(--muted);font-size:12px}
+      #playbookWrap .pbcat.open .pbchev{transform:rotate(90deg)}
+      #playbookWrap .pbcathead h4{margin:0;font-size:15px;flex:1}
+      #playbookWrap .pbcount{font-size:11px;color:var(--muted);font-weight:700;background:var(--bg,#100D09);border:1px solid var(--border);border-radius:999px;padding:2px 9px}
+      #playbookWrap .pbpages{display:none;border-top:1px solid var(--glass-brd)}
+      #playbookWrap .pbcat.open .pbpages{display:block}
+      #playbookWrap .pbpage{border-bottom:1px solid var(--glass-brd)}
+      #playbookWrap .pbpage:last-child{border-bottom:0}
+      #playbookWrap .pbpghead{display:flex;align-items:center;gap:10px;padding:11px 16px 11px 30px;cursor:pointer}
+      #playbookWrap .pbpghead:hover{background:var(--gold-soft)}
+      #playbookWrap .pbpghead .pbt{flex:1;font-weight:600;font-size:14px}
+      #playbookWrap .pbbody{display:none;padding:4px 16px 18px 30px;font-size:14px;line-height:1.55}
+      #playbookWrap .pbpage.open .pbbody{display:block}
+      #playbookWrap .pbbody h3{font-size:15px;margin:16px 0 6px;color:var(--gold-2)}
+      #playbookWrap .pbbody h4{font-size:13.5px;margin:12px 0 4px;text-transform:uppercase;letter-spacing:.04em;color:var(--gold)}
+      #playbookWrap .pbbody ul{margin:6px 0;padding-left:20px}
+      #playbookWrap .pbbody li{margin:3px 0}
+      #playbookWrap .pbbody p{margin:8px 0}
+      #playbookWrap .pbedit{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+      #pbModal .pbfield{margin-bottom:12px}
+      #pbModal label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px;font-weight:600}
+      #pbModal input,#pbModal textarea{width:100%;box-sizing:border-box;background:var(--bg,#100D09);border:1px solid var(--border);border-radius:8px;color:var(--ink);padding:9px 11px;font:inherit}
+      #pbModal textarea{min-height:280px;resize:vertical;line-height:1.5;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px}
+    </style>
+    <div class="panel" id="playbookPanel">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px">
+        <div><h3 style="margin:0">Playbook</h3><p class="hint" style="margin:2px 0 0">TSA's SOPs and standard plays, grouped by category. Click a category, then a page.</p></div>
+        <div class="row-actions" id="pbAdminBar" hidden><button class="btn ghost sm" onclick="pbNewPage()">&#43; New page</button><button class="btn ghost sm" onclick="pbSeed()" id="pbSeedBtn">Load starter SOPs</button></div>
+      </div>
+      <div id="playbookWrap" style="margin-top:12px"></div>
+    </div>
   </section>
+
+  <!-- Playbook add/edit modal -->
+  <div id="pbModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:120;align-items:flex-start;justify-content:center;overflow:auto;padding:40px 16px">
+    <div class="panel" style="max-width:720px;width:100%;margin:0">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><h3 id="pbModalTitle" style="margin:0">New playbook page</h3><button class="btn ghost sm" onclick="pbCloseModal()">&#10005;</button></div>
+      <input type="hidden" id="pbEditId">
+      <div class="pbfield"><label>Category</label><input id="pbCat" list="pbCatList" placeholder="e.g. No-shows, Onboarding, Objections"><datalist id="pbCatList"></datalist></div>
+      <div class="pbfield"><label>Page title</label><input id="pbTitle" placeholder="e.g. No-show recovery SOP"></div>
+      <div class="pbfield"><label>Content <span style="font-weight:400">- plain text. Use ## for a heading, ### for a sub-label, "- " for bullets, **bold**.</span></label><textarea id="pbBody" placeholder="Write the SOP here..."></textarea></div>
+      <div class="row-actions" style="justify-content:flex-end"><button class="btn ghost sm" onclick="pbCloseModal()">Cancel</button><button class="btn gold sm" onclick="pbSavePage()">Save page</button></div>
+    </div>
+  </div>
 
   <!-- ===== INVOICING (admin/director) ===== -->
   <!-- ===== DAILY REPORT ===== -->
@@ -2908,6 +2957,7 @@ function showTab(t){
   if(t==='ghlmap'){ renderGhlMap(); }
   if(t==='pcfields'){ renderPcFieldsTab(); }
   if(t==='sod'){ renderSodTab(); }
+  if(t==='resources'){ renderPlaybook(); }
   renderReminders();
 }
 function currentTab(){ const b=document.querySelector('#tabs button.active'); return b?b.dataset.tab:''; }
@@ -3964,6 +4014,115 @@ async function seedSalonSuites(){
   }catch(_){}
   toast('Seeded '+added+' FAQ answer'+(added===1?'':'s')+' + Know-the-offer module for '+client+(added<SALON_FAQ.length?' (skipped existing)':'')); renderFaq();
 }
+/* ===== Playbook: SOPs by category in Resources & Guides (T-595). Global (TSA-wide), admin/director edit, everyone reads. ===== */
+function pbCanEdit(){ return !!(SESSION && ['admin','director'].includes(SESSION.role)); }
+function pbPages(){ const m={}; (RECORDS||[]).forEach(x=>{ if(x.type!=='playbook'||!x.id) return; if(!m[x.id]||(x.submittedAt||'')>(m[x.id].submittedAt||'')) m[x.id]=x; }); return Object.values(m).filter(x=>!x.deleted); }
+// light, safe markdown: ## heading, ### sub-label, "- " bullets, **bold**, blank line = paragraph
+function pbFormat(body){
+  const lines=String(body||'').replace(/\r/g,'').split('\n'); let html='', inUl=false;
+  const inline=s=>esc(s).replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>');
+  const closeUl=()=>{ if(inUl){ html+='</ul>'; inUl=false; } };
+  lines.forEach(raw=>{ const t=raw.trim();
+    if(!t){ closeUl(); return; }
+    if(t.startsWith('### ')){ closeUl(); html+='<h4>'+inline(t.slice(4))+'</h4>'; }
+    else if(t.startsWith('## ')){ closeUl(); html+='<h3>'+inline(t.slice(3))+'</h3>'; }
+    else if(t.startsWith('- ')||t.startsWith('* ')){ if(!inUl){ html+='<ul>'; inUl=true; } html+='<li>'+inline(t.slice(2))+'</li>'; }
+    else { closeUl(); html+='<p>'+inline(t)+'</p>'; }
+  });
+  closeUl(); return html||'<p class="muted">No content yet.</p>';
+}
+let PB_OPEN_CAT='', PB_OPEN_PAGE='';
+function renderPlaybook(){
+  const wrap=document.getElementById('playbookWrap'); if(!wrap) return;
+  const bar=document.getElementById('pbAdminBar'); if(bar) bar.hidden=!pbCanEdit();
+  const pages=pbPages();
+  const cats={}; pages.forEach(p=>{ const c=(p.category||'General').trim()||'General'; (cats[c]=cats[c]||[]).push(p); });
+  const catNames=Object.keys(cats).sort((a,b)=>a.localeCompare(b));
+  const dl=document.getElementById('pbCatList'); if(dl) dl.innerHTML=catNames.map(c=>`<option value="${esc(c)}">`).join('');
+  if(!catNames.length){ wrap.innerHTML='<p class="muted" style="padding:6px 2px;margin:0">No playbook pages yet.'+(pbCanEdit()?' Click <b>Load starter SOPs</b> or <b>+ New page</b>.':'')+'</p>'; return; }
+  if(!PB_OPEN_CAT || !cats[PB_OPEN_CAT]) PB_OPEN_CAT=catNames[0];
+  wrap.innerHTML=catNames.map(c=>{
+    const open=c===PB_OPEN_CAT;
+    const list=cats[c].sort((a,b)=>((a.order!=null?a.order:9e15)-(b.order!=null?b.order:9e15))||String(a.title||'').localeCompare(String(b.title||'')));
+    return `<div class="pbcat${open?' open':''}"><div class="pbcathead" onclick="pbToggleCat('${esc(c).replace(/'/g,"\\'")}')"><span class="pbchev">&#9654;</span><h4>${esc(c)}</h4><span class="pbcount">${list.length}</span></div><div class="pbpages">`
+      + list.map(p=>{ const po=(p.id===PB_OPEN_PAGE);
+        return `<div class="pbpage${po?' open':''}"><div class="pbpghead" onclick="pbTogglePage('${esc(p.id)}')"><span class="pbchev">&#9654;</span><span class="pbt">${esc(p.title||'Untitled')}</span></div><div class="pbbody">${pbFormat(p.body)}${pbCanEdit()?`<div class="pbedit"><button class="btn ghost sm" onclick="event.stopPropagation();pbEditPage('${esc(p.id)}')">Edit</button><button class="btn ghost sm" style="color:var(--warn);border-color:var(--warn)" onclick="event.stopPropagation();pbDeletePage('${esc(p.id)}')">Delete</button></div>`:''}</div></div>`;
+      }).join('') + `</div></div>`;
+  }).join('');
+}
+function pbToggleCat(c){ PB_OPEN_CAT=(PB_OPEN_CAT===c)?'':c; renderPlaybook(); }
+function pbTogglePage(id){ PB_OPEN_PAGE=(PB_OPEN_PAGE===id)?'':id; renderPlaybook(); }
+function pbCloseModal(){ const m=document.getElementById('pbModal'); if(m) m.style.display='none'; }
+function pbNewPage(){ if(!pbCanEdit()) return; document.getElementById('pbModalTitle').textContent='New playbook page'; document.getElementById('pbEditId').value=''; document.getElementById('pbCat').value=(PB_OPEN_CAT||''); document.getElementById('pbTitle').value=''; document.getElementById('pbBody').value=''; document.getElementById('pbModal').style.display='flex'; setTimeout(()=>{ const t=document.getElementById('pbTitle'); if(t)t.focus(); },0); }
+function pbEditPage(id){ if(!pbCanEdit()) return; const p=pbPages().find(x=>x.id===id); if(!p) return; document.getElementById('pbModalTitle').textContent='Edit playbook page'; document.getElementById('pbEditId').value=id; document.getElementById('pbCat').value=p.category||''; document.getElementById('pbTitle').value=p.title||''; document.getElementById('pbBody').value=p.body||''; document.getElementById('pbModal').style.display='flex'; }
+async function pbSavePage(){
+  if(!pbCanEdit()){ toast('Admins/Directors only',true); return; }
+  const id=document.getElementById('pbEditId').value||uid();
+  const category=(document.getElementById('pbCat').value||'').trim()||'General';
+  const title=(document.getElementById('pbTitle').value||'').trim();
+  const body=document.getElementById('pbBody').value||'';
+  if(!title){ toast('Give the page a title',true); return; }
+  const prev=pbPages().find(x=>x.id===id); const order=prev&&prev.order!=null?prev.order:Date.now();
+  try{ await addRecord({type:'playbook', id, category, title, body, order, by:(SESSION&&SESSION.name)||''}); pbCloseModal(); PB_OPEN_PAGE=id; PB_OPEN_CAT=category; renderPlaybook(); toast('Playbook page saved'); }
+  catch(e){ toast('Save failed: '+(e&&e.message||e),true); }
+}
+async function pbDeletePage(id){
+  if(!pbCanEdit()) return; const p=pbPages().find(x=>x.id===id); if(!p) return;
+  if(!confirm('Delete "'+(p.title||'this page')+'" from the playbook?')) return;
+  try{ await addRecord({type:'playbook', id, category:p.category, title:p.title, body:p.body, order:p.order, deleted:true, by:(SESSION&&SESSION.name)||''}); renderPlaybook(); toast('Page deleted'); }
+  catch(e){ toast('Delete failed',true); }
+}
+async function pbSeed(){
+  if(!pbCanEdit()){ toast('Admins/Directors only',true); return; }
+  const have=new Set(pbPages().map(p=>nrmName(p.title))); let added=0;
+  for(const s of PLAYBOOK_SEED){ if(have.has(nrmName(s.title))) continue; await addRecord({type:'playbook', id:uid(), category:s.category, title:s.title, body:s.body, order:s.order!=null?s.order:Date.now()+added, by:(SESSION&&SESSION.name)||''}); added++; }
+  toast(added?('Loaded '+added+' starter SOP'+(added===1?'':'s')):'Starter SOPs already loaded'); renderPlaybook();
+}
+const PLAYBOOK_SEED=[
+  { category:'No-shows', order:1, title:'No-show recovery SOP', body:
+`## Purpose
+Turn a no-show into a re-book instead of a dead lead. Own the no-show: don't complain about it, go into the thread and do something about it. A full calendar means nothing if they don't show.
+
+## The moment a call no-shows
+- The closer dispositions the call as **No-show** in Sales HQ right away (every call gets dispositioned, even a no-show). That moves the lead to the No-show stage in GHL and pings the setter.
+- The setter sees it immediately and works to re-live the call the same hour.
+
+## Setter recovery touches (keep every message in the GHL thread)
+### Touch 1 - right away (call, then text)
+Hey [Name], looks like we missed each other for your call with [Closer]. Everything ok? I've still got a couple of spots today - want me to grab you the next one?
+### Touch 2 - a few hours later
+[Name], I don't want you to lose your spot - [Closer] had time set aside for you. Can you do [time A] or [time B]?
+### Touch 3 - next day
+Following up one more time [Name]. Still want to make this happen? Reply with a day that works and I'll lock it in.
+
+## Rules
+- **Keep it in GHL.** Every message stays in the thread so the team has visibility. No moving to WhatsApp/iMessage.
+- **Send the first touch manually and immediately** - speed is the whole game.
+- **Rebook into a real open slot**, then run the confirm cadence (night before + morning of) so it doesn't no-show again.
+- **After 3 touches with no reply**, move them to the age-based follow-up / nurture list. Don't abandon - it re-activates later.
+
+## Definition of done
+- Every no-show is dispositioned in HQ and moved in GHL.
+- At least 3 recovery touches within 24 hours.
+- Rebooked calls re-enter the confirm cadence.` },
+  { category:'Onboarding', order:1, title:'The onboarding call (run-of-show)', body:
+`## What this is
+The one-shot onboarding call: get TSA into every tool, show the client how we operate, and map what they already have - so we can build without pulling the founder back in.
+
+## Run-of-show
+- **Intros + agenda** - introduce the team + roles, set the one-shot expectation.
+- **Intake gap-fill** - asset storage, offers, where recordings live.
+- **Tech & access** - admin on Slack, GHL, and Workspace; share the Drive both ways; dialer + call-recording path; create their Sales HQ account + offers.
+- **Slack walkthrough** - the channel format + "transparency keeps away anxiety"; don't reinvent the wheel; send the channel rubric.
+- **Sales HQ walkthrough** - the owner view + how HQ talks to GHL and Slack.
+- **Discovery ("walk the house")** - pipelines, lead flow, speed to lead, team + pay, marketing stats, EOD sheets. Don't break a working flow.
+- **Expectations** - TSA hires/onboards/offboards reps; we don't do marketing; week 1 is heavier.
+- **Weekly meeting** - lock the recurring Monday 30-minute call.
+- **Close** - build out, reconvene with the game plan.
+
+## Full SOP
+The complete run-of-show, access checklist, and Definition of Done live in the shared Google Doc: https://docs.google.com/document/d/1kwVYDXmAglt7w7d1ArJe4WeCaWIcVdhpBZzCzX_uKRU/edit` }
+];
 /* ===== Rep Scorecards + ramp milestones (T-439) ===== */
 let SC_PERIOD='month', SC_RANGE=null;
 // ramp milestone defaults (byDay = deadline in days since hire). Tune these as we learn the real ramp curve.
