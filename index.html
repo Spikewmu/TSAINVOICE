@@ -736,31 +736,31 @@
   <!-- ===== PLAYBOOK (its own page under Resources & Guides) ===== -->
   <section id="tab-playbook" hidden>
     <h2 class="section">Playbook</h2>
-    <p class="hint">TSA's SOPs and standard plays, organized by category. Click a category to expand, then a page to read it.</p>
+    <p class="hint">TSA's SOPs and standard plays. Pick a page from the left.</p>
     <style>
-      #playbookWrap .pbcat{border:1px solid var(--glass-brd);border-radius:12px;margin-bottom:10px;overflow:hidden;background:var(--glass)}
-      #playbookWrap .pbcathead{display:flex;align-items:center;gap:10px;padding:13px 16px;cursor:pointer;user-select:none}
-      #playbookWrap .pbcathead:hover{background:var(--gold-soft)}
-      #playbookWrap .pbcathead .pbchev{transition:transform .18s;color:var(--muted);font-size:12px}
-      #playbookWrap .pbcat.open .pbchev{transform:rotate(90deg)}
-      #playbookWrap .pbcathead h4{margin:0;font-size:15px;flex:1}
-      #playbookWrap .pbcount{font-size:11px;color:var(--muted);font-weight:700;background:var(--bg,#100D09);border:1px solid var(--border);border-radius:999px;padding:2px 9px}
-      #playbookWrap .pbpages{display:none;border-top:1px solid var(--glass-brd)}
-      #playbookWrap .pbcat.open .pbpages{display:block}
-      #playbookWrap .pbpage{border-bottom:1px solid var(--glass-brd)}
-      #playbookWrap .pbpage:last-child{border-bottom:0}
-      #playbookWrap .pbpghead{display:flex;align-items:center;gap:10px;padding:11px 16px 11px 30px;cursor:pointer}
-      #playbookWrap .pbpghead:hover{background:var(--gold-soft)}
-      #playbookWrap .pbpghead .pbt{flex:1;font-weight:600;font-size:14px}
+      /* GitBook-style docs: left page nav + reading pane */
+      #playbookWrap .pbshell{display:flex;border:1px solid var(--glass-brd);border-radius:12px;overflow:hidden;background:var(--glass);min-height:440px}
+      #playbookWrap .pbside{flex:none;width:252px;border-right:1px solid var(--glass-brd);padding:10px 8px;overflow:auto;max-height:74vh}
+      #playbookWrap .pbnavcat{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);padding:14px 10px 5px}
+      #playbookWrap .pbnavcat:first-child{padding-top:6px}
+      #playbookWrap .pbnavlink{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:7px;font-size:13.5px;color:var(--ink);cursor:pointer;border-left:2px solid transparent;line-height:1.35}
+      #playbookWrap .pbnavlink:hover{background:var(--gold-soft)}
+      #playbookWrap .pbnavlink.on{background:var(--gold-soft);color:var(--gold-2);font-weight:600;border-left-color:var(--gold)}
+      #playbookWrap .pbmain{flex:1;min-width:0;padding:24px 30px;overflow:auto;max-height:74vh}
+      #playbookWrap .pbdoc{max-width:760px}
+      #playbookWrap .pbcrumb{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--gold);font-weight:700;margin-bottom:4px}
+      #playbookWrap .pbdochead{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 16px;padding-bottom:14px;border-bottom:1px solid var(--glass-brd)}
+      #playbookWrap .pbdochead h2{margin:0;font-size:25px;line-height:1.2}
       #playbookWrap .pbaud{flex:none;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--gold-2);background:var(--gold-soft);border:1px solid var(--border);border-radius:999px;padding:2px 8px}
-      #playbookWrap .pbbody{display:none;padding:4px 16px 18px 30px;font-size:14px;line-height:1.55}
-      #playbookWrap .pbpage.open .pbbody{display:block}
-      #playbookWrap .pbbody h3{font-size:15px;margin:16px 0 6px;color:var(--gold-2)}
-      #playbookWrap .pbbody h4{font-size:13.5px;margin:12px 0 4px;text-transform:uppercase;letter-spacing:.04em;color:var(--gold)}
-      #playbookWrap .pbbody ul{margin:6px 0;padding-left:20px}
-      #playbookWrap .pbbody li{margin:3px 0}
-      #playbookWrap .pbbody p{margin:8px 0}
-      #playbookWrap .pbedit{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+      #playbookWrap .pbbody{font-size:14.5px;line-height:1.7}
+      #playbookWrap .pbbody h3{font-size:18px;margin:26px 0 8px;padding-bottom:6px;border-bottom:1px solid var(--glass-brd)}
+      #playbookWrap .pbbody h4{font-size:12.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--gold);margin:20px 0 4px}
+      #playbookWrap .pbbody ul{margin:8px 0;padding-left:22px}
+      #playbookWrap .pbbody li{margin:5px 0}
+      #playbookWrap .pbbody p{margin:11px 0}
+      #playbookWrap .pbbody a{color:var(--gold-2)}
+      #playbookWrap .pbedit{display:flex;gap:8px;flex-wrap:wrap;margin-top:22px;padding-top:16px;border-top:1px solid var(--glass-brd)}
+      @media(max-width:720px){#playbookWrap .pbshell{flex-direction:column}#playbookWrap .pbside{width:auto;border-right:0;border-bottom:1px solid var(--glass-brd);max-height:none}#playbookWrap .pbmain{max-height:none;padding:20px 18px}}
       #pbModal .pbfield{margin-bottom:12px}
       #pbModal label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px;font-weight:600}
       #pbModal input,#pbModal textarea{width:100%;box-sizing:border-box;background:var(--bg,#100D09);border:1px solid var(--border);border-radius:8px;color:var(--ink);padding:9px 11px;font:inherit}
@@ -4056,19 +4056,21 @@ function renderPlaybook(){
   const catNames=Object.keys(cats).sort((a,b)=>a.localeCompare(b));
   const dl=document.getElementById('pbCatList'); if(dl) dl.innerHTML=catNames.map(c=>`<option value="${esc(c)}">`).join('');
   if(!catNames.length){ wrap.innerHTML='<p class="muted" style="padding:6px 2px;margin:0">No playbook pages yet.'+(pbCanEdit()?' Click <b>Load starter SOPs</b> or <b>+ New page</b>.':'')+'</p>'; return; }
-  if(!PB_OPEN_CAT || !cats[PB_OPEN_CAT]) PB_OPEN_CAT=catNames[0];
-  wrap.innerHTML=catNames.map(c=>{
-    const open=c===PB_OPEN_CAT;
-    const list=cats[c].sort((a,b)=>((a.order!=null?a.order:9e15)-(b.order!=null?b.order:9e15))||String(a.title||'').localeCompare(String(b.title||'')));
-    return `<div class="pbcat${open?' open':''}"><div class="pbcathead" onclick="pbToggleCat('${esc(c).replace(/'/g,"\\'")}')"><span class="pbchev">&#9654;</span><h4>${esc(c)}</h4><span class="pbcount">${list.length}</span></div><div class="pbpages">`
-      + list.map(p=>{ const po=(p.id===PB_OPEN_PAGE);
-        const audLbl=pbAudLabel(p), audChip=(audLbl!=='Everyone')?`<span class="pbaud">${esc(audLbl)}</span>`:'';
-        return `<div class="pbpage${po?' open':''}"><div class="pbpghead" onclick="pbTogglePage('${esc(p.id)}')"><span class="pbchev">&#9654;</span><span class="pbt">${esc(p.title||'Untitled')}</span>${audChip}</div><div class="pbbody">${pbFormat(p.body)}${pbCanEdit()?`<div class="pbedit"><button class="btn ghost sm" onclick="event.stopPropagation();pbEditPage('${esc(p.id)}')">Edit</button><button class="btn ghost sm" style="color:var(--warn);border-color:var(--warn)" onclick="event.stopPropagation();pbDeletePage('${esc(p.id)}')">Delete</button></div>`:''}</div></div>`;
-      }).join('') + `</div></div>`;
-  }).join('');
+  const ordered=c=>cats[c].sort((a,b)=>((a.order!=null?a.order:9e15)-(b.order!=null?b.order:9e15))||String(a.title||'').localeCompare(String(b.title||'')));
+  // active page: keep the current one if still visible, else first page of the first category
+  if(!PB_OPEN_PAGE || !pages.some(p=>p.id===PB_OPEN_PAGE)) PB_OPEN_PAGE=ordered(catNames[0])[0].id;
+  const active=pages.find(p=>p.id===PB_OPEN_PAGE); PB_OPEN_CAT=active.category||catNames[0];
+  // left page nav (GitBook style)
+  const side=catNames.map(c=>`<div class="pbnavcat">${esc(c)}</div>`
+    + ordered(c).map(p=>`<div class="pbnavlink${p.id===PB_OPEN_PAGE?' on':''}" onclick="pbOpen('${esc(p.id)}')">${esc(p.title||'Untitled')}</div>`).join('')
+  ).join('');
+  // reading pane
+  const audLbl=pbAudLabel(active), audChip=(audLbl!=='Everyone')?`<span class="pbaud">${esc(audLbl)}</span>`:'';
+  const editBtns=pbCanEdit()?`<div class="pbedit"><button class="btn ghost sm" onclick="pbEditPage('${esc(active.id)}')">Edit page</button><button class="btn ghost sm" style="color:var(--warn);border-color:var(--warn)" onclick="pbDeletePage('${esc(active.id)}')">Delete</button></div>`:'';
+  const main=`<div class="pbdoc"><div class="pbcrumb">${esc(active.category||'General')}</div><div class="pbdochead"><h2>${esc(active.title||'Untitled')}</h2>${audChip}</div><div class="pbbody">${pbFormat(active.body)}</div>${editBtns}</div>`;
+  wrap.innerHTML=`<div class="pbshell"><nav class="pbside">${side}</nav><div class="pbmain">${main}</div></div>`;
 }
-function pbToggleCat(c){ PB_OPEN_CAT=(PB_OPEN_CAT===c)?'':c; renderPlaybook(); }
-function pbTogglePage(id){ PB_OPEN_PAGE=(PB_OPEN_PAGE===id)?'':id; renderPlaybook(); }
+function pbOpen(id){ PB_OPEN_PAGE=id; renderPlaybook(); const m=document.querySelector('#playbookWrap .pbmain'); if(m) m.scrollTop=0; }
 function pbCloseModal(){ const m=document.getElementById('pbModal'); if(m) m.style.display='none'; }
 function pbNewPage(){ if(!pbCanEdit()) return; document.getElementById('pbModalTitle').textContent='New playbook page'; document.getElementById('pbEditId').value=''; document.getElementById('pbCat').value=(PB_OPEN_CAT||''); document.getElementById('pbTitle').value=''; document.getElementById('pbBody').value=''; pbRenderAudBoxes(['everyone']); document.getElementById('pbModal').style.display='flex'; setTimeout(()=>{ const t=document.getElementById('pbTitle'); if(t)t.focus(); },0); }
 function pbEditPage(id){ if(!pbCanEdit()) return; const p=pbPages().find(x=>x.id===id); if(!p) return; document.getElementById('pbModalTitle').textContent='Edit playbook page'; document.getElementById('pbEditId').value=id; document.getElementById('pbCat').value=p.category||''; document.getElementById('pbTitle').value=p.title||''; document.getElementById('pbBody').value=p.body||''; pbRenderAudBoxes(pbAud(p)); document.getElementById('pbModal').style.display='flex'; }
@@ -4092,9 +4094,15 @@ async function pbDeletePage(id){
 }
 async function pbSeed(){
   if(!pbCanEdit()){ toast('Admins/Directors only',true); return; }
-  const have=new Set(pbPages().map(p=>nrmName(p.title))); let added=0;
-  for(const s of PLAYBOOK_SEED){ if(have.has(nrmName(s.title))) continue; await addRecord({type:'playbook', id:uid(), category:s.category, title:s.title, body:s.body, order:s.order!=null?s.order:Date.now()+added, by:(SESSION&&SESSION.name)||''}); added++; }
-  toast(added?('Loaded '+added+' starter SOP'+(added===1?'':'s')):'Starter SOPs already loaded'); renderPlaybook();
+  const existing=pbPages();
+  if(existing.some(p=>PLAYBOOK_SEED.some(s=>nrmName(s.title)===nrmName(p.title))) && !confirm('Load / refresh the starter SOPs?\n\nThis rewrites the starter pages (No-show recovery, the onboarding call) to their latest full version. Pages you created yourself are untouched.')) return;
+  let n=0;
+  for(const s of PLAYBOOK_SEED){
+    const prev=existing.find(p=>nrmName(p.title)===nrmName(s.title)); // upsert: keep the same id so it updates in place
+    const id=prev?prev.id:uid();
+    await addRecord({type:'playbook', id, category:s.category, title:s.title, body:s.body, audience:s.audience||['everyone'], order:s.order!=null?s.order:Date.now()+n, by:(SESSION&&SESSION.name)||''}); n++;
+  }
+  toast('Loaded / refreshed '+n+' starter SOP'+(n===1?'':'s')); renderPlaybook();
 }
 const PLAYBOOK_SEED=[
   { category:'No-shows', order:1, title:'No-show recovery SOP', audience:['setters','closers','managers'], body:
@@ -4124,22 +4132,107 @@ Following up one more time [Name]. Still want to make this happen? Reply with a 
 - At least 3 recovery touches within 24 hours.
 - Rebooked calls re-enter the confirm cadence.` },
   { category:'Onboarding', order:1, title:'The onboarding call (run-of-show)', audience:['internal','managers'], body:
-`## What this is
-The one-shot onboarding call: get TSA into every tool, show the client how we operate, and map what they already have - so we can build without pulling the founder back in.
+`## Purpose
+Run one combined onboarding call that gets TSA fully inside every tool, shows the client how we operate (Slack + Sales HQ + GHL), and maps what they already have - so we can build autonomously afterward without going back to the founder for access. One shot beats an offline checklist: a checklist prolongs the start and drags out the experience.
 
-## Run-of-show
-- **Intros + agenda** - introduce the team + roles, set the one-shot expectation.
-- **Intake gap-fill** - asset storage, offers, where recordings live.
-- **Tech & access** - admin on Slack, GHL, and Workspace; share the Drive both ways; dialer + call-recording path; create their Sales HQ account + offers.
-- **Slack walkthrough** - the channel format + "transparency keeps away anxiety"; don't reinvent the wheel; send the channel rubric.
-- **Sales HQ walkthrough** - the owner view + how HQ talks to GHL and Slack.
-- **Discovery ("walk the house")** - pipelines, lead flow, speed to lead, team + pay, marketing stats, EOD sheets. Don't break a working flow.
-- **Expectations** - TSA hires/onboards/offboards reps; we don't do marketing; week 1 is heavier.
-- **Weekly meeting** - lock the recurring Monday 30-minute call.
-- **Close** - build out, reconvene with the game plan.
+Talk track: "This isn't the most fun meeting, but it's all worth it. We used to hand owners a checklist offline and it just prolonged everything, so now we do it all in one call."
 
-## Full SOP
-The complete run-of-show, access checklist, and Definition of Done live in the shared Google Doc: https://docs.google.com/document/d/1kwVYDXmAglt7w7d1ArJe4WeCaWIcVdhpBZzCzX_uKRU/edit` }
+## Who is on the call
+- **Robb (CEO)** - runs the call, sets the agenda, walks Slack + the dashboard, leads discovery.
+- **Steve (Ops / COO)** - collects access live, creates the client's Sales HQ account, shares the Drive, verifies each integration works before the call ends.
+- **Manager(s)** - closer manager + setter manager introduced so the client meets their leadership team; webinar host if the account runs webinars.
+- **Client side** - the founder/owner plus their ops/tech person (the one who actually holds the logins). Getting the tech person on the call is what makes one-shot access possible.
+
+## Before the call
+- Contract signed and intake form filled (reviewed beforehand).
+- Sales HQ ready to add the client (account + offers).
+- The shared Drive template ready to duplicate.
+- Ask the client to have their tech/ops person on the call with admin rights to Slack, GHL, and their email/workspace.
+
+## 1. Intros + set the agenda (first 3 min)
+- Introduce the TSA leadership team and each role. Confirm the client's preferred name.
+- State the agenda + the one-shot principle: "Today we'll review the intake form, get into all the tech and access, walk you through how we run day-to-day in Slack and the dashboard, and set up our weekly meeting. Once we have all this, we can build without pulling you back in."
+- Ask if they have any questions before starting.
+
+## 2. Review the intake form (fill the gaps)
+- Confirm the intake looks complete, then close the common gaps:
+- **Asset storage** - where do they keep scripts/assets? Get the Drive link, or tell them we'll use our Drive for their account and build as we go.
+- **Offers / products** - confirm they're listed (these go into Sales HQ).
+- **Call recordings** - where do they live today (GHL / Zoom / dialer)?
+- If they have no scripts/assets yet, that's fine: "We bring the framework, listen to the calls, and optimize as we go."
+
+## 3. Tech & access (the core - collect it all live)
+Get TSA admin on each platform and add our people. Steve gets added first, then Steve adds the rest of the team. Confirm each one live:
+- **Slack** - Steve made admin (so we add/remove reps fast).
+- **GHL** - Steve made admin.
+- **Google Workspace / G Suite** - Steve made admin (to create/remove rep company emails; reps churn, so this is constant). If they can't grant admin, they create a steve@theirdomain with admin rights.
+- **Google Drive** - shared both ways (their assets to us; our built assets back to them). Get the client's + tech person's emails.
+- **Domain / DNS + email hosting** - note the registrar (Namecheap / GoDaddy / Hostinger) and email host (Google Workspace).
+- **Dialer** - what are they using (power dialer / WAV dialer)? Confirm it's integrated with GHL and Steve can see it.
+- **Call recordings** - decide the path: connect Fathom to the closers' Google Calendar (TSA standard, avoids Zoom cloud-storage bills) or get Steve into their Zoom. Goal: recordings pull into Sales HQ.
+- **Sales HQ** - Steve creates the client's HQ account + logins and adds their offers/products so their dashboard populates.
+
+Note: this is the slow part of the call. Set the expectation up front that there will be a few minutes of quiet while access gets granted - it's worth it.
+
+## 4. Walk the Slack structure
+- Show the channel format (use another client's Slack as a live example): leadership, new closed deals, sales team, client success, EOD checkout (setters), EOD checkout (closers), new appointments booked, new leads, post-call checkouts (setters), post-call checkouts (closers), start-of-day projections.
+- Explain the why: "Transparency keeps away the anxiety and the 'what's going on' mindset. Start of day you know what to expect, through the day you see post-call checkouts, end of day you see how it went - and by ~10am Central the next morning the leadership channel gets ONE message: what happened yesterday + what's projected today."
+- **Don't reinvent the wheel** - if they already have a channel for a function, we route our automations to their channel instead of duplicating. We reach out first to confirm.
+- Promise the channel rubric: after adding everyone, we send a rubric of every channel, what it's for, and why.
+
+## 5. Walk the Sales HQ dashboard
+- Show the owner view: closers, setters, leaderboards, dials, retention rates + why reps left, call-outcome mix, and the money view - deals projected vs closed, accounts receivable, forecast, and the "feedback period" (when spend turns into collected cash).
+- Explain the integration story: reps disposition every connected call in Sales HQ (post-call checkout); that talks to GHL (moves the pipeline stage + adds the note to the opportunity) and posts to Slack. Speed-to-lead, dials, and EOD data pull from GHL automatically so the owner sees real numbers, not self-reported.
+- Reassure: "You only need to worry about your dashboard. Everything else is for the reps." Stats are private per client.
+
+## 6. Discovery - "walk around the house"
+Talk track: "All we're doing right now is walking around the house to see where you've got the furniture." Understand their setup so we don't break a working flow (breaking a flow causes a dip). Have the tech person share their screen and capture:
+- **GHL pipelines & stages** - setter pipeline + closer pipeline (call booked / show / no-show / rescheduled / canceled / follow-up / closed).
+- **Lead flow** - source (e.g. Meta to GHL), how leads are assigned (round-robin? first-come?), and the funnel (opt-in form to setter call + VSL email to setter books, vs a booking link).
+- **Team** - how many setters, closers, and full-stack / hybrid reps (set and close).
+- **Speed to lead** - are they tracking it? TSA's north star is 1-2 minutes; round-robin to a setter who's on lunch/off means a lead can sit for hours. Pull their real speed-to-lead from HQ once integrated.
+- **Marketing stats** - daily ad spend, CPL, opt-in rate, ROAS, monthly cash collected; ask for the Meta ad library link and any funnel-stats sheet.
+- **Pay structure** - closer % (front-end / back-end) and setter base + %.
+- **Smart lists** - what exists; TSA builds age-based lists (warm / cold / dead), plus no-shows and cancellations.
+- **Current EOD / reporting** - Slack form to Google Sheet? Get the sheet links. Do not destroy their historic data - integrate it separately.
+
+## 7. Set expectations
+- **TSA is autonomous on people** - we hire, onboard (every rep learns HQ, GHL, Slack cadences on day one), and offboard (remove from G Suite, Slack, GHL). The owner doesn't manage any of it.
+- **We don't do marketing** (but Steve/Robb can help with integrations).
+- **Week 1 is heavier** on communication (going through their material, personnel review by stats, filling gaps, connecting software). Week 2 onward is lighter once everything is mapped.
+
+## 8. Schedule the weekly meeting
+- Lock the recurring Monday 30-minute meeting (stats, updates, marketing-vs-sales congruency; often 15 min, first one is 30). Mind time zones - confirm the client's working hours.
+
+## 9. Close + next steps
+- Confirm the client is added to the leadership channel.
+- State the next step: TSA builds out (fills gaps, connects the software) and reconvenes with the game plan (e.g. "start of day Thursday"). Welcome them to the team.
+
+## What to capture on the call
+- Admin on Slack, GHL, Workspace/G Suite
+- Drive shared both ways (+ client + tech-person emails)
+- Offers/products into Sales HQ; HQ account + logins created
+- Dialer type + access; call-recording path decided (Fathom/Zoom)
+- Pipelines/stages, lead flow, funnel
+- Rep roster (setters/closers/full-stack) + pay structure
+- Marketing stats (spend, CPL, opt-in, ROAS, monthly cash) + Meta ad library link
+- EOD/reporting sheet links (historic data to integrate, not replace)
+- Smart lists to build
+- Weekly Monday meeting time set
+
+## Definition of done
+- TSA is admin on Slack, GHL, and Workspace, verified live (not "should work").
+- Client's Sales HQ account exists, offers loaded, dashboard populates.
+- Drive shared both directions; asset gaps captured as the build list.
+- Their current GHL, funnel, team, pay, and EOD flow are documented so we don't break a working process.
+- Weekly meeting on the calendar; leadership channel has the whole team.
+- Channel rubric queued to send.
+
+## Exceptions
+- **Tech person not on the call** - access stalls; get their email invited to grant it same-day, but push to have them on live.
+- **They already have channels/lists/flows** - reuse them, don't duplicate; confirm before routing automations.
+- **Recordings only in Zoom with paid cloud storage** - migrate closers to Fathom + Google Meet so recordings pull into HQ without a big storage bill.
+- **Historic EOD data in their own Sheets** - integrate separately; never wipe their history.` }
 ];
 /* ===== Rep Scorecards + ramp milestones (T-439) ===== */
 let SC_PERIOD='month', SC_RANGE=null;
