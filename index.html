@@ -743,6 +743,10 @@
       #playbookWrap .pbside{flex:none;width:252px;border-right:1px solid var(--glass-brd);padding:10px 8px;overflow:auto;max-height:74vh}
       #playbookWrap .pbnavcat{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);padding:14px 10px 5px}
       #playbookWrap .pbnavcat:first-child{padding-top:6px}
+      #playbookWrap .pbnavcat.pbdrag{cursor:grab;display:flex;align-items:center;gap:6px;border-radius:6px}
+      #playbookWrap .pbnavcat.pbdrag:active{cursor:grabbing}
+      #playbookWrap .pbnavcat .pbgrip{opacity:.35;letter-spacing:-2px;font-size:12px}
+      #playbookWrap .pbnavcat.pbdragover{background:var(--gold-soft);outline:1px dashed var(--gold);color:var(--gold-2)}
       #playbookWrap .pbnavlink{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:7px;font-size:13.5px;color:var(--ink);cursor:pointer;border-left:2px solid transparent;line-height:1.35}
       #playbookWrap .pbnavlink:hover{background:var(--gold-soft)}
       #playbookWrap .pbnavlink.on{background:var(--gold-soft);color:var(--gold-2);font-weight:600;border-left-color:var(--gold)}
@@ -4047,21 +4051,35 @@ function pbAudSync(cb){ const boxes=[...document.querySelectorAll('#pbAudBoxes .
   if(!boxes.some(b=>b.checked)){ const e=boxes.find(b=>b.value==='everyone'); if(e) e.checked=true; }
 }
 function pbSelectedAud(){ const a=[...document.querySelectorAll('#pbAudBoxes .pbAud:checked')].map(b=>b.value); return a.length?a:['everyone']; }
+// Category ordering: editors drag the headers; the order is saved to a playbookcfg record (latest-wins) and applied for everyone.
+function pbCatOrder(){ let best=null; (RECORDS||[]).forEach(x=>{ if(x.type!=='playbookcfg')return; if(!best||(x.submittedAt||'')>(best.submittedAt||'')) best=x; }); return (best&&Array.isArray(best.catOrder))?best.catOrder:[]; }
+function pbSortCats(names){ const ord=pbCatOrder(), idx=c=>{ const i=ord.indexOf(c); return i<0?9999:i; }; return names.slice().sort((a,b)=>(idx(a)-idx(b))||a.localeCompare(b)); }
+async function pbSaveCatOrder(list){ try{ await addRecord({type:'playbookcfg', catOrder:list, by:(SESSION&&SESSION.name)||''}); }catch(e){} }
+let PB_DRAG_CAT=null;
+function pbCatDragStart(e,c){ if(!pbCanEdit()){ e.preventDefault(); return; } PB_DRAG_CAT=c; try{ e.dataTransfer.effectAllowed='move'; e.dataTransfer.setData('text/plain',c); }catch(_){}}
+function pbCatDragOver(e){ if(!pbCanEdit()||!PB_DRAG_CAT) return; e.preventDefault(); try{ e.dataTransfer.dropEffect='move'; }catch(_){} const el=e.currentTarget; if(el&&el.classList) el.classList.add('pbdragover'); }
+function pbCatDragLeave(e){ const el=e.currentTarget; if(el&&el.classList) el.classList.remove('pbdragover'); }
+async function pbCatDrop(e,target){ e.preventDefault(); const el=e.currentTarget; if(el&&el.classList) el.classList.remove('pbdragover'); const src=PB_DRAG_CAT; PB_DRAG_CAT=null; if(!src||!target||src===target) return;
+  const cats={}; pbPages().filter(pbCanSee).forEach(p=>{ cats[(p.category||'General').trim()||'General']=1; });
+  let order=pbSortCats(Object.keys(cats)).filter(c=>c!==src);
+  const ti=order.indexOf(target); order.splice(ti<0?order.length:ti,0,src);
+  await pbSaveCatOrder(order); renderPlaybook();
+}
 let PB_OPEN_CAT='', PB_OPEN_PAGE='';
 function renderPlaybook(){
   const wrap=document.getElementById('playbookWrap'); if(!wrap) return;
   const bar=document.getElementById('pbAdminBar'); if(bar) bar.hidden=!pbCanEdit();
   const pages=pbPages().filter(pbCanSee);
   const cats={}; pages.forEach(p=>{ const c=(p.category||'General').trim()||'General'; (cats[c]=cats[c]||[]).push(p); });
-  const catNames=Object.keys(cats).sort((a,b)=>a.localeCompare(b));
+  const catNames=pbSortCats(Object.keys(cats));
   const dl=document.getElementById('pbCatList'); if(dl) dl.innerHTML=catNames.map(c=>`<option value="${esc(c)}">`).join('');
   if(!catNames.length){ wrap.innerHTML='<p class="muted" style="padding:6px 2px;margin:0">No playbook pages yet.'+(pbCanEdit()?' Click <b>Load starter SOPs</b> or <b>+ New page</b>.':'')+'</p>'; return; }
   const ordered=c=>cats[c].sort((a,b)=>((a.order!=null?a.order:9e15)-(b.order!=null?b.order:9e15))||String(a.title||'').localeCompare(String(b.title||'')));
   // active page: keep the current one if still visible, else first page of the first category
   if(!PB_OPEN_PAGE || !pages.some(p=>p.id===PB_OPEN_PAGE)) PB_OPEN_PAGE=ordered(catNames[0])[0].id;
   const active=pages.find(p=>p.id===PB_OPEN_PAGE); PB_OPEN_CAT=active.category||catNames[0];
-  // left page nav (GitBook style)
-  const side=catNames.map(c=>`<div class="pbnavcat">${esc(c)}</div>`
+  // left page nav (GitBook style). Editors can drag the category headers to reorder them.
+  const side=catNames.map(c=>`<div class="pbnavcat${pbCanEdit()?' pbdrag':''}"${pbCanEdit()?` draggable="true" data-cat="${esc(c)}" ondragstart="pbCatDragStart(event,this.dataset.cat)" ondragover="pbCatDragOver(event)" ondragleave="pbCatDragLeave(event)" ondrop="pbCatDrop(event,this.dataset.cat)" title="Drag to reorder"`:''}>${pbCanEdit()?'<span class="pbgrip">&#8942;&#8942;</span>':''}${esc(c)}</div>`
     + ordered(c).map(p=>`<div class="pbnavlink${p.id===PB_OPEN_PAGE?' on':''}" onclick="pbOpen('${esc(p.id)}')">${esc(p.title||'Untitled')}</div>`).join('')
   ).join('');
   // reading pane
