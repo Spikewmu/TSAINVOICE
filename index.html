@@ -562,7 +562,7 @@
     <div class="panel" id="dashSpeedPanel" style="margin:0 0 16px" hidden>
       <div style="display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px">
         <h3 style="margin:0">Speed to lead <span style="font-weight:400;color:var(--muted);font-size:12px">- time from a new lead coming in to the first call</span></h3>
-        <div class="row-actions" id="dashSpeedToggle"><button class="btn ghost sm" data-w="today" onclick="dashSpeed('today')">Today</button><button class="btn ghost sm" data-w="yesterday" onclick="dashSpeed('yesterday')">Yesterday</button><button class="btn ghost sm" data-w="week" onclick="dashSpeed('week')">This week</button><button class="btn ghost sm" data-w="month" onclick="dashSpeed('month')">This month</button></div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><select id="dashSpeedRep" onchange="dashSpeedSetRep(this.value)" style="display:none;max-width:200px"></select><div class="row-actions" id="dashSpeedToggle"><button class="btn ghost sm" data-w="today" onclick="dashSpeed('today')">Today</button><button class="btn ghost sm" data-w="yesterday" onclick="dashSpeed('yesterday')">Yesterday</button><button class="btn ghost sm" data-w="week" onclick="dashSpeed('week')">This week</button><button class="btn ghost sm" data-w="month" onclick="dashSpeed('month')">This month</button></div></div>
       </div>
       <div class="cards" id="dashSpeedKpis" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));margin:0"></div>
       <div id="dashSpeedLeads" style="margin-top:14px" hidden></div>
@@ -4742,32 +4742,40 @@ async function dashSpeed(win){
   try{
     const res=await splApi({action:'speedToLead', locationId:__dashSpeedLoc, fromDate:from, toDate:to, targetMin:1, tzOffset:new Date().getTimezoneOffset()});
     if(!res||!res.ok){ k.innerHTML='<div class="muted" style="grid-column:1/-1;padding:14px">Could not load speed to lead'+(res&&res.error?': '+esc(res.error):'')+'</div>'; return; }
-    __dashSpeedLast=res; __dashSpeedView=''; const lz=document.getElementById('dashSpeedLeads'); if(lz){ lz.hidden=true; lz.innerHTML=''; } // fresh window clears any open drill-down
-    const u1=(res.within&&res.within[1])||0;
-    const clk='cursor:pointer" title="Click to see these leads';
-    k.innerHTML=`
-      <div class="kpi goal"><div class="lbl">Avg time to first call</div><div class="val">${splFmtMin(res.avgMin)}</div></div>
-      <div class="kpi splclk" style="${clk}" onclick="dashSpeedView('within1')"><div class="lbl">Reached under 1 min</div><div class="val">${u1}%</div></div>
-      <div class="kpi splclk" style="${clk}" onclick="dashSpeedView('called')"><div class="lbl">Leads called</div><div class="val">${res.called}<span style="font-size:15px;color:var(--muted)"> / ${res.totalLeads}</span> <span style="font-size:14px">&rsaquo;</span></div></div>
-      <div class="kpi splclk" style="${clk}" onclick="dashSpeedView('uncalled')"><div class="lbl">Not called yet</div><div class="val" style="color:${res.uncalled?'var(--warn)':'inherit'}">${res.uncalled}${res.uncalled?' <span style="font-size:14px">&rsaquo;</span>':''}</div></div>`;
+    __dashSpeedLast=res; __dashSpeedView=''; __dashSpeedRep=''; const lz=document.getElementById('dashSpeedLeads'); if(lz){ lz.hidden=true; lz.innerHTML=''; } // fresh window clears any open drill-down
+    const reps=[...new Set((res.leads||[]).map(r=>String(r.rep||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+    const rsel=document.getElementById('dashSpeedRep'); if(rsel){ rsel.innerHTML='<option value="">All reps</option>'+reps.map(r=>`<option>${esc(r)}</option>`).join(''); rsel.value=''; rsel.style.display=reps.length?'':'none'; }
+    dashSpeedRenderKpis();
   }catch(e){ k.innerHTML='<div class="muted" style="grid-column:1/-1;padding:14px">Speed to lead error</div>'; }
   finally{ __dashSpeedBusy=false; }
 }
-// dashboard speed-to-lead drill-down: click a KPI to list the actual leads (uses the same lead data already loaded)
-let __dashSpeedLast=null, __dashSpeedView='';
-function dashSpeedView(v){
+// dashboard speed-to-lead: per-rep filter + click a KPI to list the actual leads (uses the same lead data already loaded)
+let __dashSpeedLast=null, __dashSpeedView='', __dashSpeedRep='';
+function dashSpeedLeadsFor(){ const d=__dashSpeedLast; if(!d) return []; let ls=(d.leads||[]).slice(); if(__dashSpeedRep) ls=ls.filter(r=>String(r.rep||'').trim()===__dashSpeedRep); return ls; }
+function dashSpeedStats(leads){ let called=0,within1=0,sum=0,uncalled=0; leads.forEach(r=>{ if(r.gapMin==null) uncalled++; else { called++; sum+=r.gapMin; if(r.gapMin<=1) within1++; } }); return { total:leads.length, called, uncalled, avgMin:called?sum/called:null, u1:called?Math.round(within1/called*100):0 }; }
+function dashSpeedRenderKpis(){
+  const k=document.getElementById('dashSpeedKpis'), d=__dashSpeedLast; if(!k||!d) return;
+  const s=dashSpeedStats(dashSpeedLeadsFor()), clk='cursor:pointer" title="Click to see these leads';
+  k.innerHTML=`
+    <div class="kpi goal"><div class="lbl">Avg time to first call</div><div class="val">${s.avgMin==null?'-':splFmtMin(s.avgMin)}</div></div>
+    <div class="kpi splclk" style="${clk}" onclick="dashSpeedView('within1')"><div class="lbl">Reached under 1 min</div><div class="val">${s.u1}%</div></div>
+    <div class="kpi splclk" style="${clk}" onclick="dashSpeedView('called')"><div class="lbl">Leads called</div><div class="val">${s.called}<span style="font-size:15px;color:var(--muted)"> / ${s.total}</span> <span style="font-size:14px">&rsaquo;</span></div></div>
+    <div class="kpi splclk" style="${clk}" onclick="dashSpeedView('uncalled')"><div class="lbl">Not called yet</div><div class="val" style="color:${s.uncalled?'var(--warn)':'inherit'}">${s.uncalled}${s.uncalled?' <span style="font-size:14px">&rsaquo;</span>':''}</div></div>`;
+}
+function dashSpeedSetRep(v){ __dashSpeedRep=v||''; dashSpeedRenderKpis(); if(__dashSpeedView) dashSpeedView(__dashSpeedView, true); }
+function dashSpeedView(v, force){
   const lz=document.getElementById('dashSpeedLeads'); if(!lz||!__dashSpeedLast) return;
-  if(__dashSpeedView===v){ __dashSpeedView=''; lz.hidden=true; lz.innerHTML=''; return; } // click again to close
+  if(!force && __dashSpeedView===v){ __dashSpeedView=''; lz.hidden=true; lz.innerHTML=''; return; } // click again to close
   __dashSpeedView=v;
   const d=__dashSpeedLast, target=d.target||1;
-  let rows=(d.leads||[]).slice();
+  let rows=dashSpeedLeadsFor();
   if(v==='called') rows=rows.filter(r=>r.gapMin!=null).sort((a,b)=>a.gapMin-b.gapMin);
   else if(v==='uncalled') rows=rows.filter(r=>r.gapMin==null);
   else if(v==='within1') rows=rows.filter(r=>r.gapMin!=null && r.gapMin<=target).sort((a,b)=>a.gapMin-b.gapMin);
   rows=rows.slice(0,80);
   const loc=__dashSpeedLoc, link=id=> (id&&loc)?('https://app.gohighlevel.com/v2/location/'+encodeURIComponent(loc)+'/contacts/detail/'+encodeURIComponent(id)):'';
   const gap=r=> r.gapMin==null?'<span style="color:var(--warn)">not called</span>':`<span style="color:${r.gapMin<=target?'var(--good)':'inherit'};font-weight:${r.gapMin<=target?'600':'400'}">${splFmtMin(r.gapMin)}</span>`;
-  const title=v==='uncalled'?'Leads not called yet':(v==='within1'?'Leads reached under 1 min':'Leads called');
+  const title=(v==='uncalled'?'Leads not called yet':(v==='within1'?'Leads reached under 1 min':'Leads called'))+(__dashSpeedRep?(' - '+__dashSpeedRep):'');
   lz.hidden=false;
   lz.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px;margin-bottom:6px"><div style="font-weight:700;color:var(--gold-2)">${title} <span class="muted" style="font-weight:400;font-size:12px">- ${rows.length} lead${rows.length===1?'':'s'}</span></div><a class="linklike" style="cursor:pointer;font-size:12px" onclick="dashSpeedView('${v}')">&#10005; close</a></div>`
     +`<div class="tablewrap"><table><thead><tr><th>Lead</th><th>Came in</th><th>1st call</th><th class="num">Gap</th><th>Rep</th></tr></thead><tbody>`
