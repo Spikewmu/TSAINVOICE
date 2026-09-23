@@ -2713,8 +2713,8 @@ function startApp(){
 function baseAllow(role){
   return ({
     admin:['dash','halloffame','master','sample','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','dayreports','hotlist','adminreport','recruiting','messages','invoicing','payouts','repcommrates','contracts','onbaudit','ghlmap','pcfields','data','users','integrations','settings','reprequests','resources','faq','kickoff','webinarsop'],
-    director:['dash','halloffame','master','sample','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','dailyreport','dayreports','hotlist','recruiting','messages','adminreport','contracts','onbaudit','ghlmap','pcfields','reprequests','resources','faq','kickoff','webinarsop'],
-    manager:['dash','halloffame','master','sample','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','speedtolead','dailyreport','dayreports','hotlist','adminreport','recruiting','messages','reprequests','resources','faq','kickoff','webinarsop'],
+    director:['dash','halloffame','master','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','dailyreport','dayreports','hotlist','recruiting','messages','adminreport','contracts','onbaudit','ghlmap','pcfields','reprequests','resources','faq','kickoff','webinarsop'],
+    manager:['dash','halloffame','master','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','speedtolead','dailyreport','dayreports','hotlist','adminreport','recruiting','messages','reprequests','resources','faq','kickoff','webinarsop'],
     founder:['dash','hotlist'],
     recruiter:['dash','recruiting','messages','timeoff','reprequests','resources','faq','kickoff','webinarsop'],
     webinarteam:['dash','meeting','promises','timeoff','webinar','resources','faq','kickoff','webinarsop'],
@@ -2896,15 +2896,15 @@ let GLOBAL_CLIENT=(function(){ try{ return localStorage.getItem('tsa_global_clie
 function preferGlobal(clients, cur){ if(GLOBAL_CLIENT && clients.includes(GLOBAL_CLIENT)) return GLOBAL_CLIENT; return (cur&&clients.includes(cur))?cur:''; }
 function buildGlobalClientSelect(){
   const sel=document.getElementById('gClient'); if(!sel) return;
-  const role=SESSION&&SESSION.role, isAdmin=(role==='admin'||role==='director'), isMgr=(role==='manager');
+  const role=SESSION&&SESSION.role, isAdmin=(role==='admin'||role==='director'), isMgr=(role==='manager'), isSuper=(role==='admin');
   if(!(isAdmin||isMgr)){ sel.style.display='none'; return; } // super admin / director see all; managers see the companies they run
   // in sample mode the working client list is the demo one, so pull the REAL list from the backup so the selector can switch back
   const clients = (SAMPLE_MODE && SAMPLE_BACKUP) ? (SAMPLE_BACKUP.clientList||[]) : (isAdmin ? clientNames() : managedClientsForUser(SESSION));
-  const opts = clients.slice(); if(isAdmin) opts.push(SAMPLE_CLIENT); // demo option for admins/directors
+  const opts = clients.slice(); if(isSuper) opts.push(SAMPLE_CLIENT); // demo option: Super Admin only
   if(!opts.length){ sel.style.display='none'; return; }
   if(GLOBAL_CLIENT && !opts.includes(GLOBAL_CLIENT)){ GLOBAL_CLIENT=''; try{ localStorage.removeItem('tsa_global_client'); }catch(e){} }
   sel.style.display='';
-  sel.innerHTML='<option value="">All'+(isMgr?' my companies':' companies')+'</option>'+clients.map(c=>`<option>${esc(c)}</option>`).join('')+(isAdmin?`<option value="${esc(SAMPLE_CLIENT)}">${esc(SAMPLE_CLIENT)}</option>`:'');
+  sel.innerHTML='<option value="">All'+(isMgr?' my companies':' companies')+'</option>'+clients.map(c=>`<option>${esc(c)}</option>`).join('')+(isSuper?`<option value="${esc(SAMPLE_CLIENT)}">${esc(SAMPLE_CLIENT)}</option>`:'');
   sel.value=GLOBAL_CLIENT;
 }
 // with the header company selector driving scope, the per-tab client dropdowns are redundant for
