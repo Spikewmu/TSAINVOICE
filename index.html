@@ -467,6 +467,7 @@
   <div class="navgroup collapsed">
     <button class="navhead"><svg class="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5A2.5 2.5 0 016.5 3H20v15H6.5A2.5 2.5 0 004 20.5z"/><path d="M4 20.5A2.5 2.5 0 016.5 18H20v3H6.5A2.5 2.5 0 014 20.5z"/></svg><span class="nlabel">Resources &amp; Guides</span><svg class="nchev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
     <div class="navsub">
+      <button data-tab="playbook">Playbook</button>
       <button data-tab="resources">Show-Up &amp; Handoff Cadence</button>
       <button data-tab="kickoff">New-Account Kickoff</button>
       <button data-tab="webinarsop">Webinar Playbook</button>
@@ -730,8 +731,12 @@
       <div class="rrule"><span class="rk">3</span><p><b class="rem">Match the tone to the offer.</b> Casual and warm for B2C; buttoned-up and punctual for accredited or high-level B2B. Same steps, different voice.</p></div>
       <div class="rrule" style="margin-bottom:0"><span class="rk">4</span><p><b class="rem">After 9pm is fine.</b> If a message needs to go out at night, send it. Don't let the clock be the reason a call doesn't show.</p></div>
     </div>
+  </section>
 
-    <!-- ===== PLAYBOOK (SOPs by category) ===== -->
+  <!-- ===== PLAYBOOK (its own page under Resources & Guides) ===== -->
+  <section id="tab-playbook" hidden>
+    <h2 class="section">Playbook</h2>
+    <p class="hint">TSA's SOPs and standard plays, organized by category. Click a category to expand, then a page to read it.</p>
     <style>
       #playbookWrap .pbcat{border:1px solid var(--glass-brd);border-radius:12px;margin-bottom:10px;overflow:hidden;background:var(--glass)}
       #playbookWrap .pbcathead{display:flex;align-items:center;gap:10px;padding:13px 16px;cursor:pointer;user-select:none}
@@ -747,6 +752,7 @@
       #playbookWrap .pbpghead{display:flex;align-items:center;gap:10px;padding:11px 16px 11px 30px;cursor:pointer}
       #playbookWrap .pbpghead:hover{background:var(--gold-soft)}
       #playbookWrap .pbpghead .pbt{flex:1;font-weight:600;font-size:14px}
+      #playbookWrap .pbaud{flex:none;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--gold-2);background:var(--gold-soft);border:1px solid var(--border);border-radius:999px;padding:2px 8px}
       #playbookWrap .pbbody{display:none;padding:4px 16px 18px 30px;font-size:14px;line-height:1.55}
       #playbookWrap .pbpage.open .pbbody{display:block}
       #playbookWrap .pbbody h3{font-size:15px;margin:16px 0 6px;color:var(--gold-2)}
@@ -761,11 +767,8 @@
       #pbModal textarea{min-height:280px;resize:vertical;line-height:1.5;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px}
     </style>
     <div class="panel" id="playbookPanel">
-      <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px">
-        <div><h3 style="margin:0">Playbook</h3><p class="hint" style="margin:2px 0 0">TSA's SOPs and standard plays, grouped by category. Click a category, then a page.</p></div>
-        <div class="row-actions" id="pbAdminBar" hidden><button class="btn ghost sm" onclick="pbNewPage()">&#43; New page</button><button class="btn ghost sm" onclick="pbSeed()" id="pbSeedBtn">Load starter SOPs</button></div>
-      </div>
-      <div id="playbookWrap" style="margin-top:12px"></div>
+      <div class="row-actions" id="pbAdminBar" style="justify-content:flex-end;margin-bottom:10px" hidden><button class="btn ghost sm" onclick="pbNewPage()">&#43; New page</button><button class="btn ghost sm" onclick="pbSeed()" id="pbSeedBtn">Load starter SOPs</button></div>
+      <div id="playbookWrap"></div>
     </div>
   </section>
 
@@ -776,6 +779,7 @@
       <input type="hidden" id="pbEditId">
       <div class="pbfield"><label>Category</label><input id="pbCat" list="pbCatList" placeholder="e.g. No-shows, Onboarding, Objections"><datalist id="pbCatList"></datalist></div>
       <div class="pbfield"><label>Page title</label><input id="pbTitle" placeholder="e.g. No-show recovery SOP"></div>
+      <div class="pbfield"><label>Audience <span style="font-weight:400">- who this page is for</span></label><div id="pbAudBoxes" style="display:flex;flex-wrap:wrap;gap:10px 16px;padding:2px 0"></div></div>
       <div class="pbfield"><label>Content <span style="font-weight:400">- plain text. Use ## for a heading, ### for a sub-label, "- " for bullets, **bold**.</span></label><textarea id="pbBody" placeholder="Write the SOP here..."></textarea></div>
       <div class="row-actions" style="justify-content:flex-end"><button class="btn ghost sm" onclick="pbCloseModal()">Cancel</button><button class="btn gold sm" onclick="pbSavePage()">Save page</button></div>
     </div>
@@ -2792,14 +2796,14 @@ function startApp(){
 // base tabs a login TIER can see; per-account responsibilities add to this in applyNavAccess()
 function baseAllow(role){
   return ({
-    admin:['dash','halloffame','master','sample','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','dayreports','hotlist','adminreport','recruiting','messages','invoicing','payouts','repcommrates','contracts','onbaudit','ghlmap','pcfields','data','users','integrations','settings','reprequests','resources','faq','kickoff','webinarsop'],
-    director:['dash','halloffame','master','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','dailyreport','dayreports','hotlist','recruiting','messages','adminreport','contracts','onbaudit','ghlmap','pcfields','reprequests','resources','faq','kickoff','webinarsop'],
-    manager:['dash','halloffame','master','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','speedtolead','dailyreport','dayreports','hotlist','adminreport','recruiting','messages','reprequests','resources','faq','kickoff','webinarsop'],
+    admin:['dash','halloffame','master','sample','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','dayreports','hotlist','adminreport','recruiting','messages','invoicing','payouts','repcommrates','contracts','onbaudit','ghlmap','pcfields','data','users','integrations','settings','reprequests','playbook','resources','faq','kickoff','webinarsop'],
+    director:['dash','halloffame','master','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','dailyreport','dayreports','hotlist','recruiting','messages','adminreport','contracts','onbaudit','ghlmap','pcfields','reprequests','playbook','resources','faq','kickoff','webinarsop'],
+    manager:['dash','halloffame','master','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','speedtolead','dailyreport','dayreports','hotlist','adminreport','recruiting','messages','reprequests','playbook','resources','faq','kickoff','webinarsop'],
     founder:['dash','hotlist'],
-    recruiter:['dash','recruiting','messages','timeoff','reprequests','resources','faq','kickoff','webinarsop'],
-    webinarteam:['dash','meeting','promises','timeoff','webinar','resources','faq','kickoff','webinarsop'],
-    closer:['dash','halloffame','mydeals','postcall','sod','eod','training','timeoff','calllog','reps','hotlist','resources','faq','kickoff','webinarsop'],
-    setter:['dash','halloffame','mydeals','postcall','sod','eod','training','timeoff','calllog','reps','hotlist','resources','faq','kickoff','webinarsop']
+    recruiter:['dash','recruiting','messages','timeoff','reprequests','playbook','resources','faq','kickoff','webinarsop'],
+    webinarteam:['dash','meeting','promises','timeoff','webinar','playbook','resources','faq','kickoff','webinarsop'],
+    closer:['dash','halloffame','mydeals','postcall','sod','eod','training','timeoff','calllog','reps','hotlist','playbook','resources','faq','kickoff','webinarsop'],
+    setter:['dash','halloffame','mydeals','postcall','sod','eod','training','timeoff','calllog','reps','hotlist','playbook','resources','faq','kickoff','webinarsop']
   })[role] || ['eod'];
 }
 // ---- multi-role: a user can hold several roles (stored as a 'userroles' record); access = the union ----
@@ -2943,9 +2947,9 @@ function showTab(t){
   document.querySelectorAll('#tabs button[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
   document.querySelectorAll('#tabs .navgroup').forEach(g=>{ if(g.querySelector('button[data-tab="'+t+'"]')) g.classList.remove('collapsed'); }); // reveal the active tab's group
 
-  ['dash','halloffame','master','sample','mydeals','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','dayreports','hotlist','adminreport','reprequests','recruiting','messages','invoicing','payouts','repcommrates','contracts','onbaudit','ghlmap','pcfields','data','users','integrations','settings','resources','faq','kickoff','webinarsop','scorecards'].forEach(x=>{ const el=document.getElementById('tab-'+x); if(el) el.hidden = (x!==t); });
+  ['dash','halloffame','master','sample','mydeals','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','dayreports','hotlist','adminreport','reprequests','recruiting','messages','invoicing','payouts','repcommrates','contracts','onbaudit','ghlmap','pcfields','data','users','integrations','settings','playbook','resources','faq','kickoff','webinarsop','scorecards'].forEach(x=>{ const el=document.getElementById('tab-'+x); if(el) el.hidden = (x!==t); });
   // stale-while-revalidate: render instantly from the cached records, then refresh in the background
-  const render={dash:renderDash, halloffame:renderHallOfFame, master:renderMaster, sample:renderSample, mydeals:renderMyDeals, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, promises:renderPromisesTab, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, mgreodview:renderMgrEodView, contracts:renderContracts, faq:renderFaq, scorecards:renderScorecards, webinar:renderWebinars, calllog:renderCallLog, calendar:renderCalendar, speedtolead:renderSpeedToLead, dailyreport:renderDailyReport, dayreports:renderDayReports, hotlist:renderHotList, adminreport:renderAdminReport, payouts:renderPayouts, repcommrates:renderRepCommRates, reprequests:renderRepRequests, recruiting:renderRecruiting, messages:renderMessages, training:renderTraining, invoicing:renderInvoicing, data:renderAll}[t];
+  const render={dash:renderDash, halloffame:renderHallOfFame, master:renderMaster, sample:renderSample, mydeals:renderMyDeals, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, promises:renderPromisesTab, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, mgreodview:renderMgrEodView, contracts:renderContracts, faq:renderFaq, playbook:renderPlaybook, scorecards:renderScorecards, webinar:renderWebinars, calllog:renderCallLog, calendar:renderCalendar, speedtolead:renderSpeedToLead, dailyreport:renderDailyReport, dayreports:renderDayReports, hotlist:renderHotList, adminreport:renderAdminReport, payouts:renderPayouts, repcommrates:renderRepCommRates, reprequests:renderRepRequests, recruiting:renderRecruiting, messages:renderMessages, training:renderTraining, invoicing:renderInvoicing, data:renderAll}[t];
   if(render){ render(); hqApplyTooltips(); syncRecords().then(()=>{ if(currentTab()===t){ render(); hqApplyTooltips(); } buildGlobalClientSelect(); buildViewAsUserSelect(); updateNavBadges(); renderReminders(); }); }
   updateNavBadges();
   setTimeout(hqApplyTooltips,0); // catch tabs whose render runs outside the map above
@@ -2957,7 +2961,6 @@ function showTab(t){
   if(t==='ghlmap'){ renderGhlMap(); }
   if(t==='pcfields'){ renderPcFieldsTab(); }
   if(t==='sod'){ renderSodTab(); }
-  if(t==='resources'){ renderPlaybook(); }
   renderReminders();
 }
 function currentTab(){ const b=document.querySelector('#tabs button.active'); return b?b.dataset.tab:''; }
@@ -4031,11 +4034,24 @@ function pbFormat(body){
   });
   closeUl(); return html||'<p class="muted">No content yet.</p>';
 }
+// Audiences a page can target. Editors always see every page; everyone else sees "everyone" + their own audience.
+const PB_AUDIENCES=[['everyone','Everyone'],['setters','Setters'],['closers','Closers'],['managers','Managers'],['founders','Founders / clients'],['internal','Admins / internal']];
+function pbRoleAud(){ const r=SESSION&&SESSION.role; if(r==='setter') return 'setters'; if(r==='closer') return 'closers'; if(r==='manager'||r==='webinarteam') return 'managers'; if(r==='founder') return 'founders'; return 'internal'; }
+function pbAud(p){ return (Array.isArray(p.audience)&&p.audience.length)?p.audience:['everyone']; }
+function pbCanSee(p){ if(pbCanEdit()) return true; const a=pbAud(p); return a.includes('everyone')||a.includes(pbRoleAud()); }
+function pbAudLabel(p){ const a=pbAud(p); if(a.includes('everyone')) return 'Everyone'; return a.map(t=>{ const f=PB_AUDIENCES.find(x=>x[0]===t); return f?f[1]:t; }).join(', '); }
+function pbRenderAudBoxes(sel){ sel=(sel&&sel.length)?sel:['everyone']; const box=document.getElementById('pbAudBoxes'); if(!box) return; box.innerHTML=PB_AUDIENCES.map(([v,l])=>`<label style="display:inline-flex;gap:6px;align-items:center;font-size:13px;cursor:pointer"><input type="checkbox" class="pbAud" value="${v}" ${sel.includes(v)?'checked':''} onchange="pbAudSync(this)"> ${esc(l)}</label>`).join(''); }
+function pbAudSync(cb){ const boxes=[...document.querySelectorAll('#pbAudBoxes .pbAud')];
+  if(cb.value==='everyone' && cb.checked){ boxes.forEach(b=>{ if(b.value!=='everyone') b.checked=false; }); }
+  else if(cb.value!=='everyone' && cb.checked){ const e=boxes.find(b=>b.value==='everyone'); if(e) e.checked=false; }
+  if(!boxes.some(b=>b.checked)){ const e=boxes.find(b=>b.value==='everyone'); if(e) e.checked=true; }
+}
+function pbSelectedAud(){ const a=[...document.querySelectorAll('#pbAudBoxes .pbAud:checked')].map(b=>b.value); return a.length?a:['everyone']; }
 let PB_OPEN_CAT='', PB_OPEN_PAGE='';
 function renderPlaybook(){
   const wrap=document.getElementById('playbookWrap'); if(!wrap) return;
   const bar=document.getElementById('pbAdminBar'); if(bar) bar.hidden=!pbCanEdit();
-  const pages=pbPages();
+  const pages=pbPages().filter(pbCanSee);
   const cats={}; pages.forEach(p=>{ const c=(p.category||'General').trim()||'General'; (cats[c]=cats[c]||[]).push(p); });
   const catNames=Object.keys(cats).sort((a,b)=>a.localeCompare(b));
   const dl=document.getElementById('pbCatList'); if(dl) dl.innerHTML=catNames.map(c=>`<option value="${esc(c)}">`).join('');
@@ -4046,24 +4062,26 @@ function renderPlaybook(){
     const list=cats[c].sort((a,b)=>((a.order!=null?a.order:9e15)-(b.order!=null?b.order:9e15))||String(a.title||'').localeCompare(String(b.title||'')));
     return `<div class="pbcat${open?' open':''}"><div class="pbcathead" onclick="pbToggleCat('${esc(c).replace(/'/g,"\\'")}')"><span class="pbchev">&#9654;</span><h4>${esc(c)}</h4><span class="pbcount">${list.length}</span></div><div class="pbpages">`
       + list.map(p=>{ const po=(p.id===PB_OPEN_PAGE);
-        return `<div class="pbpage${po?' open':''}"><div class="pbpghead" onclick="pbTogglePage('${esc(p.id)}')"><span class="pbchev">&#9654;</span><span class="pbt">${esc(p.title||'Untitled')}</span></div><div class="pbbody">${pbFormat(p.body)}${pbCanEdit()?`<div class="pbedit"><button class="btn ghost sm" onclick="event.stopPropagation();pbEditPage('${esc(p.id)}')">Edit</button><button class="btn ghost sm" style="color:var(--warn);border-color:var(--warn)" onclick="event.stopPropagation();pbDeletePage('${esc(p.id)}')">Delete</button></div>`:''}</div></div>`;
+        const audLbl=pbAudLabel(p), audChip=(audLbl!=='Everyone')?`<span class="pbaud">${esc(audLbl)}</span>`:'';
+        return `<div class="pbpage${po?' open':''}"><div class="pbpghead" onclick="pbTogglePage('${esc(p.id)}')"><span class="pbchev">&#9654;</span><span class="pbt">${esc(p.title||'Untitled')}</span>${audChip}</div><div class="pbbody">${pbFormat(p.body)}${pbCanEdit()?`<div class="pbedit"><button class="btn ghost sm" onclick="event.stopPropagation();pbEditPage('${esc(p.id)}')">Edit</button><button class="btn ghost sm" style="color:var(--warn);border-color:var(--warn)" onclick="event.stopPropagation();pbDeletePage('${esc(p.id)}')">Delete</button></div>`:''}</div></div>`;
       }).join('') + `</div></div>`;
   }).join('');
 }
 function pbToggleCat(c){ PB_OPEN_CAT=(PB_OPEN_CAT===c)?'':c; renderPlaybook(); }
 function pbTogglePage(id){ PB_OPEN_PAGE=(PB_OPEN_PAGE===id)?'':id; renderPlaybook(); }
 function pbCloseModal(){ const m=document.getElementById('pbModal'); if(m) m.style.display='none'; }
-function pbNewPage(){ if(!pbCanEdit()) return; document.getElementById('pbModalTitle').textContent='New playbook page'; document.getElementById('pbEditId').value=''; document.getElementById('pbCat').value=(PB_OPEN_CAT||''); document.getElementById('pbTitle').value=''; document.getElementById('pbBody').value=''; document.getElementById('pbModal').style.display='flex'; setTimeout(()=>{ const t=document.getElementById('pbTitle'); if(t)t.focus(); },0); }
-function pbEditPage(id){ if(!pbCanEdit()) return; const p=pbPages().find(x=>x.id===id); if(!p) return; document.getElementById('pbModalTitle').textContent='Edit playbook page'; document.getElementById('pbEditId').value=id; document.getElementById('pbCat').value=p.category||''; document.getElementById('pbTitle').value=p.title||''; document.getElementById('pbBody').value=p.body||''; document.getElementById('pbModal').style.display='flex'; }
+function pbNewPage(){ if(!pbCanEdit()) return; document.getElementById('pbModalTitle').textContent='New playbook page'; document.getElementById('pbEditId').value=''; document.getElementById('pbCat').value=(PB_OPEN_CAT||''); document.getElementById('pbTitle').value=''; document.getElementById('pbBody').value=''; pbRenderAudBoxes(['everyone']); document.getElementById('pbModal').style.display='flex'; setTimeout(()=>{ const t=document.getElementById('pbTitle'); if(t)t.focus(); },0); }
+function pbEditPage(id){ if(!pbCanEdit()) return; const p=pbPages().find(x=>x.id===id); if(!p) return; document.getElementById('pbModalTitle').textContent='Edit playbook page'; document.getElementById('pbEditId').value=id; document.getElementById('pbCat').value=p.category||''; document.getElementById('pbTitle').value=p.title||''; document.getElementById('pbBody').value=p.body||''; pbRenderAudBoxes(pbAud(p)); document.getElementById('pbModal').style.display='flex'; }
 async function pbSavePage(){
   if(!pbCanEdit()){ toast('Admins/Directors only',true); return; }
   const id=document.getElementById('pbEditId').value||uid();
   const category=(document.getElementById('pbCat').value||'').trim()||'General';
   const title=(document.getElementById('pbTitle').value||'').trim();
   const body=document.getElementById('pbBody').value||'';
+  const audience=pbSelectedAud();
   if(!title){ toast('Give the page a title',true); return; }
   const prev=pbPages().find(x=>x.id===id); const order=prev&&prev.order!=null?prev.order:Date.now();
-  try{ await addRecord({type:'playbook', id, category, title, body, order, by:(SESSION&&SESSION.name)||''}); pbCloseModal(); PB_OPEN_PAGE=id; PB_OPEN_CAT=category; renderPlaybook(); toast('Playbook page saved'); }
+  try{ await addRecord({type:'playbook', id, category, title, body, audience, order, by:(SESSION&&SESSION.name)||''}); pbCloseModal(); PB_OPEN_PAGE=id; PB_OPEN_CAT=category; renderPlaybook(); toast('Playbook page saved'); }
   catch(e){ toast('Save failed: '+(e&&e.message||e),true); }
 }
 async function pbDeletePage(id){
@@ -4079,7 +4097,7 @@ async function pbSeed(){
   toast(added?('Loaded '+added+' starter SOP'+(added===1?'':'s')):'Starter SOPs already loaded'); renderPlaybook();
 }
 const PLAYBOOK_SEED=[
-  { category:'No-shows', order:1, title:'No-show recovery SOP', body:
+  { category:'No-shows', order:1, title:'No-show recovery SOP', audience:['setters','closers','managers'], body:
 `## Purpose
 Turn a no-show into a re-book instead of a dead lead. Own the no-show: don't complain about it, go into the thread and do something about it. A full calendar means nothing if they don't show.
 
@@ -4105,7 +4123,7 @@ Following up one more time [Name]. Still want to make this happen? Reply with a 
 - Every no-show is dispositioned in HQ and moved in GHL.
 - At least 3 recovery touches within 24 hours.
 - Rebooked calls re-enter the confirm cadence.` },
-  { category:'Onboarding', order:1, title:'The onboarding call (run-of-show)', body:
+  { category:'Onboarding', order:1, title:'The onboarding call (run-of-show)', audience:['internal','managers'], body:
 `## What this is
 The one-shot onboarding call: get TSA into every tool, show the client how we operate, and map what they already have - so we can build without pulling the founder back in.
 
