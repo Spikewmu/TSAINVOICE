@@ -775,6 +775,7 @@
       #playbookWrap .pbbody blockquote{border-left:3px solid var(--gold);margin:12px 0;padding:6px 14px;color:var(--muted)}
       #playbookWrap .pbbody ol{margin:8px 0;padding-left:22px}
       #playbookWrap .pbedit{display:flex;gap:8px;flex-wrap:wrap;margin-top:22px;padding-top:16px;border-top:1px solid var(--glass-brd)}
+      #playbookWrap .pbedittop{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap;align-self:center}
       @media(max-width:720px){#playbookWrap .pbshell{flex-direction:column}#playbookWrap .pbside{width:auto;border-right:0;border-bottom:1px solid var(--glass-brd);max-height:none}#playbookWrap .pbmain{max-height:none;padding:20px 18px}}
       #pbModal .pbfield{margin-bottom:12px}
       #pbModal .pbrow{display:grid;grid-template-columns:1fr 1fr;gap:12px}
@@ -4222,8 +4223,8 @@ function renderPlaybook(){
   ).join('');
   // reading pane
   const audLbl=pbAudLabel(active), audChip=(audLbl!=='Everyone')?`<span class="pbaud">${esc(audLbl)}</span>`:'';
-  const editBtns=pbCanEdit()?`<div class="pbedit"><button class="btn ghost sm" onclick="pbEditPage('${esc(active.id)}')">Edit page</button><button class="btn ghost sm" style="color:var(--warn);border-color:var(--warn)" onclick="pbDeletePage('${esc(active.id)}')">Delete</button></div>`:'';
-  const main=`<div class="pbdoc"><div class="pbcrumb">${esc(active.category||'General')}</div><div class="pbdochead"><h2>${esc(active.title||'Untitled')}</h2>${audChip}</div><div class="pbbody">${pbRenderBody(active.body)}</div>${editBtns}</div>`;
+  const editBtns=pbCanEdit()?`<span class="pbedittop"><button class="btn ghost sm" onclick="pbEditPage('${esc(active.id)}')">Edit page</button><button class="btn ghost sm" style="color:var(--warn);border-color:var(--warn)" onclick="pbDeletePage('${esc(active.id)}')">Delete</button></span>`:'';
+  const main=`<div class="pbdoc"><div class="pbcrumb">${esc(active.category||'General')}</div><div class="pbdochead"><h2>${esc(active.title||'Untitled')}</h2>${audChip}${editBtns}</div><div class="pbbody">${pbRenderBody(active.body)}</div></div>`;
   wrap.innerHTML=`<div class="pbshell"><nav class="pbside">${side}</nav><div class="pbmain">${main}</div></div>`;
 }
 function pbOpen(id){ PB_OPEN_PAGE=id; renderPlaybook(); const m=document.querySelector('#playbookWrap .pbmain'); if(m) m.scrollTop=0; }
@@ -4262,7 +4263,8 @@ async function pbSavePage(){
 }
 async function pbDeletePage(id){
   if(!pbCanEdit()) return; const p=pbPages().find(x=>x.id===id); if(!p) return;
-  if(!confirm('Delete "'+(p.title||'this page')+'" from the playbook?')) return;
+  const ans=prompt('This permanently deletes "'+(p.title||'this page')+'" from the playbook.\n\nType DELETE to confirm:');
+  if((ans||'').trim().toUpperCase()!=='DELETE'){ toast('Delete cancelled'); return; }
   try{ await addRecord({type:'playbook', id, category:p.category, title:p.title, body:p.body, order:p.order, deleted:true, by:(SESSION&&SESSION.name)||''}); renderPlaybook(); toast('Page deleted'); }
   catch(e){ toast('Delete failed',true); }
 }
