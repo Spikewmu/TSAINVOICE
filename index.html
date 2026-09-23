@@ -2448,7 +2448,7 @@ async function remoteGet(){
 
 /* ---------------- records ---------------- */
 let RECORDS = load(LS.data, []);
-async function syncRecords(){ const r=await remoteGet(); if(r){ RECORDS=dedupeRecords(r); cacheRecords(); } applyWsConfig(); updateWsBrand(); }
+async function syncRecords(){ if(typeof SAMPLE_MODE!=='undefined' && SAMPLE_MODE) return; const r=await remoteGet(); if(r){ RECORDS=dedupeRecords(r); cacheRecords(); } applyWsConfig(); updateWsBrand(); }
 // Collapse accidental double-submits: same rep/client/date/role and identical values,
 // submitted within 2 minutes of each other, count once. (Physical rows stay in the sheet.)
 function recSig(r){
@@ -2560,6 +2560,8 @@ function renderBilling(){
 }
 function updateWsBrand(){ const el=document.getElementById('storeTag'); if(el) el.textContent=currentWsName(); renderPlanBanner(); }
 async function addRecord(rec){
+  // Sample (demo) mode is view-only: never write demo data to the backend.
+  if(typeof SAMPLE_MODE!=='undefined' && SAMPLE_MODE){ toast('Sample mode - demo only, nothing is saved. Switch off Sample to make real changes.',true); return; }
   // "View as" (role-only preview) stays read-only. "Investigate as user" now WRITES as that user - records are attributed to them (by/rep = their name), submitted via the admin's real token.
   if(typeof VIEW_AS_REAL!=='undefined' && VIEW_AS_REAL){ toast('View-as-role is a read-only preview - changes are not saved. Exit it to make real changes.',true); return; }
   rec.id=rec.id||uid(); rec.submittedAt=new Date().toISOString(); rec.submittedET=nowET(); // respect a pre-minted id (e.g. a deal whose scheduled payments must reference it before it's written)
@@ -2896,11 +2898,13 @@ function buildGlobalClientSelect(){
   const sel=document.getElementById('gClient'); if(!sel) return;
   const role=SESSION&&SESSION.role, isAdmin=(role==='admin'||role==='director'), isMgr=(role==='manager');
   if(!(isAdmin||isMgr)){ sel.style.display='none'; return; } // super admin / director see all; managers see the companies they run
-  const clients = isAdmin ? clientNames() : managedClientsForUser(SESSION);
-  if(!clients.length){ sel.style.display='none'; return; }
-  if(GLOBAL_CLIENT && !clients.includes(GLOBAL_CLIENT)){ GLOBAL_CLIENT=''; try{ localStorage.removeItem('tsa_global_client'); }catch(e){} }
+  // in sample mode the working client list is the demo one, so pull the REAL list from the backup so the selector can switch back
+  const clients = (SAMPLE_MODE && SAMPLE_BACKUP) ? (SAMPLE_BACKUP.clientList||[]) : (isAdmin ? clientNames() : managedClientsForUser(SESSION));
+  const opts = clients.slice(); if(isAdmin) opts.push(SAMPLE_CLIENT); // demo option for admins/directors
+  if(!opts.length){ sel.style.display='none'; return; }
+  if(GLOBAL_CLIENT && !opts.includes(GLOBAL_CLIENT)){ GLOBAL_CLIENT=''; try{ localStorage.removeItem('tsa_global_client'); }catch(e){} }
   sel.style.display='';
-  sel.innerHTML='<option value="">All'+(isMgr?' my companies':' companies')+'</option>'+clients.map(c=>`<option>${esc(c)}</option>`).join('');
+  sel.innerHTML='<option value="">All'+(isMgr?' my companies':' companies')+'</option>'+clients.map(c=>`<option>${esc(c)}</option>`).join('')+(isAdmin?`<option value="${esc(SAMPLE_CLIENT)}">${esc(SAMPLE_CLIENT)}</option>`:'');
   sel.value=GLOBAL_CLIENT;
 }
 // with the header company selector driving scope, the per-tab client dropdowns are redundant for
@@ -2912,16 +2916,73 @@ function hideRedundantClientFilters(){
   });
 }
 function setGlobalClient(v){
-  GLOBAL_CLIENT=v||''; try{ GLOBAL_CLIENT?localStorage.setItem('tsa_global_client',GLOBAL_CLIENT):localStorage.removeItem('tsa_global_client'); }catch(e){}
+  v=v||'';
+  if(v===SAMPLE_CLIENT){ enterSampleMode(); } else if(SAMPLE_MODE){ exitSampleMode(); }
+  GLOBAL_CLIENT=v;
+  try{ (v && v!==SAMPLE_CLIENT)?localStorage.setItem('tsa_global_client',v):localStorage.removeItem('tsa_global_client'); }catch(e){} // never persist sample mode (its data isn't loaded on refresh)
   const sel=document.getElementById('gClient'); if(sel) sel.value=GLOBAL_CLIENT;
   const t=currentTab(); if(t) showTab(t); else renderDash(); // re-render the active tab so its per-tab client filter follows the global scope
-  toast(GLOBAL_CLIENT?('Scoped to '+GLOBAL_CLIENT):'Showing all companies');
+  toast(v===SAMPLE_CLIENT?'Sample mode - demo data only, nothing is saved':(GLOBAL_CLIENT?('Scoped to '+GLOBAL_CLIENT):'Showing all companies'));
+}
+/* ---------------- Sample (demo) mode: swap the whole app to fake data for a safe walkthrough ----------------
+   View-only: nothing writes to the backend and the real dataset is restored on exit. Reachable from the top company selector. */
+const SAMPLE_CLIENT='★ Sample (demo)';
+let SAMPLE_MODE=false, SAMPLE_BACKUP=null;
+function enterSampleMode(){
+  if(SAMPLE_MODE) return;
+  SAMPLE_BACKUP={records:RECORDS, users:USERS_CACHE, clientList:(function(){ try{ return clientNames(); }catch(e){ return []; } })()};
+  const s=buildSampleData();
+  RECORDS=s.records; USERS_CACHE=s.users; SAMPLE_MODE=true;
+}
+function exitSampleMode(){
+  if(!SAMPLE_MODE) return;
+  if(SAMPLE_BACKUP){ RECORDS=SAMPLE_BACKUP.records; USERS_CACHE=SAMPLE_BACKUP.users; }
+  SAMPLE_BACKUP=null; SAMPLE_MODE=false;
+  try{ syncRecords(); loadUsers&&loadUsers(); }catch(e){}
+}
+function buildSampleData(){
+  const C=SAMPLE_CLIENT, now=new Date().toISOString();
+  const d=n=>{ const x=new Date(); x.setDate(x.getDate()-n); return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0'); };
+  const users=[
+    {username:'demo_founder',name:'Demo Founder',role:'founder',archived:false},
+    {username:'demo_mgr',name:'Demo Manager',role:'manager',archived:false},
+    {username:'demo_jordan',name:'Jordan Ellis',role:'closer',archived:false},
+    {username:'demo_morgan',name:'Morgan Vale',role:'closer',archived:false},
+    {username:'demo_casey',name:'Casey Rowan',role:'closer',archived:false},
+    {username:'demo_riley',name:'Riley Chen',role:'setter',archived:false},
+    {username:'demo_sam',name:'Sam Okafor',role:'setter',archived:false},
+    {username:'demo_avery',name:'Avery Brooks',role:'setter',archived:false}
+  ];
+  const recs=[]; const R=o=>{ o.submittedAt=o.submittedAt||now; recs.push(o); };
+  R({type:'client',name:C,status:'active',closerMgr:'Demo Manager',setterMgr:'Demo Manager'});
+  users.forEach(u=>R({type:'team',username:u.username,teams:JSON.stringify([C])}));
+  const closers=['Jordan Ellis','Morgan Vale','Casey Rowan'], setters=['Riley Chen','Sam Okafor','Avery Brooks'];
+  [ {id:'sd1',rep:'Jordan Ellis',setter:'Riley Chen',lead:'Prospect Alpha',date:d(1),contractValue:8000,cashCollected:8000},
+    {id:'sd2',rep:'Morgan Vale',setter:'Sam Okafor',lead:'Prospect Bravo',date:d(3),contractValue:6000,cashCollected:3000},
+    {id:'sd3',rep:'Jordan Ellis',setter:'Avery Brooks',lead:'Prospect Charlie',date:d(6),contractValue:12000,cashCollected:6000},
+    {id:'sd4',rep:'Casey Rowan',setter:'Riley Chen',lead:'Prospect Delta',date:d(9),contractValue:5000,cashCollected:5000}
+  ].forEach(x=>R(Object.assign({type:'deal',client:C,role:'Closer',product:'Coaching',closedDeals:1},x)));
+  R({type:'payment',pid:'sp1',dealId:'sd2',client:C,rep:'Morgan Vale',setter:'Sam Okafor',lead:'Prospect Bravo',amount:3000,date:d(1),method:'Card',status:'pending'});
+  R({type:'payment',pid:'sp2',dealId:'sd3',client:C,rep:'Jordan Ellis',setter:'Avery Brooks',lead:'Prospect Charlie',amount:6000,date:d(2),method:'Wire',status:'confirmed'});
+  for(let i=1;i<=5;i++){
+    closers.forEach((nm,ix)=>R({type:'eod',client:C,role:'Closer',rep:nm,date:d(i),newOutreach:20+ix*3,connectedCalls:8+ix,newMeetings:4+ix,connectedMeetings:3+ix,followUpMeetings:1,noShows:1+(i%2),callCapacity:6,advancedCalls:1,closedDeals:(i===1&&ix===0)?1:0,contractValue:0,cashCollected:0,hoursDialing:2}));
+    setters.forEach((nm,ix)=>R({type:'eod',client:C,role:'Setter',rep:nm,date:d(i),newOutreach:120+ix*20,followUpOutreach:30+ix*5,connectedCalls:14+ix*2,convos4min:6+ix,callsSet:4+ix,dqs:2,hoursDialing:6}));
+  }
+  const outs=['Booked','No answer','Not interested','Follow-up booked','Won'];
+  for(let i=0;i<12;i++) R({type:'postcall',client:C,role:'Setter',rep:setters[i%3],lead:'Lead '+(i+1),date:d((i%5)+1),outcome:outs[i%outs.length],callType:'setter'});
+  for(let i=0;i<8;i++) R({type:'postcall',client:C,role:'Closer',rep:closers[i%3],lead:'Call '+(i+1),date:d((i%5)+1),outcome:i%3===0?'Won':(i%3===1?'No-show':'Follow-up booked'),callType:'closer'});
+  [ ['Prospect Echo','Jordan Ellis',d(-2),80,9000,4500,'Open','Sent proposal, deciding this week'],
+    ['Prospect Foxtrot','Morgan Vale',d(-5),60,6000,0,'Open','Needs spouse buy-in'],
+    ['Prospect Golf','Casey Rowan',d(-9),40,5000,0,'Open','Following up after webinar']
+  ].forEach((h,ix)=>R({type:'hotdeal',id:'sh'+ix,prospect:h[0],client:C,rep:h[1],closeDate:h[2],prob:h[3],revenue:h[4],cash:h[5],status:h[6],reason:h[7]}));
+  return {records:recs, users};
 }
 
 /* ---------------- selects ---------------- */
 // Rep dropdowns come from the actual user accounts (Users tab), so there's no separate list to maintain.
 let USERS_CACHE=[];
 async function loadUsers(){
+  if(typeof SAMPLE_MODE!=='undefined' && SAMPLE_MODE) return USERS_CACHE; // keep the demo roster while in sample mode
   if(SESSION && SESSION.token){ const res=await authApi({action:'listUsers', token:SESSION.token}); if(res && res.ok && res.users){ USERS_CACHE=res.users; return USERS_CACHE; } }
   if(CFG.endpoint){ try{ const res=await api({action:'listUsers', ...authFields()}); if(res&&res.users) USERS_CACHE=res.users; }catch(e){} }
   else if(!(USERS_CACHE&&USERS_CACHE.length)){ USERS_CACHE=LOCAL_USERS.map(u=>({username:u.username,name:u.name,role:u.role})); }
