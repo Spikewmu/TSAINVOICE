@@ -858,6 +858,17 @@
         <div class="row-actions" style="margin-top:10px"><button class="btn gold sm" onclick="saveBillingInfo()">Save payment details</button></div>
       </div>
       <div class="panel" style="padding:18px;max-width:760px;margin-top:16px">
+        <h3 style="margin:0 0 4px">Invoice terms &amp; late fee</h3>
+        <p class="fieldhelp" style="margin:0 0 12px">Shown on every founder invoice. Billing week is <b>Mon-Sun, invoiced Wednesday</b>. Net days sets the due date from the invoice date; the grace window is how long after the due date before a late fee applies (e.g. due Wed, grace to Fri = 2 days).</p>
+        <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px;padding:0;background:none;border:0;box-shadow:none">
+          <div class="field"><label>Payment terms (net days)</label><input type="number" id="biNetDays" min="0" step="1" placeholder="7"><span class="fieldhelp">Days from the invoice date until payment is due.</span></div>
+          <div class="field"><label>Grace period (days)</label><input type="number" id="biGraceDays" min="0" step="1" placeholder="2"><span class="fieldhelp">Days after the due date before a late fee applies.</span></div>
+          <div class="field"><label>Late fee</label><select id="biLateMode"><option value="none">No late fee</option><option value="flat">Flat amount ($)</option><option value="percent">Percent of balance (%)</option></select></div>
+          <div class="field"><label>Late fee amount</label><input type="number" id="biLateAmt" min="0" step="0.01" placeholder="0"><span class="fieldhelp">Dollar amount (flat) or percent (e.g. 5 = 5%).</span></div>
+        </div>
+        <div class="row-actions" style="margin-top:10px"><button class="btn gold sm" onclick="saveInvTerms()">Save invoice terms</button></div>
+      </div>
+      <div class="panel" style="padding:18px;max-width:760px;margin-top:16px">
         <h3 style="margin:0 0 4px">Invoice stats to show</h3>
         <p class="fieldhelp" style="margin:0 0 12px">Which performance stats appear on the founder invoice (the "Performance stats" card). Toggle any off you don't want the client to see.</p>
         <div id="invStatsBoxes" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:6px 14px"></div>
@@ -5434,6 +5445,7 @@ function renderInvoicing(){
   const bi=billingInfo()||{};
   const setv=(id,v)=>{ const el=document.getElementById(id); if(el) el.value=v||''; };
   setv('biName',bi.name); setv('biEmail',bi.email); setv('biBank',bi.bank); setv('biBankAddr',bi.bankAddr); setv('biAcct',bi.acct); setv('biAcctType',bi.acctType); setv('biRouting',bi.routing); setv('biSwift',bi.swift); setv('biReference',bi.reference); setv('biNotes',bi.notes);
+  const tm=bi.terms||{}; setv('biNetDays', tm.netDays!=null?tm.netDays:7); setv('biGraceDays', tm.graceDays!=null?tm.graceDays:2); const lmEl=document.getElementById('biLateMode'); if(lmEl) lmEl.value=tm.lateFeeMode||'none'; setv('biLateAmt', tm.lateFeeAmount!=null&&tm.lateFeeAmount!==0?tm.lateFeeAmount:'');
   const ic=document.getElementById('invClient'); if(ic) ic.value=preferGlobal(clientNames(), ic.value); // follow the global company
   renderInvStatsBoxes();
   invLoadCfg();
@@ -5467,8 +5479,20 @@ async function saveClientBilling(){
 async function saveBillingInfo(){
   if(!invAllowed()){ toast('Super Admin only',true); return; }
   const g=id=>document.getElementById(id).value.trim(), bi0=billingInfo()||{};
-  const rec={type:'billinginfo',name:g('biName'),email:g('biEmail'),bank:g('biBank'),bankAddr:g('biBankAddr'),acct:g('biAcct'),acctType:g('biAcctType'),routing:g('biRouting'),swift:g('biSwift'),reference:g('biReference'),notes:g('biNotes'),invStats:bi0.invStats||undefined,by:(SESSION&&SESSION.name)||''};
+  const rec={type:'billinginfo',name:g('biName'),email:g('biEmail'),bank:g('biBank'),bankAddr:g('biBankAddr'),acct:g('biAcct'),acctType:g('biAcctType'),routing:g('biRouting'),swift:g('biSwift'),reference:g('biReference'),notes:g('biNotes'),invStats:bi0.invStats||undefined,terms:bi0.terms||undefined,by:(SESSION&&SESSION.name)||''};
   try{ await addRecord(rec); toast('Payment details saved'); invPreview(); }
+  catch(e){ toast('Save failed: '+(e&&e.message||e),true); }
+}
+// Invoice net terms + late fee (stored on the billinginfo record; sensible defaults if unset). Shown on every invoice.
+function invTerms(){ const t=(billingInfo()||{}).terms||{}; return { netDays:t.netDays!=null?t.netDays:7, graceDays:t.graceDays!=null?t.graceDays:2, lateFeeMode:t.lateFeeMode||'none', lateFeeAmount:t.lateFeeAmount!=null?t.lateFeeAmount:0 }; }
+async function saveInvTerms(){
+  if(!invAllowed()){ toast('Super Admin only',true); return; }
+  const bi=billingInfo()||{};
+  const nd=parseInt((document.getElementById('biNetDays')||{}).value,10), gd=parseInt((document.getElementById('biGraceDays')||{}).value,10);
+  const lm=(document.getElementById('biLateMode')||{}).value||'none', la=parseFloat((document.getElementById('biLateAmt')||{}).value);
+  const terms={ netDays:isNaN(nd)?7:Math.max(0,nd), graceDays:isNaN(gd)?2:Math.max(0,gd), lateFeeMode:lm, lateFeeAmount:isNaN(la)?0:Math.max(0,la) };
+  const rec={type:'billinginfo',name:bi.name||'',email:bi.email||'',bank:bi.bank||'',bankAddr:bi.bankAddr||'',acct:bi.acct||'',acctType:bi.acctType||'',routing:bi.routing||'',swift:bi.swift||'',reference:bi.reference||'',notes:bi.notes||'',invStats:bi.invStats||undefined,terms,by:(SESSION&&SESSION.name)||''};
+  try{ await addRecord(rec); toast('Invoice terms saved'); invPreview(); }
   catch(e){ toast('Save failed: '+(e&&e.message||e),true); }
 }
 // which invoice stats show (checkbox grid in Billing settings; stored on the same billinginfo record so wire details are preserved)
@@ -5477,7 +5501,7 @@ async function saveInvStats(){
   if(!invAllowed()){ toast('Super Admin only',true); return; }
   const bi=billingInfo()||{}, invStats={};
   document.querySelectorAll('#invStatsBoxes .invStatBox').forEach(c=>{ invStats[c.dataset.k]=c.checked; });
-  const rec={type:'billinginfo',name:bi.name||'',email:bi.email||'',bank:bi.bank||'',bankAddr:bi.bankAddr||'',acct:bi.acct||'',acctType:bi.acctType||'',routing:bi.routing||'',swift:bi.swift||'',reference:bi.reference||'',notes:bi.notes||'',invStats,by:(SESSION&&SESSION.name)||''};
+  const rec={type:'billinginfo',name:bi.name||'',email:bi.email||'',bank:bi.bank||'',bankAddr:bi.bankAddr||'',acct:bi.acct||'',acctType:bi.acctType||'',routing:bi.routing||'',swift:bi.swift||'',reference:bi.reference||'',notes:bi.notes||'',invStats,terms:bi.terms||undefined,by:(SESSION&&SESSION.name)||''};
   try{ await addRecord(rec); toast('Invoice stats saved'); invPreview(); }
   catch(e){ toast('Save failed: '+(e&&e.message||e),true); }
 }
@@ -5683,7 +5707,13 @@ function genFounderInvoice(client,from,to){
   } else { noCfg=true; }
   const canOv=(typeof invAllowed==='function' && invAllowed()); // Super Admin can edit the billed amount inline on the line
   const payRef='TSA - '+client; // dynamic per-company wire reference so an incoming wire is matchable to this client (T-607)
-  try{ LAST_INVOICE={client,from,to,cashCollected,amountDue,rateDesc,deals:uniqDeals.length,payRef}; }catch(_){}
+  // Net terms + late fee (T-608): issue today, due after netDays, late fee after the grace window. Shown on the invoice.
+  const T=invTerms(), issueDate=todayLocal(), dueDate=isoOffset(issueDate,T.netDays), graceDate=isoOffset(dueDate,T.graceDays);
+  const lateFeeAmt=T.lateFeeMode==='percent'?Math.round(amountDue*(T.lateFeeAmount||0))/100:(T.lateFeeMode==='flat'?(T.lateFeeAmount||0):0);
+  let lateFeeSentence='';
+  if(T.lateFeeMode==='flat' && lateFeeAmt>0) lateFeeSentence=`A late fee of ${money(lateFeeAmt)} applies if payment is not received by ${usDate(graceDate)}.`;
+  else if(T.lateFeeMode==='percent' && (T.lateFeeAmount||0)>0) lateFeeSentence=`A late fee of ${T.lateFeeAmount}% (${money(lateFeeAmt)}) applies if payment is not received by ${usDate(graceDate)}.`;
+  try{ LAST_INVOICE={client,from,to,cashCollected,amountDue,rateDesc,deals:uniqDeals.length,payRef,issueDate,dueDate,graceDate,terms:T,lateFeeAmt}; }catch(_){}
   const slug=(client.match(/[A-Za-z0-9]+/g)||[]).map(w=>w[0]).join('').toUpperCase();
   const initials=slug.slice(0,3)||'IN', invNo=`INV-${slug.slice(0,4)||'INV'}-${to.replace(/-/g,'')}`;
   const bi=Object.assign({}, billingInfo()||{}, {reference:payRef}); // force the dynamic reference on this invoice's remit block
@@ -5743,8 +5773,8 @@ function genFounderInvoice(client,from,to){
       ${noCfg?`<div style="margin-top:10px;font-size:12px;color:#b4632a">No billing rate for this client - set the rev-share % on its Contract (Admin &rarr; Contracts), or a rate under Billing settings, to compute the amount due.</div>`:''}
       <div style="border-top:1px solid #eef1f6;margin:18px 0 12px"></div>
       <div style="margin-top:6px;padding:10px 12px;border:1px solid #e6e9ef;border-radius:10px;background:#faf7ee"><span style="font-size:11px;color:#8a93a6;text-transform:uppercase;letter-spacing:.04em;font-weight:600">Payment reference</span><div style="font-weight:800;color:#1a2b4a;font-size:15px;font-variant-numeric:tabular-nums">${esc(payRef)}</div><div style="font-size:11.5px;color:#8a93a6;margin-top:2px">Put this on the wire so we can match your payment.</div></div>
-      <div style="font-size:12px;color:#8a93a6;margin-top:14px">Notes</div>
-      <div style="font-size:13px;color:#2b3242">Net 7. Wire or ACH preferred - payment details on file. Thank you for your continued partnership.</div>
+      <div style="font-size:12px;color:#8a93a6;margin-top:14px">Payment terms</div>
+      <div style="font-size:13px;color:#2b3242">Net ${T.netDays} &middot; issued ${esc(usDate(issueDate))} &middot; <b>due ${esc(usDate(dueDate))}</b>. Wire or ACH preferred - payment details on file.${lateFeeSentence?` <span style="color:#b4632a;font-weight:600">${lateFeeSentence}</span>`:''} Thank you for your continued partnership.</div>
       ${wireLine}
     `)}
     ${card(`
