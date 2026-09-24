@@ -87,15 +87,27 @@ function invoicePdf(b) {
   y -= 10; add('Sales services provided by The Sales Agency. Thank you.', 54, y, { size: 9 });
   return buildPdf(L);
 }
+// best-effort: make the bot a member of a PUBLIC channel so file upload works without a manual /invite.
+// Needs channels:join scope. No-op/ignored for private channels (Slack has no self-join API) and if the scope is missing.
+async function slackJoinChannel(bot, channelId) {
+  try { const r = await fetch('https://slack.com/api/conversations.join', { method: 'POST', headers: { Authorization: 'Bearer ' + bot, 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ channel: channelId }) }); return await r.json(); } catch (e) { return { ok: false }; }
+}
 // upload a file to a Slack channel via files.uploadV2 (3-step). Needs a bot token with files:write + the channel_id.
 async function slackUploadFile(bot, channelId, filename, buffer, comment) {
   try {
+    await slackJoinChannel(bot, channelId); // auto-join first so we don't need a manual /invite (public channels)
     const g = await fetch('https://slack.com/api/files.getUploadURLExternal', { method: 'POST', headers: { Authorization: 'Bearer ' + bot, 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ filename, length: String(buffer.length) }) });
     const gj = await g.json(); if (!gj.ok) return { ok: false, error: 'getUploadURL: ' + gj.error };
     const form = new FormData(); form.append('file', new Blob([buffer], { type: 'application/pdf' }), filename);
     const u = await fetch(gj.upload_url, { method: 'POST', body: form }); if (!u.ok) return { ok: false, error: 'upload ' + u.status };
-    const c = await fetch('https://slack.com/api/files.completeUploadExternal', { method: 'POST', headers: { Authorization: 'Bearer ' + bot, 'Content-Type': 'application/json' }, body: JSON.stringify({ files: [{ id: gj.file_id, title: filename }], channel_id: channelId, initial_comment: comment }) });
-    const cj = await c.json(); return cj.ok ? { ok: true } : { ok: false, error: 'complete: ' + cj.error };
+    let c = await fetch('https://slack.com/api/files.completeUploadExternal', { method: 'POST', headers: { Authorization: 'Bearer ' + bot, 'Content-Type': 'application/json' }, body: JSON.stringify({ files: [{ id: gj.file_id, title: filename }], channel_id: channelId, initial_comment: comment }) });
+    let cj = await c.json();
+    if (!cj.ok && (cj.error === 'channel_not_found' || cj.error === 'not_in_channel')) { // join + retry once
+      await slackJoinChannel(bot, channelId);
+      c = await fetch('https://slack.com/api/files.completeUploadExternal', { method: 'POST', headers: { Authorization: 'Bearer ' + bot, 'Content-Type': 'application/json' }, body: JSON.stringify({ files: [{ id: gj.file_id, title: filename }], channel_id: channelId, initial_comment: comment }) });
+      cj = await c.json();
+    }
+    return cj.ok ? { ok: true } : { ok: false, error: 'complete: ' + cj.error };
   } catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
 }
 // in-app event feeds to Slack: New closed deal / Post-call checkout / Start-of-day projection (each to its own channel if set)
