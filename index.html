@@ -1339,7 +1339,7 @@
         <h3 style="margin:0">Comp &amp; net margin by account (offer)</h3>
         <button class="btn gold sm" onclick="saveAcctRates()">Save account rates</button>
       </div>
-      <p class="fieldhelp" style="margin:6px 0 12px">Per-offer comp for the <b>webinar host</b>, <b>setter manager</b> and <b>closer manager</b>. The people come from each account's responsibilities (assigned in <b>Users</b>); here you set what each earns <b>on that account</b> (e.g. Keithen 3% webinar + 3% management on Prime). A blank webinar cell = no webinar comp; a blank manager cell falls back to that manager's flat override above. <b>Net spread</b> = the client's billing % minus the whole team (setters + closers + managers + webinar), so you see the true net per offer. Super Admin only.</p>
+      <p class="fieldhelp" style="margin:6px 0 12px">Per-offer comp for the <b>setter manager</b>, <b>closer manager</b> and <b>webinar host</b>. The people come from each account's responsibilities (assigned in <b>Users</b>); here you set what each earns <b>on that account</b> (e.g. Keithen 3% webinar + 3% management on Prime). A blank webinar cell = no webinar comp; a blank manager cell falls back to that manager's flat override above. <b>Net spread</b> = the client's billing % minus the whole team (setters + closers + managers + webinar), so you see the true net per offer. Super Admin only.</p>
       <div id="rcAcctSummary" class="fieldhelp" style="margin:0 0 10px;font-size:12.5px"></div>
       <div class="tablewrap"><table id="rcAcctTable"></table></div>
     </div>
@@ -6462,12 +6462,12 @@ function renderAcctComp(){
     return `<tr>
       <td><b>${esc(c.name)}</b></td>
       <td class="num">${bill?bill+'%':'<span class="muted" title="Set the rev-share % on the Contract">TBD</span>'}</td>
-      ${cell(c.name,'web',web)}${cell(c.name,'set',sm)}${cell(c.name,'clo',cm)}
+      ${cell(c.name,'set',sm)}${cell(c.name,'clo',cm)}${cell(c.name,'web',web)}
       <td class="num muted" title="Assumes the default setter (${defS}%) + closer (${defC}%) rates">${Math.round((defS+defC)*10)/10}%</td>
       <td class="num" style="font-weight:700;color:${netColor}" title="Billing % minus setters + closers + managers + webinar">${Math.round(net*10)/10}%</td>
     </tr>`;
   }).join('');
-  t.innerHTML=`<thead><tr><th>Account</th><th class="num">Bills at</th><th>Webinar host</th><th>Setter mgr</th><th>Closer mgr</th><th class="num">Set+Close</th><th class="num">Net spread</th></tr></thead><tbody>${rows||'<tr><td colspan="7" class="muted" style="padding:14px">No active accounts.</td></tr>'}</tbody>`;
+  t.innerHTML=`<thead><tr><th>Account</th><th class="num">Bills at</th><th>Setter mgr</th><th>Closer mgr</th><th>Webinar host</th><th class="num">Set+Close</th><th class="num">Net spread</th></tr></thead><tbody>${rows||'<tr><td colspan="7" class="muted" style="padding:14px">No active accounts.</td></tr>'}</tbody>`;
   const sumBox=document.getElementById('rcAcctSummary');
   if(sumBox){ if(n){ const bAvg=sumBill/n, cAvg=sumComp/n, net=bAvg-cAvg; const r1=x=>Math.round(x*10)/10;
     sumBox.innerHTML=`Across <b>${n}</b> account${n===1?'':'s'} with a set billing rate: average billing <b>${r1(bAvg)}%</b>, average team comp <b>${r1(cAvg)}%</b> (setters+closers+managers+webinar), average <b>net spread ${r1(net)}%</b>.${thin?` Thinnest: <b>${esc(thin.client)}</b> at <b style="color:${thin.net<7?'var(--warn)':'inherit'}">${r1(thin.net)}%</b>.`:''}`;
