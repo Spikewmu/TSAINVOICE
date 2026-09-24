@@ -3021,7 +3021,7 @@ function applyIdentity(){
 /* ---------------- tabs ---------------- */
 function wireTabs(){
   document.querySelectorAll('#tabs button[data-tab]').forEach(b=>b.onclick=()=>showTab(b.dataset.tab));
-  document.querySelectorAll('#tabs .navhead').forEach(h=>h.onclick=()=>{ h.closest('.navgroup').classList.toggle('collapsed'); updateNavBadges(); });
+  document.querySelectorAll('#tabs .navhead').forEach(h=>h.onclick=()=>{ const g=h.closest('.navgroup'); const opening=g.classList.contains('collapsed'); if(opening) document.querySelectorAll('#tabs .navgroup').forEach(o=>{ if(o!==g) o.classList.add('collapsed'); }); g.classList.toggle('collapsed'); updateNavBadges(); }); // accordion: only one nav group open at a time (T-623)
 }
 // mobile drawer: hamburger toggles the nav; picking a tab auto-closes it
 function toggleNav(e){ if(e)e.stopPropagation(); const n=document.getElementById('tabs'); if(n) n.classList.toggle('navopen'); }
