@@ -373,6 +373,17 @@
     .row-actions{flex-wrap:wrap}
     .row-actions .btn{flex:1 1 auto}
   }
+  /* --- UI polish pass (T-637): tasteful micro-interactions + consistency, no layout changes --- */
+  .btn,.seg button,.pill,.teamtag,.linklike,.chip button{transition:background .15s ease,border-color .15s ease,color .15s ease,transform .08s ease,box-shadow .15s ease}
+  .btn:active,.seg button:active{transform:translateY(1px)}
+  .btn:focus-visible,.seg button:focus-visible,nav.tabs button[data-tab]:focus-visible{outline:2px solid var(--gold-2);outline-offset:2px}
+  nav.tabs button[data-tab]{transition:background .14s ease,color .14s ease,box-shadow .14s ease}
+  /* only tiles that are actually clickable react to hover, so nothing implies interactivity it doesn't have */
+  .kpi.splclk,.hlkpi.splclk,.kpi[onclick],.hlkpi[onclick]{transition:border-color .18s ease,box-shadow .18s ease,transform .18s ease}
+  .kpi.splclk:hover,.hlkpi.splclk:hover,.kpi[onclick]:hover,.hlkpi[onclick]:hover{transform:translateY(-2px);border-color:rgba(201,162,74,.4);box-shadow:var(--glass-hi),0 12px 28px -14px rgba(0,0,0,.6)}
+  /* row hover on data tables for easier scanning (skips total/detail rows) */
+  tbody tr:not(.totalrow):not(.poDetail):hover td{background:rgba(255,255,255,.028)}
+  @media(prefers-reduced-motion:reduce){*{transition:none !important;scroll-behavior:auto !important}}
 </style>
 <!-- invoice-to-PDF (Send to billing): capture the on-screen invoice exactly. Loaded deferred; used on demand only. -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" defer></script>
