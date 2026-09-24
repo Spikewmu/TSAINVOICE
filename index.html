@@ -6405,7 +6405,10 @@ function acctFnRate(client, fn){ const r=acctRateMap()[nrmName(client)+'|'+fn]; 
 // which management functions (set/clo) a person holds on a specific client, from the responsibilities matrix on the client record
 function mgrFnsOnClient(name, client){ const k=nrmName(name); const c=latestClients().find(x=>nrmName(x.name)===nrmName(client)); if(!c) return []; const out=[]; if(c.setterMgr&&nrmName(c.setterMgr)===k) out.push('set'); if(c.closerMgr&&nrmName(c.closerMgr)===k) out.push('clo'); return out; }
 // the management override % a manager earns on ONE client: sum of any per-account rates set for the functions they hold; else the flat name-level override/default
-function mgrClientRate(name, client){ const fns=mgrFnsOnClient(name, client); if(!fns.length) return null; let sum=0, hasExplicit=false; fns.forEach(fn=>{ const r=acctFnRate(client,fn); if(r!=null){ sum+=r; hasExplicit=true; } }); return hasExplicit ? sum : mgrOverrideFor(name); }
+function mgrClientRate(name, client){ const fns=mgrFnsOnClient(name, client); if(!fns.length) return null;
+  const hasSetter=acctRepRate(client,'setter')!=null; // TSA rule: no setter on the offer -> the setter manager earns nothing (a call that went ad -> closer with no setter pays no setter team)
+  const active=fns.filter(fn=> !(fn==='set' && !hasSetter)); if(!active.length) return null;
+  let sum=0, hasExplicit=false; active.forEach(fn=>{ const r=acctFnRate(client,fn); if(r!=null){ sum+=r; hasExplicit=true; } }); return hasExplicit ? sum : mgrOverrideFor(name); }
 // the rep comp % that actually applies to an account: the highest per-rep rate among the closers/setters ASSIGNED to that account (via their team scope), using each rep's real rate (Carolina 10% closer, etc.). Returns null when no rep of that role is on the account - so an account with NO setter shows 0 setter comp (T-625 fix).
 function acctRepRate(client, role){ const k=nrmName(client); let best=null;
   (USERS_CACHE||[]).forEach(u=>{ if(!u||u.archived||!u.username) return; let roles=[]; try{ roles=(typeof rolesFor==='function'?rolesFor(u.username):null)||[u.role]; }catch(e){ roles=[u.role]; } if(!roles.includes(role)) return;
@@ -6460,7 +6463,9 @@ function renderAcctComp(){
     const explicit=acctFnRate(client,fn);
     const ph=(fn==='web')?'0':(assigned?String(mgrOverrideFor(assigned)||0):'0');
     const nameLbl=assigned?esc(assigned):'<span class="muted">unassigned</span>';
-    return `<td style="min-width:140px"><div style="font-size:11.5px;color:var(--muted);margin-bottom:2px">${nameLbl}</div><input type="number" step="0.1" min="0" class="rcA" data-client="${esc(client)}" data-fn="${fn}" value="${explicit!=null?esc(explicit):''}" placeholder="${ph}" style="width:78px"> %</td>`;
+    const gated=(fn==='set' && assigned && acctRepRate(client,'setter')==null); // setter mgr with no setter on the offer earns nothing
+    const note=gated?`<div style="font-size:10px;color:var(--warn);margin-top:2px" title="No setter on this offer, so the setter manager earns nothing (not counted in the net)">no setter &rarr; not counted</div>`:'';
+    return `<td style="min-width:140px"><div style="font-size:11.5px;color:var(--muted);margin-bottom:2px">${nameLbl}</div><input type="number" step="0.1" min="0" class="rcA" data-client="${esc(client)}" data-fn="${fn}" value="${explicit!=null?esc(explicit):''}" placeholder="${ph}" style="width:78px"> %${note}</td>`;
   };
   // this-month billed cash per account, to turn the spread % into real dollars (are we actually making money?)
   const now=new Date(), mFrom=isoYMD(now.getFullYear(),now.getMonth(),1), mTo=todayLocal(), cashMap=acctBilledCash(mFrom,mTo);
@@ -6472,7 +6477,8 @@ function renderAcctComp(){
     // rep comp = the reps ACTUALLY on this account: highest closer rate (fallback default if none assigned), highest setter rate (0 when no setter is on the offer)
     const repCloRaw=acctRepRate(c.name,'closer'), repSetRaw=acctRepRate(c.name,'setter');
     const repClo=repCloRaw!=null?repCloRaw:defC, repSet=repSetRaw!=null?repSetRaw:0;
-    const teamComp=repSet+repClo+wR+sR+cR, net=bill-teamComp;
+    const sMgr=(repSetRaw!=null)?sR:0; // setter manager earns nothing when there is no setter on the offer (TSA rule)
+    const teamComp=repSet+repClo+wR+sMgr+cR, net=bill-teamComp;
     if(bill>0){ sumBill+=bill; sumComp+=teamComp; n++; if(thin===null||net<thin.net) thin={client:c.name,net}; }
     const netColor=net<0?'var(--warn)':(net<7?'#b4632a':'var(--good)');
     const scTip=`Closer ${repClo}%${repCloRaw==null?' (default - no closer assigned to this account)':''} + Setter ${repSet}%${repSetRaw==null?' (no setter on this account)':''}`;
