@@ -1331,8 +1331,17 @@
         <h3 style="margin:0">Manager overrides</h3>
         <button class="btn gold sm" onclick="saveMgrOverrides()">Save overrides</button>
       </div>
-      <p class="fieldhelp" style="margin:6px 0 12px">The override % each sales manager earns on the cash their teams collect (the accounts they manage). Blank uses the default above. Feeds the Master dashboard's net revenue.</p>
+      <p class="fieldhelp" style="margin:6px 0 12px">The override % each sales manager earns on the cash their teams collect (the accounts they manage). Blank uses the default above. This is the <b>flat, all-accounts</b> rate; to set a <b>different % per offer</b> use the account table below (it takes precedence). Feeds the Master dashboard's net revenue.</p>
       <div class="tablewrap"><table id="rcMgrTable"></table></div>
+    </div>
+    <div class="panel" style="padding:18px;margin-top:16px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px">
+        <h3 style="margin:0">Comp &amp; net margin by account (offer)</h3>
+        <button class="btn gold sm" onclick="saveAcctRates()">Save account rates</button>
+      </div>
+      <p class="fieldhelp" style="margin:6px 0 12px">Per-offer comp for the <b>webinar host</b>, <b>setter manager</b> and <b>closer manager</b>. The people come from each account's responsibilities (assigned in <b>Users</b>); here you set what each earns <b>on that account</b> (e.g. Keithen 3% webinar + 3% management on Prime). A blank webinar cell = no webinar comp; a blank manager cell falls back to that manager's flat override above. <b>Net spread</b> = the client's billing % minus the whole team (setters + closers + managers + webinar), so you see the true net per offer. Super Admin only.</p>
+      <div id="rcAcctSummary" class="fieldhelp" style="margin:0 0 10px;font-size:12.5px"></div>
+      <div class="tablewrap"><table id="rcAcctTable"></table></div>
     </div>
   </section>
 
@@ -2877,7 +2886,7 @@ function baseAllow(role){
     admin:['dash','halloffame','master','sample','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','dayreports','hotlist','adminreport','recruiting','messages','invoicing','payouts','repcommrates','contracts','onbaudit','ghlmap','pcfields','data','users','integrations','settings','reprequests','playbook','resources','faq','kickoff','webinarsop'],
     director:['dash','halloffame','master','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','dailyreport','dayreports','hotlist','recruiting','messages','adminreport','contracts','onbaudit','ghlmap','pcfields','reprequests','playbook','resources','faq','kickoff','webinarsop'],
     manager:['dash','halloffame','master','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','speedtolead','dailyreport','dayreports','hotlist','adminreport','recruiting','messages','reprequests','playbook','resources','faq','kickoff','webinarsop'],
-    founder:['dash','hotlist'],
+    founder:['dash','hotlist','faq'],
     recruiter:['dash','recruiting','messages','timeoff','reprequests','playbook','resources','faq','kickoff','webinarsop'],
     webinarteam:['dash','meeting','promises','timeoff','webinar','playbook','resources','faq','kickoff','webinarsop'],
     closer:['dash','halloffame','mydeals','postcall','sod','eod','training','timeoff','calllog','reps','hotlist','playbook','resources','faq','kickoff','webinarsop'],
@@ -4027,7 +4036,7 @@ function faqCanAsk(){ return ['admin','director','manager','webinarteam','recrui
 function faqCanAnswer(){ return ['admin','director','founder'].includes(faqRole()); }
 function faqIsAdmin(){ return ['admin','director'].includes(faqRole()); }
 // the accounts a user is scoped to (founders/reps -> their teams; admins/directors -> everything)
-function faqMyClients(){ const r=faqRole(); if(faqIsAdmin()) return clientNames(); if(['founder','closer','setter'].includes(r)){ const t=teamsFor(SESSION.username); return t.length?t:(r==='founder'&&SESSION&&SESSION.name?[SESSION.name]:[]); } const sc=dashScopeClients(); return sc||clientNames(); }
+function faqMyClients(){ const r=faqRole(); if(faqIsAdmin()) return clientNames(); if(['founder','closer','setter'].includes(r)){ const t=teamsFor(SESSION.username); if(t.length) return t; if(typeof GLOBAL_CLIENT!=='undefined'&&GLOBAL_CLIENT) return [GLOBAL_CLIENT]; return (r==='founder'&&SESSION&&SESSION.name?[SESSION.name]:[]); } const sc=dashScopeClients(); return sc||clientNames(); }
 function faqCanAnswerClient(client){ if(faqIsAdmin()) return true; if(faqRole()==='founder') return faqMyClients().some(c=>nrmName(c)===nrmName(client)); return false; }
 function faqVisible(){ const list=collapseFaq(); if(faqIsAdmin()) return list; const mine=faqMyClients().map(nrmName); return list.filter(x=>mine.includes(nrmName(x.client))); }
 function submitFaq(){ if(!faqCanAsk()){ toast('You are not able to submit questions.',true); return; } const q=(document.getElementById('faqQ').value||'').trim(), client=(document.getElementById('faqClient').value||'').trim(); if(!q){ toast('Type a question first.',true); return; } if(!client){ toast('Pick the account this is about.',true); return; } addRecord({type:'faq', id:uid(), question:q, client, status:'open', by:(SESSION&&SESSION.name)||''}).then(()=>{ document.getElementById('faqQ').value=''; toast('Question submitted - the client will answer it.'); renderFaq(); }); }
@@ -4054,9 +4063,8 @@ function renderFaq(){
   const ask=document.getElementById('faqAskPanel'); if(ask) ask.hidden=!faqCanAsk();
   const sb=document.getElementById('faqSeedSalonBtn'); if(sb) sb.style.display=faqIsAdmin()?'':'none';
   const sel=document.getElementById('faqClient'); if(sel){ const opts=faqMyClients(), cur=sel.value; sel.innerHTML=opts.map(c=>`<option>${esc(c)}</option>`).join(''); sel.value=preferGlobal(opts,cur)||(opts.includes(cur)?cur:(opts[0]||'')); }
-  let all=faqVisible();
-  // the top company selector is the single scope: pick a company to see just its FAQ; "All companies" shows everything (admin overview)
-  if(GLOBAL_CLIENT) all=all.filter(x=>nrmName(x.client)===nrmName(GLOBAL_CLIENT));
+  // Account is the single scope: when a company is picked up top, EVERYONE who can open the FAQ sees that account's FAQ (fixes the "closer view / View-as shows nothing" bug - the answered FAQ is per-account knowledge, not team-gated). "All companies" falls back to the viewer's own scope (admin = all).
+  let all = GLOBAL_CLIENT ? collapseFaq().filter(x=>nrmName(x.client)===nrmName(GLOBAL_CLIENT)) : faqVisible();
   const openBox=document.getElementById('faqOpen');
   if(openBox){ const open=all.filter(x=>x.status!=='answered').sort((a,b)=>(b.submittedAt||'').localeCompare(a.submittedAt||'')); openBox.innerHTML=open.length?open.map(faqOpenCard).join(''):'<p class="muted" style="padding:6px 2px;margin:0">No open questions.</p>'; }
   const box=document.getElementById('faqAnswered');
@@ -6389,6 +6397,15 @@ function repRate(name, role){ const o=repCommOverride(name); if(o){ const v=(rol
 // per-manager override rate (what TSA pays a sales manager on their teams' cash); falls back to the default
 function mgrOverrideFor(name){ let best=null; (RECORDS||[]).forEach(x=>{ if(x.type!=='mgroverride'||nrmName(x.name)!==nrmName(name))return; if(!best||String(x.submittedAt||'')>String(best.submittedAt||'')) best=x; }); return (best&&best.rate!=null)?Number(best.rate):(CFG.mgrOverrideRate!=null?CFG.mgrOverrideRate:0); }
 function mgrOverrideRaw(name){ let best=null; (RECORDS||[]).forEach(x=>{ if(x.type!=='mgroverride'||nrmName(x.name)!==nrmName(name))return; if(!best||String(x.submittedAt||'')>String(best.submittedAt||'')) best=x; }); return (best&&best.rate!=null)?Number(best.rate):null; } // explicit override only (blank = use default)
+// ---- Per-account (per-offer) comp for the manager-function slots: webinar host / setter mgr / closer mgr (T-625) ----
+// Record: {type:'acctrate', client, fn:'web'|'set'|'clo', rate}  (latest-wins per client+fn). Blank cell = fall back to the flat manager override; webinar has no flat fallback.
+let _acctRateCache={n:-1,m:{}};
+function acctRateMap(){ if(_acctRateCache.n!==RECORDS.length){ const m={}; (RECORDS||[]).forEach(x=>{ if(x.type!=='acctrate'||!x.client||!x.fn)return; const k=nrmName(x.client)+'|'+x.fn; if(!m[k]||String(x.submittedAt||'')>String(m[k].submittedAt||'')) m[k]=x; }); _acctRateCache={n:RECORDS.length,m}; } return _acctRateCache.m; }
+function acctFnRate(client, fn){ const r=acctRateMap()[nrmName(client)+'|'+fn]; return (r&&r.rate!=null&&r.rate!=='')?Number(r.rate):null; }
+// which management functions (set/clo) a person holds on a specific client, from the responsibilities matrix on the client record
+function mgrFnsOnClient(name, client){ const k=nrmName(name); const c=latestClients().find(x=>nrmName(x.name)===nrmName(client)); if(!c) return []; const out=[]; if(c.setterMgr&&nrmName(c.setterMgr)===k) out.push('set'); if(c.closerMgr&&nrmName(c.closerMgr)===k) out.push('clo'); return out; }
+// the management override % a manager earns on ONE client: sum of any per-account rates set for the functions they hold; else the flat name-level override/default
+function mgrClientRate(name, client){ const fns=mgrFnsOnClient(name, client); if(!fns.length) return null; let sum=0, hasExplicit=false; fns.forEach(fn=>{ const r=acctFnRate(client,fn); if(r!=null){ sum+=r; hasExplicit=true; } }); return hasExplicit ? sum : mgrOverrideFor(name); }
 function rcCanEdit(){ return !!(SESSION && SESSION.role==='admin'); }
 function renderRepCommRates(){
   const sec=document.getElementById('tab-repcommrates'); if(!sec) return;
@@ -6420,6 +6437,53 @@ function renderRepCommRates(){
     }).join('');
     mt.innerHTML=`<thead><tr><th>Manager</th><th>Accounts</th><th>Override %</th></tr></thead><tbody>${mrows||'<tr><td colspan="3" class="muted" style="padding:14px">No managers in the roster yet.</td></tr>'}</tbody>`;
   }
+  renderAcctComp();
+}
+// Per-offer comp for the webinar host / setter mgr / closer mgr + live net-margin per account (T-625 + T-631)
+function renderAcctComp(){
+  const t=document.getElementById('rcAcctTable'); if(!t) return;
+  const defS=(CFG.setterRate!=null?CFG.setterRate:3), defC=(CFG.closerRate!=null?CFG.closerRate:7);
+  const clients=latestClients().filter(c=>c && c.name && c.active!==false).sort((a,b)=>String(a.name).localeCompare(String(b.name)));
+  const effRate=(client,fn,assigned)=>{ const e=acctFnRate(client,fn); if(e!=null) return e; if(fn==='web') return 0; return assigned?(mgrOverrideFor(assigned)||0):0; };
+  const cell=(client,fn,assigned)=>{
+    const explicit=acctFnRate(client,fn);
+    const ph=(fn==='web')?'0':(assigned?String(mgrOverrideFor(assigned)||0):'0');
+    const nameLbl=assigned?esc(assigned):'<span class="muted">unassigned</span>';
+    return `<td style="min-width:140px"><div style="font-size:11.5px;color:var(--muted);margin-bottom:2px">${nameLbl}</div><input type="number" step="0.1" min="0" class="rcA" data-client="${esc(client)}" data-fn="${fn}" value="${explicit!=null?esc(explicit):''}" placeholder="${ph}" style="width:78px"> %</td>`;
+  };
+  let sumBill=0,sumComp=0,n=0,thin=null;
+  const rows=clients.map(c=>{
+    const bill=tsaBillRate(c.name)||0;
+    const web=c.webinarMgr||'', sm=c.setterMgr||'', cm=c.closerMgr||'';
+    const wR=effRate(c.name,'web',web), sR=effRate(c.name,'set',sm), cR=effRate(c.name,'clo',cm);
+    const teamComp=defS+defC+wR+sR+cR, net=bill-teamComp;
+    if(bill>0){ sumBill+=bill; sumComp+=teamComp; n++; if(thin===null||net<thin.net) thin={client:c.name,net}; }
+    const netColor=net<0?'var(--warn)':(net<7?'#b4632a':'var(--good)');
+    return `<tr>
+      <td><b>${esc(c.name)}</b></td>
+      <td class="num">${bill?bill+'%':'<span class="muted" title="Set the rev-share % on the Contract">TBD</span>'}</td>
+      ${cell(c.name,'web',web)}${cell(c.name,'set',sm)}${cell(c.name,'clo',cm)}
+      <td class="num muted" title="Assumes the default setter (${defS}%) + closer (${defC}%) rates">${Math.round((defS+defC)*10)/10}%</td>
+      <td class="num" style="font-weight:700;color:${netColor}" title="Billing % minus setters + closers + managers + webinar">${Math.round(net*10)/10}%</td>
+    </tr>`;
+  }).join('');
+  t.innerHTML=`<thead><tr><th>Account</th><th class="num">Bills at</th><th>Webinar host</th><th>Setter mgr</th><th>Closer mgr</th><th class="num">Set+Close</th><th class="num">Net spread</th></tr></thead><tbody>${rows||'<tr><td colspan="7" class="muted" style="padding:14px">No active accounts.</td></tr>'}</tbody>`;
+  const sumBox=document.getElementById('rcAcctSummary');
+  if(sumBox){ if(n){ const bAvg=sumBill/n, cAvg=sumComp/n, net=bAvg-cAvg; const r1=x=>Math.round(x*10)/10;
+    sumBox.innerHTML=`Across <b>${n}</b> account${n===1?'':'s'} with a set billing rate: average billing <b>${r1(bAvg)}%</b>, average team comp <b>${r1(cAvg)}%</b> (setters+closers+managers+webinar), average <b>net spread ${r1(net)}%</b>.${thin?` Thinnest: <b>${esc(thin.client)}</b> at <b style="color:${thin.net<7?'var(--warn)':'inherit'}">${r1(thin.net)}%</b>.`:''}`;
+  } else sumBox.textContent='Set the contract rev-share % on the Contracts page to see net spreads.'; }
+}
+async function saveAcctRates(){
+  if(!rcCanEdit()){ toast('Super Admin only',true); return; }
+  const els=document.querySelectorAll('#rcAcctTable .rcA'); let n=0;
+  try{
+    for(const el of els){ const client=el.getAttribute('data-client'), fn=el.getAttribute('data-fn'); const raw=el.value; const val=(raw===''?null:parseFloat(raw)); const cur=acctFnRate(client,fn);
+      if((cur==null&&val==null)||(cur!=null&&val!=null&&Number(cur)===Number(val))) continue;
+      await addRecord({type:'acctrate', client, fn, rate:(val==null?null:Number(val)), by:(SESSION&&SESSION.name)||''}); n++;
+    }
+    toast(n?('Saved '+n+' account rate'+(n===1?'':'s')):'No changes'); renderRepCommRates();
+    try{ if(currentTab()==='invoicing') repCommRender(); }catch(e){}
+  }catch(e){ toast('Save failed: '+((e&&e.message)||e),true); }
 }
 async function saveMgrOverrides(){
   if(!rcCanEdit()){ toast('Super Admin only',true); return; }
@@ -6492,10 +6556,12 @@ function poManagerData(from,to){
   paymentsCollapsed().filter(p=>p.status==='confirmed'&&inP(p.date)).forEach(p=>{ const c=lineBilled('p:'+String(p.pid||p.id||''),Number(p.amount)||0); if(!c)return; clientCash[p.client]=(clientCash[p.client]||0)+c; });
   const out=[];
   (USERS_CACHE||[]).forEach(u=>{ if(!u||u.archived||!u.username)return; let roles=[]; try{ roles=(typeof rolesFor==='function'?rolesFor(u.username):null)||[u.role]; }catch(e){ roles=[u.role]; } if(!roles.includes('manager'))return;
-    const name=u.name||u.username, rate=mgrOverrideFor(name); if(!rate)return;
-    let cash=0; const items=[]; managedClientsForUser(u).forEach(cl=>{ const cc=clientCash[cl]||0; if(cc>0){ cash+=cc; items.push({client:cl,cash:cc,rate}); } });
-    if(cash<=0) return;
-    out.push({rep:name, role:'manager', cash, rate, effRate:rate, commission:cash*rate/100, items});
+    const name=u.name||u.username;
+    let cash=0, commission=0; const items=[]; // per-account override rate (T-625): a manager's % can differ per offer
+    managedClientsForUser(u).forEach(cl=>{ const cc=clientCash[cl]||0; if(cc<=0) return; const rate=mgrClientRate(name,cl); if(!rate) return; cash+=cc; commission+=cc*rate/100; items.push({client:cl,cash:cc,rate}); });
+    if(commission<=0) return;
+    const eff=cash?commission/cash*100:0;
+    out.push({rep:name, role:'manager', cash, rate:Math.round(eff*10)/10, effRate:eff, commission, items});
   });
   return out.sort((a,b)=>b.commission-a.commission);
 }
@@ -7059,7 +7125,7 @@ function masterStats(from,to){
   let tsaCollected=0; try{ invPaidRecords().forEach(r=>{ const d=String(r.at||'').slice(0,10); if(d&&d>=from&&d<=to) tsaCollected+=Number(r.amount)||0; }); }catch(_){} // what TSA actually banked (invoices marked Paid, by pay date)
   let accounts=0; try{ accounts=contractsEffective().filter(c=>c.active!==false).length || clientNames().length; }catch(_){ try{ accounts=clientNames().length; }catch(e){} }
   let managerOverride=0; // per-manager: each manager's override % applied to the cash on the clients they manage
-  try{ (USERS_CACHE||[]).forEach(u=>{ if(!u||u.archived||!u.username) return; let roles=[]; try{ roles=(typeof rolesFor==='function'?rolesFor(u.username):null)||[u.role]; }catch(e){ roles=[u.role]; } if(!roles.includes('manager')) return; const rate=mgrOverrideFor(u.name||u.username); if(!rate) return; const teamCash=managedClientsForUser(u).reduce((s,c)=>s+(clientCash[c]||0),0); managerOverride+=teamCash*rate/100; }); }catch(_){}
+  try{ (USERS_CACHE||[]).forEach(u=>{ if(!u||u.archived||!u.username) return; let roles=[]; try{ roles=(typeof rolesFor==='function'?rolesFor(u.username):null)||[u.role]; }catch(e){ roles=[u.role]; } if(!roles.includes('manager')) return; const nm=u.name||u.username; managedClientsForUser(u).forEach(cl=>{ const rate=mgrClientRate(nm,cl); if(!rate) return; managerOverride+=(clientCash[cl]||0)*rate/100; }); }); }catch(_){}
   const net=tsaRevenue-commission-managerOverride;           // TSA revenue after paying setters, closers, and managers
   const outstanding=Math.max(0, tsaRevenue-tsaCollected);    // TSA revenue earned but not yet banked
   return { accounts, dials, connRate:dials?conn/dials:0, callsBooked:sets, bookingRate:conn?sets/conn:0, callsTaken:taken, showRate:(taken+noshow)?taken/(taken+noshow):0, closeRate:taken?closed/taken:0, cash, tsaRevenue, tsaCollected, outstanding, contracted, commission, managerOverride, net };
