@@ -212,6 +212,26 @@ async function eodToSlack(rec) {
 }
 // push a post-call / closed-deal disposition back to the client's GHL: find the contact by email, add a note + stamp the source.
 // Returns a status so the Integrations "Test" button can surface errors; the write path fires it and ignores failures.
+const WEBINAR_TAG = 'tsa - webinar'; // the unique GHL tag that marks a webinar-sourced lead -> pays the account's webinar host (T-627)
+// resolve a contact (by email, else name) and return its GHL tags - used to auto-detect the webinar tag on a closed deal
+async function ghlContactTags(cfg, rec) {
+  if (!cfg || !cfg.ghlApiKey) return [];
+  const key = String(cfg.ghlApiKey || ''), v2 = /^pit-/i.test(key), loc = String(cfg.ghlLocationId || '').trim();
+  if (v2 && !loc) return [];
+  const base = v2 ? 'https://services.leadconnectorhq.com' : 'https://rest.gohighlevel.com/v1';
+  const H = v2 ? { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json', Version: '2021-07-28' }
+               : { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json' };
+  const search = async (query) => {
+    const url = v2 ? base + '/contacts/?locationId=' + encodeURIComponent(loc) + '&query=' + encodeURIComponent(query)
+                   : base + '/contacts/?query=' + encodeURIComponent(query) + '&limit=5';
+    const r = await fetch(url, { headers: H }); if (!r.ok) return []; const j = await r.json().catch(() => ({})); return j.contacts || [];
+  };
+  let c = null;
+  const email = String(rec.leadEmail || rec.email || '').trim();
+  if (email) { const arr = await search(email); c = (arr || []).find(x => x && String(x.email || '').toLowerCase() === email.toLowerCase()) || (arr || [])[0] || null; }
+  if (!c) { const name = String(rec.lead || '').trim(); if (name) { const arr = await search(name); const list = (arr || []).filter(x => x && x.id); if (list.length === 1) c = list[0]; } }
+  return (c && Array.isArray(c.tags)) ? c.tags : [];
+}
 async function ghlPush(cfg, rec, contactIdOverride) {
   if (!cfg || !cfg.ghlApiKey) return { ok: false, error: 'no GHL API key set for this client' };
   try {
@@ -484,13 +504,19 @@ export default async function handler(req, res) {
       const rec = b.record || {};
       if (!rec || typeof rec !== 'object' || !rec.type) return res.status(200).json({ ok: false, error: 'record required' });
       rec.ws = callerWs; // server-authoritative workspace stamp - a client can never write into another workspace
+      // GHL config for this client (reused for the webinar-tag check + the disposition push below)
+      let gcfg = null; if (rec.type === 'deal' || rec.type === 'postcall') { try { gcfg = await integrationFor(rec.ws, rec.client); } catch (e) { } }
+      // auto-stamp webinar-lead from the unique GHL tag BEFORE saving, so the account's webinar host gets paid without anyone tagging it in HQ
+      if (rec.type === 'deal' && rec.webinarLead == null && gcfg && gcfg.ghlApiKey) {
+        try { const tags = await ghlContactTags(gcfg, rec); if (Array.isArray(tags) && tags.some(t => String(t || '').trim().toLowerCase() === WEBINAR_TAG)) rec.webinarLead = true; } catch (e) { }
+      }
       const row = { rid: rec.id || crypto.randomUUID(), type: rec.type, submitted_at: rec.submittedAt || new Date().toISOString(), data: rec };
       const r = await supa('records', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify(row) });
       if (!r.ok) { const t = await r.text(); return res.status(200).json({ ok: false, error: 'db ' + r.status + ' ' + t.slice(0, 160) }); }
       if (rec.type === 'eod' || rec.type === 'mgreod') await eodToSlack(rec); // mirror the submitted report to the client's Slack, if enabled
       else if (rec.type === 'deal' || rec.type === 'postcall' || rec.type === 'sod') await eventToSlack(rec); // New closed deal / Post-call / SOD projection feeds
-      if (rec.type === 'postcall' || rec.type === 'deal') { try { const gcfg = await integrationFor(rec.ws, rec.client); const hasFields = rec.ghlFields && Object.keys(rec.ghlFields).length; if (gcfg && gcfg.ghlApiKey && (gcfg.ghlEnabled || hasFields)) await ghlPush(gcfg, rec); } catch (e) { } } // push the disposition back to the client's GHL (paid/organic attribution loop); also fires when a post-call carries Post-Call Fields answers even if disposition-push is off
-      return res.status(200).json({ ok: true });
+      if (rec.type === 'postcall' || rec.type === 'deal') { try { const hasFields = rec.ghlFields && Object.keys(rec.ghlFields).length; if (gcfg && gcfg.ghlApiKey && (gcfg.ghlEnabled || hasFields)) await ghlPush(gcfg, rec); } catch (e) { } } // push the disposition back to the client's GHL (paid/organic attribution loop); also fires when a post-call carries Post-Call Fields answers even if disposition-push is off
+      return res.status(200).json({ ok: true, webinarLead: !!rec.webinarLead });
     }
     // ---------- RESEND a record's Slack post (e.g. a closed deal whose channel wasn't connected at submit time) ----------
     if (action === 'resendSlack') {
