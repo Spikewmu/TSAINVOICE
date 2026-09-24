@@ -1384,7 +1384,7 @@
       </div>
     </div>
     <div class="panel"><h3 style="margin:0">Contracts &amp; rev-share <span style="font-weight:400;color:var(--muted);font-size:12px">- forecast vs live actual</span></h3><div class="tablewrap" style="margin-top:10px"><table id="conTable" style="width:100%;font-size:12.5px"></table></div>
-      <p id="conNote" class="hint" style="display:none;margin:10px 14px 0">Rows marked <span class="pill warn">TBD</span> are excluded from the forecast totals until you confirm the rate. Actual TSA applies the front-end rate to live cash collected (the app does not tag front-end vs back-end payments), so treat it as an estimate.</p>
+      <p id="conNote" class="hint" style="display:none;margin:10px 14px 0">Rows marked <span class="pill warn">TBD</span> are excluded from the forecast totals until you confirm the rate. Actual TSA applies the front-end rate to live cash collected (the app does not tag front-end vs back-end payments), so treat it as an estimate. <b>Comp paid</b> = commissions + manager overrides actually attributed to that client this period (from the Payouts engine, following per-offer rates and the no-setter rule); <b>Net</b> = Actual TSA minus Comp paid = the real profit on the offer for the period.</p>
     </div>
     <div class="panel"><h3 style="margin:0">Forecasted TSA revenue by month <span style="font-weight:400;color:var(--muted);font-size:12px">- recurring forecast + scheduled outstanding payments (rev-share on money already contracted)</span></h3><div class="tablewrap" style="margin-top:10px"><table id="conForecast"></table></div></div>
   </section>
@@ -3991,7 +3991,14 @@ function renderContracts(){
   const host=document.getElementById('tab-contracts'); if(!host) return;
   const rng=conRanges()[CON_PERIOD]||conRanges().thismonth;
   const list=contractsEffective(), active=list.filter(c=>c.active!==false);
-  let fcMonth=0, actual=0, expOut=0, totCollected=0, anyTBD=false; const monthTSA={};
+  // real comp PAID out in this period (rep commissions + manager overrides from the payout engine), so Net = actual TSA revenue - what we actually paid the team
+  const cf=rng.from||'0000-01-01', ct=rng.to||'9999-12-31';
+  let repAll={closers:[],setters:[]}, mgrAll=[]; try{ repAll=repCommData(cf,ct,''); }catch(e){} try{ mgrAll=poManagerData(cf,ct); }catch(e){}
+  const compForClient=(client)=>{ const k=nrmName(client); let comp=0;
+    [...repAll.closers,...repAll.setters].forEach(o=>{ Object.keys(o.byClient||{}).forEach(cn=>{ if(nrmName(cn)===k) comp+=(o.byClient[cn]||0)*repRate(o.rep,o.role)/100; }); });
+    mgrAll.forEach(m=>{ (m.items||[]).forEach(it=>{ if(nrmName(it.client)===k) comp+=(it.cash||0)*(it.rate||0)/100; }); });
+    return comp; };
+  let fcMonth=0, actual=0, expOut=0, totCollected=0, totComp=0, totNet=0, anyTBD=false; const monthTSA={};
   const rows=list.map(c=>{
     const app=conMatchClient(c), fmo=conMonthlyForecast(c);
     if(c.active!==false) fcMonth+=fmo;
@@ -4000,6 +4007,10 @@ function renderContracts(){
     const feR=(c.feTBD||c.feRate==null)?null:(Number(c.feRate)||0);
     const act=(cash!=null&&feR!=null)?cash*feR/100:null;
     if(c.active!==false&&act!=null) actual+=act;
+    const comp=compForClient(app||c.client);
+    const net=(act!=null)?act-comp:null;
+    if(c.active!==false){ totComp+=comp; if(net!=null) totNet+=net; }
+    const netTip=act!=null?`Actual TSA ${money(act)} minus ${money(comp)} paid to reps + managers this period`:'Set a front-end rate to see net';
     // expected future income: TSA's rev-share on the client's outstanding balance + scheduled pending payments by due month
     const outstanding=conOutstanding(app), eo=(feR!=null)?outstanding*feR/100:null;
     if(c.active!==false&&eo!=null) expOut+=eo;
@@ -4013,19 +4024,21 @@ function renderContracts(){
       +`<td class="num" style="white-space:nowrap">${conRateLabel(c.beRate,c.beTBD)}${c.beMonthly?`<div class="muted" style="font-size:11px">of ${money(c.beMonthly)}/mo</div>`:''}</td>`
       +`<td class="num"><b>${money(fmo)}</b></td>`
       +`<td class="num">${act!=null?money(act):'<span class="muted">'+(app?money(0):'-')+'</span>'}</td>`
+      +`<td class="num">${comp>0?money(comp):'<span class="muted">-</span>'}</td>`
+      +`<td class="num" title="${esc(netTip)}">${net!=null?`<b style="color:${net<0?'var(--warn)':'var(--good)'}">${money(net)}</b>${act>0?`<div class="muted" style="font-size:11px">${Math.round(net/act*100)}% of TSA rev</div>`:''}`:'<span class="muted">-</span>'}</td>`
       +`<td class="num">${collected>0?'<b>'+money(collected)+'</b>':'<span class="muted">-</span>'}</td>`
       +`<td class="num" style="white-space:nowrap">${(eo!=null&&outstanding>0)?`<b>${money(eo)}</b><div class="muted" style="font-size:11px">of ${money(outstanding)} o/s</div>`:'<span class="muted">-</span>'}</td>`
       +`<td><button class="btn ghost sm" onclick="conEdit('${jsStr(c.client)}')">Edit</button></td></tr>`;
   }).join('');
-  const totalRow=`<tr style="border-top:2px solid var(--gold);font-weight:800"><td>Total <span class="muted" style="font-weight:400;font-size:11px">- active</span></td><td></td><td></td><td></td><td class="num">${money(fcMonth)}</td><td class="num">${money(actual)}</td><td class="num" style="color:var(--gold-2)">${money(totCollected)}</td><td class="num">${money(expOut)}</td><td></td></tr>`;
+  const totalRow=`<tr style="border-top:2px solid var(--gold);font-weight:800"><td>Total <span class="muted" style="font-weight:400;font-size:11px">- active</span></td><td></td><td></td><td></td><td class="num">${money(fcMonth)}</td><td class="num">${money(actual)}</td><td class="num">${money(totComp)}</td><td class="num" style="color:${totNet<0?'var(--warn)':'var(--good)'}">${money(totNet)}${actual>0?`<div class="muted" style="font-weight:400;font-size:11px">${Math.round(totNet/actual*100)}% of TSA rev</div>`:''}</td><td class="num" style="color:var(--gold-2)">${money(totCollected)}</td><td class="num">${money(expOut)}</td><td></td></tr>`;
   const months=[], d0=new Date(); d0.setDate(1);
   const firstKey=`${d0.getFullYear()}-${String(d0.getMonth()+1).padStart(2,'0')}`;
   let pastDue=0; Object.keys(monthTSA).forEach(k=>{ if(k<firstKey) pastDue+=monthTSA[k]; }); // overdue scheduled income rolls into this month
   for(let i=0;i<6;i++){ const d=new Date(d0.getFullYear(),d0.getMonth()+i,1), key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; let amt=fcMonth+(monthTSA[key]||0); if(i===0) amt+=pastDue; months.push({label:d.toLocaleString('en-US',{month:'short',year:'numeric'}), amt}); }
   const next12=fcMonth*12+expOut; // recurring for the year + all outstanding one-time income
   const card=(l,v)=>`<div class="kpi" style="flex:1;min-width:160px;display:flex;flex-direction:column"><div class="lbl" style="min-height:2.6em">${l}</div><div class="val" style="margin-top:auto">${v}</div></div>`;
-  const cards=document.getElementById('conCards'); if(cards) cards.innerHTML=card('Active contracts',active.length)+card('Forecast TSA revenue / mo',money(fcMonth))+card('Collected to date <span style="font-weight:400;font-size:11px;color:var(--muted)">(paid invoices)</span>',money(totCollected))+card('Expected TSA (outstanding)',money(expOut))+card('Actual TSA ('+esc(rng.label)+')',money(actual))+card('Next 12 mo (recurring + o/s)',money(next12));
-  const t=document.getElementById('conTable'); if(t) t.innerHTML=`<thead><tr><th>Client</th><th>Status</th><th class="num">Front-end</th><th class="num">Back-end</th><th class="num">Forecast TSA/mo</th><th class="num">Actual TSA</th><th class="num" title="What TSA has actually banked (invoices marked paid), all-time">Collected</th><th class="num">Expected (o/s)</th><th></th></tr></thead><tbody>${rows}${totalRow}</tbody>`;
+  const cards=document.getElementById('conCards'); if(cards) cards.innerHTML=card('Active contracts',active.length)+card('Forecast TSA revenue / mo',money(fcMonth))+card('Collected to date <span style="font-weight:400;font-size:11px;color:var(--muted)">(paid invoices)</span>',money(totCollected))+card('Expected TSA (outstanding)',money(expOut))+card('Actual TSA ('+esc(rng.label)+')',money(actual))+card('Net after comp ('+esc(rng.label)+')','<span style="color:'+(totNet<0?'var(--warn)':'var(--good)')+'">'+money(totNet)+'</span>')+card('Next 12 mo (recurring + o/s)',money(next12));
+  const t=document.getElementById('conTable'); if(t) t.innerHTML=`<thead><tr><th>Client</th><th>Status</th><th class="num">Front-end</th><th class="num">Back-end</th><th class="num">Forecast TSA/mo</th><th class="num">Actual TSA</th><th class="num" title="Commissions + manager overrides actually paid out this period (from Payouts)">Comp paid</th><th class="num" title="Actual TSA revenue minus comp paid this period - the real net">Net</th><th class="num" title="What TSA has actually banked (invoices marked paid), all-time">Collected</th><th class="num">Expected (o/s)</th><th></th></tr></thead><tbody>${rows}${totalRow}</tbody>`;
   const fc=document.getElementById('conForecast'); if(fc) fc.innerHTML=`<thead><tr>${months.map(m=>`<th class="num">${esc(m.label)}</th>`).join('')}<th class="num">Next 12 mo</th></tr></thead><tbody><tr>${months.map(m=>`<td class="num">${money(m.amt)}</td>`).join('')}<td class="num"><b>${money(next12)}</b></td></tr></tbody>`;
   const note=document.getElementById('conNote'); if(note) note.style.display=anyTBD?'':'none';
 }
