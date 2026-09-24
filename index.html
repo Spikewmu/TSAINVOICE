@@ -7218,9 +7218,10 @@ function masterStats(from,to){
   let accounts=0; try{ accounts=contractsEffective().filter(c=>c.active!==false).length || clientNames().length; }catch(_){ try{ accounts=clientNames().length; }catch(e){} }
   let managerOverride=0; // per-manager: each manager's override % applied to the cash on the clients they manage
   try{ (USERS_CACHE||[]).forEach(u=>{ if(!u||u.archived||!u.username) return; let roles=[]; try{ roles=(typeof rolesFor==='function'?rolesFor(u.username):null)||[u.role]; }catch(e){ roles=[u.role]; } if(!roles.includes('manager')) return; const nm=u.name||u.username; managedClientsForUser(u).forEach(cl=>{ const rate=mgrClientRate(nm,cl); if(!rate) return; managerOverride+=(clientCash[cl]||0)*rate/100; }); }); }catch(_){}
-  const net=tsaRevenue-commission-managerOverride;           // TSA revenue after paying setters, closers, and managers
+  let webinarComp=0; try{ webinarComp=poWebinarData(from,to).reduce((a,o)=>a+(o.commission||0),0); }catch(_){} // webinar-host pay on webinar-lead deals
+  const net=tsaRevenue-commission-managerOverride-webinarComp;           // TSA revenue after paying setters, closers, managers, and webinar hosts
   const outstanding=Math.max(0, tsaRevenue-tsaCollected);    // TSA revenue earned but not yet banked
-  return { accounts, dials, connRate:dials?conn/dials:0, callsBooked:sets, bookingRate:conn?sets/conn:0, callsTaken:taken, showRate:(taken+noshow)?taken/(taken+noshow):0, closeRate:taken?closed/taken:0, cash, tsaRevenue, tsaCollected, outstanding, contracted, commission, managerOverride, net };
+  return { accounts, dials, connRate:dials?conn/dials:0, callsBooked:sets, bookingRate:conn?sets/conn:0, callsTaken:taken, showRate:(taken+noshow)?taken/(taken+noshow):0, closeRate:taken?closed/taken:0, cash, tsaRevenue, tsaCollected, outstanding, contracted, commission, managerOverride, webinarComp, net };
 }
 function mSelectedMetrics(){ try{ const v=JSON.parse(localStorage.getItem('tsa_master_metrics')||'null'); if(Array.isArray(v)&&v.length) return v; }catch(_){} return MASTER_METRICS.map(x=>x.k); }
 function mSetPeriod(p){ MASTER_PERIOD=p; renderMaster(); }
