@@ -468,9 +468,6 @@
     <button class="navhead"><svg class="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5A2.5 2.5 0 016.5 3H20v15H6.5A2.5 2.5 0 004 20.5z"/><path d="M4 20.5A2.5 2.5 0 016.5 18H20v3H6.5A2.5 2.5 0 014 20.5z"/></svg><span class="nlabel">Resources &amp; Guides</span><svg class="nchev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
     <div class="navsub">
       <button data-tab="playbook">Playbook</button>
-      <button data-tab="resources">Show-Up &amp; Handoff Cadence</button>
-      <button data-tab="kickoff">New-Account Kickoff</button>
-      <button data-tab="webinarsop">Webinar Playbook</button>
       <button data-tab="faq">FAQ</button>
     </div>
   </div>
@@ -4132,6 +4129,14 @@ async function seedSalonSuites(){
 }
 /* ===== Playbook: SOPs by category in Resources & Guides (T-595). Global (TSA-wide), admin/director edit, everyone reads. ===== */
 function pbCanEdit(){ return !!(SESSION && ['admin','director'].includes(SESSION.role)); }
+// Built-in guides folded INTO the Playbook (T-628) - the standalone nav items now live in the Playbook side nav.
+// internal:true = hidden from closers/setters (New-Account Kickoff, Webinar Playbook); Show-Up & Handoff stays for everyone.
+const PB_GUIDES=[
+  {id:'guide-resources', title:'Show-Up & Handoff Cadence', src:'tab-resources', internal:false},
+  {id:'guide-kickoff', title:'New-Account Kickoff', src:'tab-kickoff', internal:true},
+  {id:'guide-webinarsop', title:'Webinar Playbook', src:'tab-webinarsop', internal:true}
+];
+function pbGuideVisible(g){ if(pbCanEdit()) return true; if(g.internal && ['closer','setter'].includes((SESSION&&SESSION.role)||'')) return false; return true; }
 function pbPages(){ const m={}; (RECORDS||[]).forEach(x=>{ if(x.type!=='playbook'||!x.id) return; if(!m[x.id]||(x.submittedAt||'')>(m[x.id].submittedAt||'')) m[x.id]=x; }); return Object.values(m).filter(x=>!x.deleted); }
 // light, safe markdown: ## heading, ### sub-label, "- " bullets, **bold**, blank line = paragraph
 function pbFormat(body){
@@ -4249,19 +4254,31 @@ function renderPlaybook(){
   const cats={}; pages.forEach(p=>{ const c=(p.category||'General').trim()||'General'; (cats[c]=cats[c]||[]).push(p); });
   const catNames=pbSortCats(Object.keys(cats));
   const dl=document.getElementById('pbCatList'); if(dl) dl.innerHTML=catNames.map(c=>`<option value="${esc(c)}">`).join('');
-  if(!catNames.length){ wrap.innerHTML='<p class="muted" style="padding:6px 2px;margin:0">No playbook pages yet.'+(pbCanEdit()?' Click <b>Load starter SOPs</b> or <b>+ New page</b>.':'')+'</p>'; return; }
+  const guides=PB_GUIDES.filter(pbGuideVisible); // built-in guides folded into the Playbook (T-628)
+  if(!catNames.length && !guides.length){ wrap.innerHTML='<p class="muted" style="padding:6px 2px;margin:0">No playbook pages yet.'+(pbCanEdit()?' Click <b>Load starter SOPs</b> or <b>+ New page</b>.':'')+'</p>'; return; }
   const ordered=c=>cats[c].sort((a,b)=>((a.order!=null?a.order:9e15)-(b.order!=null?b.order:9e15))||String(a.title||'').localeCompare(String(b.title||'')));
-  // active page: keep the current one if still visible, else first page of the first category
-  if(!PB_OPEN_PAGE || !pages.some(p=>p.id===PB_OPEN_PAGE)) PB_OPEN_PAGE=ordered(catNames[0])[0].id;
-  const active=pages.find(p=>p.id===PB_OPEN_PAGE); PB_OPEN_CAT=active.category||catNames[0];
+  const isGuide=guides.some(g=>g.id===PB_OPEN_PAGE);
+  // active page: keep the current one if still visible, else first page (or first guide when there are no pages)
+  if(!isGuide && (!PB_OPEN_PAGE || !pages.some(p=>p.id===PB_OPEN_PAGE))) PB_OPEN_PAGE = catNames.length ? ordered(catNames[0])[0].id : guides[0].id;
+  const activeGuide = guides.find(g=>g.id===PB_OPEN_PAGE);
+  const active = activeGuide ? null : pages.find(p=>p.id===PB_OPEN_PAGE);
+  if(active) PB_OPEN_CAT=active.category||catNames[0];
   // left page nav (GitBook style). Editors can drag the category headers to reorder them.
-  const side=catNames.map(c=>`<div class="pbnavcat${pbCanEdit()?' pbdrag':''}"${pbCanEdit()?` draggable="true" data-cat="${esc(c)}" ondragstart="pbCatDragStart(event,this.dataset.cat)" ondragover="pbCatDragOver(event)" ondragleave="pbCatDragLeave(event)" ondrop="pbCatDrop(event,this.dataset.cat)" title="Drag to reorder"`:''}>${pbCanEdit()?'<span class="pbgrip">&#8942;&#8942;</span>':''}<span style="flex:1">${esc(c)}</span>${pbCanEdit()?`<span class="pbcatedit" onclick="event.stopPropagation();pbRenameCat(this.closest('.pbnavcat').dataset.cat)" title="Rename category">&#9998;</span>`:''}</div>`
+  const catSide=catNames.map(c=>`<div class="pbnavcat${pbCanEdit()?' pbdrag':''}"${pbCanEdit()?` draggable="true" data-cat="${esc(c)}" ondragstart="pbCatDragStart(event,this.dataset.cat)" ondragover="pbCatDragOver(event)" ondragleave="pbCatDragLeave(event)" ondrop="pbCatDrop(event,this.dataset.cat)" title="Drag to reorder"`:''}>${pbCanEdit()?'<span class="pbgrip">&#8942;&#8942;</span>':''}<span style="flex:1">${esc(c)}</span>${pbCanEdit()?`<span class="pbcatedit" onclick="event.stopPropagation();pbRenameCat(this.closest('.pbnavcat').dataset.cat)" title="Rename category">&#9998;</span>`:''}</div>`
     + ordered(c).map(p=>`<div class="pbnavlink${p.id===PB_OPEN_PAGE?' on':''}" onclick="pbOpen('${esc(p.id)}')">${esc(p.title||'Untitled')}</div>`).join('')
   ).join('');
+  const guideSide=guides.length?`<div class="pbnavcat"><span style="flex:1">Guides</span></div>`+guides.map(g=>`<div class="pbnavlink${g.id===PB_OPEN_PAGE?' on':''}" onclick="pbOpen('${g.id}')">${esc(g.title)}</div>`).join(''):'';
+  const side=catSide+guideSide;
   // reading pane
-  const audLbl=pbAudLabel(active), audChip=(audLbl!=='Everyone')?`<span class="pbaud">${esc(audLbl)}</span>`:'';
-  const editBtns=pbCanEdit()?`<span class="pbedittop"><button class="btn ghost sm" onclick="pbEditPage('${esc(active.id)}')">Edit page</button><button class="btn ghost sm" style="color:var(--warn);border-color:var(--warn)" onclick="pbDeletePage('${esc(active.id)}')">Delete</button></span>`:'';
-  const main=`<div class="pbdoc"><div class="pbcrumb">${esc(active.category||'General')}</div><div class="pbdochead"><h2>${esc(active.title||'Untitled')}</h2>${audChip}${editBtns}</div><div class="pbbody">${pbRenderBody(active.body)}</div></div>`;
+  let main;
+  if(activeGuide){
+    const srcEl=document.getElementById(activeGuide.src); const inner=srcEl?srcEl.innerHTML:'<p class="muted">This guide could not be loaded.</p>';
+    main=`<div class="pbdoc pbguide"><div class="pbcrumb">Guides</div>${inner}</div>`;
+  } else {
+    const audLbl=pbAudLabel(active), audChip=(audLbl!=='Everyone')?`<span class="pbaud">${esc(audLbl)}</span>`:'';
+    const editBtns=pbCanEdit()?`<span class="pbedittop"><button class="btn ghost sm" onclick="pbEditPage('${esc(active.id)}')">Edit page</button><button class="btn ghost sm" style="color:var(--warn);border-color:var(--warn)" onclick="pbDeletePage('${esc(active.id)}')">Delete</button></span>`:'';
+    main=`<div class="pbdoc"><div class="pbcrumb">${esc(active.category||'General')}</div><div class="pbdochead"><h2>${esc(active.title||'Untitled')}</h2>${audChip}${editBtns}</div><div class="pbbody">${pbRenderBody(active.body)}</div></div>`;
+  }
   wrap.innerHTML=`<div class="pbshell"><nav class="pbside">${side}</nav><div class="pbmain">${main}</div></div>`;
 }
 function pbOpen(id){ PB_OPEN_PAGE=id; renderPlaybook(); const m=document.querySelector('#playbookWrap .pbmain'); if(m) m.scrollTop=0; }
