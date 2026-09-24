@@ -6406,6 +6406,12 @@ function acctFnRate(client, fn){ const r=acctRateMap()[nrmName(client)+'|'+fn]; 
 function mgrFnsOnClient(name, client){ const k=nrmName(name); const c=latestClients().find(x=>nrmName(x.name)===nrmName(client)); if(!c) return []; const out=[]; if(c.setterMgr&&nrmName(c.setterMgr)===k) out.push('set'); if(c.closerMgr&&nrmName(c.closerMgr)===k) out.push('clo'); return out; }
 // the management override % a manager earns on ONE client: sum of any per-account rates set for the functions they hold; else the flat name-level override/default
 function mgrClientRate(name, client){ const fns=mgrFnsOnClient(name, client); if(!fns.length) return null; let sum=0, hasExplicit=false; fns.forEach(fn=>{ const r=acctFnRate(client,fn); if(r!=null){ sum+=r; hasExplicit=true; } }); return hasExplicit ? sum : mgrOverrideFor(name); }
+// the rep comp % that actually applies to an account: the highest per-rep rate among the closers/setters ASSIGNED to that account (via their team scope), using each rep's real rate (Carolina 10% closer, etc.). Returns null when no rep of that role is on the account - so an account with NO setter shows 0 setter comp (T-625 fix).
+function acctRepRate(client, role){ const k=nrmName(client); let best=null;
+  (USERS_CACHE||[]).forEach(u=>{ if(!u||u.archived||!u.username) return; let roles=[]; try{ roles=(typeof rolesFor==='function'?rolesFor(u.username):null)||[u.role]; }catch(e){ roles=[u.role]; } if(!roles.includes(role)) return;
+    let teams=[]; try{ teams=teamsFor(u.username)||[]; }catch(e){} if(!teams.map(nrmName).includes(k)) return;
+    const r=repRate(u.name||u.username, role); if(best===null||r>best) best=r; });
+  return best; }
 function rcCanEdit(){ return !!(SESSION && SESSION.role==='admin'); }
 function renderRepCommRates(){
   const sec=document.getElementById('tab-repcommrates'); if(!sec) return;
@@ -6456,14 +6462,18 @@ function renderAcctComp(){
     const bill=tsaBillRate(c.name)||0;
     const web=c.webinarMgr||'', sm=c.setterMgr||'', cm=c.closerMgr||'';
     const wR=effRate(c.name,'web',web), sR=effRate(c.name,'set',sm), cR=effRate(c.name,'clo',cm);
-    const teamComp=defS+defC+wR+sR+cR, net=bill-teamComp;
+    // rep comp = the reps ACTUALLY on this account: highest closer rate (fallback default if none assigned), highest setter rate (0 when no setter is on the offer)
+    const repCloRaw=acctRepRate(c.name,'closer'), repSetRaw=acctRepRate(c.name,'setter');
+    const repClo=repCloRaw!=null?repCloRaw:defC, repSet=repSetRaw!=null?repSetRaw:0;
+    const teamComp=repSet+repClo+wR+sR+cR, net=bill-teamComp;
     if(bill>0){ sumBill+=bill; sumComp+=teamComp; n++; if(thin===null||net<thin.net) thin={client:c.name,net}; }
     const netColor=net<0?'var(--warn)':(net<7?'#b4632a':'var(--good)');
+    const scTip=`Closer ${repClo}%${repCloRaw==null?' (default - no closer assigned to this account)':''} + Setter ${repSet}%${repSetRaw==null?' (no setter on this account)':''}`;
     return `<tr>
       <td><b>${esc(c.name)}</b></td>
       <td class="num">${bill?bill+'%':'<span class="muted" title="Set the rev-share % on the Contract">TBD</span>'}</td>
       ${cell(c.name,'set',sm)}${cell(c.name,'clo',cm)}${cell(c.name,'web',web)}
-      <td class="num muted" title="Assumes the default setter (${defS}%) + closer (${defC}%) rates">${Math.round((defS+defC)*10)/10}%</td>
+      <td class="num muted" title="${esc(scTip)}">${Math.round((repSet+repClo)*10)/10}%</td>
       <td class="num" style="font-weight:700;color:${netColor}" title="Billing % minus setters + closers + managers + webinar">${Math.round(net*10)/10}%</td>
     </tr>`;
   }).join('');
