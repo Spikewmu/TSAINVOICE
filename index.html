@@ -6412,6 +6412,11 @@ function acctRepRate(client, role){ const k=nrmName(client); let best=null;
     let teams=[]; try{ teams=teamsFor(u.username)||[]; }catch(e){} if(!teams.map(nrmName).includes(k)) return;
     const r=repRate(u.name||u.username, role); if(best===null||r>best) best=r; });
   return best; }
+// billed cash collected per client within a date range (same basis the invoices bill on), for the profitability overview (T-631)
+function acctBilledCash(from,to){ const inP=d=>{ d=String(d||'').slice(0,10); return d && d>=from && d<=to; }; const map={}, seen={};
+  (RECORDS||[]).filter(x=>x.type==='deal'&&inP(x.date)).forEach(d=>{ const id=String(d.id||''); if(id&&seen[id])return; if(id)seen[id]=1; const c=lineBilled('d:'+id,Number(d.cashCollected)||0); if(!c)return; map[d.client]=(map[d.client]||0)+c; });
+  paymentsCollapsed().filter(p=>p.status==='confirmed'&&inP(p.date)).forEach(p=>{ const c=lineBilled('p:'+String(p.pid||p.id||''),Number(p.amount)||0); if(!c)return; map[p.client]=(map[p.client]||0)+c; });
+  return map; }
 function rcCanEdit(){ return !!(SESSION && SESSION.role==='admin'); }
 function renderRepCommRates(){
   const sec=document.getElementById('tab-repcommrates'); if(!sec) return;
@@ -6457,7 +6462,9 @@ function renderAcctComp(){
     const nameLbl=assigned?esc(assigned):'<span class="muted">unassigned</span>';
     return `<td style="min-width:140px"><div style="font-size:11.5px;color:var(--muted);margin-bottom:2px">${nameLbl}</div><input type="number" step="0.1" min="0" class="rcA" data-client="${esc(client)}" data-fn="${fn}" value="${explicit!=null?esc(explicit):''}" placeholder="${ph}" style="width:78px"> %</td>`;
   };
-  let sumBill=0,sumComp=0,n=0,thin=null;
+  // this-month billed cash per account, to turn the spread % into real dollars (are we actually making money?)
+  const now=new Date(), mFrom=isoYMD(now.getFullYear(),now.getMonth(),1), mTo=todayLocal(), cashMap=acctBilledCash(mFrom,mTo);
+  let sumBill=0,sumComp=0,n=0,thin=null, totRev=0,totComp$=0,totNet$=0, anyCash=false;
   const rows=clients.map(c=>{
     const bill=tsaBillRate(c.name)||0;
     const web=c.webinarMgr||'', sm=c.setterMgr||'', cm=c.closerMgr||'';
@@ -6469,18 +6476,26 @@ function renderAcctComp(){
     if(bill>0){ sumBill+=bill; sumComp+=teamComp; n++; if(thin===null||net<thin.net) thin={client:c.name,net}; }
     const netColor=net<0?'var(--warn)':(net<7?'#b4632a':'var(--good)');
     const scTip=`Closer ${repClo}%${repCloRaw==null?' (default - no closer assigned to this account)':''} + Setter ${repSet}%${repSetRaw==null?' (no setter on this account)':''}`;
+    // dollars this month
+    const cash=cashMap[c.name]||0; const rev=cash*bill/100, comp$=cash*teamComp/100, net$=rev-comp$;
+    if(cash>0){ anyCash=true; totRev+=rev; totComp$+=comp$; totNet$+=net$; }
+    const dTip=cash>0?`Billed cash ${money(cash)} x net ${Math.round(net*10)/10}%  (TSA bills ${money(rev)}, pays ${money(comp$)} comp)`:'No billed cash this month';
     return `<tr>
       <td><b>${esc(c.name)}</b></td>
       <td class="num">${bill?bill+'%':'<span class="muted" title="Set the rev-share % on the Contract">TBD</span>'}</td>
       ${cell(c.name,'set',sm)}${cell(c.name,'clo',cm)}${cell(c.name,'web',web)}
       <td class="num muted" title="${esc(scTip)}">${Math.round((repSet+repClo)*10)/10}%</td>
       <td class="num" style="font-weight:700;color:${netColor}" title="Billing % minus setters + closers + managers + webinar">${Math.round(net*10)/10}%</td>
+      <td class="num" title="${esc(dTip)}">${cash>0?`<span style="font-weight:700;color:${net$<0?'var(--warn)':'var(--good)'}">${money(net$)}</span>`:'<span class="muted">-</span>'}</td>
     </tr>`;
   }).join('');
-  t.innerHTML=`<thead><tr><th>Account</th><th class="num">Bills at</th><th>Setter mgr</th><th>Closer mgr</th><th>Webinar host</th><th class="num">Set+Close</th><th class="num">Net spread</th></tr></thead><tbody>${rows||'<tr><td colspan="7" class="muted" style="padding:14px">No active accounts.</td></tr>'}</tbody>`;
+  const totRow=anyCash?`<tr class="totalrow" style="font-weight:700;border-top:2px solid var(--border)"><td>TOTAL</td><td colspan="5" class="muted" style="font-weight:400;font-size:11.5px">TSA bills ${money(totRev)} &middot; pays ${money(totComp$)} comp this month</td><td class="num">net ${Math.round((totRev?totNet$/totRev*100:0)*10)/10}%</td><td class="num" style="color:${totNet$<0?'var(--warn)':'var(--good)'}">${money(totNet$)}</td></tr>`:'';
+  t.innerHTML=`<thead><tr><th>Account</th><th class="num">Bills at</th><th>Setter mgr</th><th>Closer mgr</th><th>Webinar host</th><th class="num">Set+Close</th><th class="num">Net spread</th><th class="num">Net $ (mo)</th></tr></thead><tbody>${rows||'<tr><td colspan="8" class="muted" style="padding:14px">No active accounts.</td></tr>'}${totRow}</tbody>`;
   const sumBox=document.getElementById('rcAcctSummary');
   if(sumBox){ if(n){ const bAvg=sumBill/n, cAvg=sumComp/n, net=bAvg-cAvg; const r1=x=>Math.round(x*10)/10;
-    sumBox.innerHTML=`Across <b>${n}</b> account${n===1?'':'s'} with a set billing rate: average billing <b>${r1(bAvg)}%</b>, average team comp <b>${r1(cAvg)}%</b> (setters+closers+managers+webinar), average <b>net spread ${r1(net)}%</b>.${thin?` Thinnest: <b>${esc(thin.client)}</b> at <b style="color:${thin.net<7?'var(--warn)':'inherit'}">${r1(thin.net)}%</b>.`:''}`;
+    const pctLine=`Across <b>${n}</b> account${n===1?'':'s'} with a set billing rate: average billing <b>${r1(bAvg)}%</b>, average team comp <b>${r1(cAvg)}%</b> (setters+closers+managers+webinar), average <b>net spread ${r1(net)}%</b>.${thin?` Thinnest: <b>${esc(thin.client)}</b> at <b style="color:${thin.net<7?'var(--warn)':'inherit'}">${r1(thin.net)}%</b>.`:''}`;
+    const dollarLine=anyCash?`<div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border)">This month so far, TSA bills <b>${money(totRev)}</b>, pays <b>${money(totComp$)}</b> in team comp, and <b style="color:${totNet$<0?'var(--warn)':'var(--good)'}">${totNet$<0?'LOSES':'nets'} ${money(Math.abs(totNet$))}</b>${totRev?` (${r1(totNet$/totRev*100)}% of what we bill)`:''}. <span style="font-size:11px">Comp shown on the billed base; real gross comp is slightly higher after processing fees.</span></div>`:'<div style="margin-top:6px;font-size:11.5px" class="muted">No billed cash recorded this month yet - dollar view fills in as deals/payments come in.</div>';
+    sumBox.innerHTML=pctLine+dollarLine;
   } else sumBox.textContent='Set the contract rev-share % on the Contracts page to see net spreads.'; }
 }
 async function saveAcctRates(){
