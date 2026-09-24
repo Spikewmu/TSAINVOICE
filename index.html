@@ -3994,10 +3994,10 @@ function renderContracts(){
   // real comp PAID out in this period (rep commissions + manager overrides from the payout engine), so Net = actual TSA revenue - what we actually paid the team
   const cf=rng.from||'0000-01-01', ct=rng.to||'9999-12-31';
   let repAll={closers:[],setters:[]}, mgrAll=[]; try{ repAll=repCommData(cf,ct,''); }catch(e){} try{ mgrAll=poManagerData(cf,ct); }catch(e){}
-  const compForClient=(client)=>{ const k=nrmName(client); let comp=0;
-    [...repAll.closers,...repAll.setters].forEach(o=>{ Object.keys(o.byClient||{}).forEach(cn=>{ if(nrmName(cn)===k) comp+=(o.byClient[cn]||0)*repRate(o.rep,o.role)/100; }); });
-    mgrAll.forEach(m=>{ (m.items||[]).forEach(it=>{ if(nrmName(it.client)===k) comp+=(it.cash||0)*(it.rate||0)/100; }); });
-    return comp; };
+  const compForClient=(client)=>{ const k=nrmName(client); let total=0; const items=[];
+    [...repAll.closers,...repAll.setters].forEach(o=>{ let cc=0; Object.keys(o.byClient||{}).forEach(cn=>{ if(nrmName(cn)===k) cc+=(o.byClient[cn]||0); }); if(cc>0){ const amt=cc*repRate(o.rep,o.role)/100; if(amt>0.005){ total+=amt; items.push({who:o.rep, role:o.role, amt}); } } });
+    mgrAll.forEach(m=>{ let a=0; (m.items||[]).forEach(it=>{ if(nrmName(it.client)===k) a+=(it.cash||0)*(it.rate||0)/100; }); if(a>0.005){ total+=a; items.push({who:m.rep, role:'manager override', amt:a}); } });
+    return {total, items:items.sort((a,b)=>b.amt-a.amt)}; };
   let fcMonth=0, actual=0, expOut=0, totCollected=0, totComp=0, totNet=0, anyTBD=false; const monthTSA={};
   const rows=list.map(c=>{
     const app=conMatchClient(c), fmo=conMonthlyForecast(c);
@@ -4007,10 +4007,12 @@ function renderContracts(){
     const feR=(c.feTBD||c.feRate==null)?null:(Number(c.feRate)||0);
     const act=(cash!=null&&feR!=null)?cash*feR/100:null;
     if(c.active!==false&&act!=null) actual+=act;
-    const comp=compForClient(app||c.client);
+    const cb=compForClient(app||c.client), comp=cb.total;
     const net=(act!=null)?act-comp:null;
     if(c.active!==false){ totComp+=comp; if(net!=null) totNet+=net; }
-    const netTip=act!=null?`Actual TSA ${money(act)} minus ${money(comp)} paid to reps + managers this period`:'Set a front-end rate to see net';
+    const bd=cb.items.length?cb.items.map(it=>`  ${esc(it.who)} (${it.role}): ${money(it.amt)}`).join('&#10;'):'  none paid this period';
+    const compTip=`Paid this period:&#10;${bd}`;
+    const netTip=act!=null?`Actual TSA ${money(act)}&#10;minus comp ${money(comp)}:&#10;${bd}&#10;= Net ${money(net)}`:'Set a front-end rate to see net';
     // expected future income: TSA's rev-share on the client's outstanding balance + scheduled pending payments by due month
     const outstanding=conOutstanding(app), eo=(feR!=null)?outstanding*feR/100:null;
     if(c.active!==false&&eo!=null) expOut+=eo;
@@ -4024,8 +4026,8 @@ function renderContracts(){
       +`<td class="num" style="white-space:nowrap">${conRateLabel(c.beRate,c.beTBD)}${c.beMonthly?`<div class="muted" style="font-size:11px">of ${money(c.beMonthly)}/mo</div>`:''}</td>`
       +`<td class="num"><b>${money(fmo)}</b></td>`
       +`<td class="num">${act!=null?money(act):'<span class="muted">'+(app?money(0):'-')+'</span>'}</td>`
-      +`<td class="num">${comp>0?money(comp):'<span class="muted">-</span>'}</td>`
-      +`<td class="num" title="${esc(netTip)}">${net!=null?`<b style="color:${net<0?'var(--warn)':'var(--good)'}">${money(net)}</b>${act>0?`<div class="muted" style="font-size:11px">${Math.round(net/act*100)}% of TSA rev</div>`:''}`:'<span class="muted">-</span>'}</td>`
+      +`<td class="num" title="${compTip}">${comp>0?`${money(comp)} <span class="muted" style="font-size:10px">&#9432;</span>`:'<span class="muted">-</span>'}</td>`
+      +`<td class="num" title="${netTip}">${net!=null?`<b style="color:${net<0?'var(--warn)':'var(--good)'}">${money(net)}</b>${act>0?`<div class="muted" style="font-size:11px">${Math.round(net/act*100)}% of TSA rev</div>`:''}`:'<span class="muted">-</span>'}</td>`
       +`<td class="num">${collected>0?'<b>'+money(collected)+'</b>':'<span class="muted">-</span>'}</td>`
       +`<td class="num" style="white-space:nowrap">${(eo!=null&&outstanding>0)?`<b>${money(eo)}</b><div class="muted" style="font-size:11px">of ${money(outstanding)} o/s</div>`:'<span class="muted">-</span>'}</td>`
       +`<td><button class="btn ghost sm" onclick="conEdit('${jsStr(c.client)}')">Edit</button></td></tr>`;
