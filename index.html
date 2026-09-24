@@ -10149,7 +10149,7 @@ function renderEodRouting(){
     </div>
     <p class="fieldhelp" style="margin:8px 0 0">Closers ranked by cash (cash, deals, close %) and setters (dials, sets, cash) for this month, into this team's leadership channel.</p>
     <div style="border-top:1px solid var(--border);margin:14px 0 10px"></div>
-    <div style="max-width:640px"><div class="field"><label>Invoicing channel <span class="muted" style="font-weight:400">- where the "Send to billing" button posts a generated invoice</span></label>${slackField('evInvoicing',c.invoicing,`'config','','invoicing'`,'invoicing','Invoicing',(c.chan||{}).invoicing)}</div></div>
+    <div style="max-width:640px"><div class="field"><label>Invoicing channel <span class="muted" style="font-weight:400">- where the "Send to billing" button posts a generated invoice</span></label>${slackField('evInvoicing',c.invoicing,`'config','','invoicing'`,'invoicing','Invoicing',(c.chan||{}).invoicing)}${c.invoicing?('<span class="fieldhelp" style="margin-top:6px;display:block">'+(c.invoicingPdf?'<span class="pill good">&#10003; PDF attach ready</span>':'<span class="pill" style="color:var(--warn);border-color:var(--warn)">Text only</span> - the invoice PDF cannot attach on a pasted webhook. Use <b>Connect Slack</b> above (grants file access) to attach the PDF.')+'</span>'):''}</div></div>
     <div class="row-actions" style="margin-top:12px"><button class="btn gold sm" onclick="integSaveEod()">Save routing</button></div>`;
   const eod=document.getElementById('integEodRep');
   if(eod) eod.innerHTML=`
