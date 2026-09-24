@@ -953,6 +953,7 @@
           <button class="btn ghost sm" onclick="invThisWeek()">Last week (Mon-Sun)</button>
           <button class="btn ghost sm" onclick="invCurrentWeek()">Current week</button>
           <button class="btn ghost sm" onclick="invPrevWeek()">&#8592; Previous week</button>
+          <button class="btn ghost sm" onclick="invNextWeek()">Next week &#8594;</button>
           <button class="btn ghost sm" onclick="invPrint()">&#128424; Print / save PDF</button>
           <button class="btn ghost sm" id="invSendBtn" onclick="invSendToBilling()">&#128228; Send to billing</button>
           <button class="btn ghost sm" id="invPaidBtn" onclick="invMarkPaid()">&#10003; Mark paid</button>
@@ -5915,7 +5916,14 @@ function invThisWeek(){ const bw=billingWeek(); document.getElementById('invFrom
 // the in-progress Mon-Sun week (this week, not yet closed): from = Monday of the current week, to = that Sunday
 function currentWeek(ref){ const d=ref?new Date(ref):new Date(); const back=(d.getDay()+6)%7; const from=new Date(d); from.setDate(d.getDate()-back); const to=new Date(from); to.setDate(from.getDate()+6); return {from:isoLocal(from), to:isoLocal(to)}; }
 function invCurrentWeek(){ const cw=currentWeek(); document.getElementById('invFrom').value=cw.from; document.getElementById('invTo').value=cw.to; invPreview(); }
-function invPrevWeek(){ const f=document.getElementById('invFrom').value; const ref=f?new Date(f+'T00:00:00'):new Date(); ref.setDate(ref.getDate()-7); const bw=billingWeek(ref); document.getElementById('invFrom').value=bw.from; document.getElementById('invTo').value=bw.to; invPreview(); }
+function invPrevWeek(){ const fe=document.getElementById('invFrom'), te=document.getElementById('invTo'); const f=fe.value, t=te.value;
+  if(f&&t){ const from=new Date(f+'T00:00:00'), to=new Date(t+'T00:00:00'); from.setDate(from.getDate()-7); to.setDate(to.getDate()-7); fe.value=isoLocal(from); te.value=isoLocal(to); } // shift the shown week back exactly 7 days (no double-shift)
+  else { const bw=billingWeek(); fe.value=bw.from; te.value=bw.to; }
+  invPreview(); }
+function invNextWeek(){ const fe=document.getElementById('invFrom'), te=document.getElementById('invTo'); const f=fe.value, t=te.value;
+  if(f&&t){ const from=new Date(f+'T00:00:00'), to=new Date(t+'T00:00:00'); from.setDate(from.getDate()+7); to.setDate(to.getDate()+7); fe.value=isoLocal(from); te.value=isoLocal(to); }
+  else { const bw=billingWeek(); fe.value=bw.from; te.value=bw.to; }
+  invPreview(); }
 function invLoadCfg(){
   const client=document.getElementById('invCfgClient').value; const cfg=clientBillingCfg(client)||{};
   document.getElementById('invFlatRate').value=(cfg.flatRate!=null?cfg.flatRate:'');
