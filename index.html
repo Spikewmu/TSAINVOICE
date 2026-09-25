@@ -10384,7 +10384,7 @@ async function renderSlackBot(){
   const c=INTEG_CFGS[t.key]||{}, connected=!!c.botConnected, chans=INTEG_BOT_CHANS[t.key];
   const status = connected ? `<span class="pill good">&#10003; Connected${c.botTeamName?' · '+esc(c.botTeamName):''}</span>` : `<span class="pill" style="opacity:.55">Not connected</span>`;
   const connectRow = INTEG_NOTIFY_OAUTH
-    ? `<div class="row-actions" style="margin:10px 0"><button class="btn gold sm" onclick="integConnectBot()">${connected?'Reconnect bot':'Add to Slack (connect)'}</button> <button class="btn ghost sm" onclick="integCopyBotLink()">Copy client install link</button> <button class="btn ghost sm" onclick="integLoadChannels()">Load channels</button></div>
+    ? `<div class="row-actions" style="margin:10px 0"><button class="btn gold sm" onclick="integConnectBot()">${connected?'Reconnect bot':'Add to Slack (connect)'}</button> <button class="btn ghost sm" onclick="integCopyBotLink()">Copy client install link</button> <button class="btn ghost sm" onclick="integLoadChannels()">Load channels</button>${connected?' <button class="btn ghost sm" style="color:var(--warn);border-color:var(--warn)" onclick="integDisconnectBot()">Disconnect</button>':''}</div>
        <p class="fieldhelp" style="margin:0 0 6px">Use <b>Add to Slack</b> if you can install it yourself; use <b>Copy client install link</b> to send the client a one-click link so they add the bot to their own workspace during onboarding (link works for 7 days).</p>
        <details style="margin:4px 0 0"><summary style="cursor:pointer;color:var(--muted);font-size:12px">Advanced: paste a bot token manually</summary>
        <div class="cards" style="grid-template-columns:repeat(auto-fill,minmax(260px,1fr));margin-top:8px"><div class="field"><label>Bot token (xoxb-)</label><span style="display:flex;gap:6px"><input id="botToken" type="password" autocomplete="off" placeholder="${connected?'•••• (leave blank to keep)':'xoxb-...'}" style="flex:1"><button type="button" class="btn sm ghost" onclick="integReveal('botToken',this)">Show</button><button type="button" class="btn sm ghost" onclick="integSaveBotToken()">Save</button></span></div></div></details>`
@@ -10426,6 +10426,12 @@ async function integTestBot(){
   const res=await integApi('testBot',{key:t.key, ws:t.ws});
   if(res&&res.ok) toast('Test sent - check the channel'); else toast((res&&res.error)||'Test failed',true);
 }
+async function integDisconnectBot(){
+  const t=integTarget(); if(!t) return;
+  if(!confirm('Disconnect the Slack bot for '+(t.client||t.label||'this client')+'? It stops posting until reconnected.')) return;
+  const res=await integApi('save',{key:t.key, ws:t.ws, client:t.client, botToken:'', botChanId:'', botChanName:'', botTeamName:''});
+  if(res&&res.ok){ INTEG_CFGS[t.key]=res.config; delete INTEG_BOT_CHANS[t.key]; toast('Bot disconnected'); renderSlackBot(); } else toast((res&&res.error)||'Could not disconnect',true);
+}
 async function integCopyBotLink(){
   const t=integTarget(); if(!t) return;
   if(!INTEG_NOTIFY_OAUTH){ toast('The notification bot is not configured on the server yet',true); return; }
@@ -10437,11 +10443,13 @@ async function integCopyBotLink(){
 async function integConnectBot(){
   const t=integTarget(); if(!t) return;
   if(!INTEG_NOTIFY_OAUTH){ toast('The notification bot is not configured on the server yet',true); return; }
+  const w=window.open('about:blank','_blank'); // open inside the click gesture so the browser doesn't block the popup
   const res=await integApi('connectBotUrl',{key:t.key, ws:t.ws});
   if(res&&res.ok&&res.url){
     window.__integAwaitConnect=Date.now();
     const baseline=JSON.stringify({c:INTEG_CFGS[t.key]||null});
-    window.open(res.url,'_blank','noopener'); toast('Approve the bot in the Slack tab, then switch back here');
+    if(w&&!w.closed){ w.location.href=res.url; } else { window.location.href=res.url; return; } // blank tab redirects; if it was blocked, fall back to same-tab
+    toast('Approve the bot in the Slack tab, then switch back here');
     // poll until the bot token lands
     if(window.__integBotPoll) clearInterval(window.__integBotPoll);
     let tries=0; window.__integBotPoll=setInterval(async()=>{ tries++;
@@ -10450,7 +10458,7 @@ async function integConnectBot(){
       if(now!==baseline || tries>=24){ clearInterval(window.__integBotPoll); window.__integBotPoll=0; window.__integAwaitConnect=0;
         if(now!==baseline && currentTab()==='integrations'){ INTEG_CFGS=map; renderSlackBot(); toast('Bot connected - now Load channels'); } }
     },2500);
-  } else toast((res&&res.error)||'Could not start the connect',true);
+  } else { if(w&&!w.closed) w.close(); toast((res&&res.error)||'Could not start the connect',true); }
 }
 function slackAppKeyForField(f){ return (f==='deal')?f:(f==='postcall'||f==='postcallSetter'||f==='postcallCloser')?'postcall':(f==='sod'||f==='sodSetter'||f==='sodCloser')?'sod':(f==='setter'||f==='closer'||f==='mgr'||f==='slack'||f==='dailyReport'||f==='invoicing'||f==='leaderboard'||f==='onboarding')?'eod':'default'; } // dailyReport + invoicing + leaderboard + onboarding + fallback use the EOD app (the 'default' app isn't configured on the server)
 function canConnectField(field){ return !!(INTEG_SLACK_APPS[slackAppKeyForField(field)] || INTEG_SLACK_APPS['default']); }
@@ -10461,15 +10469,17 @@ async function integConnectSlack(t,id,field){
   if(!INTEG_SLACK_OAUTH){ toast('Slack Connect is not set up yet - paste the webhook URL manually',true); return; }
   const tt=integTarget();
   let body; if(t==='webhook'){ body={t:'webhook', id}; } else { if(!tt) return; body={t:'config', key:tt.key, field:field||'slack', ws:tt.ws}; }
+  const w=window.open('about:blank','_blank'); // open inside the click gesture so the browser doesn't block the popup
   const res=await integApi('connectUrl',body);
   if(res&&res.ok&&res.url){
     window.__integAwaitConnect=Date.now();
-    // snapshot the current state so the poll can detect when the connection actually lands (the Slack popup opens with noopener, so its postMessage can't reach us - don't rely on it)
+    // snapshot the current state so the poll can detect when the connection actually lands
     const baseline=JSON.stringify({c: tt?INTEG_CFGS[tt.key]||null:null, h:(INTEG_HOOKS||[]).filter(w=>tt&&w.key===tt.key)});
-    window.open(res.url,'_blank','noopener'); toast('Pick a channel in the Slack tab, then switch back here');
+    if(w&&!w.closed){ w.location.href=res.url; } else { window.location.href=res.url; return; }
+    toast('Pick a channel in the Slack tab, then switch back here');
     integPollConnect(tt, baseline);
   }
-  else toast((res&&res.error)||'Could not start Slack connect',true);
+  else { if(w&&!w.closed) w.close(); toast((res&&res.error)||'Could not start Slack connect',true); }
 }
 // After starting a Slack connect, poll the config until it actually changes, then refresh the page once. Race-proof (doesn't depend on window focus or the popup's postMessage).
 function integPollConnect(tt, baseline){
