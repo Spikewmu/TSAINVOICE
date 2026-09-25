@@ -1922,9 +1922,6 @@ If they did not watch: No problem at all, I will send it right over. Can you wat
         <div class="field"><label>Client name *</label><input name="name" required placeholder="Prime (Billy)"></div>
         <div class="field"><label>Status *</label><select name="status" required><option>Active</option><option>Onboarding</option><option>Prospect</option><option>Inactive</option><option>Dropped</option></select></div>
         <div class="field"><label>Manager (primary)</label><select name="manager"></select><span class="fieldhelp">Overall contact for the account.</span></div>
-        <div class="field"><label>Webinar manager</label><select name="webinarMgr"></select><span class="fieldhelp">Sees this account. Leave "- none -" if not applicable.</span></div>
-        <div class="field"><label>Setter manager</label><select name="setterMgr"></select></div>
-        <div class="field"><label>Closer manager</label><select name="closerMgr"></select></div>
         <div class="field"><label>Service line</label><select name="serviceLine"></select></div>
         <div class="field"><label>Existing monthly ($)</label><input name="monthly" type="number" min="0" step="100"><span class="fieldhelp">What they're already doing per month (context).</span></div>
         <div class="field"><label>Monthly goal ($)</label><input name="monthlyGoal" type="number" min="0" step="100" placeholder="e.g. 50000"><span class="fieldhelp">Cash-collected target to shoot for this month - drives the goal bar on the dashboard.</span></div>
@@ -1933,6 +1930,28 @@ If they did not watch: No problem at all, I will send it right over. Can you wat
         <div class="field"><label>Back-end rev share (%)</label><input name="beRate" type="number" min="0" max="100" step="0.5" placeholder="e.g. 25"><span class="fieldhelp">On back-end / recurring cash. Blank = TBD.</span></div>
         <div class="field"><label>Monthly retainer ($)</label><input name="retainer" type="number" min="0" step="100" placeholder="e.g. 3000"><span class="fieldhelp">Full net to Sales HQ, re-billed every cycle. Blank = none.</span></div>
         <div class="field"><label>Retainer bills on day</label><input name="retainerDay" type="number" min="1" max="31" step="1" placeholder="1-31"><span class="fieldhelp">Day of the month the retainer recurs.</span></div>
+        <div class="field full" id="ccCommHead" style="border-top:1px solid var(--border);padding-top:12px;margin-top:2px"><label style="font-size:13px;font-weight:700;color:var(--gold)">Commission on this offer</label><span class="fieldhelp">The per-account comp used for payouts and net margin - set it here once. Blank % = fall back to the default rate.</span></div>
+        <div class="field full"><label>Setter manager</label>
+          <div style="display:flex;gap:8px;align-items:center">
+            <select name="setterMgr" style="flex:1"></select>
+            <input id="ccSetMgrPct" type="number" min="0" max="100" step="0.5" placeholder="%" style="width:90px" title="Setter-manager % on this account"> <span class="muted" style="font-size:13px">%</span>
+          </div></div>
+        <div class="field full"><label>Closer manager</label>
+          <div style="display:flex;gap:8px;align-items:center">
+            <select name="closerMgr" style="flex:1"></select>
+            <input id="ccCloMgrPct" type="number" min="0" max="100" step="0.5" placeholder="%" style="width:90px" title="Closer-manager % on this account"> <span class="muted" style="font-size:13px">%</span>
+          </div></div>
+        <div class="field full"><label>Webinar manager <span style="font-weight:400;color:var(--muted)">- used for webinar billing/comp</span></label>
+          <div style="display:flex;gap:8px;align-items:center">
+            <select name="webinarMgr" style="flex:1"></select>
+            <input id="ccWebMgrPct" type="number" min="0" max="100" step="0.5" placeholder="%" style="width:90px" title="Webinar-host % on this account"> <span class="muted" style="font-size:13px">%</span>
+          </div></div>
+        <div class="field"><label>Setter % (this offer)</label><input id="ccRepSetPct" type="number" min="0" max="100" step="0.5" placeholder="e.g. 3"><span class="fieldhelp">Leave 0 if this offer runs ads straight to a closer (no setter).</span></div>
+        <div class="field"><label>Closer % (this offer)</label><input id="ccRepCloPct" type="number" min="0" max="100" step="0.5" placeholder="e.g. 7"></div>
+        <div class="field full"><label>Exceptions <span style="font-weight:400;color:var(--muted)">- a specific rep with a negotiated rate</span></label>
+          <div id="ccExceptions"></div>
+          <div class="row-actions" style="margin-top:6px"><button type="button" class="btn sm ghost" onclick="ccAddException()">+ Add exception</button></div>
+          <span class="fieldhelp">Pick a rep and their negotiated setter/closer % (e.g. Carolina 10% closer). This is that rep's rate wherever they are assigned.</span></div>
         <div class="field full"><label>Products / offers</label>
           <div class="chiprow" id="clientProductChips" style="margin-bottom:8px"></div>
           <div class="row-actions"><input id="clientProductAdd" placeholder="Add an offer" onkeydown="if(event.key==='Enter'){event.preventDefault();addClientProduct();}"><button type="button" class="btn sm" onclick="addClientProduct()">Add</button></div>
@@ -9973,6 +9992,8 @@ function openClientModal(){
   const f=document.getElementById('clientForm'); if(f) f.reset();
   const t=document.getElementById('clientModalTitle'); if(t) t.textContent='Add a client';
   fillMgrSelects(); setClientProducts(CFG.products||[]); // new client starts with the global offer list to trim
+  ['ccSetMgrPct','ccCloMgrPct','ccWebMgrPct','ccRepSetPct','ccRepCloPct'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+  ccRenderExceptions([]);
   clientModalShow();
   const nm=f&&f.querySelector('[name="name"]'); if(nm) setTimeout(()=>nm.focus(),50);
 }
@@ -9995,6 +10016,14 @@ function editClient(name){
   const bc=clientBillingCfg(c.name)||{};
   if(g('retainer')) g('retainer').value=(bc.retainer!=null?bc.retainer:'');
   if(g('retainerDay')) g('retainerDay').value=(bc.retainerDay!=null?bc.retainerDay:'');
+  // pre-fill the per-account commission (managers, offer rep rates) + exceptions - one place to manage comp
+  const gi=id=>document.getElementById(id), av=fn=>{ const r=acctFnRate(c.name,fn); return r!=null?r:''; };
+  if(gi('ccSetMgrPct')) gi('ccSetMgrPct').value=av('set');
+  if(gi('ccCloMgrPct')) gi('ccCloMgrPct').value=av('clo');
+  if(gi('ccWebMgrPct')) gi('ccWebMgrPct').value=av('web');
+  if(gi('ccRepSetPct')) gi('ccRepSetPct').value=av('rep_set');
+  if(gi('ccRepCloPct')) gi('ccRepCloPct').value=av('rep_clo');
+  ccRenderExceptions(clientRepsWithOverride(c.name));
   clientModalShow();
 }
 async function saveClient(e){
@@ -10022,8 +10051,30 @@ async function saveClient(e){
     const pb=clientBillingCfg(name)||{};
     await addRecord({type:'clientbilling', client:name, mode:'flat', flatRate:pb.flatRate!=null?pb.flatRate:null, closerRate:pb.closerRate!=null?pb.closerRate:null, setterRate:pb.setterRate!=null?pb.setterRate:null, overrideRate:pb.overrideRate!=null?pb.overrideRate:null, frontEndOnly:!!pb.frontEndOnly, retainer:ret, retainerDay:retDay, by:(SESSION&&SESSION.name)||''});
   }
+  // 3) per-account commission (acctrate): the 3 manager fns + this-offer setter/closer rate. Same records the Rep Commission net-margin panel reads.
+  if(name){ const acctPairs=[['ccSetMgrPct','set'],['ccCloMgrPct','clo'],['ccWebMgrPct','web'],['ccRepSetPct','rep_set'],['ccRepCloPct','rep_clo']];
+    for(const [id,fn] of acctPairs){ const el=document.getElementById(id); if(!el) continue; const raw=String(el.value||'').trim(); const val=(raw===''?null:(parseFloat(raw)||0)); const cur=acctFnRate(name,fn);
+      if((cur==null&&val==null)||(cur!=null&&val!=null&&Number(cur)===Number(val))) continue;
+      await addRecord({type:'acctrate', client:name, fn, rate:val, by:(SESSION&&SESSION.name)||''}); }
+  }
+  // 4) exceptions -> per-rep commission overrides (repcommrate), merged per rep (Carolina 10% closer, etc.)
+  const exMap={};
+  document.querySelectorAll('#ccExceptions .ccExRow').forEach(row=>{ const rep=(row.querySelector('.ccExRep')||{}).value||''; const role=(row.querySelector('.ccExRole')||{}).value||'closer'; const pv=(row.querySelector('.ccExPct')||{}).value; const pct=(String(pv).trim()===''?null:parseFloat(pv)); if(!rep||pct==null) return; (exMap[rep]=exMap[rep]||{})[role==='setter'?'setterRate':'closerRate']=pct; });
+  for(const rep in exMap){ const cur=repCommOverride(rep)||{}, nv=exMap[rep];
+    const newC=('closerRate'in nv)?nv.closerRate:(cur.closerRate!=null?cur.closerRate:null);
+    const newS=('setterRate'in nv)?nv.setterRate:(cur.setterRate!=null?cur.setterRate:null);
+    const curC=cur.closerRate!=null?cur.closerRate:null, curS=cur.setterRate!=null?cur.setterRate:null;
+    if(newC===curC && newS===curS) continue;
+    await addRecord({type:'repcommrate', rep, closerRate:(newC==null?null:Number(newC)), setterRate:(newS==null?null:Number(newS)), by:(SESSION&&SESSION.name)||''}); }
   e.target.reset(); setClientProducts(CFG.products||[]); clientModalClose(); toast('Client saved'); fillLists(); renderClientOverview();
 }
+// ---- Commission-on-offer helpers: per-rep exception rows inside the client modal ----
+function ccRepNames(){ const s=new Set(); (USERS_CACHE||[]).forEach(u=>{ if(!u||u.archived||!u.username)return; let roles=[]; try{roles=(typeof rolesFor==='function'?rolesFor(u.username):null)||[u.role];}catch(e){roles=[u.role];} if(roles.includes('closer')||roles.includes('setter')) s.add(u.name||u.username); }); return [...s].sort((a,b)=>String(a).localeCompare(String(b))); }
+// reps assigned to this account who already carry a per-rep rate override - the exceptions worth surfacing when you edit
+function clientRepsWithOverride(client){ const k=nrmName(client), out=[]; (USERS_CACHE||[]).forEach(u=>{ if(!u||u.archived||!u.username)return; let teams=[]; try{teams=teamsFor(u.username)||[];}catch(e){} if(!teams.map(nrmName).includes(k)) return; const o=repCommOverride(u.name||u.username); if(!o)return; let roles=[]; try{roles=(typeof rolesFor==='function'?rolesFor(u.username):null)||[u.role];}catch(e){roles=[u.role];} const nm=u.name||u.username; if(roles.includes('closer')&&o.closerRate!=null&&o.closerRate!=='') out.push({rep:nm,role:'closer',pct:o.closerRate}); if(roles.includes('setter')&&o.setterRate!=null&&o.setterRate!=='') out.push({rep:nm,role:'setter',pct:o.setterRate}); }); return out; }
+function ccExceptionRow(ex){ ex=ex||{rep:'',role:'closer',pct:''}; const opts='<option value="">- rep -</option>'+ccRepNames().map(n=>`<option${nrmName(n)===nrmName(ex.rep)?' selected':''}>${esc(n)}</option>`).join(''); return `<div class="ccExRow" style="display:flex;gap:8px;align-items:center;margin-bottom:6px"><select class="ccExRep" style="flex:1">${opts}</select><select class="ccExRole" style="width:110px"><option value="closer"${ex.role!=='setter'?' selected':''}>Closer</option><option value="setter"${ex.role==='setter'?' selected':''}>Setter</option></select><input class="ccExPct" type="number" min="0" max="100" step="0.5" placeholder="%" value="${ex.pct!=null?esc(ex.pct):''}" style="width:80px"><button type="button" class="btn sm ghost" style="color:var(--warn);border-color:var(--warn)" title="Remove" onclick="this.closest('.ccExRow').remove()">&times;</button></div>`; }
+function ccRenderExceptions(list){ const box=document.getElementById('ccExceptions'); if(!box) return; box.innerHTML=(list&&list.length)?list.map(ccExceptionRow).join(''):''; }
+function ccAddException(){ const box=document.getElementById('ccExceptions'); if(box) box.insertAdjacentHTML('beforeend', ccExceptionRow()); }
 // people selectable as account managers = real user accounts that can manage (admin / manager / webinar team).
 // Using actual accounts (not typed names) so the assignment always maps to a real login for scoping.
 function mgrPeople(){ const s=new Set(); (USERS_CACHE||[]).filter(u=>['admin','manager','webinarteam'].includes(u.role)).forEach(u=>{ if(u.name) s.add(String(u.name).trim()); }); return [...s].filter(Boolean).sort((a,b)=>a.localeCompare(b)); }
