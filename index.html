@@ -974,10 +974,14 @@
     <div id="invSettings" hidden>
       <div class="panel" style="padding:18px;max-width:760px">
         <h3 style="margin:0 0 4px">Account settings</h3>
-        <p class="fieldhelp" style="margin:0 0 12px">Client invoice rates come from <b>Contracts</b>; rep commission rates from <b>Rep Commission Breakdown</b>. This box only sets, per client, the <b>Front-end only</b> flag and an optional <b>billing fallback %</b> (used only if the client has no contract rate). Super Admin only.</p>
+        <p class="fieldhelp" style="margin:0 0 12px">Client invoice rates come from <b>Contracts</b>; rep commission rates from <b>Rep Commission Breakdown</b>. This box sets, per client, the <b>Front-end only</b> flag, an optional <b>billing fallback %</b> (used only if the client has no contract rate), and an optional <b>monthly retainer</b> (a fixed Retention Payment billed on the same day each month, on top of rev-share). Super Admin only.</p>
         <div class="field"><label>Client</label><select id="invCfgClient" data-list="clients" onchange="invLoadCfg()"></select></div>
         <div class="field"><label>Billing fallback rate (%)</label><input type="number" id="invFlatRate" step="0.1" placeholder="only if no contract rate"><span class="fieldhelp">Flat % of cash collected, used <b>only</b> when this client has no rev-share set on its Contract.</span></div>
         <label style="display:flex;gap:8px;align-items:flex-start;margin-top:12px;font-weight:500"><input type="checkbox" id="invFrontEndOnly" style="width:20px;height:20px;flex:0 0 auto;margin:1px 2px 0 0;accent-color:var(--gold);cursor:pointer"><span>Front-end only <span class="fieldhelp" style="margin:0;font-weight:400">- reps earn commission <b>only</b> on payments collected within 30 days of the close (e.g. Snoop). TSA still bills the client on later payments; the rep just isn't paid on them. Leave off for normal accounts, where reps are paid on recurring / back-end payments too.</span></span></label>
+        <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px;padding:0;background:none;border:0;box-shadow:none;margin-top:14px">
+          <div class="field"><label>Monthly retainer ($) <span class="fieldhelp" style="margin:0;font-weight:400">- optional</span></label><input type="number" id="invRetainer" min="0" step="0.01" placeholder="e.g. 3000"><span class="fieldhelp">A fixed <b>Retention Payment</b> billed once a month on top of rev-share. Leave blank for none.</span></div>
+          <div class="field"><label>Bills on day of month</label><input type="number" id="invRetainerDay" min="1" max="31" step="1" placeholder="e.g. 1"><span class="fieldhelp">The retainer lands on the invoice whose week contains this day, so it recurs monthly on the same day.</span></div>
+        </div>
         <div class="row-actions" style="margin-top:10px"><button class="btn gold sm" onclick="saveClientBilling()">Save</button></div>
       </div>
       <div class="panel" style="padding:18px;max-width:760px;margin-top:16px">
@@ -6013,6 +6017,8 @@ function invLoadCfg(){
   const client=document.getElementById('invCfgClient').value; const cfg=clientBillingCfg(client)||{};
   document.getElementById('invFlatRate').value=(cfg.flatRate!=null?cfg.flatRate:'');
   const fe=document.getElementById('invFrontEndOnly'); if(fe) fe.checked=!!cfg.frontEndOnly;
+  const r=document.getElementById('invRetainer'); if(r) r.value=(cfg.retainer!=null?cfg.retainer:'');
+  const rd=document.getElementById('invRetainerDay'); if(rd) rd.value=(cfg.retainerDay!=null?cfg.retainerDay:'');
 }
 async function saveClientBilling(){
   if(!invAllowed()){ toast('Super Admin only',true); return; }
@@ -6021,7 +6027,8 @@ async function saveClientBilling(){
   const num=id=>{ const v=parseFloat(document.getElementById(id).value); return isNaN(v)?null:v; };
   const prev=clientBillingCfg(client)||{};
   // keep any legacy rep-comp fields on the record so old data isn't lost; this UI only edits the fallback flat rate + front-end-only
-  const rec={type:'clientbilling',client,mode:'flat',flatRate:num('invFlatRate'),closerRate:prev.closerRate!=null?prev.closerRate:null,setterRate:prev.setterRate!=null?prev.setterRate:null,overrideRate:prev.overrideRate!=null?prev.overrideRate:null,frontEndOnly:document.getElementById('invFrontEndOnly').checked,by:(SESSION&&SESSION.name)||''};
+  const retDay=(function(){ const v=parseInt((document.getElementById('invRetainerDay')||{}).value,10); return isNaN(v)?null:Math.min(31,Math.max(1,v)); })();
+  const rec={type:'clientbilling',client,mode:'flat',flatRate:num('invFlatRate'),closerRate:prev.closerRate!=null?prev.closerRate:null,setterRate:prev.setterRate!=null?prev.setterRate:null,overrideRate:prev.overrideRate!=null?prev.overrideRate:null,frontEndOnly:document.getElementById('invFrontEndOnly').checked,retainer:num('invRetainer'),retainerDay:retDay,by:(SESSION&&SESSION.name)||''};
   try{ await addRecord(rec); toast('Saved for '+client); invPreview(); }
   catch(e){ toast('Save failed: '+(e&&e.message||e),true); }
 }
@@ -6214,6 +6221,14 @@ async function invSendToBilling(){
   }catch(e){ toast('Send failed: '+((e&&e.message)||e),true); }
   finally{ btnBusy(btn,false); }
 }
+// Monthly retainer ("Retention Payment"): if the client's retainer billing day falls within this invoice period, the retainer is due once for that month.
+function retainerDueInPeriod(cfg, from, to){
+  const amt=Number(cfg&&cfg.retainer)||0, day=parseInt(cfg&&cfg.retainerDay,10);
+  if(!amt || !day || day<1 || !from || !to) return null;
+  let d=new Date(from+'T00:00:00'); const end=new Date(to+'T00:00:00');
+  while(d<=end){ const dim=new Date(d.getFullYear(),d.getMonth()+1,0).getDate(); if(d.getDate()===Math.min(day,dim)) return {amt, date:isoLocal(new Date(d))}; d.setDate(d.getDate()+1); }
+  return null;
+}
 function genFounderInvoice(client,from,to){
   const ck=String(client).trim().toLowerCase();
   const inPeriod=d=>{ d=String(d||'').slice(0,10); return d&&d>=from&&d<=to; };
@@ -6254,15 +6269,16 @@ function genFounderInvoice(client,from,to){
     rateDesc=`${pct}% of ${(overridden&&!anyLineOv)||anyLineOv?'the billed amount':'cash collected'}${mode==='repcomp'?' (rep comp + override)':''}`;
     noCfg=!pct;
   } else { noCfg=true; }
+  const retInfo=retainerDueInPeriod(cfg,from,to), retainerDue=retInfo?retInfo.amt:0, grandTotal=amountDue+retainerDue; // recurring monthly retention payment
   const canOv=(typeof invAllowed==='function' && invAllowed()); // Super Admin can edit the billed amount inline on the line
   const payRef='TSA - '+client; // dynamic per-company wire reference so an incoming wire is matchable to this client (T-607)
   // Net terms + late fee (T-608): issue today, due after netDays, late fee after the grace window. Shown on the invoice.
   const T=invTerms(), issueDate=todayLocal(), dueDate=isoOffset(issueDate,T.netDays), graceDate=isoOffset(dueDate,T.graceDays);
-  const lateFeeAmt=T.lateFeeMode==='percent'?Math.round(amountDue*(T.lateFeeAmount||0))/100:(T.lateFeeMode==='flat'?(T.lateFeeAmount||0):0);
+  const lateFeeAmt=T.lateFeeMode==='percent'?Math.round(grandTotal*(T.lateFeeAmount||0))/100:(T.lateFeeMode==='flat'?(T.lateFeeAmount||0):0);
   let lateFeeSentence='';
   if(T.lateFeeMode==='flat' && lateFeeAmt>0) lateFeeSentence=`A late fee of ${money(lateFeeAmt)} applies if payment is not received by ${usDate(graceDate)}.`;
   else if(T.lateFeeMode==='percent' && (T.lateFeeAmount||0)>0) lateFeeSentence=`A late fee of ${T.lateFeeAmount}% (${money(lateFeeAmt)}) applies if payment is not received by ${usDate(graceDate)}.`;
-  try{ LAST_INVOICE={client,from,to,cashCollected,amountDue,rateDesc,deals:uniqDeals.length,payRef,issueDate,dueDate,graceDate,terms:T,lateFeeAmt}; }catch(_){}
+  try{ LAST_INVOICE={client,from,to,cashCollected,amountDue:grandTotal,revShare:amountDue,retainer:retainerDue,rateDesc,deals:uniqDeals.length,payRef,issueDate,dueDate,graceDate,terms:T,lateFeeAmt}; }catch(_){}
   const slug=(client.match(/[A-Za-z0-9]+/g)||[]).map(w=>w[0]).join('').toUpperCase();
   const initials=slug.slice(0,3)||'IN', invNo=`INV-${slug.slice(0,4)||'INV'}-${to.replace(/-/g,'')}`;
   const bi=Object.assign({}, billingInfo()||{}, {reference:payRef}); // force the dynamic reference on this invoice's remit block
@@ -6313,11 +6329,16 @@ function genFounderInvoice(client,from,to){
           <td style="padding:12px 8px;color:#2b3242;border-bottom:1px solid #eef1f6">Sales team services${noCfg?'':' - '+rateDesc} (${period})${canOv?` <a onclick="invLineEditToggle()" style="color:#c9a227;cursor:pointer;font-weight:700;text-decoration:underline;font-size:12px;white-space:nowrap">${overridden?'edit override':'edit / override'}</a>`:''}${(overridden&&!anyLineOv)?`<div style="margin-top:6px;font-size:12px;color:#b4632a;font-weight:600">Billing override: billing on ${money(billBase)} <span style="color:#8a93a6;font-weight:500">(actual cash collected ${money(cashCollected)})</span>${ov.note?'<br><span style="color:#8a93a6;font-weight:500">'+esc(ov.note)+'</span>':''}</div>`:''}${anyLineOv?`<div style="margin-top:6px;font-size:12px;color:#b4632a;font-weight:600">Billing on ${money(billedTotal)} <span style="color:#8a93a6;font-weight:500">(adjusted per line from ${money(cashCollected)} collected)</span></div>`:''}${canOv?`<div id="invLineOv" hidden style="margin-top:8px;padding:10px 12px;border:1px solid #e6e9ef;border-radius:10px;background:#faf7ee"><div style="font-size:11px;color:#8a93a6;margin-bottom:6px;text-transform:uppercase;letter-spacing:.03em;font-weight:600">Bill on a set amount instead of cash collected</div><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><input id="invLineOvAmt" type="number" min="0" step="0.01" placeholder="bill on ($)" value="${overridden?billBase:''}" style="padding:7px 9px;border:1px solid #d8dce6;border-radius:8px;font-size:13px;width:140px;background:#fff;color:#1a2b4a"><input id="invLineOvNote" type="text" placeholder="reason (optional)" value="${overridden?esc(ov.note||''):''}" style="padding:7px 9px;border:1px solid #d8dce6;border-radius:8px;font-size:13px;flex:1;min-width:170px;background:#fff;color:#1a2b4a"><button onclick="invLineOverrideSave()" style="background:#c9a227;color:#241c08;border:0;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;font-size:13px">Save</button><button onclick="invLineOverrideClear()" style="background:none;border:1px solid #d8dce6;border-radius:8px;padding:8px 12px;cursor:pointer;font-size:13px;color:#6b7488">Clear</button></div></div>`:''}</td>
           <td style="padding:12px 8px;text-align:right;color:#6b7488;border-bottom:1px solid #eef1f6">1</td>
           <td style="padding:12px 8px;text-align:right;font-weight:700;color:#1a2b4a;border-bottom:1px solid #eef1f6;font-variant-numeric:tabular-nums">${money(amountDue)}</td>
-        </tr></tbody>
+        </tr>${retainerDue>0?`<tr>
+          <td style="padding:12px 8px;color:#6b7488;border-bottom:1px solid #eef1f6">Retainer</td>
+          <td style="padding:12px 8px;color:#2b3242;border-bottom:1px solid #eef1f6">Retention Payment &ndash; monthly retainer${retInfo&&retInfo.date?` (${esc(usDate(retInfo.date))})`:''}</td>
+          <td style="padding:12px 8px;text-align:right;color:#6b7488;border-bottom:1px solid #eef1f6">1</td>
+          <td style="padding:12px 8px;text-align:right;font-weight:700;color:#1a2b4a;border-bottom:1px solid #eef1f6;font-variant-numeric:tabular-nums">${money(retainerDue)}</td>
+        </tr>`:''}</tbody>
       </table>
       <div style="display:flex;justify-content:flex-end;align-items:baseline;gap:18px;margin-top:14px">
         <div style="font-size:13px;font-weight:700;color:#c9a227;text-transform:uppercase;letter-spacing:.04em">Total due</div>
-        <div style="font-size:26px;font-weight:900;color:#c9a227;font-variant-numeric:tabular-nums">${money(amountDue)}</div>
+        <div style="font-size:26px;font-weight:900;color:#c9a227;font-variant-numeric:tabular-nums">${money(grandTotal)}</div>
       </div>
       ${noCfg?`<div style="margin-top:10px;font-size:12px;color:#b4632a">No billing rate for this client - set the rev-share % on its Contract (Admin &rarr; Contracts), or a rate under Billing settings, to compute the amount due.</div>`:''}
       <div style="border-top:1px solid #eef1f6;margin:18px 0 12px"></div>
