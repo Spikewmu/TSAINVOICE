@@ -66,7 +66,7 @@ export default async function handler(req, res) {
     const curSlot = slot(ctNow);
     const cfgRows = (await (await supa('records?select=data&data->>type=eq.integration&order=submitted_at.desc')).json()).map(x => x.data);
     const latest = {}; cfgRows.forEach(x => { if (x && x.key && !latest[x.key]) latest[x.key] = x; });
-    const targets = Object.values(latest).filter(c => c.leaderboardOn && c.leaderboardSlack && c.client && (manual || slot(c.leaderboardTime || '10:00') === curSlot));
+    const targets = Object.values(latest).filter(c => c.leaderboardSlack && c.client && (manual || slot(c.leaderboardTime || '10:00') === curSlot)); // channel selected = on (no separate toggle)
 
     const results = [];
     for (const t of targets) {
@@ -81,8 +81,15 @@ export default async function handler(req, res) {
         Object.values(pmap).forEach(p => { if (p.status === 'confirmed' && !p.deleted) recs.push({ type: 'payment', role: 'Closer', client: p.client, rep: p.rep, setter: p.setter || '', date: p.date, cashCollected: num(p.amount), closedDeals: 0 }); });
         if (!recs.length) { results.push({ client: t.client, skipped: 'no data' }); continue; }
         const text = buildBoard(t.client, label, recs);
-        const r = await fetch(t.leaderboardSlack, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text }) });
-        results.push({ client: t.client, ok: r.ok, status: r.status });
+        const dest = t.leaderboardSlack === '__default__' ? (t.botChanId || '') : t.leaderboardSlack;
+        if (!dest) { results.push({ client: t.client, skipped: 'no channel' }); continue; }
+        let ok = false, info = 0;
+        if (/^https?:\/\//i.test(dest)) { const r = await fetch(dest, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text }) }); ok = r.ok; info = r.status; }
+        else if (t.botToken) {
+          await fetch('https://slack.com/api/conversations.join', { method: 'POST', headers: { Authorization: 'Bearer ' + t.botToken, 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ channel: dest }) }).catch(() => {});
+          const br = await fetch('https://slack.com/api/chat.postMessage', { method: 'POST', headers: { Authorization: 'Bearer ' + t.botToken, 'Content-Type': 'application/json' }, body: JSON.stringify({ channel: dest, text }) }); const bj = await br.json(); ok = !!bj.ok; info = bj.error || '';
+        }
+        results.push({ client: t.client, ok, status: info });
       } catch (e) {
         results.push({ client: t.client, ok: false, error: String(e) });
       }

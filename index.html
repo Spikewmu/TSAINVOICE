@@ -10646,7 +10646,11 @@ function slackChanField(id, value, field, label){
   if(!chans){
     return `<span class="muted" style="font-size:12px">Loading channels…<input type="hidden" id="${id}" value="${esc(val)}"></span>`;
   }
-  const opts=`<option value="">- use default channel -</option>`+(chans||[]).map(ch=>`<option value="${esc(ch.id)}" ${ch.id===val?'selected':''}>#${esc(ch.name)}${ch.private?' (private)':''}</option>`).join('')+(isUrl?`<option value="${esc(val)}" selected>External webhook (keep)</option>`:'');
+  const hasDefault=!!(c.botChanId);
+  const opts=`<option value="" ${val===''?'selected':''}>Off (don't post)</option>`
+    +(hasDefault?`<option value="__default__" ${val==='__default__'?'selected':''}>Use default channel${c.botChanName?' (#'+esc(c.botChanName)+')':''}</option>`:'')
+    +(chans||[]).map(ch=>`<option value="${esc(ch.id)}" ${ch.id===val?'selected':''}>#${esc(ch.name)}${ch.private?' (private)':''}</option>`).join('')
+    +(isUrl?`<option value="${esc(val)}" selected>External webhook (keep)</option>`:'');
   const testBtn = val ? `<button type="button" class="btn sm ghost" onclick="integTestChannel('${field}','${String(label).replace(/'/g,"\\'")}')">Test</button>` : '';
   return `<span style="display:flex;gap:8px;align-items:center;width:100%"><select id="${id}" style="flex:1;min-width:0">${opts}</select>${testBtn}</span>`;
 }
@@ -10668,17 +10672,17 @@ function renderEodRouting(){
     </div>
     <p class="fieldhelp" style="margin:8px 0 0">Setters' post-call & start-of-day posts route to the Setters channel, closers' to the Closers channel (by the rep's role). Blank = the default channel.</p>
     <div style="border-top:1px solid var(--border);margin:16px 0 6px"></div>
-    <label style="display:flex;gap:8px;align-items:center;font-weight:500;margin:0 0 4px"><input type="checkbox" id="drOn" ${c.dailyReportOn?'checked':''}> Post the <b>compiled Daily Report</b> each morning</label>
+    <div style="font-weight:500;margin:0 0 4px">Compiled Daily Report <span class="muted" style="font-weight:400;font-size:12px">- posts each morning; pick a channel to turn it on, Off to stop</span></div>
     <div style="max-width:780px">${feedRow('Daily report channel','yesterday from EODs + today from SODs','evDailyReport',c.dailyReport,'dailyReport',`<input type="time" id="drTime" step="1800" value="${esc(c.dailyReportTime||'09:30')}" title="Send time (Central)" style="width:118px">`)}</div>
     <div style="border-top:1px solid var(--border);margin:16px 0 6px"></div>
-    <label style="display:flex;gap:8px;align-items:center;font-weight:500;margin:0 0 4px"><input type="checkbox" id="lbOn" ${c.leaderboardOn?'checked':''}> Post the <b>month-to-date leaderboard</b> each day</label>
+    <div style="font-weight:500;margin:0 0 4px">Month-to-date leaderboard <span class="muted" style="font-weight:400;font-size:12px">- posts each day; pick a channel to turn it on, Off to stop</span></div>
     <div style="max-width:780px">${feedRow('Leaderboard channel','closers by cash, setters by sets','evLeaderboard',c.leaderboard,'leaderboard',`<input type="time" id="lbTime" step="1800" value="${esc(c.leaderboardTime||'10:00')}" title="Post time (Central)" style="width:118px">`)}</div>
     <div style="border-top:1px solid var(--border);margin:16px 0 6px"></div>
     <div style="max-width:780px">${feedRow('Invoicing (Send to billing)', c.botConnected?'the bot attaches the invoice PDF here':'connect the Slack bot to attach the PDF','evInvoicing',c.invoicing,'invoicing')}</div>
     <div class="row-actions" style="margin-top:14px"><button class="btn gold sm" onclick="integSaveEod()">Save routing</button></div>`;
   const eod=document.getElementById('integEodRep');
   if(eod) eod.innerHTML=`
-    <label style="display:flex;gap:8px;align-items:center;font-weight:500;margin:0 0 10px"><input type="checkbox" id="eodOn" ${c.eodToSlack?'checked':''}> Post submitted <b style="margin:0 3px">EOD reports</b> to Slack</label>
+    <div style="font-weight:500;margin:0 0 10px">Submitted <b style="margin:0 3px">EOD reports</b> to Slack <span class="muted" style="font-weight:400;font-size:12px">- pick a channel below to turn it on, Off to stop</span></div>
     <div style="max-width:780px">
       ${feedRow('Setter EOD','','eodSetter',c.setter,'setter')}
       ${feedRow('Closer EOD','','eodCloser',c.closer,'closer')}
@@ -10736,11 +10740,12 @@ async function tplLibSave(id){ const body={id, name:(document.getElementById('tn
 async function tplLibDelete(id,name){ if(!confirm('Delete template "'+name+'"?')) return; const res=await integApi('deleteTemplate',{id}); if(res&&res.ok){ INTEG_TEMPLATES=INTEG_TEMPLATES.filter(x=>x.id!==id); renderTemplateLib(); renderWebhookList(); toast('Deleted'); } else toast('Could not delete',true); }
 async function integSaveEod(){
   const t=integTarget(); if(!t) return; const g=id=>((document.getElementById(id)||{}).value||'').trim();
-  const body={key:t.key, ws:t.ws, client:t.client, eodToSlack:(document.getElementById('eodOn')||{}).checked,
+  const eodOn=!!(g('eodSetter')||g('eodCloser')||g('eodMgr')||g('eodFallback')); // on = at least one EOD channel selected (no separate checkbox)
+  const body={key:t.key, ws:t.ws, client:t.client, eodToSlack:eodOn,
     eodSetterSlack:g('eodSetter'), eodCloserSlack:g('eodCloser'), eodMgrSlack:g('eodMgr'), slackWebhook:g('eodFallback'),
     dealSlack:g('evDeal'), onboardingSlack:g('evOnboarding'), postcallSetterSlack:g('evPostcallSetter'), postcallCloserSlack:g('evPostcallCloser'), sodSetterSlack:g('evSodSetter'), sodCloserSlack:g('evSodCloser'),
-    dailyReportSlack:g('evDailyReport'), dailyReportOn:(document.getElementById('drOn')||{}).checked, dailyReportTime:((document.getElementById('drTime')||{}).value||'09:30'),
-    leaderboardSlack:g('evLeaderboard'), leaderboardOn:(document.getElementById('lbOn')||{}).checked, leaderboardTime:((document.getElementById('lbTime')||{}).value||'10:00'), invoicingSlack:g('evInvoicing')};
+    dailyReportSlack:g('evDailyReport'), dailyReportOn:!!g('evDailyReport'), dailyReportTime:((document.getElementById('drTime')||{}).value||'09:30'),
+    leaderboardSlack:g('evLeaderboard'), leaderboardOn:!!g('evLeaderboard'), leaderboardTime:((document.getElementById('lbTime')||{}).value||'10:00'), invoicingSlack:g('evInvoicing')};
   const res=await integApi('save',body);
   if(res&&res.ok){ INTEG_CFGS[t.key]=res.config; toast('Routing saved'); renderEodRouting(); }
   else toast((res&&res.error)||'Could not save',true);

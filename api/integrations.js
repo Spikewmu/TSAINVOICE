@@ -256,7 +256,8 @@ export default async function handler(req, res) {
       if (!cur) return res.status(200).json({ ok: false, error: 'Save/connect a channel first' });
       if (!mayTouch(cur)) return res.status(200).json({ ok: false, error: 'not your client' });
       const FIELD_MAP = { slack: 'slackWebhook', setter: 'eodSetterSlack', closer: 'eodCloserSlack', mgr: 'eodMgrSlack', deal: 'dealSlack', onboarding: 'onboardingSlack', postcall: 'postcallSlack', postcallSetter: 'postcallSetterSlack', postcallCloser: 'postcallCloserSlack', sod: 'sodSlack', sodSetter: 'sodSetterSlack', sodCloser: 'sodCloserSlack', dailyReport: 'dailyReportSlack', leaderboard: 'leaderboardSlack', invoicing: 'invoicingSlack' };
-      const dest = cur[FIELD_MAP[String(b.field || 'slack')] || 'slackWebhook'] || '';
+      let dest = cur[FIELD_MAP[String(b.field || 'slack')] || 'slackWebhook'] || '';
+      if (dest === '__default__') dest = cur.botChanId || ''; // "use default channel"
       if (!dest) return res.status(200).json({ ok: false, error: 'Nothing connected on this channel yet' });
       const label = String(b.label || 'this feed').slice(0, 80);
       const field = String(b.field || 'slack');
