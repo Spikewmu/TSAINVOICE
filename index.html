@@ -1322,7 +1322,8 @@
     <h2 class="section">Contracts</h2>
     <p class="hint">Active client contracts, their revenue-share terms, and forecasted TSA revenue - the view for the lender. <b>Forecast</b> = your expected monthly client collections x the rev-share %. <b>Actual</b> = live cash collected from the app (front-end rate applied). Contracts are created in <b>Client Overview</b> (onboarding); use <b>Edit</b> here to fine-tune flip %, forecast, notes, or the app-account mapping. Admin and director only.</p>
     <div class="filters" style="margin:0 0 10px;align-items:center;gap:10px;flex-wrap:wrap">
-      <div class="seg" id="conPeriodSeg"><button class="on" onclick="setConPeriod('thismonth')">This month</button><button onclick="setConPeriod('quarter')">This quarter</button><button onclick="setConPeriod('year')">This year</button><button onclick="setConPeriod('all')">All-time</button></div>
+      <div class="seg" id="conPeriodSeg"><button onclick="setConPeriod('thisweek')">This billing week</button><button onclick="setConPeriod('lastweek')">Last billing week</button><button class="on" onclick="setConPeriod('thismonth')">This month</button><button onclick="setConPeriod('quarter')">This quarter</button><button onclick="setConPeriod('year')">This year</button><button onclick="setConPeriod('all')">All-time</button></div>
+      <div class="field" style="position:relative;margin:0;min-width:230px"><div class="rangewrap"><input type="text" id="conRange_txt" readonly placeholder="Custom range" onclick="rpToggle('conRange',event)"><input type="hidden" id="conRange_from"><input type="hidden" id="conRange_to"><div class="rangepop" id="conRange_pop" hidden onclick="event.stopPropagation()"></div></div></div>
     </div>
     <div id="conCards" style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:14px"></div>
     <div class="panel" id="conForm" hidden>
@@ -3924,15 +3925,18 @@ function micDictate(btn){
   try{ rec.start(); }catch(_){ __micRec=null; if(__micBtn){ __micBtn.innerHTML='&#127908; Speak'; __micBtn=null; } }
 }
 /* ===== Contracts & Revenue Forecast (T-548, lender view) ===== */
+// Seed rates for clients onboarded before the contract-in-onboarding feature. Client names + appClient match the real
+// client records exactly so each seed ties 1:1 to its account (no fuzzy matching). Editing + saving the client in
+// onboarding writes a real contract record that overrides its seed entry.
 const CONTRACT_SEED=[
-  {client:'Prime Acquisitions', feRate:25, beRate:25, flipRate:7, flipNote:'on sale of the business flip'},
-  {client:'Quantum Cipher', feRate:25, beRate:25},
-  {client:'Sales Revelation', feRate:25, beTBD:true, notes:'Back-end % is greyed in the contract - confirm'},
-  {client:'Salon Suites', feRate:30, beRate:0},
-  {client:'The Wealthy Muslim', feRate:30, beRate:30},
-  {client:'Option Trader Labs', feTBD:true, beTBD:true, notes:'Find the agreement - both rates unknown'}
+  {client:'Prime (Billy)', appClient:'Prime (Billy)', feRate:25, beRate:25, flipRate:7, flipNote:'on sale of the business flip'},
+  {client:'Quantum Cipher - Cameron Fous', appClient:'Quantum Cipher - Cameron Fous', feRate:25, beRate:25},
+  {client:'Social Revelation (Ryan)', appClient:'Social Revelation (Ryan)', feRate:25, beTBD:true, notes:'Back-end % is greyed in the contract - confirm'},
+  {client:'DHG University - Salon Suite Business', appClient:'DHG University - Salon Suite Business', feRate:30, beRate:0},
+  {client:'The Wealthy Muslim', appClient:'The Wealthy Muslim', feRate:30, beRate:30},
+  {client:'Option Trading Lab', appClient:'Option Trading Lab', feTBD:true, beTBD:true, notes:'Find the agreement - both rates unknown'}
 ];
-let CON_PERIOD='thismonth';
+let CON_PERIOD='thismonth', CON_FROM='', CON_TO='';
 function collapseContracts(list){ const m={}; (list||[]).forEach(x=>{ if(x.type!=='contract')return; const k=nrmName(x.client); if(!m[k]||(x.submittedAt||'')>(m[k].submittedAt||'')) m[k]=x; }); return Object.values(m); }
 function contractsEffective(){
   const saved={}; collapseContracts(RECORDS).forEach(c=>{ saved[nrmName(c.client)]=c; });
@@ -3954,7 +3958,10 @@ function conRanges(){
   const mo={from:isoLocal(new Date(d.getFullYear(),d.getMonth(),1)), to:isoLocal(new Date(d.getFullYear(),d.getMonth()+1,0))};
   const q=Math.floor(d.getMonth()/3), qtr={from:isoLocal(new Date(d.getFullYear(),q*3,1)), to:isoLocal(new Date(d.getFullYear(),q*3+3,0))};
   const yr={from:isoLocal(new Date(d.getFullYear(),0,1)), to:isoLocal(new Date(d.getFullYear(),11,31))};
-  return {thismonth:Object.assign({label:'This month'},mo), quarter:Object.assign({label:'This quarter'},qtr), year:Object.assign({label:'This year'},yr), all:{from:'',to:'',label:'All-time'}};
+  const cw=currentWeek(), lw=billingWeek(); // billing weeks are Mon-Sun (last completed week is invoiced Wednesday)
+  return {thisweek:{from:cw.from,to:cw.to,label:'This billing week'}, lastweek:{from:lw.from,to:lw.to,label:'Last billing week'},
+    thismonth:Object.assign({label:'This month'},mo), quarter:Object.assign({label:'This quarter'},qtr), year:Object.assign({label:'This year'},yr), all:{from:'',to:'',label:'All-time'},
+    custom:{from:CON_FROM,to:CON_TO,label:'Custom range'}};
 }
 function conCashFor(appClient,from,to){
   if(!appClient) return null;
@@ -3971,7 +3978,12 @@ function conMonthlyForecast(c){
   return fe+be;
 }
 function conRateLabel(rate,tbd){ if(tbd||rate==null) return '<span class="pill warn">TBD</span>'; return esc(rate)+'%'; }
-function setConPeriod(p){ CON_PERIOD=p; document.querySelectorAll('#conPeriodSeg button').forEach(b=>b.classList.toggle('on',(b.getAttribute('onclick')||'').includes(`'${p}'`))); renderContracts(); }
+function setConPeriod(p){ CON_PERIOD=p; document.querySelectorAll('#conPeriodSeg button').forEach(b=>b.classList.toggle('on',(b.getAttribute('onclick')||'').includes(`'${p}'`)));
+  // a preset clears the custom-range picker so the two controls don't look both-active
+  if(p!=='custom'){ CON_FROM=''; CON_TO=''; try{ const st=__rp['conRange']=__rp['conRange']||{}; st.start=''; st.end=''; rpSync('conRange'); const f=document.getElementById('conRange_from'),t=document.getElementById('conRange_to'); if(f)f.value=''; if(t)t.value=''; }catch(e){} }
+  renderContracts(); }
+// custom range picked -> switch to the custom period and drop the preset highlight
+function setConRange(from,to){ if(!from||!to) return; CON_FROM=from; CON_TO=to; CON_PERIOD='custom'; document.querySelectorAll('#conPeriodSeg button').forEach(b=>b.classList.remove('on')); renderContracts(); }
 function conByName(name){ return contractsEffective().find(c=>nrmName(c.client)===nrmName(name))||{client:name,active:true}; }
 function conEdit(name){
   const c=name?conByName(name):{client:'',active:true};
@@ -4008,6 +4020,7 @@ function conOutstanding(app){ return conClientDeals(app).reduce((s,d)=>s+Math.ma
 function conPendingByMonth(app){ const m={}; conClientDeals(app).forEach(d=>{ (typeof paymentsForDeal==='function'?paymentsForDeal(d.id):[]).filter(p=>p.status==='pending').forEach(p=>{ const k=String(p.date||'').slice(0,7); if(k) m[k]=(m[k]||0)+(p.amount||0); }); }); return m; } // scheduled pending payments keyed YYYY-MM
 function renderContracts(){
   const host=document.getElementById('tab-contracts'); if(!host) return;
+  try{ rpAttach('conRange',(f,t)=>setConRange(f,t)); }catch(e){} // custom range picker (same widget used across the app)
   const rng=conRanges()[CON_PERIOD]||conRanges().thismonth;
   const list=contractsEffective(), active=list.filter(c=>c.active!==false);
   // real comp PAID out in this period (rep commissions + manager overrides from the payout engine), so Net = actual TSA revenue - what we actually paid the team
