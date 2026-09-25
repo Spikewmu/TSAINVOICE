@@ -1912,7 +1912,7 @@ If they did not watch: No problem at all, I will send it right over. Can you wat
   <!-- ===== CLIENT OVERVIEW ===== -->
   <section id="tab-clients" hidden>
     <h2 class="section">Client Overview</h2>
-    <p class="hint">Every client at a glance: status, manager, existing monthly, cash collected this month, and the next step. Add or update a client below.</p>
+    <p class="hint">Every client at a glance: status, manager, existing monthly, cash collected this month, and the next step. <b>+ Add client</b> is the single onboarding step - it also sets up the contract (rev share) and the retainer, so a new account shows on Contracts and invoices correctly right away.</p>
     <div class="cards" id="clientKpis"></div>
     <div class="panel"><h3>Clients <button class="btn gold sm" id="clientAddBtn" style="float:right" onclick="openClientModal()">+ Add client</button></h3><div class="tablewrap"><table id="overviewTable"></table></div></div>
     <div class="modal" id="clientModal" hidden onclick="if(event.target===this)clientModalClose()">
@@ -1928,6 +1928,11 @@ If they did not watch: No problem at all, I will send it right over. Can you wat
         <div class="field"><label>Service line</label><select name="serviceLine"></select></div>
         <div class="field"><label>Existing monthly ($)</label><input name="monthly" type="number" min="0" step="100"><span class="fieldhelp">What they're already doing per month (context).</span></div>
         <div class="field"><label>Monthly goal ($)</label><input name="monthlyGoal" type="number" min="0" step="100" placeholder="e.g. 50000"><span class="fieldhelp">Cash-collected target to shoot for this month - drives the goal bar on the dashboard.</span></div>
+        <div class="field full" style="border-top:1px solid var(--border);padding-top:12px;margin-top:2px"><label style="font-size:13px;font-weight:700;color:var(--gold)">Contract &amp; billing</label><span class="fieldhelp">Sets up the Contracts page and invoicing in one shot - no separate stop needed. Leave a field blank if it is TBD.</span></div>
+        <div class="field"><label>Front-end rev share (%)</label><input name="feRate" type="number" min="0" max="100" step="0.5" placeholder="e.g. 25"><span class="fieldhelp">What TSA bills on front-end cash collected.</span></div>
+        <div class="field"><label>Back-end rev share (%)</label><input name="beRate" type="number" min="0" max="100" step="0.5" placeholder="e.g. 25"><span class="fieldhelp">On back-end / recurring cash. Blank = TBD.</span></div>
+        <div class="field"><label>Monthly retainer ($)</label><input name="retainer" type="number" min="0" step="100" placeholder="e.g. 3000"><span class="fieldhelp">Full net to Sales HQ, re-billed every cycle. Blank = none.</span></div>
+        <div class="field"><label>Retainer bills on day</label><input name="retainerDay" type="number" min="1" max="31" step="1" placeholder="1-31"><span class="fieldhelp">Day of the month the retainer recurs.</span></div>
         <div class="field full"><label>Products / offers</label>
           <div class="chiprow" id="clientProductChips" style="margin-bottom:8px"></div>
           <div class="row-actions"><input id="clientProductAdd" placeholder="Add an offer" onkeydown="if(event.key==='Enter'){event.preventDefault();addClientProduct();}"><button type="button" class="btn sm" onclick="addClientProduct()">Add</button></div>
@@ -9983,13 +9988,40 @@ function editClient(name){
   // pre-fill with all global products if this client has none yet, so you can trim
   const prods=(c.products&&String(c.products).trim())?String(c.products).split(',').map(s=>s.trim()).filter(Boolean):(CFG.products||[]);
   setClientProducts(prods);
+  // pre-fill the contract (rev share) + retainer so onboarding edits stay in one place
+  const con=contractsEffective().find(x=>nrmName(x.client)===nrmName(c.name))||{};
+  if(g('feRate')) g('feRate').value=(con.feTBD||con.feRate==null)?'':con.feRate;
+  if(g('beRate')) g('beRate').value=(con.beTBD||con.beRate==null)?'':con.beRate;
+  const bc=clientBillingCfg(c.name)||{};
+  if(g('retainer')) g('retainer').value=(bc.retainer!=null?bc.retainer:'');
+  if(g('retainerDay')) g('retainerDay').value=(bc.retainerDay!=null?bc.retainerDay:'');
   clientModalShow();
 }
 async function saveClient(e){
   e.preventDefault();
   const o=formObj(e.target); o.type='client'; o.monthly=parseFloat(o.monthly)||0; o.monthlyGoal=parseFloat(o.monthlyGoal)||0;
   o.products=CLIENT_PRODUCTS.join(', ');
+  const name=String(o.name||'').trim();
+  // the contract + retainer fields ride on the client form for one-shot onboarding; pull them off so the client record stays clean
+  const feRaw=o.feRate, beRaw=o.beRate, retRaw=o.retainer, retDayRaw=o.retainerDay;
+  delete o.feRate; delete o.beRate; delete o.retainer; delete o.retainerDay;
   await addRecord(o);
+  const numOr=v=>{ v=String(v==null?'':v).trim(); return v===''?null:(parseFloat(v)||0); };
+  // 1) stand up (or refresh) the contract so the account shows on Contracts + bills the right rev share. appClient = the client name (TSA logs deals under the client name).
+  const fe=numOr(feRaw), be=numOr(beRaw);
+  if(name && (fe!=null || be!=null)){
+    const pc=contractsEffective().find(x=>nrmName(x.client)===nrmName(name))||{};
+    await addRecord({type:'contract', client:name, appClient:name, active:true,
+      feRate:fe, feTBD:fe==null, feMonthly:pc.feMonthly||0,
+      beRate:be, beTBD:be==null, beMonthly:pc.beMonthly||0,
+      flipRate:pc.flipRate||0, flipNote:pc.flipNote||'', notes:pc.notes||''});
+  }
+  // 2) stand up (or refresh) the monthly retainer (full net to Sales HQ; not commissionable). Preserve any legacy rep-comp fields.
+  const ret=numOr(retRaw), retDay=(function(){ const v=parseInt(String(retDayRaw==null?'':retDayRaw),10); return isNaN(v)?null:Math.min(31,Math.max(1,v)); })();
+  if(name && (ret!=null || retDay!=null)){
+    const pb=clientBillingCfg(name)||{};
+    await addRecord({type:'clientbilling', client:name, mode:'flat', flatRate:pb.flatRate!=null?pb.flatRate:null, closerRate:pb.closerRate!=null?pb.closerRate:null, setterRate:pb.setterRate!=null?pb.setterRate:null, overrideRate:pb.overrideRate!=null?pb.overrideRate:null, frontEndOnly:!!pb.frontEndOnly, retainer:ret, retainerDay:retDay, by:(SESSION&&SESSION.name)||''});
+  }
   e.target.reset(); setClientProducts(CFG.products||[]); clientModalClose(); toast('Client saved'); fillLists(); renderClientOverview();
 }
 // people selectable as account managers = real user accounts that can manage (admin / manager / webinar team).
