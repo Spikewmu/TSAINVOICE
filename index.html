@@ -2137,6 +2137,9 @@ If they did not watch: No problem at all, I will send it right over. Can you wat
     </div>
     <div id="integBody" hidden>
       <div id="integStatus" style="margin:0 0 12px"></div>
+      <div class="panel collapse" id="secBot"><h3 class="csec" onclick="integToggleSec('secBot')"><span class="chev">&#9662;</span>Slack bot <span class="muted" style="font-weight:400;font-size:12px">- one bot for this client; pick the channel from a dropdown (recommended)</span></h3>
+        <div class="csec-body"><div style="padding:12px" id="integBot"></div></div>
+      </div>
       <div class="panel collapse" id="secPay"><h3 class="csec" onclick="integToggleSec('secPay')"><span class="chev">&#9662;</span>Payment webhooks <button class="btn gold sm" style="float:right" onclick="event.stopPropagation();integAddWebhook()">+ Add webhook</button><span class="muted" style="font-weight:400;font-size:12px">- one inbound URL per payment source (Whop, Elective, Fanbasis)</span></h3>
         <div class="csec-body"><div style="padding:12px">
           <p class="hint" style="margin:0 0 12px">One per source (Whop, Elective, Fanbasis, a specific offer...). Name it, paste the Slack channel it should post to, copy the inbound URL into the processor, and edit the message format. Fields you can use: <code>{{amount}}</code> <code>{{customer}}</code> <code>{{product}}</code> <code>{{currency}}</code> <code>{{event}}</code> <code>{{raw.any.path}}</code>.</p>
@@ -10280,7 +10283,7 @@ function integHdr(){ const h={'Content-Type':'application/json'}; if(SESSION&&SE
 async function integApi(action,body){ try{ const r=await fetch('/api/integrations?action='+action,{method:'POST',headers:integHdr(),body:JSON.stringify(body||{})}); return await r.json(); }catch(e){ return {ok:false,error:String(e)}; } }
 function prettyJson(s){ try{ return JSON.stringify(JSON.parse(s),null,2); }catch(e){ return String(s||''); } }
 const PROC_LIST=[['generic','Generic'],['whop','Whop'],['elective','Elective'],['fanbasis','Fanbasis'],['stripe','Stripe'],['ghl','GoHighLevel']];
-let INTEG_CFGS={}, INTEG_HOOKS=[], INTEG_TARGETS=[], INTEG_KEY='', INTEG_TEMPLATES=[], INTEG_SLACK_OAUTH=false, INTEG_SLACK_APPS={};
+let INTEG_CFGS={}, INTEG_HOOKS=[], INTEG_TARGETS=[], INTEG_KEY='', INTEG_TEMPLATES=[], INTEG_SLACK_OAUTH=false, INTEG_SLACK_APPS={}, INTEG_BOT_CHANS={};
 function integApplyTpl(id,tplId){ const t=INTEG_TEMPLATES.find(x=>x.id===tplId); const ta=document.getElementById('wt_'+id); if(t&&ta){ ta.value=t.body||''; toast('Template applied - Save to keep it'); } }
 // insert a {{field}} token at the cursor in a webhook's message box
 function integInsert(id,field){ const ta=document.getElementById('wt_'+id); if(!ta) return; const tok='{{'+field+'}}'; const s=(ta.selectionStart!=null)?ta.selectionStart:ta.value.length, e=(ta.selectionEnd!=null)?ta.selectionEnd:ta.value.length; ta.value=ta.value.slice(0,s)+tok+ta.value.slice(e); ta.focus(); ta.selectionStart=ta.selectionEnd=s+tok.length; }
@@ -10320,7 +10323,7 @@ async function renderIntegrations(){
   renderAllWebhooks(); renderTemplateLib(); integPick(); if(!window.__integSecInit){ integApplySecState(); window.__integSecInit=1; } // default-collapse only on first open; preserve the user's open sections on later re-renders (e.g. the refresh after a Slack reconnect)
 }
 function integToggleSec(id){ const p=document.getElementById(id); if(!p) return; p.classList.toggle('collapsed'); }
-function integApplySecState(){ ['secAll','secPay','secFeeds','secEod','secGhl','integTplLib'].forEach(id=>{ const p=document.getElementById(id); if(p) p.classList.add('collapsed'); }); }
+function integApplySecState(){ ['secAll','secBot','secPay','secFeeds','secEod','secGhl','integTplLib'].forEach(id=>{ const p=document.getElementById(id); if(p) p.classList.add('collapsed'); }); }
 function renderGhlConfig(){
   const t=integTarget(), box=document.getElementById('integGhl'); if(!box||!t) return;
   const c=INTEG_CFGS[t.key]||{}, has=!!c.ghl;
@@ -10373,7 +10376,50 @@ function integPick(){
   const t=integTarget(), body=document.getElementById('integBody'); if(!t){ if(body)body.hidden=true; return; }
   if(body) body.hidden=false; INTEG_KEY=t.key;
   const tag=document.getElementById('integPlanTag'); if(tag) tag.textContent=t.plan||'';
-  renderWebhookList(); renderEodRouting(); renderGhlConfig();
+  renderWebhookList(); renderEodRouting(); renderGhlConfig(); renderSlackBot();
+}
+// ---- Slack bot (single-bot-per-client + channel dropdown) ----
+async function renderSlackBot(){
+  const t=integTarget(), box=document.getElementById('integBot'); if(!box||!t) return;
+  const c=INTEG_CFGS[t.key]||{}, connected=!!c.botConnected, chans=INTEG_BOT_CHANS[t.key];
+  box.innerHTML=`
+    <p class="hint" style="margin:0 0 12px">Install the <b>Sales HQ Notify</b> Slack app in this client's workspace, paste its <b>Bot User OAuth token</b> (starts <code>xoxb-</code>), then <b>Load channels</b> and pick where notifications post. One bot covers every feed - no per-channel webhooks. The token is stored server-side, never shown back.</p>
+    <div class="cards" style="grid-template-columns:repeat(auto-fill,minmax(260px,1fr))">
+      <div class="field"><label>Bot token ${connected?'<span class="pill good">&#10003; set</span>':'<span class="pill" style="opacity:.55">not set</span>'}</label>
+        <span style="display:flex;gap:6px"><input id="botToken" type="password" autocomplete="off" placeholder="${connected?'•••• (leave blank to keep)':'xoxb-...'}" style="flex:1"><button type="button" class="btn sm ghost" onclick="integReveal('botToken',this)">Show</button></span></div>
+    </div>
+    <div class="row-actions" style="margin:10px 0"><button class="btn gold sm" onclick="integSaveBotToken()">Save token</button> <button class="btn ghost sm" onclick="integLoadChannels()">Load channels</button></div>
+    <div id="integBotChan" style="border-top:1px solid var(--border);padding-top:12px">${integBotChanUI(c,chans)}</div>`;
+}
+function integBotChanUI(c,chans){
+  if(!c.botConnected) return '<p class="muted" style="font-size:12px">Save a bot token first, then Load channels.</p>';
+  const opts=(chans||[]).map(ch=>`<option value="${esc(ch.id)}" ${ch.id===c.botChanId?'selected':''}>#${esc(ch.name)}${ch.private?' (private)':''}</option>`).join('');
+  const sel=chans?`<select id="botChan" style="min-width:220px"><option value="">- pick a channel -</option>${opts}</select>`:`<span class="muted" style="font-size:12px">Click <b>Load channels</b> to choose.${c.botChanName?(' Current: <b>#'+esc(c.botChanName)+'</b>'):''}</span>`;
+  return `<div class="field" style="max-width:520px"><label>Default notifications channel ${c.botChanName?('<span class="pill good">#'+esc(c.botChanName)+'</span>'):''}</label>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${sel}${chans?'<button class="btn gold sm" onclick="integSaveBotChan()">Save channel</button>':''}${c.botChanId?'<button class="btn ghost sm" onclick="integTestBot()">Send test</button>':''}</div>
+    <span class="fieldhelp">Every feed for this client posts here unless a specific webhook is set on the feed. For a private channel, invite the bot first with <code>/invite @Sales HQ Notify</code>.</span></div>`;
+}
+async function integSaveBotToken(){
+  const t=integTarget(); if(!t) return; const tok=(document.getElementById('botToken').value||'').trim();
+  const res=await integApi('save',{key:t.key, ws:t.ws, client:t.client, botToken: tok?tok:'__keep__'});
+  if(res&&res.ok){ INTEG_CFGS[t.key]=res.config; toast('Bot token saved'); renderSlackBot(); } else toast((res&&res.error)||'Could not save',true);
+}
+async function integLoadChannels(){
+  const t=integTarget(); if(!t) return; toast('Loading channels...');
+  const res=await integApi('listChannels',{key:t.key, ws:t.ws});
+  if(res&&res.ok){ INTEG_BOT_CHANS[t.key]=res.channels||[]; renderSlackBot(); toast(((res.channels||[]).length)+' channels loaded'); }
+  else toast((res&&res.error)||'Could not load channels - check the token + that the app is installed',true);
+}
+async function integSaveBotChan(){
+  const t=integTarget(); if(!t) return; const s=document.getElementById('botChan'); const id=s?s.value:''; if(!id){ toast('Pick a channel first',true); return; }
+  const name=String((s.options[s.selectedIndex]||{}).text||'').replace(/^#/,'').replace(/ \(private\)$/,'');
+  const res=await integApi('save',{key:t.key, ws:t.ws, client:t.client, botChanId:id, botChanName:name});
+  if(res&&res.ok){ INTEG_CFGS[t.key]=res.config; toast('Channel saved'); renderSlackBot(); } else toast((res&&res.error)||'Could not save',true);
+}
+async function integTestBot(){
+  const t=integTarget(); if(!t) return; toast('Sending test...');
+  const res=await integApi('testBot',{key:t.key, ws:t.ws});
+  if(res&&res.ok) toast('Test sent - check the channel'); else toast((res&&res.error)||'Test failed',true);
 }
 function slackAppKeyForField(f){ return (f==='deal')?f:(f==='postcall'||f==='postcallSetter'||f==='postcallCloser')?'postcall':(f==='sod'||f==='sodSetter'||f==='sodCloser')?'sod':(f==='setter'||f==='closer'||f==='mgr'||f==='slack'||f==='dailyReport'||f==='invoicing'||f==='leaderboard'||f==='onboarding')?'eod':'default'; } // dailyReport + invoicing + leaderboard + onboarding + fallback use the EOD app (the 'default' app isn't configured on the server)
 function canConnectField(field){ return !!(INTEG_SLACK_APPS[slackAppKeyForField(field)] || INTEG_SLACK_APPS['default']); }

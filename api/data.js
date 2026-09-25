@@ -43,7 +43,17 @@ async function integrationFor(ws, client) {
 }
 const chanDest = u => (/discord(app)?\.com\/api\/webhooks\//i.test(String(u || '')) && !/\/slack\/?$/i.test(String(u))) ? String(u).replace(/\/+$/, '') + '/slack' : u; // Discord accepts Slack payloads at /slack
 const money = n => '$' + Number(n || 0).toLocaleString('en-US');
-async function postChan(dest, text, blocks) { if (!dest) return; try { await fetch(chanDest(dest), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text, blocks }) }); } catch (e) { } }
+// dest is either an incoming-webhook URL (posts as-is) or a Slack channel id (posts via the client's bot token)
+async function postChan(dest, text, blocks, bot) {
+  if (!dest) return;
+  try {
+    if (/^https?:\/\//i.test(dest)) { await fetch(chanDest(dest), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text, blocks }) }); }
+    else if (bot) { // channel id + bot token
+      await fetch('https://slack.com/api/conversations.join', { method: 'POST', headers: { Authorization: 'Bearer ' + bot, 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ channel: dest }) }).catch(() => {});
+      await fetch('https://slack.com/api/chat.postMessage', { method: 'POST', headers: { Authorization: 'Bearer ' + bot, 'Content-Type': 'application/json' }, body: JSON.stringify({ channel: dest, text, blocks }) });
+    }
+  } catch (e) { }
+}
 // ---- zero-dependency PDF builder (Vercel functions have no npm deps) ----
 function pdfEsc(s) { return String(s == null ? '' : s).replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)'); }
 function buildPdf(lines) { // lines: [{t,x,y,size,bold}]
@@ -115,14 +125,16 @@ async function eventToSlack(rec) {
   try {
     if (!rec || !['deal', 'postcall', 'sod'].includes(rec.type)) return;
     const cfg = await integrationFor(rec.ws, rec.client); if (!cfg) return;
+    const bot = cfg.botToken || '', defChan = cfg.botChanId || ''; // single-bot: feeds with no specific channel post to the default bot channel
     const who = rec.rep || rec.by || 'Someone';
     if (rec.type === 'deal') {
-      if (!cfg.dealSlack && !cfg.onboardingSlack) return;
+      if (!cfg.dealSlack && !cfg.onboardingSlack && !defChan) return;
       const L = (label, val) => (val !== undefined && val !== null && String(val).trim() !== '') ? `\n*${label}:* ${String(val).trim()}` : ''; // only show a line if it has a value
       const dp = String(rec.date || '').slice(0, 10).split('-'); const dateStr = dp.length === 3 ? (Number(dp[1]) + '-' + Number(dp[2]) + '-' + dp[0]) : ''; // 2026-09-07 -> 9-7-2026
       const setterLine = (rec.setter && String(rec.setter).trim()) ? `\n*Setter:* ${String(rec.setter).trim()}` : '\n*Setter:* self-booked';
       // internal "new closed deal" team feed
-      if (cfg.dealSlack) {
+      const dealDest = cfg.dealSlack || defChan;
+      if (dealDest) {
         const body = `🎉 *NEW CLOSED DEAL*${rec.client ? '  ·  *' + rec.client + '*' : ''}`
           + `\n${who} (Closer)`
           + L('Contact', rec.lead) + L('Email', rec.leadEmail) + L('Date', dateStr) + L('Offer', rec.product)
@@ -130,8 +142,8 @@ async function eventToSlack(rec) {
           + (rec.cashCollected ? `\n*Cash collected:* ${money(rec.cashCollected)}` : '')
           + (rec.depositCollected ? `\n*Deposit:* ${money(rec.depositCollected)}` : '')
           + L('Source', rec.source) + setterLine + L('Notes', rec.notes);
-        await postChan(cfg.dealSlack, `New closed deal${rec.client ? ' · ' + rec.client : ''} · ${money(rec.cashCollected)} (${who})`,
-          [{ type: 'section', text: { type: 'mrkdwn', text: body } }]);
+        await postChan(dealDest, `New closed deal${rec.client ? ' · ' + rec.client : ''} · ${money(rec.cashCollected)} (${who})`,
+          [{ type: 'section', text: { type: 'mrkdwn', text: body } }], bot);
       }
       // buyer-onboarding trigger (T-593): fires the moment the closer submits, so the new customer's access/welcome can start
       if (cfg.onboardingSlack) {
@@ -142,10 +154,10 @@ async function eventToSlack(rec) {
           + L('Closed by', who) + L('Date', dateStr)
           + `\n_Send their access / welcome and book the kickoff._`;
         await postChan(cfg.onboardingSlack, `New customer to onboard${rec.client ? ' · ' + rec.client : ''}${rec.lead ? ' · ' + rec.lead : ''}`,
-          [{ type: 'section', text: { type: 'mrkdwn', text: ob } }]);
+          [{ type: 'section', text: { type: 'mrkdwn', text: ob } }], bot);
       }
     } else if (rec.type === 'postcall') {
-      const dest = (rec.role === 'Setter' ? (cfg.postcallSetterSlack || cfg.postcallSlack) : (cfg.postcallCloserSlack || cfg.postcallSlack));
+      const dest = (rec.role === 'Setter' ? (cfg.postcallSetterSlack || cfg.postcallSlack) : (cfg.postcallCloserSlack || cfg.postcallSlack)) || defChan;
       if (!dest) return;
       const L = (label, val) => (val !== undefined && val !== null && String(val).trim() !== '') ? `\n*${label}:* ${String(val).trim()}` : ''; // only show a line if it has a value
       const outcome = String(rec.outcome || '');
@@ -167,9 +179,9 @@ async function eventToSlack(rec) {
       if (won) body += `\n_(full deal detail also posts to the closed-deals channel)_`;
       if (rec.fathom && String(rec.fathom).trim()) body += `\n🎥 <${String(rec.fathom).trim()}|Recording>`;
       await postChan(dest, `Post-call · ${who}${rec.client ? ' · ' + rec.client : ''}${outcome ? ' · ' + outcome : ''}`,
-        [{ type: 'section', text: { type: 'mrkdwn', text: body } }]);
+        [{ type: 'section', text: { type: 'mrkdwn', text: body } }], bot);
     } else { // sod (start-of-day projection) — route by role to the setter/closer channel, else combined
-      const dest = (rec.role === 'Setter' ? (cfg.sodSetterSlack || cfg.sodSlack) : (cfg.sodCloserSlack || cfg.sodSlack));
+      const dest = (rec.role === 'Setter' ? (cfg.sodSetterSlack || cfg.sodSlack) : (cfg.sodCloserSlack || cfg.sodSlack)) || defChan;
       if (!dest) return;
       const n = v => v || 0;
       let lines;
@@ -183,7 +195,7 @@ async function eventToSlack(rec) {
       }
       const head = `📅 *Start of Day*${rec.client ? '  ·  *' + rec.client + '*' : ''}\n${who}${rec.role ? ' (' + rec.role + ')' : ''}`;
       await postChan(dest, `Start of Day · ${rec.client ? rec.client + ' · ' : ''}${who}`,
-        [{ type: 'section', text: { type: 'mrkdwn', text: head + '\n' + lines } }].concat(rec.notes ? [{ type: 'context', elements: [{ type: 'mrkdwn', text: '"' + String(rec.notes).slice(0, 200) + '"' }] }] : []));
+        [{ type: 'section', text: { type: 'mrkdwn', text: head + '\n' + lines } }].concat(rec.notes ? [{ type: 'context', elements: [{ type: 'mrkdwn', text: '"' + String(rec.notes).slice(0, 200) + '"' }] }] : []), bot);
     }
   } catch (e) { }
 }
@@ -193,9 +205,10 @@ async function eodToSlack(rec) {
     if (!rec || (rec.type !== 'eod' && rec.type !== 'mgreod')) return;
     const cfg = await integrationFor(rec.ws, rec.client);
     if (!cfg || !cfg.eodToSlack) return;
-    // route to the channel for this role (setter EOD, closer EOD, manager EOD can each be a different channel), fall back to the general one
-    const dest = rec.type === 'mgreod' ? (cfg.eodMgrSlack || cfg.slackWebhook)
-      : ((rec.role || 'Closer') === 'Setter' ? (cfg.eodSetterSlack || cfg.slackWebhook) : (cfg.eodCloserSlack || cfg.slackWebhook));
+    const bot = cfg.botToken || '', defChan = cfg.botChanId || '';
+    // route to the channel for this role (setter EOD, closer EOD, manager EOD can each be a different channel), fall back to the general one, then the default bot channel
+    const dest = (rec.type === 'mgreod' ? (cfg.eodMgrSlack || cfg.slackWebhook)
+      : ((rec.role || 'Closer') === 'Setter' ? (cfg.eodSetterSlack || cfg.slackWebhook) : (cfg.eodCloserSlack || cfg.slackWebhook))) || defChan;
     if (!dest) return;
     const n = v => v || 0, who = rec.rep || rec.by || 'Someone';
     let line;
@@ -207,7 +220,7 @@ async function eodToSlack(rec) {
       { type: 'section', text: { type: 'mrkdwn', text: `${head}\n${line}` } }
     ];
     if (rec.notes || rec.bottleneck) blocks.push({ type: 'context', elements: [{ type: 'mrkdwn', text: '“' + String(rec.notes || rec.bottleneck).slice(0, 200) + '”' }] });
-    await fetch(chanDest(dest), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: `EOD from ${who}${rec.client ? ' · ' + rec.client : ''}`, blocks }) });
+    await postChan(dest, `EOD from ${who}${rec.client ? ' · ' + rec.client : ''}`, blocks, bot);
   } catch (e) { /* never block the write on a Slack failure */ }
 }
 // push a post-call / closed-deal disposition back to the client's GHL: find the contact by email, add a note + stamp the source.

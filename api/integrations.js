@@ -60,6 +60,7 @@ const pubCfg = d => ({ key: d.key, ws: d.ws, client: d.client || '', eodToSlack:
   invoicing: d.invoicingSlack || '', invoicingPdf: !!(d.invoicingSlackBot && d.invoicingSlackChanId),
   // the connected Slack channel name per source (captured at OAuth connect), for display
   chan: { slack: d.slackWebhookChan||'', setter: d.eodSetterSlackChan||'', closer: d.eodCloserSlackChan||'', mgr: d.eodMgrSlackChan||'', deal: d.dealSlackChan||'', onboarding: d.onboardingSlackChan||'', postcall: d.postcallSlackChan||'', postcallSetter: d.postcallSetterSlackChan||'', postcallCloser: d.postcallCloserSlackChan||'', sod: d.sodSlackChan||'', sodSetter: d.sodSetterSlackChan||'', sodCloser: d.sodCloserSlackChan||'', dailyReport: d.dailyReportSlackChan||'', leaderboard: d.leaderboardSlackChan||'', invoicing: d.invoicingSlackChan||'' },
+  botConnected: !!d.botToken, botChanId: d.botChanId || '', botChanName: d.botChanName || '', // single-bot notifications: token is write-only, channel id/name are safe to show
   ghl: !!d.ghlApiKey, ghlLocation: d.ghlLocationId || '', ghlEnabled: !!d.ghlEnabled }); // ghlApiKey itself is write-only, never returned
 const pubHook = (d, req) => ({ id: d.id, key: d.key, ws: d.ws, client: d.client || '', name: d.name || 'Webhook', processor: d.processor || 'generic', enabled: d.enabled !== false, template: d.template || DEFAULT_TEMPLATE, hasSlack: !!d.slackWebhook, slack: d.slackWebhook || '', token: d.token, inbound: baseUrl(req) + '/api/hook?t=' + d.token });
 const chanDest = u => (/discord(app)?\.com\/api\/webhooks\//i.test(String(u || '')) && !/\/slack\/?$/i.test(String(u))) ? String(u).replace(/\/+$/, '') + '/slack' : u; // Discord accepts Slack payloads at /slack
@@ -67,6 +68,16 @@ async function postSlack(webhook, payload) {
   if (!webhook) return { ok: false, error: 'no channel webhook set' };
   try { const r = await fetch(chanDest(webhook), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) }); return r.ok ? { ok: true } : { ok: false, error: 'post ' + r.status + ' ' + (await r.text()).slice(0, 120) }; }
   catch (e) { return { ok: false, error: String(e) }; }
+}
+// single-bot notifications: post to a channel_id via chat.postMessage (auto-joins public channels so no manual invite is needed)
+async function postBot(bot, channel, text, blocks) {
+  if (!bot || !channel) return { ok: false, error: 'no bot token or channel' };
+  try {
+    await fetch('https://slack.com/api/conversations.join', { method: 'POST', headers: { Authorization: 'Bearer ' + bot, 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ channel }) }).catch(() => {});
+    const r = await fetch('https://slack.com/api/chat.postMessage', { method: 'POST', headers: { Authorization: 'Bearer ' + bot, 'Content-Type': 'application/json' }, body: JSON.stringify({ channel, text, ...(blocks ? { blocks } : {}) }) });
+    const j = await r.json();
+    return j.ok ? { ok: true } : { ok: false, error: 'Slack: ' + j.error + (j.error === 'not_in_channel' ? ' (invite the bot to this channel)' : '') };
+  } catch (e) { return { ok: false, error: String(e && e.message || e) }; }
 }
 // push a disposition to GHL (find contact by email -> add note + stamp source). Mirrors api/data.js ghlPush; used by the Test button.
 async function ghlPush(cfg, rec) {
@@ -188,6 +199,9 @@ export default async function handler(req, res) {
         leaderboardOn: b.leaderboardOn != null ? !!b.leaderboardOn : !!(cur && cur.leaderboardOn),
         leaderboardTime: keepOr(b.leaderboardTime, cur && cur.leaderboardTime) || '10:00',
         invoicingSlack: keepOr(b.invoicingSlack, cur && cur.invoicingSlack),
+        botToken: keepOr(b.botToken, cur && cur.botToken),
+        botChanId: keepOr(b.botChanId, cur && cur.botChanId),
+        botChanName: keepOr(b.botChanName, cur && cur.botChanName),
         ghlApiKey: keepOr(b.ghlApiKey, cur && cur.ghlApiKey),
         ghlLocationId: keepOr(b.ghlLocationId, cur && cur.ghlLocationId),
         ghlEnabled: b.ghlEnabled != null ? !!b.ghlEnabled : !!(cur && cur.ghlEnabled),
@@ -298,6 +312,37 @@ export default async function handler(req, res) {
       const r = await supa(`records?select=data&type=eq.hooklog&data->>webhookId=eq.${encodeURIComponent(id)}&order=submitted_at.desc&limit=20`);
       const rows = (r && r.ok) ? await r.json() : [];
       return res.status(200).json({ ok: true, log: rows.map(x => ({ at: x.data.at, payload: x.data.payload, parsed: x.data.parsed })) });
+    }
+    // ---- single-bot notifications: list the client's Slack channels (for the dropdown) ----
+    if (action === 'listChannels') {
+      const key = String(b.key || ''); if (!key) return res.status(200).json({ ok: false, error: 'key required' });
+      const cfgs = await allByType('integration'); const cur = cfgs[key];
+      if (!cur) return res.status(200).json({ ok: false, error: 'Save a bot token first' });
+      if (!mayTouch(cur)) return res.status(200).json({ ok: false, error: 'not your client' });
+      if (!cur.botToken) return res.status(200).json({ ok: false, error: 'Save a bot token first' });
+      const out = []; let cursor = '';
+      try {
+        for (let i = 0; i < 12; i++) {
+          const u = 'https://slack.com/api/conversations.list?' + new URLSearchParams({ types: 'public_channel,private_channel', exclude_archived: 'true', limit: '200', ...(cursor ? { cursor } : {}) }).toString();
+          const r = await fetch(u, { headers: { Authorization: 'Bearer ' + cur.botToken } });
+          const j = await r.json();
+          if (!j.ok) return res.status(200).json({ ok: false, error: 'Slack: ' + j.error + (j.error === 'missing_scope' ? ' (add channels:read + groups:read scopes, then reinstall the app)' : '') });
+          (j.channels || []).forEach(ch => out.push({ id: ch.id, name: ch.name, private: !!ch.is_private }));
+          cursor = (j.response_metadata && j.response_metadata.next_cursor) || '';
+          if (!cursor) break;
+        }
+      } catch (e) { return res.status(200).json({ ok: false, error: String(e && e.message || e) }); }
+      out.sort((a, b) => a.name.localeCompare(b.name));
+      return res.status(200).json({ ok: true, channels: out });
+    }
+    if (action === 'testBot') {
+      const key = String(b.key || ''); if (!key) return res.status(200).json({ ok: false, error: 'key required' });
+      const cfgs = await allByType('integration'); const cur = cfgs[key];
+      if (!cur) return res.status(200).json({ ok: false, error: 'Save a bot token + channel first' });
+      if (!mayTouch(cur)) return res.status(200).json({ ok: false, error: 'not your client' });
+      if (!cur.botToken || !cur.botChanId) return res.status(200).json({ ok: false, error: 'Save a bot token and pick a channel first' });
+      const text = `🔔 Sales HQ test - the notification bot is connected for ${cur.client || 'this client'}. Live alerts (closed deals, post-call, start-of-day, EOD, invoicing) will post here.`;
+      return res.status(200).json(await postBot(cur.botToken, cur.botChanId, text));
     }
     return res.status(200).json({ ok: false, error: 'unknown action' });
   } catch (e) { return res.status(200).json({ ok: false, error: String(e && e.message || e) }); }
