@@ -10285,7 +10285,7 @@ function integHdr(){ const h={'Content-Type':'application/json'}; if(SESSION&&SE
 async function integApi(action,body){ try{ const r=await fetch('/api/integrations?action='+action,{method:'POST',headers:integHdr(),body:JSON.stringify(body||{})}); return await r.json(); }catch(e){ return {ok:false,error:String(e)}; } }
 function prettyJson(s){ try{ return JSON.stringify(JSON.parse(s),null,2); }catch(e){ return String(s||''); } }
 const PROC_LIST=[['generic','Generic'],['whop','Whop'],['elective','Elective'],['fanbasis','Fanbasis'],['stripe','Stripe'],['ghl','GoHighLevel']];
-let INTEG_CFGS={}, INTEG_HOOKS=[], INTEG_TARGETS=[], INTEG_KEY='', INTEG_TEMPLATES=[], INTEG_SLACK_OAUTH=false, INTEG_SLACK_APPS={}, INTEG_BOT_CHANS={}, INTEG_NOTIFY_OAUTH=false;
+let INTEG_CFGS={}, INTEG_HOOKS=[], INTEG_TARGETS=[], INTEG_KEY='', INTEG_TEMPLATES=[], INTEG_SLACK_OAUTH=false, INTEG_SLACK_APPS={}, INTEG_BOT_CHANS={}, INTEG_NOTIFY_OAUTH=false, INTEG_BOT_LOADING={};
 function integApplyTpl(id,tplId){ const t=INTEG_TEMPLATES.find(x=>x.id===tplId); const ta=document.getElementById('wt_'+id); if(t&&ta){ ta.value=t.body||''; toast('Template applied - Save to keep it'); } }
 // insert a {{field}} token at the cursor in a webhook's message box
 function integInsert(id,field){ const ta=document.getElementById('wt_'+id); if(!ta) return; const tok='{{'+field+'}}'; const s=(ta.selectionStart!=null)?ta.selectionStart:ta.value.length, e=(ta.selectionEnd!=null)?ta.selectionEnd:ta.value.length; ta.value=ta.value.slice(0,s)+tok+ta.value.slice(e); ta.focus(); ta.selectionStart=ta.selectionEnd=s+tok.length; }
@@ -10395,6 +10395,8 @@ function integPick(){
   if(!t){ if(body)body.hidden=true; if(prompt) prompt.hidden=false; return; }
   if(prompt) prompt.hidden=true;
   if(body) body.hidden=false; INTEG_KEY=t.key;
+  // auto-load the bot's channels once so the feed dropdowns are ready (no per-feed "Load channels" step)
+  if((INTEG_CFGS[t.key]||{}).botConnected && !INTEG_BOT_CHANS[t.key] && !INTEG_BOT_LOADING[t.key]){ integLoadChannels(true); }
   const tag=document.getElementById('integPlanTag'); if(tag) tag.textContent=t.plan||'';
   renderWebhookList(); renderEodRouting(); renderGhlConfig(); renderSlackBot();
 }
@@ -10429,11 +10431,13 @@ async function integSaveBotToken(){
   const res=await integApi('save',{key:t.key, ws:t.ws, client:t.client, botToken: tok?tok:'__keep__'});
   if(res&&res.ok){ INTEG_CFGS[t.key]=res.config; toast('Bot token saved'); renderSlackBot(); renderEodRouting(); } else toast((res&&res.error)||'Could not save',true);
 }
-async function integLoadChannels(){
-  const t=integTarget(); if(!t) return; toast('Loading channels...');
+async function integLoadChannels(quiet){
+  const t=integTarget(); if(!t) return; if(!quiet) toast('Loading channels...');
+  INTEG_BOT_LOADING[t.key]=1;
   const res=await integApi('listChannels',{key:t.key, ws:t.ws});
-  if(res&&res.ok){ INTEG_BOT_CHANS[t.key]=res.channels||[]; renderSlackBot(); renderEodRouting(); toast(((res.channels||[]).length)+' channels loaded'); }
-  else toast((res&&res.error)||'Could not load channels - check the token + that the app is installed',true);
+  INTEG_BOT_LOADING[t.key]=0;
+  if(res&&res.ok){ INTEG_BOT_CHANS[t.key]=res.channels||[]; renderSlackBot(); renderEodRouting(); if(!quiet) toast(((res.channels||[]).length)+' channels loaded'); }
+  else if(!quiet) toast((res&&res.error)||'Could not load channels - check the token + that the app is installed',true);
 }
 async function integSaveBotChan(){
   const t=integTarget(); if(!t) return; const s=document.getElementById('botChan'); const id=s?s.value:''; if(!id){ toast('Pick a channel first',true); return; }
@@ -10580,51 +10584,45 @@ function slackChanField(id, value, field, label){
   if(!c.botConnected) return slackField(id, value, `'config','','${field}'`, field, label, (c.chan||{})[field]);
   const val=String(value||''), isUrl=/^https?:\/\//i.test(val);
   if(!chans){
-    return `<span style="display:flex;flex-direction:column;gap:6px"><span class="muted" style="font-size:12px">${val?(isUrl?'Set: external webhook':'Set: a channel'):'Uses the default channel'}</span><button type="button" class="btn sm ghost" onclick="integLoadChannels()">Load channels to choose</button><input type="hidden" id="${id}" value="${esc(val)}"></span>`;
+    return `<span class="muted" style="font-size:12px">Loading channels…<input type="hidden" id="${id}" value="${esc(val)}"></span>`;
   }
   const opts=`<option value="">- use default channel -</option>`+(chans||[]).map(ch=>`<option value="${esc(ch.id)}" ${ch.id===val?'selected':''}>#${esc(ch.name)}${ch.private?' (private)':''}</option>`).join('')+(isUrl?`<option value="${esc(val)}" selected>External webhook (keep)</option>`:'');
   const testBtn = val ? `<button type="button" class="btn sm ghost" onclick="integTestChannel('${field}','${String(label).replace(/'/g,"\\'")}')">Test</button>` : '';
-  return `<span style="display:flex;flex-direction:column;gap:6px"><select id="${id}" style="width:100%">${opts}</select>${testBtn?('<span>'+testBtn+'</span>'):''}</span>`;
+  return `<span style="display:flex;gap:8px;align-items:center;width:100%"><select id="${id}" style="flex:1;min-width:0">${opts}</select>${testBtn}</span>`;
 }
 function renderEodRouting(){
   const t=integTarget(); if(!t) return;
   const c=INTEG_CFGS[t.key]||{};
   const feeds=document.getElementById('integFeeds');
+  // clean list layout: each feed = label on the left, channel dropdown on the right
+  const feedRow=(label,sub,id,val,field,extra)=>`<div style="display:flex;gap:16px;align-items:center;justify-content:space-between;padding:10px 2px;border-bottom:1px solid var(--border)"><div style="flex:0 0 auto;min-width:210px;max-width:290px"><div style="font-weight:500;font-size:13px">${label}</div>${sub?`<div class="muted" style="font-size:11px;font-weight:400;line-height:1.3">${esc(sub)}</div>`:''}</div><div style="flex:1;max-width:420px;display:flex;gap:8px;align-items:center;justify-content:flex-end">${slackChanField(id,val,field,label)}${extra||''}</div></div>`;
   if(feeds) feeds.innerHTML=`
-    <div class="cards" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr))">
-      <div class="field"><label>New closed deal channel</label>${slackChanField('evDeal',c.deal,'deal','New closed deal')}</div>
-      <div class="field"><label>New customer onboarding channel <span class="muted" style="font-weight:400">- fires when a closer submits a deal, so the buyer's onboarding (access / welcome) can start</span></label>${slackChanField('evOnboarding',c.onboarding,'onboarding','New customer onboarding')}</div>
-      <div class="field"><label>Post-call checkout (Setters)</label>${slackChanField('evPostcallSetter',c.postcallSetter,'postcallSetter','Post-call checkout (Setters)')}</div>
-      <div class="field"><label>Post-call checkout (Closers)</label>${slackChanField('evPostcallCloser',c.postcallCloser,'postcallCloser','Post-call checkout (Closers)')}</div>
-      <div class="field"><label>Start-of-day projections (Setters)</label>${slackChanField('evSodSetter',c.sodSetter,'sodSetter','Start-of-day projections (Setters)')}</div>
-      <div class="field"><label>Start-of-day projections (Closers)</label>${slackChanField('evSodCloser',c.sodCloser,'sodCloser','Start-of-day projections (Closers)')}</div>
+    <div style="max-width:780px">
+      ${feedRow('New closed deal','','evDeal',c.deal,'deal')}
+      ${feedRow('New customer onboarding',"fires when a closer submits a deal so the buyer's onboarding can start",'evOnboarding',c.onboarding,'onboarding')}
+      ${feedRow('Post-call checkout (Setters)','','evPostcallSetter',c.postcallSetter,'postcallSetter')}
+      ${feedRow('Post-call checkout (Closers)','','evPostcallCloser',c.postcallCloser,'postcallCloser')}
+      ${feedRow('Start-of-day (Setters)','','evSodSetter',c.sodSetter,'sodSetter')}
+      ${feedRow('Start-of-day (Closers)','','evSodCloser',c.sodCloser,'sodCloser')}
     </div>
-    <p class="fieldhelp" style="margin:8px 0 0">Setters' post-call & start-of-day posts route to the Setters channel, closers' to the Closers channel (by the rep's role).</p>
-    <div style="border-top:1px solid var(--border);margin:14px 0 10px"></div>
-    <label style="display:flex;gap:8px;align-items:center;font-weight:500;margin:0 0 8px"><input type="checkbox" id="drOn" ${c.dailyReportOn?'checked':''}> Post the <b>compiled Daily Report</b> to Slack each morning</label>
-    <div class="cards" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start;max-width:640px">
-      <div class="field"><label>Daily report channel</label>${slackChanField('evDailyReport',c.dailyReport,'dailyReport','Daily report')}</div>
-      <div class="field"><label>Send time (Central)</label><span style="display:flex;flex-direction:column;gap:6px;align-items:stretch"><span aria-hidden="true"><span class="pill" style="visibility:hidden;white-space:nowrap">&#10003; connected</span></span><input type="time" id="drTime" step="1800" value="${esc(c.dailyReportTime||'09:30')}" style="width:100%"></span><span class="fieldhelp">When it posts each morning (30-min steps). SODs are due 9am CT.</span></div>
-    </div>
-    <p class="fieldhelp" style="margin:8px 0 0">One combined report: yesterday's results (from EODs) + today's forecast (from SODs), setters and closers, posted here automatically each morning.</p>
-    <div style="border-top:1px solid var(--border);margin:14px 0 10px"></div>
-    <label style="display:flex;gap:8px;align-items:center;font-weight:500;margin:0 0 8px"><input type="checkbox" id="lbOn" ${c.leaderboardOn?'checked':''}> Post the <b>month-to-date leaderboard</b> to Slack each day</label>
-    <div class="cards" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start;max-width:640px">
-      <div class="field"><label>Leaderboard channel</label>${slackChanField('evLeaderboard',c.leaderboard,'leaderboard','Leaderboard')}</div>
-      <div class="field"><label>Post time (Central)</label><span style="display:flex;flex-direction:column;gap:6px;align-items:stretch"><span aria-hidden="true"><span class="pill" style="visibility:hidden;white-space:nowrap">&#10003; connected</span></span><input type="time" id="lbTime" step="1800" value="${esc(c.leaderboardTime||'10:00')}" style="width:100%"></span><span class="fieldhelp">When the leaderboard posts each day (30-min steps).</span></div>
-    </div>
-    <p class="fieldhelp" style="margin:8px 0 0">Closers ranked by cash (cash, deals, close %) and setters (dials, sets, cash) for this month, into this team's leadership channel.</p>
-    <div style="border-top:1px solid var(--border);margin:14px 0 10px"></div>
-    <div style="max-width:640px"><div class="field"><label>Invoicing channel <span class="muted" style="font-weight:400">- where the "Send to billing" button posts a generated invoice</span></label>${slackChanField('evInvoicing',c.invoicing,'invoicing','Invoicing')}${c.botConnected?'<span class="fieldhelp" style="margin-top:6px;display:block"><span class="pill good">&#10003; PDF attach ready</span> - the bot attaches the invoice PDF to this channel.</span>':(c.invoicing?('<span class="fieldhelp" style="margin-top:6px;display:block">'+(c.invoicingPdf?'<span class="pill good">&#10003; PDF attach ready</span>':'<span class="pill" style="color:var(--warn);border-color:var(--warn)">Text only</span> - connect the Slack bot to attach the PDF.')+'</span>'):'')}</div></div>
-    <div class="row-actions" style="margin-top:12px"><button class="btn gold sm" onclick="integSaveEod()">Save routing</button></div>`;
+    <p class="fieldhelp" style="margin:8px 0 0">Setters' post-call & start-of-day posts route to the Setters channel, closers' to the Closers channel (by the rep's role). Blank = the default channel.</p>
+    <div style="border-top:1px solid var(--border);margin:16px 0 6px"></div>
+    <label style="display:flex;gap:8px;align-items:center;font-weight:500;margin:0 0 4px"><input type="checkbox" id="drOn" ${c.dailyReportOn?'checked':''}> Post the <b>compiled Daily Report</b> each morning</label>
+    <div style="max-width:780px">${feedRow('Daily report channel','yesterday from EODs + today from SODs','evDailyReport',c.dailyReport,'dailyReport',`<input type="time" id="drTime" step="1800" value="${esc(c.dailyReportTime||'09:30')}" title="Send time (Central)" style="width:118px">`)}</div>
+    <div style="border-top:1px solid var(--border);margin:16px 0 6px"></div>
+    <label style="display:flex;gap:8px;align-items:center;font-weight:500;margin:0 0 4px"><input type="checkbox" id="lbOn" ${c.leaderboardOn?'checked':''}> Post the <b>month-to-date leaderboard</b> each day</label>
+    <div style="max-width:780px">${feedRow('Leaderboard channel','closers by cash, setters by sets','evLeaderboard',c.leaderboard,'leaderboard',`<input type="time" id="lbTime" step="1800" value="${esc(c.leaderboardTime||'10:00')}" title="Post time (Central)" style="width:118px">`)}</div>
+    <div style="border-top:1px solid var(--border);margin:16px 0 6px"></div>
+    <div style="max-width:780px">${feedRow('Invoicing (Send to billing)', c.botConnected?'the bot attaches the invoice PDF here':'connect the Slack bot to attach the PDF','evInvoicing',c.invoicing,'invoicing')}</div>
+    <div class="row-actions" style="margin-top:14px"><button class="btn gold sm" onclick="integSaveEod()">Save routing</button></div>`;
   const eod=document.getElementById('integEodRep');
   if(eod) eod.innerHTML=`
-    <label style="display:flex;gap:8px;align-items:center;font-weight:500;margin:0 0 8px"><input type="checkbox" id="eodOn" ${c.eodToSlack?'checked':''}> Post submitted <b style="margin:0 3px">EOD reports</b> to Slack</label>
-    <div class="cards" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr))">
-      <div class="field"><label>Setter EOD channel</label>${slackChanField('eodSetter',c.setter,'setter','Setter EOD')}</div>
-      <div class="field"><label>Closer EOD channel</label>${slackChanField('eodCloser',c.closer,'closer','Closer EOD')}</div>
-      <div class="field"><label>Manager EOD channel</label>${slackChanField('eodMgr',c.mgr,'mgr','Manager EOD')}</div>
-      <div class="field"><label>Fallback channel</label>${slackChanField('eodFallback',c.slack,'slack','Fallback')}</div>
+    <label style="display:flex;gap:8px;align-items:center;font-weight:500;margin:0 0 10px"><input type="checkbox" id="eodOn" ${c.eodToSlack?'checked':''}> Post submitted <b style="margin:0 3px">EOD reports</b> to Slack</label>
+    <div style="max-width:780px">
+      ${feedRow('Setter EOD','','eodSetter',c.setter,'setter')}
+      ${feedRow('Closer EOD','','eodCloser',c.closer,'closer')}
+      ${feedRow('Manager EOD','','eodMgr',c.mgr,'mgr')}
+      ${feedRow('Fallback (any unrouted alert)','','eodFallback',c.slack,'slack')}
     </div>
     <p class="fieldhelp" style="margin:8px 0 0">Blank EOD channels fall back to the fallback channel, which also covers any payment webhook with no channel set. Check the box above to turn EOD posting on.</p>
     <div class="row-actions" style="margin-top:12px"><button class="btn gold sm" onclick="integSaveEod()">Save routing</button></div>`;
