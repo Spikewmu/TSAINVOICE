@@ -3942,7 +3942,9 @@ function contractsEffective(){
   const saved={}; collapseContracts(RECORDS).forEach(c=>{ saved[nrmName(c.client)]=c; });
   const out=[], seen={};
   CONTRACT_SEED.forEach(s=>{ const k=nrmName(s.client); const rec=saved[k]; seen[k]=1; out.push(rec?Object.assign({},s,rec):Object.assign({},s)); });
-  Object.keys(saved).forEach(k=>{ if(!seen[k]) out.push(saved[k]); });
+  Object.keys(saved).forEach(k=>{ if(!seen[k]){ out.push(saved[k]); seen[k]=1; } });
+  // every current client that pays us but has no contract/seed yet -> show as a TBD row (they're all TOS accounts). Set rates by editing the client in onboarding.
+  (latestClients()||[]).forEach(c=>{ if(!c||!c.name) return; const st=String(c.status||'').toLowerCase(); if(st==='dropped'||st==='inactive'||st==='prospect') return; const k=nrmName(c.name); if(seen[k]) return; seen[k]=1; out.push({client:c.name, appClient:c.name, active:true, feTBD:true, beTBD:true, autoFromClient:true}); });
   return out;
 }
 function conTokens(s){ return String(s||'').toLowerCase().replace(/\b(the|inc|llc|co|group|acquisitions?|labs?|suites?)\b/g,' ').replace(/[^a-z0-9 ]/g,' ').split(/\s+/).filter(w=>w.length>2); }
