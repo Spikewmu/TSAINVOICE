@@ -294,6 +294,8 @@ export default async function handler(req, res) {
         bodyTxt = `🔔 *Fallback channel* · ${client}\nAny alert with no specific channel set lands here.`;
       }
       const blocks = [{ type: 'section', text: { type: 'mrkdwn', text: bodyTxt } }, { type: 'context', elements: [{ type: 'mrkdwn', text: `🧪 Test preview from Sales HQ · this is how a real "${label}" post will look` }] }];
+      // a channel id (bot) posts via chat.postMessage; a webhook URL posts as-is
+      if (!/^https?:\/\//i.test(dest) && cur.botToken) return res.status(200).json(await postBot(cur.botToken, dest, text, blocks));
       return res.status(200).json(await postSlack(dest, { text, blocks }));
     }
     if (action === 'testGhl') {

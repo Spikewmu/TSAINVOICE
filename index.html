@@ -10572,45 +10572,59 @@ async function integHookLog(id){
   box.innerHTML='<div style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px"><b style="font-size:12px">Recent payloads ('+log.length+')</b>'+(log.length?log.map(e=>`<div style="margin:6px 0"><div class="muted" style="font-size:11px">${esc(new Date(e.at).toLocaleString('en-US'))} · parsed: amount=${esc(String((e.parsed&&e.parsed.amount)||''))} · customer=${esc(String((e.parsed&&e.parsed.customer)||''))}</div><pre style="background:var(--surface-2);padding:8px;border-radius:6px;font-size:11px;overflow:auto;max-height:200px;white-space:pre-wrap">${esc(prettyJson(e.payload))}</pre></div>`).join(''):'<p class="muted" style="font-size:12px">Nothing received yet. Fire a test payment from the processor, then reopen this to see the format.</p>')+'</div>';
 }
 function integCopy(id){ const el=document.getElementById(id); if(!el||!el.value){ toast('Save first',true); return; } navigator.clipboard.writeText(el.value).then(()=>toast('Copied'),()=>toast('Copy failed',true)); }
+// A feed's channel picker. When the client's bot is connected, it's a dropdown of the bot's channels
+// (blank = use the bot's default channel); otherwise it falls back to the webhook-paste + Connect field.
+// The <select>/<input> keeps id=`id` so integSaveEod reads its value the same way for both modes.
+function slackChanField(id, value, field, label){
+  const t=integTarget(), c=t?(INTEG_CFGS[t.key]||{}):{}, chans=t?INTEG_BOT_CHANS[t.key]:null;
+  if(!c.botConnected) return slackField(id, value, `'config','','${field}'`, field, label, (c.chan||{})[field]);
+  const val=String(value||''), isUrl=/^https?:\/\//i.test(val);
+  if(!chans){
+    return `<span style="display:flex;flex-direction:column;gap:6px"><span class="muted" style="font-size:12px">${val?(isUrl?'Set: external webhook':'Set: a channel'):'Uses the default channel'}</span><button type="button" class="btn sm ghost" onclick="integLoadChannels()">Load channels to choose</button><input type="hidden" id="${id}" value="${esc(val)}"></span>`;
+  }
+  const opts=`<option value="">- use default channel -</option>`+(chans||[]).map(ch=>`<option value="${esc(ch.id)}" ${ch.id===val?'selected':''}>#${esc(ch.name)}${ch.private?' (private)':''}</option>`).join('')+(isUrl?`<option value="${esc(val)}" selected>External webhook (keep)</option>`:'');
+  const testBtn = val ? `<button type="button" class="btn sm ghost" onclick="integTestChannel('${field}','${String(label).replace(/'/g,"\\'")}')">Test</button>` : '';
+  return `<span style="display:flex;flex-direction:column;gap:6px"><select id="${id}" style="width:100%">${opts}</select>${testBtn?('<span>'+testBtn+'</span>'):''}</span>`;
+}
 function renderEodRouting(){
   const t=integTarget(); if(!t) return;
   const c=INTEG_CFGS[t.key]||{};
   const feeds=document.getElementById('integFeeds');
   if(feeds) feeds.innerHTML=`
     <div class="cards" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr))">
-      <div class="field"><label>New closed deal channel</label>${slackField('evDeal',c.deal,`'config','','deal'`,'deal','New closed deal',(c.chan||{}).deal)}</div>
-      <div class="field"><label>New customer onboarding channel <span class="muted" style="font-weight:400">- fires when a closer submits a deal, so the buyer's onboarding (access / welcome) can start</span></label>${slackField('evOnboarding',c.onboarding,`'config','','onboarding'`,'onboarding','New customer onboarding',(c.chan||{}).onboarding)}</div>
-      <div class="field"><label>Post-call checkout (Setters)</label>${slackField('evPostcallSetter',c.postcallSetter,`'config','','postcallSetter'`,'postcallSetter','Post-call checkout (Setters)',(c.chan||{}).postcallSetter)}</div>
-      <div class="field"><label>Post-call checkout (Closers)</label>${slackField('evPostcallCloser',c.postcallCloser,`'config','','postcallCloser'`,'postcallCloser','Post-call checkout (Closers)',(c.chan||{}).postcallCloser)}</div>
-      <div class="field"><label>Start-of-day projections (Setters)</label>${slackField('evSodSetter',c.sodSetter,`'config','','sodSetter'`,'sodSetter','Start-of-day projections (Setters)',(c.chan||{}).sodSetter)}</div>
-      <div class="field"><label>Start-of-day projections (Closers)</label>${slackField('evSodCloser',c.sodCloser,`'config','','sodCloser'`,'sodCloser','Start-of-day projections (Closers)',(c.chan||{}).sodCloser)}</div>
+      <div class="field"><label>New closed deal channel</label>${slackChanField('evDeal',c.deal,'deal','New closed deal')}</div>
+      <div class="field"><label>New customer onboarding channel <span class="muted" style="font-weight:400">- fires when a closer submits a deal, so the buyer's onboarding (access / welcome) can start</span></label>${slackChanField('evOnboarding',c.onboarding,'onboarding','New customer onboarding')}</div>
+      <div class="field"><label>Post-call checkout (Setters)</label>${slackChanField('evPostcallSetter',c.postcallSetter,'postcallSetter','Post-call checkout (Setters)')}</div>
+      <div class="field"><label>Post-call checkout (Closers)</label>${slackChanField('evPostcallCloser',c.postcallCloser,'postcallCloser','Post-call checkout (Closers)')}</div>
+      <div class="field"><label>Start-of-day projections (Setters)</label>${slackChanField('evSodSetter',c.sodSetter,'sodSetter','Start-of-day projections (Setters)')}</div>
+      <div class="field"><label>Start-of-day projections (Closers)</label>${slackChanField('evSodCloser',c.sodCloser,'sodCloser','Start-of-day projections (Closers)')}</div>
     </div>
     <p class="fieldhelp" style="margin:8px 0 0">Setters' post-call & start-of-day posts route to the Setters channel, closers' to the Closers channel (by the rep's role).</p>
     <div style="border-top:1px solid var(--border);margin:14px 0 10px"></div>
     <label style="display:flex;gap:8px;align-items:center;font-weight:500;margin:0 0 8px"><input type="checkbox" id="drOn" ${c.dailyReportOn?'checked':''}> Post the <b>compiled Daily Report</b> to Slack each morning</label>
     <div class="cards" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start;max-width:640px">
-      <div class="field"><label>Daily report channel</label>${slackField('evDailyReport',c.dailyReport,`'config','','dailyReport'`,'dailyReport','Daily report',(c.chan||{}).dailyReport)}</div>
+      <div class="field"><label>Daily report channel</label>${slackChanField('evDailyReport',c.dailyReport,'dailyReport','Daily report')}</div>
       <div class="field"><label>Send time (Central)</label><span style="display:flex;flex-direction:column;gap:6px;align-items:stretch"><span aria-hidden="true"><span class="pill" style="visibility:hidden;white-space:nowrap">&#10003; connected</span></span><input type="time" id="drTime" step="1800" value="${esc(c.dailyReportTime||'09:30')}" style="width:100%"></span><span class="fieldhelp">When it posts each morning (30-min steps). SODs are due 9am CT.</span></div>
     </div>
     <p class="fieldhelp" style="margin:8px 0 0">One combined report: yesterday's results (from EODs) + today's forecast (from SODs), setters and closers, posted here automatically each morning.</p>
     <div style="border-top:1px solid var(--border);margin:14px 0 10px"></div>
     <label style="display:flex;gap:8px;align-items:center;font-weight:500;margin:0 0 8px"><input type="checkbox" id="lbOn" ${c.leaderboardOn?'checked':''}> Post the <b>month-to-date leaderboard</b> to Slack each day</label>
     <div class="cards" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start;max-width:640px">
-      <div class="field"><label>Leaderboard channel</label>${slackField('evLeaderboard',c.leaderboard,`'config','','leaderboard'`,'leaderboard','Leaderboard',(c.chan||{}).leaderboard)}</div>
+      <div class="field"><label>Leaderboard channel</label>${slackChanField('evLeaderboard',c.leaderboard,'leaderboard','Leaderboard')}</div>
       <div class="field"><label>Post time (Central)</label><span style="display:flex;flex-direction:column;gap:6px;align-items:stretch"><span aria-hidden="true"><span class="pill" style="visibility:hidden;white-space:nowrap">&#10003; connected</span></span><input type="time" id="lbTime" step="1800" value="${esc(c.leaderboardTime||'10:00')}" style="width:100%"></span><span class="fieldhelp">When the leaderboard posts each day (30-min steps).</span></div>
     </div>
     <p class="fieldhelp" style="margin:8px 0 0">Closers ranked by cash (cash, deals, close %) and setters (dials, sets, cash) for this month, into this team's leadership channel.</p>
     <div style="border-top:1px solid var(--border);margin:14px 0 10px"></div>
-    <div style="max-width:640px"><div class="field"><label>Invoicing channel <span class="muted" style="font-weight:400">- where the "Send to billing" button posts a generated invoice</span></label>${slackField('evInvoicing',c.invoicing,`'config','','invoicing'`,'invoicing','Invoicing',(c.chan||{}).invoicing)}${c.invoicing?('<span class="fieldhelp" style="margin-top:6px;display:block">'+(c.invoicingPdf?'<span class="pill good">&#10003; PDF attach ready</span>':'<span class="pill" style="color:var(--warn);border-color:var(--warn)">Text only</span> - the invoice PDF cannot attach on a pasted webhook. Use <b>Connect Slack</b> above (grants file access) to attach the PDF.')+'</span>'):''}</div></div>
+    <div style="max-width:640px"><div class="field"><label>Invoicing channel <span class="muted" style="font-weight:400">- where the "Send to billing" button posts a generated invoice</span></label>${slackChanField('evInvoicing',c.invoicing,'invoicing','Invoicing')}${c.botConnected?'<span class="fieldhelp" style="margin-top:6px;display:block"><span class="pill good">&#10003; PDF attach ready</span> - the bot attaches the invoice PDF to this channel.</span>':(c.invoicing?('<span class="fieldhelp" style="margin-top:6px;display:block">'+(c.invoicingPdf?'<span class="pill good">&#10003; PDF attach ready</span>':'<span class="pill" style="color:var(--warn);border-color:var(--warn)">Text only</span> - connect the Slack bot to attach the PDF.')+'</span>'):'')}</div></div>
     <div class="row-actions" style="margin-top:12px"><button class="btn gold sm" onclick="integSaveEod()">Save routing</button></div>`;
   const eod=document.getElementById('integEodRep');
   if(eod) eod.innerHTML=`
     <label style="display:flex;gap:8px;align-items:center;font-weight:500;margin:0 0 8px"><input type="checkbox" id="eodOn" ${c.eodToSlack?'checked':''}> Post submitted <b style="margin:0 3px">EOD reports</b> to Slack</label>
     <div class="cards" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr))">
-      <div class="field"><label>Setter EOD channel</label>${slackField('eodSetter',c.setter,`'config','','setter'`,'setter','Setter EOD',(c.chan||{}).setter)}</div>
-      <div class="field"><label>Closer EOD channel</label>${slackField('eodCloser',c.closer,`'config','','closer'`,'closer','Closer EOD',(c.chan||{}).closer)}</div>
-      <div class="field"><label>Manager EOD channel</label>${slackField('eodMgr',c.mgr,`'config','','mgr'`,'mgr','Manager EOD',(c.chan||{}).mgr)}</div>
-      <div class="field"><label>Fallback channel</label>${slackField('eodFallback',c.slack,`'config','','slack'`,'slack','Fallback',(c.chan||{}).slack)}</div>
+      <div class="field"><label>Setter EOD channel</label>${slackChanField('eodSetter',c.setter,'setter','Setter EOD')}</div>
+      <div class="field"><label>Closer EOD channel</label>${slackChanField('eodCloser',c.closer,'closer','Closer EOD')}</div>
+      <div class="field"><label>Manager EOD channel</label>${slackChanField('eodMgr',c.mgr,'mgr','Manager EOD')}</div>
+      <div class="field"><label>Fallback channel</label>${slackChanField('eodFallback',c.slack,'slack','Fallback')}</div>
     </div>
     <p class="fieldhelp" style="margin:8px 0 0">Blank EOD channels fall back to the fallback channel, which also covers any payment webhook with no channel set. Check the box above to turn EOD posting on.</p>
     <div class="row-actions" style="margin-top:12px"><button class="btn gold sm" onclick="integSaveEod()">Save routing</button></div>`;

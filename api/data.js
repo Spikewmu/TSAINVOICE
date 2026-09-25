@@ -611,9 +611,11 @@ export default async function handler(req, res) {
       const client = String(b.client || '').trim();
       if (!client) return res.status(200).json({ ok: false, error: 'client required' });
       const cfg = await integrationFor(callerWs, client);
-      // single-bot path: token + channel come from the notification bot (falls back to the legacy invoicing OAuth token/channel)
-      const invBot = (cfg && (cfg.invoicingSlackBot || cfg.botToken)) || '', invChan = (cfg && (cfg.invoicingSlackChanId || cfg.botChanId)) || '';
-      if (!cfg || (!cfg.invoicingSlack && !(invBot && invChan))) return res.status(200).json({ ok: false, error: 'No invoicing channel connected for ' + client + '. Connect the Slack bot (or an invoicing channel) on Admin › Integrations, then send.' });
+      // single-bot path: token + channel come from the notification bot. The invoicing field may hold a channel id (bot) or a webhook URL (legacy).
+      const invSlackVal = (cfg && cfg.invoicingSlack) || '', hasWebhook = !!invSlackVal && /^https?:\/\//i.test(invSlackVal);
+      const invBot = (cfg && (cfg.invoicingSlackBot || cfg.botToken)) || '';
+      const invChan = (invSlackVal && !hasWebhook ? invSlackVal : '') || (cfg && cfg.invoicingSlackChanId) || (cfg && cfg.botChanId) || '';
+      if (!cfg || (!hasWebhook && !(invBot && invChan))) return res.status(200).json({ ok: false, error: 'No invoicing channel connected for ' + client + '. Connect the Slack bot (or an invoicing channel) on Admin › Integrations, then send.' });
       const usd = ss => { ss = String(ss || '').slice(0, 10); const dm = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ss); return dm ? (+dm[2]) + '-' + (+dm[3]) + '-' + dm[1] : ss; };
       const period = (b.from ? usd(b.from) : '?') + ' to ' + (b.to ? usd(b.to) : '?');
       const rateDesc = b.rateDesc ? ' (' + String(b.rateDesc).slice(0, 80) + ')' : '';
@@ -633,7 +635,7 @@ export default async function handler(req, res) {
       // 2) Fallback: post the text summary (via the incoming webhook, or the bot channel - neither can attach a file)
       let posted = false, perr = '';
       try {
-        if (cfg.invoicingSlack) { const pr = await fetch(chanDest(cfg.invoicingSlack), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: `Invoice · ${client} · ${money(b.amount)}`, blocks: [{ type: 'section', text: { type: 'mrkdwn', text: body } }] }) }); posted = pr.ok; if (!pr.ok) perr = 'Slack returned ' + pr.status; }
+        if (hasWebhook) { const pr = await fetch(chanDest(invSlackVal), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: `Invoice · ${client} · ${money(b.amount)}`, blocks: [{ type: 'section', text: { type: 'mrkdwn', text: body } }] }) }); posted = pr.ok; if (!pr.ok) perr = 'Slack returned ' + pr.status; }
         else if (invBot && invChan) { await postChan(invChan, `Invoice · ${client} · ${money(b.amount)}`, [{ type: 'section', text: { type: 'mrkdwn', text: body } }], invBot); posted = true; }
       }
       catch (e) { perr = String((e && e.message) || e); }
