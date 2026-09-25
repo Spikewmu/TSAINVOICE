@@ -1860,6 +1860,20 @@ If they did not watch: No problem at all, I will send it right over. Can you wat
 
   <!-- ===== CLIENT OVERVIEW ===== -->
   <section id="tab-clients" hidden>
+    <style>
+      #overviewTable{width:100%;font-size:12px;table-layout:fixed;border-collapse:collapse}
+      #overviewTable th,#overviewTable td{padding:8px 8px;vertical-align:top;overflow:hidden;text-overflow:ellipsis}
+      #overviewTable th{white-space:nowrap;font-size:11px;letter-spacing:.03em}
+      #overviewTable td:nth-child(1){white-space:normal}          /* client name + Edit */
+      #overviewTable td:nth-child(2){white-space:nowrap}          /* status */
+      #overviewTable td:nth-child(3){font-size:11px;line-height:1.4}/* managers */
+      #overviewTable td:nth-child(4){white-space:normal}          /* service line */
+      #overviewTable .num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+      #overviewTable col.c-client{width:15%}#overviewTable col.c-status{width:7%}#overviewTable col.c-mgr{width:15%}
+      #overviewTable col.c-svc{width:11%}#overviewTable col.c-offers{width:20%}#overviewTable col.c-goal{width:8%}
+      #overviewTable col.c-exist{width:8%}#overviewTable col.c-cash{width:8%}#overviewTable col.c-next{width:12%}
+      #tab-clients .tablewrap{overflow-x:auto}
+    </style>
     <h2 class="section">Client Overview</h2>
     <p class="hint">Every client at a glance: status, manager, existing monthly, cash collected this month, and the next step. <b>+ Add client</b> is the single onboarding step - it also sets up the contract (rev share) and the retainer, so a new account shows on Contracts and invoices correctly right away.</p>
     <div class="cards" id="clientKpis"></div>
@@ -10120,11 +10134,12 @@ function renderClientOverview(){
   const rows=cs.slice().sort((a,b)=>(order[a.status]??9)-(order[b.status]??9)||String(a.name).localeCompare(b.name));
   const pc=s=>s==='Active'?'good':((s==='Dropped'||s==='Inactive')?'warn':'');
   document.getElementById('overviewTable').innerHTML=
-    `<thead><tr><th>Client</th><th>Status</th><th>Managers</th><th>Service line</th><th>Offers</th><th class="num">Monthly goal</th><th class="num">Existing/mo</th><th class="num">Cash this mo</th><th>Next step</th></tr></thead><tbody>`+
+    `<colgroup><col class="c-client"><col class="c-status"><col class="c-mgr"><col class="c-svc"><col class="c-offers"><col class="c-goal"><col class="c-exist"><col class="c-cash"><col class="c-next"></colgroup>`+
+    `<thead><tr><th>Client</th><th>Status</th><th>Managers</th><th>Service line</th><th>Offers</th><th class="num">Goal</th><th class="num">Existing</th><th class="num">Cash mo</th><th>Next step</th></tr></thead><tbody>`+
     (rows.length?rows.map(c=>{
       const offers=productsForClient(c.name);
-      const offerCell=(c.products&&offers.length)?`<div style="display:flex;flex-wrap:wrap;gap:4px;max-width:240px">${offers.map(p=>`<span class="teamtag">${esc(p)}</span>`).join('')}</div>`:'<span class="muted">global default</span>';
-      return `<tr><td><div style="display:flex;align-items:center;gap:8px"><b>${esc(c.name)}</b>${canEditClients?`<button class="btn sm ghost" onclick="editClient('${esc(c.name).replace(/'/g,"\\'")}')">Edit</button>`:''}</div></td><td><span class="pill ${pc(c.status)}">${esc(c.status)}</span></td><td style="font-size:12px;line-height:1.5">${mgrCellHTML(c)}</td><td>${esc(c.serviceLine)}</td><td>${offerCell}</td><td class="num">${c.monthlyGoal?money(c.monthlyGoal):'<span class="muted">-</span>'}</td><td class="num">${money(c.monthly)}</td><td class="num">${money(cashThisMonth(c.name))}</td><td style="max-width:200px;white-space:normal">${esc(c.nextStep)}</td></tr>`;
+      const offerCell=(c.products&&offers.length)?`<div style="display:flex;flex-wrap:wrap;gap:4px">${offers.map(p=>`<span class="teamtag">${esc(p)}</span>`).join('')}</div>`:'<span class="muted">global default</span>';
+      return `<tr><td><div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><b>${esc(c.name)}</b>${canEditClients?`<button class="btn sm ghost" onclick="editClient('${esc(c.name).replace(/'/g,"\\'")}')">Edit</button>`:''}</div></td><td><span class="pill ${pc(c.status)}">${esc(c.status)}</span></td><td>${mgrCellHTML(c)}</td><td>${esc(c.serviceLine)}</td><td>${offerCell}</td><td class="num">${c.monthlyGoal?money(c.monthlyGoal):'<span class="muted">-</span>'}</td><td class="num">${money(c.monthly)}</td><td class="num">${money(cashThisMonth(c.name))}</td><td style="white-space:normal">${esc(c.nextStep)}</td></tr>`;
     }).join('')
      :`<tr><td colspan="8" class="muted" style="padding:16px">No clients yet. Use <b>+ Add client</b> above.</td></tr>`)+`</tbody>`;
   // fresh "add client" form defaults to all global offers (ready to trim)
