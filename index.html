@@ -9954,7 +9954,7 @@ async function reassignStaff(oldName,newName){
 }
 // remove a client from the overview + all pickers (soft-delete; deals already logged under the name stay in the data)
 async function deleteClient(name){
-  if(!(SESSION && SESSION.role==='admin')){ toast('Only a Super/Account Admin can remove a client',true); return; }
+  if(!(SESSION && SESSION.role==='admin')){ toast('Only a Super/Account Admin can archive a client',true); return; }
   const cur=latestClients().find(x=>String(x.name).toLowerCase()===String(name).toLowerCase());
   const cname=(cur&&cur.name)||name, key=String(cname).toLowerCase();
   // who is still assigned to this offer: reps via their team scope + the managers on the client record
@@ -10117,7 +10117,7 @@ function renderClientOverview(){
     (rows.length?rows.map(c=>{
       const offers=productsForClient(c.name);
       const offerCell=(c.products&&offers.length)?offers.map(p=>`<span class="teamtag">${esc(p)}</span>`).join(''):'<span class="muted">global default</span>';
-      return `<tr><td><b>${esc(c.name)}</b> ${canEditClients?`<button class="btn sm ghost" onclick="editClient('${esc(c.name).replace(/'/g,"\\'")}')">Edit</button> <button class="btn sm ghost" onclick="mergeClientStart('${esc(c.name).replace(/'/g,"\\'")}')">Merge</button> <button class="btn sm ghost" style="color:var(--warn);border-color:var(--warn)" onclick="deleteClient('${esc(c.name).replace(/'/g,"\\'")}')">Remove</button>`:''}</td><td><span class="pill ${pc(c.status)}">${esc(c.status)}</span></td><td style="font-size:12px;line-height:1.5">${mgrCellHTML(c)}</td><td>${esc(c.serviceLine)}</td><td>${offerCell}</td><td class="num">${c.monthlyGoal?money(c.monthlyGoal):'<span class="muted">-</span>'}</td><td class="num">${money(c.monthly)}</td><td class="num">${money(cashThisMonth(c.name))}</td><td>${esc(c.nextStep)}</td></tr>`;
+      return `<tr><td><b>${esc(c.name)}</b> ${canEditClients?`<button class="btn sm ghost" onclick="editClient('${esc(c.name).replace(/'/g,"\\'")}')">Edit</button> <button class="btn sm ghost" onclick="mergeClientStart('${esc(c.name).replace(/'/g,"\\'")}')">Merge</button> <button class="btn sm ghost" style="color:var(--warn);border-color:var(--warn)" onclick="deleteClient('${esc(c.name).replace(/'/g,"\\'")}')">Archive</button>`:''}</td><td><span class="pill ${pc(c.status)}">${esc(c.status)}</span></td><td style="font-size:12px;line-height:1.5">${mgrCellHTML(c)}</td><td>${esc(c.serviceLine)}</td><td>${offerCell}</td><td class="num">${c.monthlyGoal?money(c.monthlyGoal):'<span class="muted">-</span>'}</td><td class="num">${money(c.monthly)}</td><td class="num">${money(cashThisMonth(c.name))}</td><td>${esc(c.nextStep)}</td></tr>`;
     }).join('')
      :`<tr><td colspan="8" class="muted" style="padding:16px">No clients yet. Use <b>+ Add client</b> above.</td></tr>`)+`</tbody>`;
   // fresh "add client" form defaults to all global offers (ready to trim)
