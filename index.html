@@ -10283,7 +10283,7 @@ function integHdr(){ const h={'Content-Type':'application/json'}; if(SESSION&&SE
 async function integApi(action,body){ try{ const r=await fetch('/api/integrations?action='+action,{method:'POST',headers:integHdr(),body:JSON.stringify(body||{})}); return await r.json(); }catch(e){ return {ok:false,error:String(e)}; } }
 function prettyJson(s){ try{ return JSON.stringify(JSON.parse(s),null,2); }catch(e){ return String(s||''); } }
 const PROC_LIST=[['generic','Generic'],['whop','Whop'],['elective','Elective'],['fanbasis','Fanbasis'],['stripe','Stripe'],['ghl','GoHighLevel']];
-let INTEG_CFGS={}, INTEG_HOOKS=[], INTEG_TARGETS=[], INTEG_KEY='', INTEG_TEMPLATES=[], INTEG_SLACK_OAUTH=false, INTEG_SLACK_APPS={}, INTEG_BOT_CHANS={};
+let INTEG_CFGS={}, INTEG_HOOKS=[], INTEG_TARGETS=[], INTEG_KEY='', INTEG_TEMPLATES=[], INTEG_SLACK_OAUTH=false, INTEG_SLACK_APPS={}, INTEG_BOT_CHANS={}, INTEG_NOTIFY_OAUTH=false;
 function integApplyTpl(id,tplId){ const t=INTEG_TEMPLATES.find(x=>x.id===tplId); const ta=document.getElementById('wt_'+id); if(t&&ta){ ta.value=t.body||''; toast('Template applied - Save to keep it'); } }
 // insert a {{field}} token at the cursor in a webhook's message box
 function integInsert(id,field){ const ta=document.getElementById('wt_'+id); if(!ta) return; const tok='{{'+field+'}}'; const s=(ta.selectionStart!=null)?ta.selectionStart:ta.value.length, e=(ta.selectionEnd!=null)?ta.selectionEnd:ta.value.length; ta.value=ta.value.slice(0,s)+tok+ta.value.slice(e); ta.focus(); ta.selectionStart=ta.selectionEnd=s+tok.length; }
@@ -10303,7 +10303,7 @@ async function renderIntegrations(){
   const sel=document.getElementById('integTarget'); if(!sel) return;
   const res=await integApi('get',{}); if(res&&res.error==='not-provisioned'){ const b=document.getElementById('integBody'); if(b)b.hidden=true; sel.innerHTML='<option>Backend not provisioned</option>'; return; }
   INTEG_CFGS={}; ((res&&res.configs)||[]).forEach(c=>INTEG_CFGS[c.key]=c);
-  INTEG_HOOKS=(res&&res.webhooks)||[]; INTEG_TEMPLATES=(res&&res.templates)||[]; INTEG_SLACK_OAUTH=!!(res&&res.slackOauth); INTEG_SLACK_APPS=(res&&res.slackApps)||{};
+  INTEG_HOOKS=(res&&res.webhooks)||[]; INTEG_TEMPLATES=(res&&res.templates)||[]; INTEG_SLACK_OAUTH=!!(res&&res.slackOauth); INTEG_SLACK_APPS=(res&&res.slackApps)||{}; INTEG_NOTIFY_OAUTH=!!(res&&res.notifyOauth);
   const isSuper=!!(res&&res.super), targets=[];
   if(isSuper){
     targets.push({key:'tsa',client:'',ws:'tsa',label:'The Sales Agency (internal)',plan:'Internal',grp:'internal'});
@@ -10382,13 +10382,17 @@ function integPick(){
 async function renderSlackBot(){
   const t=integTarget(), box=document.getElementById('integBot'); if(!box||!t) return;
   const c=INTEG_CFGS[t.key]||{}, connected=!!c.botConnected, chans=INTEG_BOT_CHANS[t.key];
+  const status = connected ? `<span class="pill good">&#10003; Connected${c.botTeamName?' · '+esc(c.botTeamName):''}</span>` : `<span class="pill" style="opacity:.55">Not connected</span>`;
+  const connectRow = INTEG_NOTIFY_OAUTH
+    ? `<div class="row-actions" style="margin:10px 0"><button class="btn gold sm" onclick="integConnectBot()">${connected?'Reconnect bot':'Connect Slack bot'}</button> <button class="btn ghost sm" onclick="integLoadChannels()">Load channels</button></div>
+       <details style="margin:4px 0 0"><summary style="cursor:pointer;color:var(--muted);font-size:12px">Advanced: paste a bot token manually</summary>
+       <div class="cards" style="grid-template-columns:repeat(auto-fill,minmax(260px,1fr));margin-top:8px"><div class="field"><label>Bot token (xoxb-)</label><span style="display:flex;gap:6px"><input id="botToken" type="password" autocomplete="off" placeholder="${connected?'•••• (leave blank to keep)':'xoxb-...'}" style="flex:1"><button type="button" class="btn sm ghost" onclick="integReveal('botToken',this)">Show</button><button type="button" class="btn sm ghost" onclick="integSaveBotToken()">Save</button></span></div></div></details>`
+    : `<div class="cards" style="grid-template-columns:repeat(auto-fill,minmax(260px,1fr))"><div class="field"><label>Bot token (xoxb-)</label><span style="display:flex;gap:6px"><input id="botToken" type="password" autocomplete="off" placeholder="${connected?'•••• (leave blank to keep)':'xoxb-...'}" style="flex:1"><button type="button" class="btn sm ghost" onclick="integReveal('botToken',this)">Show</button></span></div></div>
+       <div class="row-actions" style="margin:10px 0"><button class="btn gold sm" onclick="integSaveBotToken()">Save token</button> <button class="btn ghost sm" onclick="integLoadChannels()">Load channels</button></div>`;
   box.innerHTML=`
-    <p class="hint" style="margin:0 0 12px">Install the <b>Sales HQ Notify</b> Slack app in this client's workspace, paste its <b>Bot User OAuth token</b> (starts <code>xoxb-</code>), then <b>Load channels</b> and pick where notifications post. One bot covers every feed - no per-channel webhooks. The token is stored server-side, never shown back.</p>
-    <div class="cards" style="grid-template-columns:repeat(auto-fill,minmax(260px,1fr))">
-      <div class="field"><label>Bot token ${connected?'<span class="pill good">&#10003; set</span>':'<span class="pill" style="opacity:.55">not set</span>'}</label>
-        <span style="display:flex;gap:6px"><input id="botToken" type="password" autocomplete="off" placeholder="${connected?'•••• (leave blank to keep)':'xoxb-...'}" style="flex:1"><button type="button" class="btn sm ghost" onclick="integReveal('botToken',this)">Show</button></span></div>
-    </div>
-    <div class="row-actions" style="margin:10px 0"><button class="btn gold sm" onclick="integSaveBotToken()">Save token</button> <button class="btn ghost sm" onclick="integLoadChannels()">Load channels</button></div>
+    <p class="hint" style="margin:0 0 12px">One <b>Sales HQ Notify</b> bot for this client. ${INTEG_NOTIFY_OAUTH?'Click <b>Connect Slack bot</b> to install it in the client\'s workspace, then <b>Load channels</b> and pick where notifications post.':'Paste the client workspace\'s <b>Bot User OAuth token</b> (<code>xoxb-</code>), then <b>Load channels</b> and pick a channel.'} One bot covers every feed - closed deals, post-call, SOD, EOD, onboarding, and invoice PDFs. The token is stored server-side, never shown back.</p>
+    <div style="margin-bottom:6px">${status}</div>
+    ${connectRow}
     <div id="integBotChan" style="border-top:1px solid var(--border);padding-top:12px">${integBotChanUI(c,chans)}</div>`;
 }
 function integBotChanUI(c,chans){
@@ -10420,6 +10424,24 @@ async function integTestBot(){
   const t=integTarget(); if(!t) return; toast('Sending test...');
   const res=await integApi('testBot',{key:t.key, ws:t.ws});
   if(res&&res.ok) toast('Test sent - check the channel'); else toast((res&&res.error)||'Test failed',true);
+}
+async function integConnectBot(){
+  const t=integTarget(); if(!t) return;
+  if(!INTEG_NOTIFY_OAUTH){ toast('The notification bot is not configured on the server yet',true); return; }
+  const res=await integApi('connectBotUrl',{key:t.key, ws:t.ws});
+  if(res&&res.ok&&res.url){
+    window.__integAwaitConnect=Date.now();
+    const baseline=JSON.stringify({c:INTEG_CFGS[t.key]||null});
+    window.open(res.url,'_blank','noopener'); toast('Approve the bot in the Slack tab, then switch back here');
+    // poll until the bot token lands
+    if(window.__integBotPoll) clearInterval(window.__integBotPoll);
+    let tries=0; window.__integBotPoll=setInterval(async()=>{ tries++;
+      const r=await integApi('get',{}); const map={}; ((r&&r.configs)||[]).forEach(c=>map[c.key]=c);
+      const now=JSON.stringify({c:map[t.key]||null});
+      if(now!==baseline || tries>=24){ clearInterval(window.__integBotPoll); window.__integBotPoll=0; window.__integAwaitConnect=0;
+        if(now!==baseline && currentTab()==='integrations'){ INTEG_CFGS=map; renderSlackBot(); toast('Bot connected - now Load channels'); } }
+    },2500);
+  } else toast((res&&res.error)||'Could not start the connect',true);
 }
 function slackAppKeyForField(f){ return (f==='deal')?f:(f==='postcall'||f==='postcallSetter'||f==='postcallCloser')?'postcall':(f==='sod'||f==='sodSetter'||f==='sodCloser')?'sod':(f==='setter'||f==='closer'||f==='mgr'||f==='slack'||f==='dailyReport'||f==='invoicing'||f==='leaderboard'||f==='onboarding')?'eod':'default'; } // dailyReport + invoicing + leaderboard + onboarding + fallback use the EOD app (the 'default' app isn't configured on the server)
 function canConnectField(field){ return !!(INTEG_SLACK_APPS[slackAppKeyForField(field)] || INTEG_SLACK_APPS['default']); }

@@ -32,7 +32,7 @@ export default async function handler(req, res) {
   const st = verifyState(q.state);
   if (!st) return res.status(200).send(page('Not connected', 'This link expired or was invalid. Start the connect again from Sales HQ.'));
   // pick the Slack app this connect was started with (each feed can have its own app so it posts under its own name)
-  const APPS = { default: ['SLACK_CLIENT_ID', 'SLACK_CLIENT_SECRET'], deal: ['SLACK_CLIENT_ID_DEAL', 'SLACK_CLIENT_SECRET_DEAL'], postcall: ['SLACK_CLIENT_ID_POSTCALL', 'SLACK_CLIENT_SECRET_POSTCALL'], sod: ['SLACK_CLIENT_ID_SOD', 'SLACK_CLIENT_SECRET_SOD'], eod: ['SLACK_CLIENT_ID_EOD', 'SLACK_CLIENT_SECRET_EOD'] };
+  const APPS = { default: ['SLACK_CLIENT_ID', 'SLACK_CLIENT_SECRET'], deal: ['SLACK_CLIENT_ID_DEAL', 'SLACK_CLIENT_SECRET_DEAL'], postcall: ['SLACK_CLIENT_ID_POSTCALL', 'SLACK_CLIENT_SECRET_POSTCALL'], sod: ['SLACK_CLIENT_ID_SOD', 'SLACK_CLIENT_SECRET_SOD'], eod: ['SLACK_CLIENT_ID_EOD', 'SLACK_CLIENT_SECRET_EOD'], notify: ['SLACK_CLIENT_ID_NOTIFY', 'SLACK_CLIENT_SECRET_NOTIFY'] };
   const app = APPS[st.app] || APPS.default;
   const clientId = process.env[app[0]], clientSecret = process.env[app[1]];
   if (!clientId || !clientSecret) return res.status(200).send(page('Not configured', 'That Slack app is not set up on the server yet.'));
@@ -41,6 +41,15 @@ export default async function handler(req, res) {
     const body = new URLSearchParams({ client_id: clientId, client_secret: clientSecret, code: String(q.code || ''), redirect_uri });
     const r = await fetch('https://slack.com/api/oauth.v2.access', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body });
     const j = await r.json();
+    // single notification bot: capture the workspace's bot token (xoxb) onto the client's integration record
+    if (st.t === 'bot') {
+      if (!j.ok || !j.access_token) return res.status(200).send(page('Not connected', 'Slack did not return a bot token (' + ((j && j.error) || 'unknown') + ').'));
+      const cur = (await latest('integration', 'key', st.key)) || { id: crypto.randomUUID(), type: 'integration', key: st.key, ws: st.ws || 'tsa', client: '' };
+      const now = new Date().toISOString();
+      const rec = Object.assign({}, cur, { botToken: j.access_token, botTeamName: (j.team && j.team.name) || cur.botTeamName || '', updatedAt: now });
+      await supa('records', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ rid: crypto.randomUUID(), type: 'integration', submitted_at: now, data: rec }) });
+      return res.status(200).send(page('Connected to ' + ((j.team && j.team.name) || 'the workspace'), 'The notification bot is installed. Pick a channel in Sales HQ.'));
+    }
     const url = j && j.incoming_webhook && j.incoming_webhook.url;
     const channel = (j && j.incoming_webhook && j.incoming_webhook.channel) || 'the channel';
     if (!j.ok || !url) return res.status(200).send(page('Not connected', 'Slack did not return a webhook (' + ((j && j.error) || 'unknown') + '). Make sure you picked a channel.'));

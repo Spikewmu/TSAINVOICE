@@ -46,7 +46,8 @@ const SLACK_APPS = {
   deal: { id: 'SLACK_CLIENT_ID_DEAL', secret: 'SLACK_CLIENT_SECRET_DEAL' },
   postcall: { id: 'SLACK_CLIENT_ID_POSTCALL', secret: 'SLACK_CLIENT_SECRET_POSTCALL' },
   sod: { id: 'SLACK_CLIENT_ID_SOD', secret: 'SLACK_CLIENT_SECRET_SOD' },
-  eod: { id: 'SLACK_CLIENT_ID_EOD', secret: 'SLACK_CLIENT_SECRET_EOD' }
+  eod: { id: 'SLACK_CLIENT_ID_EOD', secret: 'SLACK_CLIENT_SECRET_EOD' },
+  notify: { id: 'SLACK_CLIENT_ID_NOTIFY', secret: 'SLACK_CLIENT_SECRET_NOTIFY' } // the single notification bot (Sales HQ Notify)
 };
 const appKeyForField = f => (f === 'deal') ? f : (f === 'postcall' || f === 'postcallSetter' || f === 'postcallCloser') ? 'postcall' : (f === 'sod' || f === 'sodSetter' || f === 'sodCloser') ? 'sod' : (f === 'setter' || f === 'closer' || f === 'mgr' || f === 'slack' || f === 'dailyReport' || f === 'invoicing' || f === 'leaderboard' || f === 'onboarding') ? 'eod' : 'default'; // dailyReport + invoicing + leaderboard + onboarding + fallback use the EOD app ('default' app isn't configured)
 const slackAppId = k => { const a = SLACK_APPS[k]; return a && process.env[a.id]; };
@@ -60,7 +61,7 @@ const pubCfg = d => ({ key: d.key, ws: d.ws, client: d.client || '', eodToSlack:
   invoicing: d.invoicingSlack || '', invoicingPdf: !!(d.invoicingSlackBot && d.invoicingSlackChanId),
   // the connected Slack channel name per source (captured at OAuth connect), for display
   chan: { slack: d.slackWebhookChan||'', setter: d.eodSetterSlackChan||'', closer: d.eodCloserSlackChan||'', mgr: d.eodMgrSlackChan||'', deal: d.dealSlackChan||'', onboarding: d.onboardingSlackChan||'', postcall: d.postcallSlackChan||'', postcallSetter: d.postcallSetterSlackChan||'', postcallCloser: d.postcallCloserSlackChan||'', sod: d.sodSlackChan||'', sodSetter: d.sodSetterSlackChan||'', sodCloser: d.sodCloserSlackChan||'', dailyReport: d.dailyReportSlackChan||'', leaderboard: d.leaderboardSlackChan||'', invoicing: d.invoicingSlackChan||'' },
-  botConnected: !!d.botToken, botChanId: d.botChanId || '', botChanName: d.botChanName || '', // single-bot notifications: token is write-only, channel id/name are safe to show
+  botConnected: !!d.botToken, botChanId: d.botChanId || '', botChanName: d.botChanName || '', botTeamName: d.botTeamName || '', // single-bot notifications: token is write-only, channel id/name/team are safe to show
   ghl: !!d.ghlApiKey, ghlLocation: d.ghlLocationId || '', ghlEnabled: !!d.ghlEnabled }); // ghlApiKey itself is write-only, never returned
 const pubHook = (d, req) => ({ id: d.id, key: d.key, ws: d.ws, client: d.client || '', name: d.name || 'Webhook', processor: d.processor || 'generic', enabled: d.enabled !== false, template: d.template || DEFAULT_TEMPLATE, hasSlack: !!d.slackWebhook, slack: d.slackWebhook || '', token: d.token, inbound: baseUrl(req) + '/api/hook?t=' + d.token });
 const chanDest = u => (/discord(app)?\.com\/api\/webhooks\//i.test(String(u || '')) && !/\/slack\/?$/i.test(String(u))) ? String(u).replace(/\/+$/, '') + '/slack' : u; // Discord accepts Slack payloads at /slack
@@ -132,7 +133,7 @@ export default async function handler(req, res) {
       const cfgs = await allByType('integration'), hooks = await allByType('webhook');
       const tpls = await allByType('template');
       const apps = slackApps();
-      return res.status(200).json({ ok: true, super: isSuper, slackOauth: Object.values(apps).some(Boolean), slackApps: apps,
+      return res.status(200).json({ ok: true, super: isSuper, slackOauth: Object.values(apps).some(Boolean), slackApps: apps, notifyOauth: !!slackAppId('notify'),
         configs: Object.values(cfgs).filter(mayTouch).map(pubCfg),
         webhooks: Object.values(hooks).filter(d => mayTouch(d) && !d.deleted).map(d => pubHook(d, req)),
         templates: Object.values(tpls).filter(t => !t.deleted).map(t => ({ id: t.id, name: t.name, processor: t.processor || '', body: t.body || '' })) });
@@ -200,6 +201,7 @@ export default async function handler(req, res) {
         leaderboardTime: keepOr(b.leaderboardTime, cur && cur.leaderboardTime) || '10:00',
         invoicingSlack: keepOr(b.invoicingSlack, cur && cur.invoicingSlack),
         botToken: keepOr(b.botToken, cur && cur.botToken),
+        botTeamName: keepOr(b.botTeamName, cur && cur.botTeamName),
         botChanId: keepOr(b.botChanId, cur && cur.botChanId),
         botChanName: keepOr(b.botChanName, cur && cur.botChanName),
         ghlApiKey: keepOr(b.ghlApiKey, cur && cur.ghlApiKey),
@@ -312,6 +314,19 @@ export default async function handler(req, res) {
       const r = await supa(`records?select=data&type=eq.hooklog&data->>webhookId=eq.${encodeURIComponent(id)}&order=submitted_at.desc&limit=20`);
       const rows = (r && r.ok) ? await r.json() : [];
       return res.status(200).json({ ok: true, log: rows.map(x => ({ at: x.data.at, payload: x.data.payload, parsed: x.data.parsed })) });
+    }
+    // ---- single-bot notifications: OAuth install (captures the workspace's bot token onto the client) ----
+    if (action === 'connectBotUrl') {
+      if (!slackAppId('notify')) return res.status(200).json({ ok: false, error: 'The notification bot is not configured on the server yet (SLACK_CLIENT_ID_NOTIFY).' });
+      const key = String(b.key || '').trim(); if (!key) return res.status(200).json({ ok: false, error: 'key required' });
+      const ws = isSuper ? String(b.ws || DEFAULT_WS) : callerWs;
+      const stateObj = { t: 'bot', app: 'notify', key, ws, exp: Date.now() + 15 * 60 * 1000 };
+      const sb = Buffer.from(JSON.stringify(stateObj)).toString('base64url');
+      const mac = crypto.createHmac('sha256', process.env.SESSION_SECRET || 'tsa-session').update(sb).digest('base64url');
+      const redirect = baseUrl(req) + '/api/slack-oauth';
+      const scope = 'chat:write,channels:read,groups:read,channels:join,files:write';
+      const url = 'https://slack.com/oauth/v2/authorize?' + new URLSearchParams({ client_id: slackAppId('notify'), scope, redirect_uri: redirect, state: sb + '.' + mac }).toString();
+      return res.status(200).json({ ok: true, url });
     }
     // ---- single-bot notifications: list the client's Slack channels (for the dropdown) ----
     if (action === 'listChannels') {

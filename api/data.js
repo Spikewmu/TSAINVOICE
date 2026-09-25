@@ -611,28 +611,33 @@ export default async function handler(req, res) {
       const client = String(b.client || '').trim();
       if (!client) return res.status(200).json({ ok: false, error: 'client required' });
       const cfg = await integrationFor(callerWs, client);
-      if (!cfg || !cfg.invoicingSlack) return res.status(200).json({ ok: false, error: 'No invoicing channel connected for ' + client + '. Connect it on Integrations › Invoicing, then send.' });
+      // single-bot path: token + channel come from the notification bot (falls back to the legacy invoicing OAuth token/channel)
+      const invBot = (cfg && (cfg.invoicingSlackBot || cfg.botToken)) || '', invChan = (cfg && (cfg.invoicingSlackChanId || cfg.botChanId)) || '';
+      if (!cfg || (!cfg.invoicingSlack && !(invBot && invChan))) return res.status(200).json({ ok: false, error: 'No invoicing channel connected for ' + client + '. Connect the Slack bot (or an invoicing channel) on Admin › Integrations, then send.' });
       const usd = ss => { ss = String(ss || '').slice(0, 10); const dm = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ss); return dm ? (+dm[2]) + '-' + (+dm[3]) + '-' + dm[1] : ss; };
       const period = (b.from ? usd(b.from) : '?') + ' to ' + (b.to ? usd(b.to) : '?');
       const rateDesc = b.rateDesc ? ' (' + String(b.rateDesc).slice(0, 80) + ')' : '';
       const body = `🧾 *Invoice · ${client}*\n*Period:* ${period}\n*Cash collected:* ${money(b.cash)}\n*Amount due (TSA):* ${money(b.amount)}${rateDesc}\n*Deals:* ${Number(b.deals || 0)}`;
       // 1) Preferred: attach the invoice PDF via the Slack file API (needs the bot token + channel_id captured at connect + files:write)
       let pdfErr = '';
-      if (cfg.invoicingSlackBot && cfg.invoicingSlackChanId) {
+      if (invBot && invChan) {
         try {
           // prefer the exact-match PDF captured from the on-screen invoice; fall back to the server-built one
           const pdf = (b.pdfBase64 && String(b.pdfBase64).length > 100) ? Buffer.from(String(b.pdfBase64), 'base64') : invoicePdf({ client, from: b.from, to: b.to, cash: b.cash, amount: b.amount, rateDesc: b.rateDesc, deals: b.deals, remit: b.remit || {} });
           const fname = ('Invoice - ' + client + ' - ' + period).replace(/[^A-Za-z0-9 .\-]/g, '').replace(/\s+/g, ' ').slice(0, 80) + '.pdf';
-          const up = await slackUploadFile(cfg.invoicingSlackBot, cfg.invoicingSlackChanId, fname, pdf, body);
+          const up = await slackUploadFile(invBot, invChan, fname, pdf, body);
           if (up.ok) return res.status(200).json({ ok: true, pdf: true });
           pdfErr = up.error || 'upload failed';
         } catch (e) { pdfErr = String((e && e.message) || e); }
       }
-      // 2) Fallback: post the text summary via the incoming webhook (no file attach possible on a webhook)
+      // 2) Fallback: post the text summary (via the incoming webhook, or the bot channel - neither can attach a file)
       let posted = false, perr = '';
-      try { const pr = await fetch(chanDest(cfg.invoicingSlack), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: `Invoice · ${client} · ${money(b.amount)}`, blocks: [{ type: 'section', text: { type: 'mrkdwn', text: body } }] }) }); posted = pr.ok; if (!pr.ok) perr = 'Slack returned ' + pr.status; }
+      try {
+        if (cfg.invoicingSlack) { const pr = await fetch(chanDest(cfg.invoicingSlack), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: `Invoice · ${client} · ${money(b.amount)}`, blocks: [{ type: 'section', text: { type: 'mrkdwn', text: body } }] }) }); posted = pr.ok; if (!pr.ok) perr = 'Slack returned ' + pr.status; }
+        else if (invBot && invChan) { await postChan(invChan, `Invoice · ${client} · ${money(b.amount)}`, [{ type: 'section', text: { type: 'mrkdwn', text: body } }], invBot); posted = true; }
+      }
       catch (e) { perr = String((e && e.message) || e); }
-      if (!posted) return res.status(200).json({ ok: false, error: 'Could not post to the billing channel' + (perr ? ': ' + perr : '') + '. Reconnect it on Integrations › Invoicing.' });
+      if (!posted) return res.status(200).json({ ok: false, error: 'Could not post to the billing channel' + (perr ? ': ' + perr : '') + '. Reconnect the Slack bot on Admin › Integrations.' });
       return res.status(200).json({ ok: true, pdf: false, pdfNote: pdfErr ? ('summary posted, but the PDF failed to attach: ' + pdfErr) : 'summary posted (reconnect the billing channel with file access to attach the PDF)' });
     }
     // ---------- ONE-SHOT MAINTENANCE: normalize whitespace in person-name fields (rep/setter/by/closer) ----------
