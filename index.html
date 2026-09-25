@@ -1320,10 +1320,9 @@
   <!-- ===== CONTRACTS (lender view) ===== -->
   <section id="tab-contracts" hidden>
     <h2 class="section">Contracts</h2>
-    <p class="hint">Active client contracts, their revenue-share terms, and forecasted TSA revenue - the view for the lender. <b>Forecast</b> = your expected monthly client collections x the rev-share %. <b>Actual</b> = live cash collected from the app (front-end rate applied). Admin and director only.</p>
+    <p class="hint">Active client contracts, their revenue-share terms, and forecasted TSA revenue - the view for the lender. <b>Forecast</b> = your expected monthly client collections x the rev-share %. <b>Actual</b> = live cash collected from the app (front-end rate applied). Contracts are created in <b>Client Overview</b> (onboarding); use <b>Edit</b> here to fine-tune flip %, forecast, notes, or the app-account mapping. Admin and director only.</p>
     <div class="filters" style="margin:0 0 10px;align-items:center;gap:10px;flex-wrap:wrap">
       <div class="seg" id="conPeriodSeg"><button class="on" onclick="setConPeriod('thismonth')">This month</button><button onclick="setConPeriod('quarter')">This quarter</button><button onclick="setConPeriod('year')">This year</button><button onclick="setConPeriod('all')">All-time</button></div>
-      <button class="btn gold sm" style="margin-left:auto" onclick="conEdit('')">+ Add contract</button>
     </div>
     <div id="conCards" style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:14px"></div>
     <div class="panel" id="conForm" hidden>
