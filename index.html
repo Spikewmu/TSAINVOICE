@@ -10405,7 +10405,7 @@ async function renderSlackBot(){
   const status = connected ? `<span class="pill good">&#10003; Connected${c.botTeamName?' · '+esc(c.botTeamName):''}</span>` : `<span class="pill" style="opacity:.55">Not connected</span>`;
   const connectRow = INTEG_NOTIFY_OAUTH
     ? `<div class="row-actions" style="margin:10px 0"><button class="btn gold sm" onclick="integConnectBot()">${connected?'Reconnect bot':'Add to Slack (connect)'}</button> <button class="btn ghost sm" onclick="integCopyBotLink()">Copy client install link</button> <button class="btn ghost sm" onclick="integLoadChannels()">Load channels</button>${connected?' <button class="btn ghost sm" style="color:var(--warn);border-color:var(--warn)" onclick="integDisconnectBot()">Disconnect</button>':''}</div>
-       <p class="fieldhelp" style="margin:0 0 6px">Use <b>Add to Slack</b> if you can install it yourself; use <b>Copy client install link</b> to send the client a one-click link so they add the bot to their own workspace during onboarding (link works for 7 days).</p>
+       <p class="fieldhelp" style="margin:0 0 6px">Use <b>Add to Slack</b> if you can install it yourself; use <b>Copy client install link</b> to send the client a one-click link so they add the bot to their own workspace during onboarding (link works for 7 days). <b>Private channels only appear after you invite the bot</b> - run <code>/invite @Sales HQ Notify</code> in that channel, then click <b>Load channels</b> again.</p>
        <details style="margin:4px 0 0"><summary style="cursor:pointer;color:var(--muted);font-size:12px">Advanced: paste a bot token manually</summary>
        <div class="cards" style="grid-template-columns:repeat(auto-fill,minmax(260px,1fr));margin-top:8px"><div class="field"><label>Bot token (xoxb-)</label><span style="display:flex;gap:6px"><input id="botToken" type="password" autocomplete="off" placeholder="${connected?'•••• (leave blank to keep)':'xoxb-...'}" style="flex:1"><button type="button" class="btn sm ghost" onclick="integReveal('botToken',this)">Show</button><button type="button" class="btn sm ghost" onclick="integSaveBotToken()">Save</button></span></div></div></details>`
     : `<div class="cards" style="grid-template-columns:repeat(auto-fill,minmax(260px,1fr))"><div class="field"><label>Bot token (xoxb-)</label><span style="display:flex;gap:6px"><input id="botToken" type="password" autocomplete="off" placeholder="${connected?'•••• (leave blank to keep)':'xoxb-...'}" style="flex:1"><button type="button" class="btn sm ghost" onclick="integReveal('botToken',this)">Show</button></span></div></div>
@@ -10427,12 +10427,12 @@ function integBotChanUI(c,chans){
 async function integSaveBotToken(){
   const t=integTarget(); if(!t) return; const tok=(document.getElementById('botToken').value||'').trim();
   const res=await integApi('save',{key:t.key, ws:t.ws, client:t.client, botToken: tok?tok:'__keep__'});
-  if(res&&res.ok){ INTEG_CFGS[t.key]=res.config; toast('Bot token saved'); renderSlackBot(); } else toast((res&&res.error)||'Could not save',true);
+  if(res&&res.ok){ INTEG_CFGS[t.key]=res.config; toast('Bot token saved'); renderSlackBot(); renderEodRouting(); } else toast((res&&res.error)||'Could not save',true);
 }
 async function integLoadChannels(){
   const t=integTarget(); if(!t) return; toast('Loading channels...');
   const res=await integApi('listChannels',{key:t.key, ws:t.ws});
-  if(res&&res.ok){ INTEG_BOT_CHANS[t.key]=res.channels||[]; renderSlackBot(); toast(((res.channels||[]).length)+' channels loaded'); }
+  if(res&&res.ok){ INTEG_BOT_CHANS[t.key]=res.channels||[]; renderSlackBot(); renderEodRouting(); toast(((res.channels||[]).length)+' channels loaded'); }
   else toast((res&&res.error)||'Could not load channels - check the token + that the app is installed',true);
 }
 async function integSaveBotChan(){
@@ -10450,7 +10450,7 @@ async function integDisconnectBot(){
   const t=integTarget(); if(!t) return;
   if(!confirm('Disconnect the Slack bot for '+(t.client||t.label||'this client')+'? It stops posting until reconnected.')) return;
   const res=await integApi('save',{key:t.key, ws:t.ws, client:t.client, botToken:'', botChanId:'', botChanName:'', botTeamName:''});
-  if(res&&res.ok){ INTEG_CFGS[t.key]=res.config; delete INTEG_BOT_CHANS[t.key]; toast('Bot disconnected'); renderSlackBot(); } else toast((res&&res.error)||'Could not disconnect',true);
+  if(res&&res.ok){ INTEG_CFGS[t.key]=res.config; delete INTEG_BOT_CHANS[t.key]; toast('Bot disconnected'); renderSlackBot(); renderEodRouting(); } else toast((res&&res.error)||'Could not disconnect',true);
 }
 async function integCopyBotLink(){
   const t=integTarget(); if(!t) return;
@@ -10476,7 +10476,7 @@ async function integConnectBot(){
       const r=await integApi('get',{}); const map={}; ((r&&r.configs)||[]).forEach(c=>map[c.key]=c);
       const now=JSON.stringify({c:map[t.key]||null});
       if(now!==baseline || tries>=24){ clearInterval(window.__integBotPoll); window.__integBotPoll=0; window.__integAwaitConnect=0;
-        if(now!==baseline && currentTab()==='integrations'){ INTEG_CFGS=map; renderSlackBot(); toast('Bot connected - now Load channels'); } }
+        if(now!==baseline && currentTab()==='integrations'){ INTEG_CFGS=map; renderSlackBot(); renderEodRouting(); toast('Bot connected - now Load channels'); } }
     },2500);
   } else { if(w&&!w.closed) w.close(); toast((res&&res.error)||'Could not start the connect',true); }
 }
