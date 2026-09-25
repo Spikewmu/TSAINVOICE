@@ -9955,12 +9955,27 @@ async function reassignStaff(oldName,newName){
 // remove a client from the overview + all pickers (soft-delete; deals already logged under the name stay in the data)
 async function deleteClient(name){
   if(!(SESSION && SESSION.role==='admin')){ toast('Only a Super/Account Admin can remove a client',true); return; }
-  if(!confirm('Remove client "'+name+'"?\n\nIt disappears from the overview and every picker. Any deals already logged under it stay in the data (not deleted).')) return;
   const cur=latestClients().find(x=>String(x.name).toLowerCase()===String(name).toLowerCase());
-  const base = cur ? (()=>{ const {_t,...clean}=cur; return clean; })() : {name};
-  await addRecord(Object.assign({}, base, {type:'client', name:(cur&&cur.name)||name, status:'__DELETED__'}));
-  if(Array.isArray(CFG.clients) && CFG.clients.some(c=>String(c).toLowerCase()===String(name).toLowerCase())){ CFG.clients=CFG.clients.filter(c=>String(c).toLowerCase()!==String(name).toLowerCase()); save(LS.cfg,CFG); }
-  toast('Removed '+((cur&&cur.name)||name)); fillLists(); renderClientOverview();
+  const cname=(cur&&cur.name)||name, key=String(cname).toLowerCase();
+  // who is still assigned to this offer: reps via their team scope + the managers on the client record
+  const reps=(USERS_CACHE||[]).filter(u=>u&&!u.archived&&u.username&&teamsFor(u.username).some(t=>String(t).toLowerCase()===key));
+  const repLines=reps.map(u=>{ let roles=[]; try{ roles=(typeof rolesFor==='function'?rolesFor(u.username):null)||[u.role]; }catch(e){ roles=[u.role]; } const r=roles.filter(x=>['setter','closer','manager'].includes(x)).join(' / ')||u.role||'rep'; return '• '+(u.name||u.username)+' ('+r+')'; });
+  const mgrLines=[]; if(cur){ [['Manager',cur.manager],['Webinar mgr',cur.webinarMgr],['Setter mgr',cur.setterMgr],['Closer mgr',cur.closerMgr]].forEach(([lbl,v])=>{ if(v&&String(v).trim()) mgrLines.push('• '+String(v).trim()+' ('+lbl+')'); }); }
+  const assigned=[...repLines, ...mgrLines];
+  if(!confirm('Archive "'+cname+'"?\n\nIt leaves the overview and every picker, but ALL logged deals, payments and reports STAY in the data - it is archived, not deleted.')) return;
+  let unassign=false;
+  if(assigned.length){
+    unassign=confirm(assigned.length+' still assigned to '+cname+':\n\n'+assigned.join('\n')+'\n\nRemove them from this offer too?\n\nOK = unassign them from '+cname+' (their other accounts and all history are untouched)\nCancel = archive but keep their assignments');
+  }
+  const jobs=[];
+  const base = cur ? (()=>{ const {_t,...clean}=cur; return clean; })() : {name:cname};
+  const archived=Object.assign({}, base, {type:'client', name:cname, status:'__DELETED__'});
+  if(unassign){ archived.manager=''; archived.webinarMgr=''; archived.setterMgr=''; archived.closerMgr=''; }
+  jobs.push(addRecord(archived));
+  if(unassign){ reps.forEach(u=>{ const next=teamsFor(u.username).filter(t=>String(t).toLowerCase()!==key); jobs.push(addRecord({type:'team', username:String(u.username).toLowerCase(), teams:JSON.stringify(next)})); }); }
+  if(Array.isArray(CFG.clients) && CFG.clients.some(c=>String(c).toLowerCase()===key)){ CFG.clients=CFG.clients.filter(c=>String(c).toLowerCase()!==key); save(LS.cfg,CFG); }
+  try{ await Promise.all(jobs); }catch(e){ toast('Archive failed: '+((e&&e.message)||e),true); return; }
+  toast('Archived '+cname+(unassign?(' · unassigned '+reps.length+' rep'+(reps.length===1?'':'s')):'')); fillLists(); renderClientOverview();
 }
 function clientModalShow(){ const m=document.getElementById('clientModal'); if(m){ m.hidden=false; const c=m.querySelector('.modalcard'); if(c) c.scrollTop=0; } }
 function clientModalClose(){ const m=document.getElementById('clientModal'); if(m) m.hidden=true; }
