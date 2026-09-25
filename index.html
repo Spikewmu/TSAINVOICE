@@ -517,7 +517,6 @@
     <div class="navsub">
       <button data-tab="invoicing">Invoicing</button>
       <button data-tab="payouts">Payouts</button>
-      <button data-tab="repcommrates">Rep Commission Breakdown</button>
       <button data-tab="contracts">Contracts</button>
     </div>
   </div>
@@ -1318,68 +1317,6 @@
     <div class="panel"><div style="display:flex;justify-content:space-between;align-items:baseline;padding:12px 14px 0;gap:8px;flex-wrap:wrap"><h3 style="margin:0">Webinar hosts <span class="muted" style="font-weight:400;font-size:12px">- webinar % on webinar-lead deals</span></h3><button class="btn ghost sm" onclick="poMarkAll('webinar')">Mark all paid</button></div><div class="tablewrap"><table id="poWebTable"></table></div></div>
   </section>
 
-  <!-- ===== REP COMMISSION BREAKDOWN (per-rep pay rates) ===== -->
-  <section id="tab-repcommrates" hidden>
-    <h2 class="section">Rep Commission Breakdown</h2>
-    <p class="hint">Set the commission % each rep earns on cash collected. <b>Defaults</b> apply to everyone unless you override a specific rep below. This is what TSA pays the <b>reps</b> (separate from what a client pays TSA - that's on Contracts). Super Admin only.</p>
-    <div class="panel" style="padding:18px;max-width:520px">
-      <h3 style="margin:0 0 4px">Default rates</h3>
-      <p class="fieldhelp" style="margin:0 0 12px">Applied to any rep without a specific override. The <b>manager override</b> is what TSA pays sales managers on their teams' cash; it feeds the Master dashboard's net revenue.</p>
-      <div class="grid2" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
-        <div class="field"><label>Setter default (%)</label><input type="number" id="rcDefSetter" step="0.1" min="0" placeholder="3"></div>
-        <div class="field"><label>Closer default (%)</label><input type="number" id="rcDefCloser" step="0.1" min="0" placeholder="7"></div>
-        <div class="field"><label>Manager override (%)</label><input type="number" id="rcDefMgr" step="0.1" min="0" placeholder="0"></div>
-      </div>
-      <div style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
-        <label style="font-weight:600;font-size:13px">Webinar host pay</label>
-        <div class="grid2" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-top:8px">
-          <div class="field"><label>Mode</label><select id="rcWebMode" onchange="rcWebModeToggle()"><option value="pct">% of webinar-lead deals</option><option value="flat">Flat $ per webinar</option></select></div>
-          <div class="field rcWebFlatOnly"><label>Flat $ / webinar</label><input type="number" id="rcWebFlat" step="50" min="0" placeholder="1000"></div>
-          <div class="field rcWebFlatOnly"><label>Min attendees</label><input type="number" id="rcWebMin" step="1" min="0" placeholder="15"></div>
-        </div>
-        <p class="fieldhelp" style="margin:8px 0 0"><b>%</b> pays the account's webinar host their per-offer % on webinar-lead deals. <b>Flat</b> pays a fixed $ per webinar they host that hits the minimum attendance (log webinars below). Undecided? leave on %.</p>
-      </div>
-      <div class="row-actions" style="margin-top:10px"><button class="btn gold sm" onclick="saveCommDefaults()">Save defaults</button></div>
-    </div>
-    <div class="panel" style="padding:18px;margin-top:16px">
-      <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px">
-        <h3 style="margin:0">Per-rep overrides</h3>
-        <button class="btn gold sm" onclick="saveRepCommRates()">Save all rates</button>
-      </div>
-      <p class="fieldhelp" style="margin:6px 0 12px">Leave a cell blank to use the default. Only closers show a closer rate; only setters show a setter rate (hybrids show both).</p>
-      <div class="tablewrap"><table id="rcTable"></table></div>
-    </div>
-    <div class="panel" style="padding:18px;margin-top:16px">
-      <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px">
-        <h3 style="margin:0">Manager overrides</h3>
-        <button class="btn gold sm" onclick="saveMgrOverrides()">Save overrides</button>
-      </div>
-      <p class="fieldhelp" style="margin:6px 0 12px">The override % each sales manager earns on the cash their teams collect (the accounts they manage). Blank uses the default above. This is the <b>flat, all-accounts</b> rate; to set a <b>different % per offer</b> use the account table below (it takes precedence). Feeds the Master dashboard's net revenue.</p>
-      <div class="tablewrap"><table id="rcMgrTable"></table></div>
-    </div>
-    <div class="panel" style="padding:18px;margin-top:16px">
-      <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px">
-        <h3 style="margin:0">Comp &amp; net margin by account (offer)</h3>
-        <button class="btn gold sm" onclick="saveAcctRates()">Save account rates</button>
-      </div>
-      <p class="fieldhelp" style="margin:6px 0 12px">Per-offer comp for the whole team. <b>Setter</b> and <b>Closer</b> auto-fill from the reps assigned to the account but are <b>editable per offer</b> - e.g. set <b>Setter to 0</b> on an ads-straight-to-closer offer like Prime, and the <b>setter manager auto-drops to 0</b> (TSA rule: no setter = no setter-team comp). <b>Setter mgr / Closer mgr / Webinar host</b> come from each account's responsibilities (assigned in <b>Users</b>); enter what each earns on that account (e.g. Keithen 3% webinar + 3% mgmt on Prime). Blank manager cell = that manager's flat override; blank webinar = none. <b>Net spread</b> = billing % minus the whole team; <b>Net $</b> = that spread on this month's billed cash. Super Admin only.</p>
-      <div id="rcAcctSummary" class="fieldhelp" style="margin:0 0 10px;font-size:12.5px"></div>
-      <div class="tablewrap"><table id="rcAcctTable"></table></div>
-    </div>
-    <div class="panel" style="padding:18px;margin-top:16px" id="rcWebLogPanel">
-      <h3 style="margin:0">Webinar log <span class="muted" style="font-weight:400;font-size:12px">- for flat-per-webinar pay</span></h3>
-      <p class="fieldhelp" style="margin:6px 0 12px">Log each webinar you run. In <b>flat</b> mode, a webinar pays its host when attendees meet the minimum (set above); in <b>%</b> mode it's just a record. Host auto-fills from the account's webinar host.</p>
-      <div class="filters" style="gap:10px;align-items:flex-end;flex-wrap:wrap">
-        <div class="field"><label>Account</label><select id="wlClient"></select></div>
-        <div class="field" style="position:relative"><label>Date</label><div class="rangewrap"><input type="text" id="wlDate_txt" readonly placeholder="Pick a day" onclick="dayPopToggle('wlDate',event)"><input type="hidden" id="wlDate"><div class="rangepop" id="wlDate_pop" hidden onclick="event.stopPropagation()"></div></div></div>
-        <div class="field"><label>Host</label><input id="wlHost" placeholder="auto from account" style="width:160px"></div>
-        <div class="field"><label>Attendees</label><input type="number" id="wlAttend" min="0" style="width:100px"></div>
-        <button class="btn gold sm" onclick="logWebinar()">Log webinar</button>
-      </div>
-      <div class="tablewrap" style="margin-top:12px"><table id="wlTable"></table></div>
-    </div>
-  </section>
-
   <!-- ===== CONTRACTS (lender view) ===== -->
   <section id="tab-contracts" hidden>
     <h2 class="section">Contracts</h2>
@@ -1556,6 +1493,18 @@ If they did not watch: No problem at all, I will send it right over. Can you wat
       <div class="full row-actions"><button class="btn gold" type="submit">Submit webinar report</button></div>
     </form>
     <div class="panel"><h3>Webinars <span style="font-weight:400;color:var(--muted);font-size:12px">- calculated rates</span></h3><div class="tablewrap"><table id="webinarTable"></table></div></div>
+    <div class="panel" style="padding:18px;margin-top:6px" id="rcWebLogPanel">
+      <h3 style="margin:0">Webinar log <span class="muted" style="font-weight:400;font-size:12px">- for flat-per-webinar pay</span></h3>
+      <p class="fieldhelp" style="margin:6px 0 12px">Log each webinar you run. In an account on <b>flat</b> webinar pay, a logged webinar pays its host when attendees meet that account's minimum (set in the client's onboarding); otherwise it is just a record. Host auto-fills from the account's webinar host. Super Admin only.</p>
+      <div class="filters" style="gap:10px;align-items:flex-end;flex-wrap:wrap">
+        <div class="field"><label>Account</label><select id="wlClient"></select></div>
+        <div class="field" style="position:relative"><label>Date</label><div class="rangewrap"><input type="text" id="wlDate_txt" readonly placeholder="Pick a day" onclick="dayPopToggle('wlDate',event)"><input type="hidden" id="wlDate"><div class="rangepop" id="wlDate_pop" hidden onclick="event.stopPropagation()"></div></div></div>
+        <div class="field"><label>Host</label><input id="wlHost" placeholder="auto from account" style="width:160px"></div>
+        <div class="field"><label>Attendees</label><input type="number" id="wlAttend" min="0" style="width:100px"></div>
+        <button class="btn gold sm" onclick="logWebinar()">Log webinar</button>
+      </div>
+      <div class="tablewrap" style="margin-top:12px"><table id="wlTable"></table></div>
+    </div>
   </section>
 
   <!-- ===== CALL LOG ===== -->
@@ -2950,7 +2899,7 @@ function startApp(){
 // base tabs a login TIER can see; per-account responsibilities add to this in applyNavAccess()
 function baseAllow(role){
   return ({
-    admin:['dash','halloffame','master','sample','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','dayreports','hotlist','adminreport','recruiting','messages','invoicing','payouts','repcommrates','contracts','onbaudit','ghlmap','pcfields','data','users','integrations','settings','reprequests','playbook','resources','faq','kickoff','webinarsop'],
+    admin:['dash','halloffame','master','sample','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','dayreports','hotlist','adminreport','recruiting','messages','invoicing','payouts','contracts','onbaudit','ghlmap','pcfields','data','users','integrations','settings','reprequests','playbook','resources','faq','kickoff','webinarsop'],
     director:['dash','halloffame','master','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','dailyreport','dayreports','hotlist','recruiting','messages','adminreport','contracts','onbaudit','ghlmap','pcfields','reprequests','playbook','resources','faq','kickoff','webinarsop'],
     manager:['dash','halloffame','master','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','speedtolead','dailyreport','dayreports','hotlist','adminreport','recruiting','messages','reprequests','playbook','resources','faq','kickoff','webinarsop'],
     founder:['dash','hotlist','faq'],
@@ -3101,9 +3050,9 @@ function showTab(t){
   document.querySelectorAll('#tabs button[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
   document.querySelectorAll('#tabs .navgroup').forEach(g=>{ if(g.querySelector('button[data-tab="'+t+'"]')) g.classList.remove('collapsed'); }); // reveal the active tab's group
 
-  ['dash','halloffame','master','sample','mydeals','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','dayreports','hotlist','adminreport','reprequests','recruiting','messages','invoicing','payouts','repcommrates','contracts','onbaudit','ghlmap','pcfields','data','users','integrations','settings','playbook','resources','faq','kickoff','webinarsop','scorecards'].forEach(x=>{ const el=document.getElementById('tab-'+x); if(el) el.hidden = (x!==t); });
+  ['dash','halloffame','master','sample','mydeals','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','dayreports','hotlist','adminreport','reprequests','recruiting','messages','invoicing','payouts','contracts','onbaudit','ghlmap','pcfields','data','users','integrations','settings','playbook','resources','faq','kickoff','webinarsop','scorecards'].forEach(x=>{ const el=document.getElementById('tab-'+x); if(el) el.hidden = (x!==t); });
   // stale-while-revalidate: render instantly from the cached records, then refresh in the background
-  const render={dash:renderDash, halloffame:renderHallOfFame, master:renderMaster, sample:renderSample, mydeals:renderMyDeals, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, promises:renderPromisesTab, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, mgreodview:renderMgrEodView, contracts:renderContracts, faq:renderFaq, playbook:renderPlaybook, scorecards:renderScorecards, webinar:renderWebinars, calllog:renderCallLog, calendar:renderCalendar, speedtolead:renderSpeedToLead, dailyreport:renderDailyReport, dayreports:renderDayReports, hotlist:renderHotList, adminreport:renderAdminReport, payouts:renderPayouts, repcommrates:renderRepCommRates, reprequests:renderRepRequests, recruiting:renderRecruiting, messages:renderMessages, training:renderTraining, invoicing:renderInvoicing, data:renderAll}[t];
+  const render={dash:renderDash, halloffame:renderHallOfFame, master:renderMaster, sample:renderSample, mydeals:renderMyDeals, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, promises:renderPromisesTab, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, mgreodview:renderMgrEodView, contracts:renderContracts, faq:renderFaq, playbook:renderPlaybook, scorecards:renderScorecards, webinar:renderWebinars, calllog:renderCallLog, calendar:renderCalendar, speedtolead:renderSpeedToLead, dailyreport:renderDailyReport, dayreports:renderDayReports, hotlist:renderHotList, adminreport:renderAdminReport, payouts:renderPayouts, reprequests:renderRepRequests, recruiting:renderRecruiting, messages:renderMessages, training:renderTraining, invoicing:renderInvoicing, data:renderAll}[t];
   if(render){ render(); hqApplyTooltips(); syncRecords().then(()=>{ if(currentTab()===t){ render(); hqApplyTooltips(); } buildGlobalClientSelect(); buildViewAsUserSelect(); updateNavBadges(); renderReminders(); }); }
   updateNavBadges();
   setTimeout(hqApplyTooltips,0); // catch tabs whose render runs outside the map above
@@ -4662,6 +4611,10 @@ function renderWebinars(){
   const body=rows.length?rows.map(w=>`<tr><td>${esc(usDate(w.date))}</td><td>${esc(w.client||'')}</td><td>${esc(w.rep||'')}</td><td class="num">${w.registrations||0}</td><td class="num">${w.attendees||0}</td><td class="num">${rate(w.attendees,w.registrations)}</td><td class="num">${rate(w.emailsDelivered,w.emailsSent)}</td><td class="num">${w.callsBooked||0}</td><td class="num">${w.callsShown||0}</td><td class="num">${w.dealsClosed||0}</td><td class="num">${rate(w.dealsClosed,w.callsShown)}</td><td class="num">${per(w.contractValue,w.dealsClosed)}</td><td class="num">${money(w.cashCollected)}</td><td class="num">${per(w.cashCollected,w.registrations)}</td><td class="num">${per(w.cashCollected,w.attendees)}</td></tr>`).join('')
     :`<tr><td colspan="15" class="muted" style="padding:16px">No webinar reports yet.</td></tr>`;
   document.getElementById('webinarTable').innerHTML=head+body+`</tbody>`;
+  // Webinar log (flat-per-webinar pay feeder) - Super Admin only, lives on this tab now
+  const logP=document.getElementById('rcWebLogPanel'), isAdmin=!!(SESSION&&SESSION.role==='admin');
+  if(logP) logP.hidden=!isAdmin;
+  if(isAdmin){ try{ renderWebinarLog(); }catch(e){} }
 }
 /* ---------------- meeting agenda + promises ---------------- */
 function collapseAgenda(list){ const m={}; list.forEach(x=>{ if(x.type!=='agenda') return; const k=[(x.date||'').slice(0,10),(x.client||'').trim(),(x.section||''),(x.by||'').trim()].join('|'); if(!m[k]||(x.submittedAt||'')>(m[k].submittedAt||'')) m[k]=x; }); return Object.values(m); }
