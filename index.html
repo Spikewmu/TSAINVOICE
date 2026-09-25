@@ -1946,6 +1946,13 @@ If they did not watch: No problem at all, I will send it right over. Can you wat
             <select name="webinarMgr" style="flex:1"></select>
             <input id="ccWebMgrPct" type="number" min="0" max="100" step="0.5" placeholder="%" style="width:90px" title="Webinar-host % on this account"> <span class="muted" style="font-size:13px">%</span>
           </div></div>
+        <div class="field full"><label>Webinar host pay</label>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <select name="webMode" id="ccWebMode" onchange="ccWebModeToggle()" style="width:210px"><option value="pct">% of webinar-lead deals</option><option value="flat">Flat $ per webinar</option></select>
+            <span class="ccWebFlatOnly" style="display:none"><input name="webFlat" id="ccWebFlat" type="number" min="0" step="50" placeholder="$ / webinar" style="width:120px"></span>
+            <span class="ccWebFlatOnly" style="display:none"><input name="webMin" id="ccWebMin" type="number" min="0" step="1" placeholder="min attendees" style="width:130px"></span>
+          </div>
+          <span class="fieldhelp"><b>%</b> pays the webinar host the % above on webinar-lead deals. <b>Flat</b> pays a fixed $ per webinar they run that hits the minimum (logged webinars). Undecided? leave on %.</span></div>
         <div class="field"><label>Setter % (this offer)</label><input id="ccRepSetPct" type="number" min="0" max="100" step="0.5" placeholder="e.g. 3"><span class="fieldhelp">Leave 0 if this offer runs ads straight to a closer (no setter).</span></div>
         <div class="field"><label>Closer % (this offer)</label><input id="ccRepCloPct" type="number" min="0" max="100" step="0.5" placeholder="e.g. 7"></div>
         <div class="field full"><label>Exceptions <span style="font-weight:400;color:var(--muted)">- a specific rep with a negotiated rate</span></label>
@@ -6745,21 +6752,18 @@ function webinarRuns(){ const m={}; (RECORDS||[]).forEach(x=>{ if(x.type!=='webi
 // per-webinar-host pay for a cycle. Two modes (CFG.webMode): 'pct' = per-account webinar % on webinar-lead deals' billed cash; 'flat' = fixed $ per logged webinar that hit the minimum attendance.
 function poWebinarData(from,to){
   const inP=d=>{ d=String(d||'').slice(0,10); return d && d>=from && d<=to; };
-  if(webinarMode()==='flat'){
-    const flat=(CFG.webFlat!=null?Number(CFG.webFlat):1000), minA=(CFG.webMinAttend!=null?Number(CFG.webMinAttend):0);
-    const hosts={};
-    webinarRuns().filter(w=>inP(w.date)).forEach(w=>{ if(minA && (Number(w.attendees)||0)<minA) return; const host=w.host||''; if(!host) return;
-      const o=hosts[host]||(hosts[host]={rep:host,role:'webinar',flat:true,cash:0,commission:0,items:[]});
-      o.commission+=flat; o.items.push({client:w.client||'', date:w.date, attendees:Number(w.attendees)||0, amt:flat}); });
-    return Object.values(hosts).map(o=>({...o, count:o.items.length, rate:0, effRate:0})).sort((a,b)=>b.commission-a.commission);
-  }
+  const hosts={};
+  // FLAT accounts: pay the host a fixed $ per logged webinar that meets that account's minimum attendance
+  webinarRuns().filter(w=>inP(w.date)).forEach(w=>{ const client=w.client||''; if(clientWebMode(client)!=='flat') return; const minA=clientWebMin(client); if(minA && (Number(w.attendees)||0)<minA) return; const host=w.host||''; if(!host) return; const flat=clientWebFlat(client);
+    const o=hosts[host]||(hosts[host]={rep:host,role:'webinar',flat:true,cash:0,commission:0,items:[]});
+    o.flat=true; o.commission+=flat; o.items.push({client, date:w.date, attendees:Number(w.attendees)||0, amt:flat}); });
+  // PCT accounts: pay the host their per-offer % on webinar-lead cash
   const webSet=new Set(); (RECORDS||[]).forEach(x=>{ if(x.type==='deal'&&isWebinarDeal(x)) webSet.add(nrmName(x.client)+'|'+nrmName(x.lead||'')); });
   const clientCash={}, seen={};
   (RECORDS||[]).filter(x=>x.type==='deal'&&inP(x.date)&&isWebinarDeal(x)).forEach(d=>{ const id=String(d.id||''); if(id&&seen[id])return; if(id)seen[id]=1; const c=lineBilled('d:'+id,Number(d.cashCollected)||0); if(!c)return; clientCash[d.client]=(clientCash[d.client]||0)+c; });
   paymentsCollapsed().filter(p=>p.status==='confirmed'&&inP(p.date)&&webSet.has(nrmName(p.client)+'|'+nrmName(p.lead||''))).forEach(p=>{ const c=lineBilled('p:'+String(p.pid||p.id||''),Number(p.amount)||0); if(!c)return; clientCash[p.client]=(clientCash[p.client]||0)+c; });
-  const hosts={};
-  latestClients().forEach(cl=>{ const host=cl.webinarMgr; if(!host) return; const cc=clientCash[cl.name]||0; if(cc<=0) return; const rate=acctFnRate(cl.name,'web'); if(!rate) return; const o=hosts[host]||(hosts[host]={rep:host,role:'webinar',cash:0,commission:0,items:[]}); o.cash+=cc; o.commission+=cc*rate/100; o.items.push({client:cl.name,cash:cc,rate,amt:cc*rate/100}); });
-  return Object.values(hosts).map(o=>({...o, rate:o.cash?Math.round(o.commission/o.cash*1000)/10:0, effRate:o.cash?o.commission/o.cash*100:0})).sort((a,b)=>b.commission-a.commission);
+  latestClients().forEach(cl=>{ if(clientWebMode(cl.name)==='flat') return; const host=cl.webinarMgr; if(!host) return; const cc=clientCash[cl.name]||0; if(cc<=0) return; const rate=acctFnRate(cl.name,'web'); if(!rate) return; const o=hosts[host]||(hosts[host]={rep:host,role:'webinar',cash:0,commission:0,items:[]}); o.cash+=cc; o.commission+=cc*rate/100; o.items.push({client:cl.name,cash:cc,rate,amt:cc*rate/100}); });
+  return Object.values(hosts).map(o=>({...o, count:(o.items||[]).filter(it=>it.date).length, rate:o.cash?Math.round(o.commission/o.cash*1000)/10:0, effRate:o.cash?o.commission/o.cash*100:0})).sort((a,b)=>b.commission-a.commission);
 }
 function rcWebModeToggle(){ const flat=(document.getElementById('rcWebMode')||{}).value==='flat'; document.querySelectorAll('.rcWebFlatOnly').forEach(e=>{ e.style.display=flat?'':'none'; }); }
 function renderWebinarLog(){
@@ -6819,8 +6823,7 @@ function renderPayouts(){
   const stt=document.getElementById('poSetterTable'); if(stt) stt.innerHTML=head+`<tbody>${rowsFor(data.setters,'setter')||`<tr><td colspan="6" class="muted" style="padding:14px">No setter commissions this cycle.</td></tr>`}</tbody>`;
   const mgt=document.getElementById('poMgrTable'); if(mgt) mgt.innerHTML=mgrHead+`<tbody>${mgrRows||`<tr><td colspan="6" class="muted" style="padding:14px">No manager overrides this cycle. Set each manager's override % on Rep Commission Breakdown.</td></tr>`}</tbody>`;
   // Webinar hosts: their per-account webinar % on webinar-lead deals' cash this cycle
-  const webFlatMode=webinarMode()==='flat';
-  const webHead=`<thead><tr><th>Webinar host</th><th class="num">${webFlatMode?'Webinars':'Webinar cash'}</th><th class="num">${webFlatMode?'Per webinar':'Rate'}</th><th class="num">Webinar pay</th><th>Status</th><th></th></tr></thead>`;
+  const webHead=`<thead><tr><th>Webinar host</th><th class="num">Basis</th><th class="num">Rate / fee</th><th class="num">Webinar pay</th><th>Status</th><th></th></tr></thead>`;
   const webRows=poWebinarData(c.from,c.to).filter(o=>o.commission>0.0001).map((o,idx)=>{
     const st=poStatus(map,ck,o.rep,'webinar'), paid=!!(st&&st.paid), rid='webinar-'+idx;
     const badge=paid?`<span class="pill good">Paid${st.paidAt?' · '+esc(usDate(st.paidAt)):''}</span>`:`<span class="pill warn">Unpaid</span>`;
@@ -6832,7 +6835,7 @@ function renderPayouts(){
     const detLabel=o.flat?`Webinars hosted this cycle (${(o.items||[]).length})`:`Webinar-lead cash behind this pay (${(o.items||[]).length} account${(o.items||[]).length===1?'':'s'})`;
     const detail=`<tr class="poDetail" id="pod-${rid}" hidden><td colspan="6" style="padding:0 10px 12px;background:rgba(255,255,255,.02)"><div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:8px 0 4px">${detLabel}</div><table style="width:100%;border-collapse:collapse;font-size:12.5px"><thead><tr style="color:var(--muted);border-bottom:1px solid var(--border)">${detHead}</tr></thead><tbody>${itemRows||'<tr><td colspan="4" class="muted" style="padding:6px 8px">Nothing this cycle.</td></tr>'}</tbody></table></td></tr>`;
     const cashCell=o.flat?`${o.count} webinar${o.count===1?'':'s'}`:money(o.cash);
-    const rateCell=o.flat?money(CFG.webFlat!=null?CFG.webFlat:1000):(o.rate+'%');
+    const rateCell=o.flat?money(o.count?o.commission/o.count:0):(o.rate+'%');
     return `<tr><td><button class="linklike" onclick="poToggle('pod-${rid}')" title="Show what's behind this pay">${esc(o.rep)} <span style="font-size:9px;opacity:.7">&#9660;</span></button></td><td class="num">${cashCell}</td><td class="num">${rateCell}</td><td class="num" style="font-weight:700">${money(o.commission)}</td><td>${badge}</td><td>${act}</td></tr>`+detail;
   }).join('');
   const wbt=document.getElementById('poWebTable'); if(wbt) wbt.innerHTML=webHead+`<tbody>${webRows||`<tr><td colspan="6" class="muted" style="padding:14px">No webinar-host pay this cycle. Deals need the webinar tag (or "Webinar" source) + a webinar % set on the account in Rep Commission Breakdown.</td></tr>`}</tbody>`;
@@ -9994,8 +9997,11 @@ function openClientModal(){
   const f=document.getElementById('clientForm'); if(f) f.reset();
   const t=document.getElementById('clientModalTitle'); if(t) t.textContent='Add a client';
   fillMgrSelects(); setClientProducts(CFG.products||[]); // new client starts with the global offer list to trim
-  ['ccSetMgrPct','ccCloMgrPct','ccWebMgrPct','ccRepSetPct','ccRepCloPct'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
-  ccRenderExceptions([]);
+  ['ccSetMgrPct','ccCloMgrPct','ccWebMgrPct'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+  // new client defaults: setter 3% / closer 7% baked in, so every account carries an explicit rate (no reliance on a global fallback)
+  const sd=document.getElementById('ccRepSetPct'); if(sd) sd.value=3;
+  const cd=document.getElementById('ccRepCloPct'); if(cd) cd.value=7;
+  ccRenderExceptions([]); ccWebModeToggle();
   clientModalShow();
   const nm=f&&f.querySelector('[name="name"]'); if(nm) setTimeout(()=>nm.focus(),50);
 }
@@ -10008,6 +10014,11 @@ function editClient(name){
   g('monthly').value=c.monthly||''; g('monthlyGoal').value=c.monthlyGoal||''; g('nextStep').value=c.nextStep||'';
   fillMgrSelects();
   ['webinarMgr','setterMgr','closerMgr','manager','serviceLine'].forEach(nm=>{ const sel=g(nm), v=c[nm]||''; if(!sel)return; if(v&&![...sel.options].some(o=>o.value===v)) sel.add(new Option(v,v)); sel.value=v; }); // set dropdown values after options exist
+  // webinar host pay (per account)
+  if(g('webMode')) g('webMode').value=(c.webMode==='flat'?'flat':'pct');
+  if(g('webFlat')) g('webFlat').value=(c.webFlat!=null?c.webFlat:'');
+  if(g('webMin')) g('webMin').value=(c.webMin!=null?c.webMin:'');
+  ccWebModeToggle();
   // pre-fill with all global products if this client has none yet, so you can trim
   const prods=(c.products&&String(c.products).trim())?String(c.products).split(',').map(s=>s.trim()).filter(Boolean):(CFG.products||[]);
   setClientProducts(prods);
@@ -10032,6 +10043,10 @@ async function saveClient(e){
   e.preventDefault();
   const o=formObj(e.target); o.type='client'; o.monthly=parseFloat(o.monthly)||0; o.monthlyGoal=parseFloat(o.monthlyGoal)||0;
   o.products=CLIENT_PRODUCTS.join(', ');
+  // webinar host pay lives on the client record (per-account): mode + flat amount + min attendees
+  o.webMode=(o.webMode==='flat')?'flat':'pct';
+  o.webFlat=(String(o.webFlat||'').trim()===''?null:(parseFloat(o.webFlat)||0));
+  o.webMin=(String(o.webMin||'').trim()===''?null:(parseInt(o.webMin,10)||0));
   const name=String(o.name||'').trim();
   // the contract + retainer fields ride on the client form for one-shot onboarding; pull them off so the client record stays clean
   const feRaw=o.feRate, beRaw=o.beRate, retRaw=o.retainer, retDayRaw=o.retainerDay;
@@ -10077,6 +10092,12 @@ function clientRepsWithOverride(client){ const k=nrmName(client), out=[]; (USERS
 function ccExceptionRow(ex){ ex=ex||{rep:'',role:'closer',pct:''}; const opts='<option value="">- rep -</option>'+ccRepNames().map(n=>`<option${nrmName(n)===nrmName(ex.rep)?' selected':''}>${esc(n)}</option>`).join(''); return `<div class="ccExRow" style="display:flex;gap:8px;align-items:center;margin-bottom:6px"><select class="ccExRep" style="flex:1">${opts}</select><select class="ccExRole" style="width:110px"><option value="closer"${ex.role!=='setter'?' selected':''}>Closer</option><option value="setter"${ex.role==='setter'?' selected':''}>Setter</option></select><input class="ccExPct" type="number" min="0" max="100" step="0.5" placeholder="%" value="${ex.pct!=null?esc(ex.pct):''}" style="width:80px"><button type="button" class="btn sm ghost" style="color:var(--warn);border-color:var(--warn)" title="Remove" onclick="this.closest('.ccExRow').remove()">&times;</button></div>`; }
 function ccRenderExceptions(list){ const box=document.getElementById('ccExceptions'); if(!box) return; box.innerHTML=(list&&list.length)?list.map(ccExceptionRow).join(''):''; }
 function ccAddException(){ const box=document.getElementById('ccExceptions'); if(box) box.insertAdjacentHTML('beforeend', ccExceptionRow()); }
+function ccWebModeToggle(){ const flat=(document.getElementById('ccWebMode')||{}).value==='flat'; document.querySelectorAll('#clientForm .ccWebFlatOnly').forEach(e=>{ e.style.display=flat?'':'none'; }); }
+// per-account webinar host pay (falls back to the global default for accounts set up before this field existed)
+function clientWebCfg(name){ return latestClients().find(x=>nrmName(x.name)===nrmName(name))||null; }
+function clientWebMode(name){ const c=clientWebCfg(name); if(c&&c.webMode) return c.webMode==='flat'?'flat':'pct'; return webinarMode(); }
+function clientWebFlat(name){ const c=clientWebCfg(name); if(c&&c.webFlat!=null&&c.webFlat!=='') return Number(c.webFlat); return (CFG.webFlat!=null?Number(CFG.webFlat):1000); }
+function clientWebMin(name){ const c=clientWebCfg(name); if(c&&c.webMin!=null&&c.webMin!=='') return Number(c.webMin); return (CFG.webMinAttend!=null?Number(CFG.webMinAttend):0); }
 // people selectable as account managers = real user accounts that can manage (admin / manager / webinar team).
 // Using actual accounts (not typed names) so the assignment always maps to a real login for scoping.
 function mgrPeople(){ const s=new Set(); (USERS_CACHE||[]).filter(u=>['admin','manager','webinarteam'].includes(u.role)).forEach(u=>{ if(u.name) s.add(String(u.name).trim()); }); return [...s].filter(Boolean).sort((a,b)=>a.localeCompare(b)); }
