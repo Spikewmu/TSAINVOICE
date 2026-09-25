@@ -524,7 +524,6 @@
     <button class="navhead"><svg class="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4-3 7-7 8-4-1-7-4-7-8V6z"/></svg><span class="nlabel">Admin</span><svg class="nchev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
     <div class="navsub">
       <button data-tab="master">Master dashboard</button>
-      <button data-tab="sample">Sample Dashboard</button>
       <button data-tab="mgreodview">Manager EODs</button>
       <button data-tab="onbaudit">Onboarding Audit</button>
       <button data-tab="ghlmap">GHL Mapping</button>
@@ -2031,27 +2030,6 @@ If they did not watch: No problem at all, I will send it right over. Can you wat
   </section>
 
   <!-- ===== SAMPLE (demo) DASHBOARD ===== -->
-  <section id="tab-sample" hidden>
-    <style>
-      #tab-sample .sbadge{display:inline-flex;align-items:center;gap:6px;background:var(--gold);color:#241c08;font-weight:800;font-size:11px;letter-spacing:.06em;text-transform:uppercase;padding:4px 10px;border-radius:999px}
-      #tab-sample .swarn{margin:10px 0 18px;padding:10px 14px;border:1px dashed var(--gold-soft);border-radius:10px;color:var(--muted);font-size:12.5px;background:var(--surface)}
-      #tab-sample .sgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;margin:10px 0 22px}
-      #tab-sample .skpi{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px 18px}
-      #tab-sample .skpi .lbl{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;font-weight:600}
-      #tab-sample .skpi .val{font-size:26px;font-weight:800;color:var(--ink);margin-top:5px;font-variant-numeric:tabular-nums}
-      #tab-sample h3.ssec{font-family:var(--serif);color:var(--gold-2);margin:6px 0 2px}
-      #tab-sample table{width:100%;border-collapse:collapse;font-size:13px}
-      #tab-sample th{text-align:left;color:var(--muted);font-weight:600;padding:8px;border-bottom:1px solid var(--border);font-size:11px;text-transform:uppercase;letter-spacing:.03em}
-      #tab-sample td{padding:9px 8px;border-bottom:1px solid var(--border)}
-    </style>
-    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-      <h2 class="section" style="margin-bottom:0">Sample Dashboard</h2>
-      <span class="sbadge">Sample data</span>
-    </div>
-    <div class="swarn">This is a demo view for walkthroughs. Every name and number here is made up - <b>no real customer information, and no financial data</b> (cash, commission, or revenue) is shown. Use this when screen-sharing the platform with someone outside the team.</div>
-    <div id="sampleBody"></div>
-  </section>
-
   <section id="tab-hotlist" hidden>
     <h2 class="section">Hot List</h2>
     <p class="hint">Deals close to closing - the whole team can see the projected pipeline at a glance. Reps add their in-progress deals so leadership can back up the forecast. This is <b>projections</b>, separate from confirmed cash in My Deals.</p>
@@ -2944,7 +2922,7 @@ function startApp(){
 // base tabs a login TIER can see; per-account responsibilities add to this in applyNavAccess()
 function baseAllow(role){
   return ({
-    admin:['dash','halloffame','master','sample','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','dayreports','hotlist','adminreport','recruiting','messages','invoicing','payouts','contracts','onbaudit','ghlmap','pcfields','data','users','integrations','settings','reprequests','playbook','resources','faq','kickoff','webinarsop'],
+    admin:['dash','halloffame','master','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','dayreports','hotlist','adminreport','recruiting','messages','invoicing','payouts','contracts','onbaudit','ghlmap','pcfields','data','users','integrations','settings','reprequests','playbook','resources','faq','kickoff','webinarsop'],
     director:['dash','halloffame','master','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','dailyreport','dayreports','hotlist','recruiting','messages','adminreport','contracts','onbaudit','ghlmap','pcfields','reprequests','playbook','resources','faq','kickoff','webinarsop'],
     manager:['dash','halloffame','master','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','speedtolead','dailyreport','dayreports','hotlist','adminreport','recruiting','messages','reprequests','playbook','resources','faq','kickoff','webinarsop'],
     founder:['dash','hotlist','faq'],
@@ -3095,9 +3073,9 @@ function showTab(t){
   document.querySelectorAll('#tabs button[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
   document.querySelectorAll('#tabs .navgroup').forEach(g=>{ if(g.querySelector('button[data-tab="'+t+'"]')) g.classList.remove('collapsed'); }); // reveal the active tab's group
 
-  ['dash','halloffame','master','sample','mydeals','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','dayreports','hotlist','adminreport','reprequests','recruiting','messages','invoicing','payouts','contracts','onbaudit','ghlmap','pcfields','data','users','integrations','settings','playbook','resources','faq','kickoff','webinarsop','scorecards'].forEach(x=>{ const el=document.getElementById('tab-'+x); if(el) el.hidden = (x!==t); });
+  ['dash','halloffame','master','mydeals','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','dayreports','hotlist','adminreport','reprequests','recruiting','messages','invoicing','payouts','contracts','onbaudit','ghlmap','pcfields','data','users','integrations','settings','playbook','resources','faq','kickoff','webinarsop','scorecards'].forEach(x=>{ const el=document.getElementById('tab-'+x); if(el) el.hidden = (x!==t); });
   // stale-while-revalidate: render instantly from the cached records, then refresh in the background
-  const render={dash:renderDash, halloffame:renderHallOfFame, master:renderMaster, sample:renderSample, mydeals:renderMyDeals, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, promises:renderPromisesTab, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, mgreodview:renderMgrEodView, contracts:renderContracts, faq:renderFaq, playbook:renderPlaybook, scorecards:renderScorecards, webinar:renderWebinars, calllog:renderCallLog, calendar:renderCalendar, speedtolead:renderSpeedToLead, dailyreport:renderDailyReport, dayreports:renderDayReports, hotlist:renderHotList, adminreport:renderAdminReport, payouts:renderPayouts, reprequests:renderRepRequests, recruiting:renderRecruiting, messages:renderMessages, training:renderTraining, invoicing:renderInvoicing, data:renderAll}[t];
+  const render={dash:renderDash, halloffame:renderHallOfFame, master:renderMaster, mydeals:renderMyDeals, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, promises:renderPromisesTab, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, mgreodview:renderMgrEodView, contracts:renderContracts, faq:renderFaq, playbook:renderPlaybook, scorecards:renderScorecards, webinar:renderWebinars, calllog:renderCallLog, calendar:renderCalendar, speedtolead:renderSpeedToLead, dailyreport:renderDailyReport, dayreports:renderDayReports, hotlist:renderHotList, adminreport:renderAdminReport, payouts:renderPayouts, reprequests:renderRepRequests, recruiting:renderRecruiting, messages:renderMessages, training:renderTraining, invoicing:renderInvoicing, data:renderAll}[t];
   if(render){ render(); hqApplyTooltips(); syncRecords().then(()=>{ if(currentTab()===t){ render(); hqApplyTooltips(); } buildGlobalClientSelect(); buildViewAsUserSelect(); updateNavBadges(); renderReminders(); }); }
   updateNavBadges();
   setTimeout(hqApplyTooltips,0); // catch tabs whose render runs outside the map above
