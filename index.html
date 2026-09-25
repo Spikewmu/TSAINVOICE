@@ -10384,7 +10384,8 @@ async function renderSlackBot(){
   const c=INTEG_CFGS[t.key]||{}, connected=!!c.botConnected, chans=INTEG_BOT_CHANS[t.key];
   const status = connected ? `<span class="pill good">&#10003; Connected${c.botTeamName?' · '+esc(c.botTeamName):''}</span>` : `<span class="pill" style="opacity:.55">Not connected</span>`;
   const connectRow = INTEG_NOTIFY_OAUTH
-    ? `<div class="row-actions" style="margin:10px 0"><button class="btn gold sm" onclick="integConnectBot()">${connected?'Reconnect bot':'Connect Slack bot'}</button> <button class="btn ghost sm" onclick="integLoadChannels()">Load channels</button></div>
+    ? `<div class="row-actions" style="margin:10px 0"><button class="btn gold sm" onclick="integConnectBot()">${connected?'Reconnect bot':'Add to Slack (connect)'}</button> <button class="btn ghost sm" onclick="integCopyBotLink()">Copy client install link</button> <button class="btn ghost sm" onclick="integLoadChannels()">Load channels</button></div>
+       <p class="fieldhelp" style="margin:0 0 6px">Use <b>Add to Slack</b> if you can install it yourself; use <b>Copy client install link</b> to send the client a one-click link so they add the bot to their own workspace during onboarding (link works for 7 days).</p>
        <details style="margin:4px 0 0"><summary style="cursor:pointer;color:var(--muted);font-size:12px">Advanced: paste a bot token manually</summary>
        <div class="cards" style="grid-template-columns:repeat(auto-fill,minmax(260px,1fr));margin-top:8px"><div class="field"><label>Bot token (xoxb-)</label><span style="display:flex;gap:6px"><input id="botToken" type="password" autocomplete="off" placeholder="${connected?'•••• (leave blank to keep)':'xoxb-...'}" style="flex:1"><button type="button" class="btn sm ghost" onclick="integReveal('botToken',this)">Show</button><button type="button" class="btn sm ghost" onclick="integSaveBotToken()">Save</button></span></div></div></details>`
     : `<div class="cards" style="grid-template-columns:repeat(auto-fill,minmax(260px,1fr))"><div class="field"><label>Bot token (xoxb-)</label><span style="display:flex;gap:6px"><input id="botToken" type="password" autocomplete="off" placeholder="${connected?'•••• (leave blank to keep)':'xoxb-...'}" style="flex:1"><button type="button" class="btn sm ghost" onclick="integReveal('botToken',this)">Show</button></span></div></div>
@@ -10424,6 +10425,14 @@ async function integTestBot(){
   const t=integTarget(); if(!t) return; toast('Sending test...');
   const res=await integApi('testBot',{key:t.key, ws:t.ws});
   if(res&&res.ok) toast('Test sent - check the channel'); else toast((res&&res.error)||'Test failed',true);
+}
+async function integCopyBotLink(){
+  const t=integTarget(); if(!t) return;
+  if(!INTEG_NOTIFY_OAUTH){ toast('The notification bot is not configured on the server yet',true); return; }
+  const res=await integApi('connectBotUrl',{key:t.key, ws:t.ws, share:true});
+  if(!(res&&res.ok&&res.url)){ toast((res&&res.error)||'Could not build the link',true); return; }
+  try{ await navigator.clipboard.writeText(res.url); toast('Install link copied - send it to '+(t.client||'the client')+' (works 7 days)'); }
+  catch(e){ prompt('Copy this install link and send it to the client:', res.url); }
 }
 async function integConnectBot(){
   const t=integTarget(); if(!t) return;

@@ -320,7 +320,8 @@ export default async function handler(req, res) {
       if (!slackAppId('notify')) return res.status(200).json({ ok: false, error: 'The notification bot is not configured on the server yet (SLACK_CLIENT_ID_NOTIFY).' });
       const key = String(b.key || '').trim(); if (!key) return res.status(200).json({ ok: false, error: 'key required' });
       const ws = isSuper ? String(b.ws || DEFAULT_WS) : callerWs;
-      const stateObj = { t: 'bot', app: 'notify', key, ws, exp: Date.now() + 15 * 60 * 1000 };
+      // a client-facing "share" link lives 7 days (survives an email); the admin popup link is short-lived
+      const stateObj = { t: 'bot', app: 'notify', key, ws, exp: Date.now() + (b.share ? 7 * 24 * 60 : 15) * 60 * 1000 };
       const sb = Buffer.from(JSON.stringify(stateObj)).toString('base64url');
       const mac = crypto.createHmac('sha256', process.env.SESSION_SECRET || 'tsa-session').update(sb).digest('base64url');
       const redirect = baseUrl(req) + '/api/slack-oauth';
