@@ -1325,6 +1325,15 @@
         <div class="field"><label>Closer default (%)</label><input type="number" id="rcDefCloser" step="0.1" min="0" placeholder="7"></div>
         <div class="field"><label>Manager override (%)</label><input type="number" id="rcDefMgr" step="0.1" min="0" placeholder="0"></div>
       </div>
+      <div style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
+        <label style="font-weight:600;font-size:13px">Webinar host pay</label>
+        <div class="grid2" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-top:8px">
+          <div class="field"><label>Mode</label><select id="rcWebMode" onchange="rcWebModeToggle()"><option value="pct">% of webinar-lead deals</option><option value="flat">Flat $ per webinar</option></select></div>
+          <div class="field rcWebFlatOnly"><label>Flat $ / webinar</label><input type="number" id="rcWebFlat" step="50" min="0" placeholder="1000"></div>
+          <div class="field rcWebFlatOnly"><label>Min attendees</label><input type="number" id="rcWebMin" step="1" min="0" placeholder="15"></div>
+        </div>
+        <p class="fieldhelp" style="margin:8px 0 0"><b>%</b> pays the account's webinar host their per-offer % on webinar-lead deals. <b>Flat</b> pays a fixed $ per webinar they host that hits the minimum attendance (log webinars below). Undecided? leave on %.</p>
+      </div>
       <div class="row-actions" style="margin-top:10px"><button class="btn gold sm" onclick="saveCommDefaults()">Save defaults</button></div>
     </div>
     <div class="panel" style="padding:18px;margin-top:16px">
@@ -1351,6 +1360,18 @@
       <p class="fieldhelp" style="margin:6px 0 12px">Per-offer comp for the whole team. <b>Setter</b> and <b>Closer</b> auto-fill from the reps assigned to the account but are <b>editable per offer</b> - e.g. set <b>Setter to 0</b> on an ads-straight-to-closer offer like Prime, and the <b>setter manager auto-drops to 0</b> (TSA rule: no setter = no setter-team comp). <b>Setter mgr / Closer mgr / Webinar host</b> come from each account's responsibilities (assigned in <b>Users</b>); enter what each earns on that account (e.g. Keithen 3% webinar + 3% mgmt on Prime). Blank manager cell = that manager's flat override; blank webinar = none. <b>Net spread</b> = billing % minus the whole team; <b>Net $</b> = that spread on this month's billed cash. Super Admin only.</p>
       <div id="rcAcctSummary" class="fieldhelp" style="margin:0 0 10px;font-size:12.5px"></div>
       <div class="tablewrap"><table id="rcAcctTable"></table></div>
+    </div>
+    <div class="panel" style="padding:18px;margin-top:16px" id="rcWebLogPanel">
+      <h3 style="margin:0">Webinar log <span class="muted" style="font-weight:400;font-size:12px">- for flat-per-webinar pay</span></h3>
+      <p class="fieldhelp" style="margin:6px 0 12px">Log each webinar you run. In <b>flat</b> mode, a webinar pays its host when attendees meet the minimum (set above); in <b>%</b> mode it's just a record. Host auto-fills from the account's webinar host.</p>
+      <div class="filters" style="gap:10px;align-items:flex-end;flex-wrap:wrap">
+        <div class="field"><label>Account</label><select id="wlClient"></select></div>
+        <div class="field" style="position:relative"><label>Date</label><div class="rangewrap"><input type="text" id="wlDate_txt" readonly placeholder="Pick a day" onclick="dayPopToggle('wlDate',event)"><input type="hidden" id="wlDate"><div class="rangepop" id="wlDate_pop" hidden onclick="event.stopPropagation()"></div></div></div>
+        <div class="field"><label>Host</label><input id="wlHost" placeholder="auto from account" style="width:160px"></div>
+        <div class="field"><label>Attendees</label><input type="number" id="wlAttend" min="0" style="width:100px"></div>
+        <button class="btn gold sm" onclick="logWebinar()">Log webinar</button>
+      </div>
+      <div class="tablewrap" style="margin-top:12px"><table id="wlTable"></table></div>
     </div>
   </section>
 
@@ -4016,7 +4037,7 @@ function renderContracts(){
   const compForClient=(client)=>{ const k=nrmName(client); let total=0; const items=[];
     [...repAll.closers,...repAll.setters].forEach(o=>{ let cc=0; Object.keys(o.byClient||{}).forEach(cn=>{ if(nrmName(cn)===k) cc+=(o.byClient[cn]||0); }); if(cc>0){ const amt=cc*repRate(o.rep,o.role)/100; if(amt>0.005){ total+=amt; items.push({who:o.rep, role:o.role, amt}); } } });
     mgrAll.forEach(m=>{ let a=0; (m.items||[]).forEach(it=>{ if(nrmName(it.client)===k) a+=(it.cash||0)*(it.rate||0)/100; }); if(a>0.005){ total+=a; items.push({who:m.rep, role:'manager override', amt:a}); } });
-    webAll.forEach(w=>{ let a=0; (w.items||[]).forEach(it=>{ if(nrmName(it.client)===k) a+=(it.cash||0)*(it.rate||0)/100; }); if(a>0.005){ total+=a; items.push({who:w.rep, role:'webinar', amt:a}); } });
+    webAll.forEach(w=>{ let a=0; (w.items||[]).forEach(it=>{ if(nrmName(it.client)===k) a+=(it.amt!=null?it.amt:(it.cash||0)*(it.rate||0)/100); }); if(a>0.005){ total+=a; items.push({who:w.rep, role:(w.flat?'webinar (flat)':'webinar'), amt:a}); } });
     return {total, items:items.sort((a,b)=>b.amt-a.amt)}; };
   let fcMonth=0, actual=0, expOut=0, totCollected=0, totComp=0, totNet=0, anyTBD=false; const monthTSA={};
   const rows=list.map(c=>{
@@ -6483,6 +6504,10 @@ function renderRepCommRates(){
   if(ds) ds.value=(CFG.setterRate!=null?CFG.setterRate:3);
   if(dc) dc.value=(CFG.closerRate!=null?CFG.closerRate:7);
   if(dm) dm.value=(CFG.mgrOverrideRate!=null?CFG.mgrOverrideRate:0);
+  const wmEl=document.getElementById('rcWebMode'); if(wmEl) wmEl.value=(CFG.webMode==='flat'?'flat':'pct');
+  const wfEl=document.getElementById('rcWebFlat'); if(wfEl) wfEl.value=(CFG.webFlat!=null?CFG.webFlat:'');
+  const wminEl=document.getElementById('rcWebMin'); if(wminEl) wminEl.value=(CFG.webMinAttend!=null?CFG.webMinAttend:'');
+  try{ rcWebModeToggle(); renderWebinarLog(); }catch(e){}
   const reps=[];
   (USERS_CACHE||[]).forEach(u=>{ if(!u||u.archived||!u.username) return; let roles=[]; try{ roles=(typeof rolesFor==='function'?rolesFor(u.username):null)||[u.role]; }catch(e){ roles=[u.role]; } const isC=roles.includes('closer'), isS=roles.includes('setter'); if(isC||isS) reps.push({name:u.name||u.username, isC, isS}); });
   reps.sort((a,b)=>String(a.name).localeCompare(String(b.name)));
@@ -6538,7 +6563,7 @@ function renderAcctComp(){
   const rows=clients.map(c=>{
     const bill=tsaBillRate(c.name)||0;
     const web=c.webinarMgr||'', sm=c.setterMgr||'', cm=c.closerMgr||'';
-    const wR=effRate(c.name,'web',web), sR=effRate(c.name,'set',sm), cR=effRate(c.name,'clo',cm);
+    const wR=(webinarMode()==='flat')?0:effRate(c.name,'web',web), sR=effRate(c.name,'set',sm), cR=effRate(c.name,'clo',cm); // flat webinar pay isn't a per-deal %, so it's excluded from the spread (shows in Net $ via the webinar log)
     // Setter/Closer rate for the OFFER: an explicit per-offer override wins; else auto-fill from the assigned reps (closer falls back to default; setter to 0 when none)
     const repSetRaw=acctRepRate(c.name,'setter'), repCloRaw=acctRepRate(c.name,'closer');
     const repSetExp=acctFnRate(c.name,'rep_set'), repCloExp=acctFnRate(c.name,'rep_clo');
@@ -6566,7 +6591,8 @@ function renderAcctComp(){
   if(sumBox){ if(n){ const bAvg=sumBill/n, cAvg=sumComp/n, net=bAvg-cAvg; const r1=x=>Math.round(x*10)/10;
     const pctLine=`Across <b>${n}</b> account${n===1?'':'s'} with a set billing rate: average billing <b>${r1(bAvg)}%</b>, average team comp <b>${r1(cAvg)}%</b> (setters+closers+managers+webinar), average <b>net spread ${r1(net)}%</b>.${thin?` Thinnest: <b>${esc(thin.client)}</b> at <b style="color:${thin.net<7?'var(--warn)':'inherit'}">${r1(thin.net)}%</b>.`:''}`;
     const dollarLine=anyCash?`<div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border)">This month so far, TSA bills <b>${money(totRev)}</b>, pays <b>${money(totComp$)}</b> in team comp, and <b style="color:${totNet$<0?'var(--warn)':'var(--good)'}">${totNet$<0?'LOSES':'nets'} ${money(Math.abs(totNet$))}</b>${totRev?` (${r1(totNet$/totRev*100)}% of what we bill)`:''}. <span style="font-size:11px">Comp shown on the billed base; real gross comp is slightly higher after processing fees.</span></div>`:'<div style="margin-top:6px;font-size:11.5px" class="muted">No billed cash recorded this month yet - dollar view fills in as deals/payments come in.</div>';
-    sumBox.innerHTML=pctLine+dollarLine;
+    const flatNote=(webinarMode()==='flat')?`<div style="margin-top:6px;font-size:11.5px" class="muted">Webinar host is on <b>flat $${(CFG.webFlat!=null?CFG.webFlat:1000)}/webinar</b> (min ${CFG.webMinAttend!=null?CFG.webMinAttend:0} attendees) - a fixed cost per webinar, so it's not in the per-deal spread above; it hits <b>Net $</b> + Contracts via the Webinar log.</div>`:'';
+    sumBox.innerHTML=pctLine+dollarLine+flatNote;
   } else sumBox.textContent='Set the contract rev-share % on the Contracts page to see net spreads.'; }
 }
 async function saveAcctRates(){
@@ -6596,6 +6622,9 @@ async function saveCommDefaults(){
   if(!rcCanEdit()){ toast('Super Admin only',true); return; }
   const s=parseFloat(document.getElementById('rcDefSetter').value), c=parseFloat(document.getElementById('rcDefCloser').value), m=parseFloat((document.getElementById('rcDefMgr')||{}).value);
   if(!isNaN(s)) CFG.setterRate=s; if(!isNaN(c)) CFG.closerRate=c; if(!isNaN(m)) CFG.mgrOverrideRate=m;
+  const wm=(document.getElementById('rcWebMode')||{}).value; if(wm) CFG.webMode=wm; // webinar host pay: 'pct' or 'flat'
+  const wf=parseFloat((document.getElementById('rcWebFlat')||{}).value); if(!isNaN(wf)) CFG.webFlat=wf;
+  const wmin=parseInt((document.getElementById('rcWebMin')||{}).value,10); if(!isNaN(wmin)) CFG.webMinAttend=wmin;
   try{ await saveWsConfig(); toast('Default rates saved'); renderRepCommRates(); try{ if(currentTab()==='invoicing') repCommRender(); }catch(e){} }
   catch(e){ toast('Save failed: '+((e&&e.message)||e),true); }
 }
@@ -6663,17 +6692,44 @@ function poManagerData(from,to){
 }
 // A deal is a WEBINAR lead if it carries the GHL webinar tag (webinarLead, stamped server-side from the tag) or was logged with the "Webinar" source (T-627)
 function isWebinarDeal(x){ return !!x && (x.webinarLead===true || String(x.source||'').toLowerCase()==='webinar'); }
-// per-webinar-host pay for a cycle: their per-account webinar % on the billed cash of WEBINAR-lead deals on the accounts they host
+function webinarMode(){ return CFG.webMode==='flat' ? 'flat' : 'pct'; }
+function webinarRuns(){ const m={}; (RECORDS||[]).forEach(x=>{ if(x.type!=='webinarrun'||!x.id)return; if(!m[x.id]||(x.submittedAt||'')>(m[x.id].submittedAt||'')) m[x.id]=x; }); return Object.values(m).filter(r=>!r.deleted).sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))); }
+// per-webinar-host pay for a cycle. Two modes (CFG.webMode): 'pct' = per-account webinar % on webinar-lead deals' billed cash; 'flat' = fixed $ per logged webinar that hit the minimum attendance.
 function poWebinarData(from,to){
   const inP=d=>{ d=String(d||'').slice(0,10); return d && d>=from && d<=to; };
+  if(webinarMode()==='flat'){
+    const flat=(CFG.webFlat!=null?Number(CFG.webFlat):1000), minA=(CFG.webMinAttend!=null?Number(CFG.webMinAttend):0);
+    const hosts={};
+    webinarRuns().filter(w=>inP(w.date)).forEach(w=>{ if(minA && (Number(w.attendees)||0)<minA) return; const host=w.host||''; if(!host) return;
+      const o=hosts[host]||(hosts[host]={rep:host,role:'webinar',flat:true,cash:0,commission:0,items:[]});
+      o.commission+=flat; o.items.push({client:w.client||'', date:w.date, attendees:Number(w.attendees)||0, amt:flat}); });
+    return Object.values(hosts).map(o=>({...o, count:o.items.length, rate:0, effRate:0})).sort((a,b)=>b.commission-a.commission);
+  }
   const webSet=new Set(); (RECORDS||[]).forEach(x=>{ if(x.type==='deal'&&isWebinarDeal(x)) webSet.add(nrmName(x.client)+'|'+nrmName(x.lead||'')); });
   const clientCash={}, seen={};
   (RECORDS||[]).filter(x=>x.type==='deal'&&inP(x.date)&&isWebinarDeal(x)).forEach(d=>{ const id=String(d.id||''); if(id&&seen[id])return; if(id)seen[id]=1; const c=lineBilled('d:'+id,Number(d.cashCollected)||0); if(!c)return; clientCash[d.client]=(clientCash[d.client]||0)+c; });
   paymentsCollapsed().filter(p=>p.status==='confirmed'&&inP(p.date)&&webSet.has(nrmName(p.client)+'|'+nrmName(p.lead||''))).forEach(p=>{ const c=lineBilled('p:'+String(p.pid||p.id||''),Number(p.amount)||0); if(!c)return; clientCash[p.client]=(clientCash[p.client]||0)+c; });
   const hosts={};
-  latestClients().forEach(cl=>{ const host=cl.webinarMgr; if(!host) return; const cc=clientCash[cl.name]||0; if(cc<=0) return; const rate=acctFnRate(cl.name,'web'); if(!rate) return; const o=hosts[host]||(hosts[host]={rep:host,role:'webinar',cash:0,commission:0,items:[]}); o.cash+=cc; o.commission+=cc*rate/100; o.items.push({client:cl.name,cash:cc,rate}); });
+  latestClients().forEach(cl=>{ const host=cl.webinarMgr; if(!host) return; const cc=clientCash[cl.name]||0; if(cc<=0) return; const rate=acctFnRate(cl.name,'web'); if(!rate) return; const o=hosts[host]||(hosts[host]={rep:host,role:'webinar',cash:0,commission:0,items:[]}); o.cash+=cc; o.commission+=cc*rate/100; o.items.push({client:cl.name,cash:cc,rate,amt:cc*rate/100}); });
   return Object.values(hosts).map(o=>({...o, rate:o.cash?Math.round(o.commission/o.cash*1000)/10:0, effRate:o.cash?o.commission/o.cash*100:0})).sort((a,b)=>b.commission-a.commission);
 }
+function rcWebModeToggle(){ const flat=(document.getElementById('rcWebMode')||{}).value==='flat'; document.querySelectorAll('.rcWebFlatOnly').forEach(e=>{ e.style.display=flat?'':'none'; }); }
+function renderWebinarLog(){
+  const sel=document.getElementById('wlClient');
+  if(sel){ const cur=sel.value; sel.innerHTML=clientNames().map(c=>`<option>${esc(c)}</option>`).join(''); if(cur) sel.value=cur; const hostEl=document.getElementById('wlHost'); const fill=()=>{ const c=latestClients().find(x=>nrmName(x.name)===nrmName(sel.value)); if(hostEl) hostEl.placeholder=(c&&c.webinarMgr)||'auto from account'; }; sel.onchange=fill; fill(); }
+  try{ dayPickAttach('wlDate'); const hd=document.getElementById('wlDate'); if(hd&&!hd.value){ hd.value=todayLocal(); dayPickSync('wlDate'); } }catch(e){}
+  const t=document.getElementById('wlTable'); if(!t) return;
+  const minA=(CFG.webMinAttend!=null?Number(CFG.webMinAttend):0), runs=webinarRuns();
+  const rows=runs.slice(0,40).map(w=>`<tr><td>${esc(usDate(w.date))}</td><td>${esc(w.client||'-')}</td><td>${esc(w.host||'-')}</td><td class="num">${Number(w.attendees)||0}${(minA&&(Number(w.attendees)||0)<minA)?' <span class="pill warn" title="Below the minimum - no flat pay">low</span>':''}</td><td><button class="btn ghost sm" style="color:var(--warn);border-color:var(--warn)" onclick="delWebinarRun('${w.id}')">Remove</button></td></tr>`).join('');
+  t.innerHTML=`<thead><tr><th>Date</th><th>Account</th><th>Host</th><th class="num">Attendees</th><th></th></tr></thead><tbody>${rows||'<tr><td colspan="5" class="muted" style="padding:12px">No webinars logged yet.</td></tr>'}</tbody>`;
+}
+async function logWebinar(){ if(!rcCanEdit()){ toast('Super Admin only',true); return; }
+  const client=(document.getElementById('wlClient')||{}).value||'', date=(document.getElementById('wlDate')||{}).value||'', hostIn=((document.getElementById('wlHost')||{}).value||'').trim(), attendees=parseInt((document.getElementById('wlAttend')||{}).value||'0',10)||0;
+  if(!client||!date){ toast('Pick an account and date',true); return; }
+  const host=hostIn||((latestClients().find(c=>nrmName(c.name)===nrmName(client))||{}).webinarMgr||'');
+  try{ await addRecord({type:'webinarrun', id:uid(), client, date, host, attendees, by:(SESSION&&SESSION.name)||''}); toast('Webinar logged'); const a=document.getElementById('wlAttend'); if(a) a.value=''; renderWebinarLog(); }
+  catch(e){ toast('Failed: '+((e&&e.message)||e),true); } }
+function delWebinarRun(id){ const cur=webinarRuns().find(x=>x.id===id); if(!cur||!rcCanEdit()) return; addRecord(Object.assign({},cur,{deleted:true})).then(renderWebinarLog); }
 async function poMarkAll(role){ if(!poCanEdit()){ toast('Super Admin only',true); return; }
   const c=poCycleObj(), map=poStatusMap(), ck=poKey(c);
   const list=(role==='manager')?poManagerData(c.from,c.to):(role==='webinar')?poWebinarData(c.from,c.to):(function(){ const data=repCommData(c.from,c.to,''); return role==='closer'?data.closers:data.setters; })();
@@ -6715,14 +6771,21 @@ function renderPayouts(){
   const stt=document.getElementById('poSetterTable'); if(stt) stt.innerHTML=head+`<tbody>${rowsFor(data.setters,'setter')||`<tr><td colspan="6" class="muted" style="padding:14px">No setter commissions this cycle.</td></tr>`}</tbody>`;
   const mgt=document.getElementById('poMgrTable'); if(mgt) mgt.innerHTML=mgrHead+`<tbody>${mgrRows||`<tr><td colspan="6" class="muted" style="padding:14px">No manager overrides this cycle. Set each manager's override % on Rep Commission Breakdown.</td></tr>`}</tbody>`;
   // Webinar hosts: their per-account webinar % on webinar-lead deals' cash this cycle
-  const webHead=`<thead><tr><th>Webinar host</th><th class="num">Webinar cash</th><th class="num">Rate</th><th class="num">Webinar pay</th><th>Status</th><th></th></tr></thead>`;
+  const webFlatMode=webinarMode()==='flat';
+  const webHead=`<thead><tr><th>Webinar host</th><th class="num">${webFlatMode?'Webinars':'Webinar cash'}</th><th class="num">${webFlatMode?'Per webinar':'Rate'}</th><th class="num">Webinar pay</th><th>Status</th><th></th></tr></thead>`;
   const webRows=poWebinarData(c.from,c.to).filter(o=>o.commission>0.0001).map((o,idx)=>{
     const st=poStatus(map,ck,o.rep,'webinar'), paid=!!(st&&st.paid), rid='webinar-'+idx;
     const badge=paid?`<span class="pill good">Paid${st.paidAt?' · '+esc(usDate(st.paidAt)):''}</span>`:`<span class="pill warn">Unpaid</span>`;
     const act=paid?`<button class="btn ghost sm" onclick="markPayout('${jsStr(o.rep)}','webinar',${o.commission},false)">Undo</button>`:`<button class="btn gold sm" onclick="markPayout('${jsStr(o.rep)}','webinar',${o.commission},true)">Mark paid</button>`;
-    const itemRows=(o.items||[]).map(it=>`<tr><td style="padding:5px 8px">${esc(it.client||'-')}</td><td class="num" style="padding:5px 8px">${money(it.cash)}</td><td class="num" style="padding:5px 8px">${(it.rate||0)}%</td><td class="num" style="padding:5px 8px;font-weight:600">${money((it.cash||0)*(it.rate||0)/100)}</td></tr>`).join('');
-    const detail=`<tr class="poDetail" id="pod-${rid}" hidden><td colspan="6" style="padding:0 10px 12px;background:rgba(255,255,255,.02)"><div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:8px 0 4px">Webinar-lead cash behind this pay (${(o.items||[]).length} account${(o.items||[]).length===1?'':'s'})</div><table style="width:100%;border-collapse:collapse;font-size:12.5px"><thead><tr style="color:var(--muted);border-bottom:1px solid var(--border)"><th style="text-align:left;padding:4px 8px">Account</th><th style="text-align:right;padding:4px 8px">Webinar cash</th><th style="text-align:right;padding:4px 8px">Rate</th><th style="text-align:right;padding:4px 8px">Pay</th></tr></thead><tbody>${itemRows||'<tr><td colspan="4" class="muted" style="padding:6px 8px">No webinar-lead cash this cycle.</td></tr>'}</tbody></table></td></tr>`;
-    return `<tr><td><button class="linklike" onclick="poToggle('pod-${rid}')" title="Show the webinar-lead deals behind this pay">${esc(o.rep)} <span style="font-size:9px;opacity:.7">&#9660;</span></button></td><td class="num">${money(o.cash)}</td><td class="num">${o.rate}%</td><td class="num" style="font-weight:700">${money(o.commission)}</td><td>${badge}</td><td>${act}</td></tr>`+detail;
+    const itemRows=o.flat
+      ? (o.items||[]).map(it=>`<tr><td style="padding:5px 8px;white-space:nowrap">${esc(usDate(it.date))}</td><td style="padding:5px 8px">${esc(it.client||'-')}</td><td class="num" style="padding:5px 8px">${it.attendees||0}</td><td class="num" style="padding:5px 8px;font-weight:600">${money(it.amt||0)}</td></tr>`).join('')
+      : (o.items||[]).map(it=>`<tr><td style="padding:5px 8px">${esc(it.client||'-')}</td><td class="num" style="padding:5px 8px">${money(it.cash)}</td><td class="num" style="padding:5px 8px">${(it.rate||0)}%</td><td class="num" style="padding:5px 8px;font-weight:600">${money(it.amt!=null?it.amt:(it.cash||0)*(it.rate||0)/100)}</td></tr>`).join('');
+    const detHead=o.flat?`<th style="text-align:left;padding:4px 8px">Date</th><th style="text-align:left;padding:4px 8px">Account</th><th style="text-align:right;padding:4px 8px">Attendees</th><th style="text-align:right;padding:4px 8px">Pay</th>`:`<th style="text-align:left;padding:4px 8px">Account</th><th style="text-align:right;padding:4px 8px">Webinar cash</th><th style="text-align:right;padding:4px 8px">Rate</th><th style="text-align:right;padding:4px 8px">Pay</th>`;
+    const detLabel=o.flat?`Webinars hosted this cycle (${(o.items||[]).length})`:`Webinar-lead cash behind this pay (${(o.items||[]).length} account${(o.items||[]).length===1?'':'s'})`;
+    const detail=`<tr class="poDetail" id="pod-${rid}" hidden><td colspan="6" style="padding:0 10px 12px;background:rgba(255,255,255,.02)"><div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:8px 0 4px">${detLabel}</div><table style="width:100%;border-collapse:collapse;font-size:12.5px"><thead><tr style="color:var(--muted);border-bottom:1px solid var(--border)">${detHead}</tr></thead><tbody>${itemRows||'<tr><td colspan="4" class="muted" style="padding:6px 8px">Nothing this cycle.</td></tr>'}</tbody></table></td></tr>`;
+    const cashCell=o.flat?`${o.count} webinar${o.count===1?'':'s'}`:money(o.cash);
+    const rateCell=o.flat?money(CFG.webFlat!=null?CFG.webFlat:1000):(o.rate+'%');
+    return `<tr><td><button class="linklike" onclick="poToggle('pod-${rid}')" title="Show what's behind this pay">${esc(o.rep)} <span style="font-size:9px;opacity:.7">&#9660;</span></button></td><td class="num">${cashCell}</td><td class="num">${rateCell}</td><td class="num" style="font-weight:700">${money(o.commission)}</td><td>${badge}</td><td>${act}</td></tr>`+detail;
   }).join('');
   const wbt=document.getElementById('poWebTable'); if(wbt) wbt.innerHTML=webHead+`<tbody>${webRows||`<tr><td colspan="6" class="muted" style="padding:14px">No webinar-host pay this cycle. Deals need the webinar tag (or "Webinar" source) + a webinar % set on the account in Rep Commission Breakdown.</td></tr>`}</tbody>`;
   const all=[...data.closers.map(o=>({...o,role:'closer'})),...data.setters.map(o=>({...o,role:'setter'})),...poManagerData(c.from,c.to).map(o=>({...o,role:'manager'})),...poWebinarData(c.from,c.to).map(o=>({...o,role:'webinar'}))].filter(o=>o.commission>0.0001);
