@@ -750,7 +750,8 @@
       #playbookWrap .pbshell{display:flex;border:1px solid var(--glass-brd);border-radius:12px;overflow:hidden;background:var(--glass);min-height:440px}
       #playbookWrap .pbside{flex:none;width:252px;border-right:1px solid var(--glass-brd);padding:10px 8px;overflow:auto;max-height:74vh}
       #playbookWrap .pbnavcat{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);padding:14px 10px 5px}
-      #playbookWrap .pbnavcat:first-child{padding-top:6px}
+      #playbookWrap .pbnavcat:first-child{padding-top:6px;border-top:0;margin-top:0}
+      #playbookWrap .pbnavcat:not(:first-child){border-top:1px solid var(--glass-brd);margin-top:6px}
       #playbookWrap .pbnavcat.pbdrag{cursor:grab;display:flex;align-items:center;gap:6px;border-radius:6px}
       #playbookWrap .pbnavcat.pbdrag:active{cursor:grabbing}
       #playbookWrap .pbnavcat .pbgrip{opacity:.35;letter-spacing:-2px;font-size:12px}
@@ -758,8 +759,8 @@
       #playbookWrap .pbnavcat:hover .pbcatedit{opacity:.7}
       #playbookWrap .pbnavcat .pbcatedit:hover{opacity:1}
       #playbookWrap .pbnavcat.pbdragover{background:var(--gold-soft);outline:1px dashed var(--gold);color:var(--gold-2)}
-      #playbookWrap .pbnavlink{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:7px;font-size:13.5px;color:var(--ink);cursor:pointer;border-left:2px solid transparent;line-height:1.35}
-      #playbookWrap .pbnavlink:hover{background:var(--gold-soft)}
+      #playbookWrap .pbnavlink{display:flex;align-items:center;gap:8px;margin-left:12px;padding:6px 10px 6px 13px;border-radius:0 7px 7px 0;font-size:13.5px;color:var(--ink-2);cursor:pointer;border-left:1.5px solid var(--glass-brd);line-height:1.35}
+      #playbookWrap .pbnavlink:hover{background:var(--gold-soft);color:var(--ink);border-left-color:var(--muted)}
       #playbookWrap .pbnavlink.on{background:var(--gold-soft);color:var(--gold-2);font-weight:600;border-left-color:var(--gold)}
       #playbookWrap .pbmain{flex:1;min-width:0;padding:24px 30px;overflow:auto;max-height:74vh}
       #playbookWrap .pbdoc{max-width:760px}
