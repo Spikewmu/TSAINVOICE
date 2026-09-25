@@ -487,31 +487,76 @@ export default async function handler(req, res) {
       const WINDOW_DAYS = Number(process.env.RECORDS_WINDOW_DAYS || 180);
       const WINDOWED_TYPES = ['eod', 'sod', 'postcall', 'mgreod', 'login', 'pwchange', 'pwreset'];
       const wantFull = b.full === true || q.full === '1' || q.full === 'true';
+      const sinceId = Number(b.sinceId || q.sinceId || 0) || 0; // incremental: only rows newer than what the client already has
       const cutoff = new Date(Date.now() - WINDOW_DAYS * 864e5).toISOString();
-      // page every row matching an extra PostgREST filter (server caps each response at 1000 rows)
+      // page every row matching an extra PostgREST filter (server caps each response at 1000 rows). Returns {id,data} so
+      // the client can track the max id and do incremental syncs (huge egress cut - we stop re-sending the whole history).
       const pageAll = async (extra) => {
         const PAGE = 1000, out = [];
         for (let from = 0; ; from += PAGE) {
-          const r = await supa(`records?select=data&order=id.asc&${filter}${extra || ''}`, { headers: { 'Range-Unit': 'items', Range: `${from}-${from + PAGE - 1}` } });
+          const r = await supa(`records?select=id,data&order=id.asc&${filter}${extra || ''}`, { headers: { 'Range-Unit': 'items', Range: `${from}-${from + PAGE - 1}` } });
           if (!r.ok) { const t = await r.text(); throw new Error('db ' + r.status + ' ' + t.slice(0, 160)); }
           const rows = await r.json();
-          for (const x of rows) if (x && x.data) out.push(x.data);
+          for (const x of rows) if (x && x.data) out.push({ id: x.id, data: x.data });
           if (rows.length < PAGE || from > 500000) break;
         }
         return out;
       };
+      const maxOf = arr => arr.reduce((m, x) => (x.id > m ? x.id : m), 0);
       try {
+        if (sinceId > 0) { // INCREMENTAL: only rows created since the client's last sync (any type - new rows are always recent)
+          const rows = await pageAll(`&id=gt.${sinceId}`);
+          return res.status(200).json({ ok: true, ws, rows, maxId: Math.max(sinceId, maxOf(rows)), incremental: true });
+        }
         if (wantFull) { // explicit full-history read (unbounded) for all-time views
           const out = await pageAll('');
-          return res.status(200).json({ ok: true, ws, records: out, windowDays: null });
+          return res.status(200).json({ ok: true, ws, rows: out, maxId: maxOf(out), incremental: false, windowDays: null });
         }
         const inList = WINDOWED_TYPES.join(',');
         const [full, windowed] = await Promise.all([
           pageAll(`&type=not.in.(${inList})`),                                              // deals + payments + config, complete
           pageAll(`&type=in.(${inList})&submitted_at=gte.${encodeURIComponent(cutoff)}`),   // operational logs, recent window only
         ]);
-        return res.status(200).json({ ok: true, ws, records: full.concat(windowed), windowDays: WINDOW_DAYS });
+        const all = full.concat(windowed);
+        return res.status(200).json({ ok: true, ws, rows: all, maxId: maxOf(all), incremental: false, windowDays: WINDOW_DAYS });
       } catch (e) { return res.status(200).json({ ok: false, error: String((e && e.message) || e) }); }
+    }
+    // ---- COMPACT: shrink the records table (storage + full-load egress). Super Admin / master pass only. ----
+    // Dry-run by default (counts what WOULD be removed); pass confirm:true to actually delete.
+    // Removes: (1) old operational/log rows past their window, and (2) superseded versions of churny config
+    // types (keeps only the latest per key). The app is latest-wins, so dropping older versions changes nothing.
+    if (action === 'compact') {
+      if (!(callerWs === DEFAULT_WS && (!s || s.role === 'admin'))) return res.status(200).json({ ok: false, error: 'Super Admin only' });
+      const doDelete = b.confirm === true;
+      const WINDOW_DAYS = Number(process.env.RECORDS_WINDOW_DAYS || 180), now = Date.now();
+      const nk = v => String(v || '').trim().toLowerCase();
+      // pull minimal columns for the whole table (maintenance scan)
+      const all = [];
+      for (let from = 0; ; from += 1000) {
+        const r = await supa(`records?select=id,type,submitted_at,data&order=id.asc`, { headers: { 'Range-Unit': 'items', Range: `${from}-${from + 999}` } });
+        if (!r.ok) { const t = await r.text(); return res.status(200).json({ ok: false, error: 'scan ' + r.status + ' ' + t.slice(0, 140) }); }
+        const rows = await r.json(); all.push(...rows);
+        if (rows.length < 1000 || from > 1000000) break;
+      }
+      const when = x => Date.parse((x.data && x.data.submittedAt) || x.submitted_at || '') || 0;
+      const del = new Set();
+      // 1) prune old logs / operational rows (not loaded by the app once past their window)
+      const PURGE = { login: 30, pwchange: 30, pwreset: 30, hooklog: 45, eod: WINDOW_DAYS, sod: WINDOW_DAYS, postcall: WINDOW_DAYS, mgreod: WINDOW_DAYS };
+      all.forEach(x => { const d = PURGE[x.type]; if (d) { const t = when(x); if (t && (now - t) > d * 864e5) del.add(x.id); } });
+      // 2) collapse superseded versions of churny, keyed config types (keep the newest per key)
+      const KEY = { acctrate: d => nk(d.client) + '|' + nk(d.fn), clientbilling: d => nk(d.client), contract: d => nk(d.client), repcommrate: d => nk(d.rep), mgroverride: d => nk(d.name), team: d => nk(d.username), integration: d => nk(d.key), reponboard: d => nk(d.username), webhook: d => nk(d.id) };
+      const groups = {};
+      all.forEach(x => { const f = KEY[x.type]; if (!f) return; const d = x.data || {}; (groups[x.type + '|' + f(d)] = groups[x.type + '|' + f(d)] || []).push(x); });
+      Object.values(groups).forEach(g => { if (g.length < 2) return; g.sort((a, b) => when(a) - when(b)); g.slice(0, -1).forEach(x => del.add(x.id)); });
+      const ids = [...del];
+      if (!doDelete) return res.status(200).json({ ok: true, dry: true, total: all.length, wouldRemove: ids.length, keeps: all.length - ids.length });
+      let removed = 0;
+      for (let i = 0; i < ids.length; i += 200) {
+        const chunk = ids.slice(i, i + 200);
+        const r = await supa(`records?id=in.(${chunk.join(',')})`, { method: 'DELETE', headers: { Prefer: 'return=minimal' } });
+        if (r.ok) removed += chunk.length;
+      }
+      return res.status(200).json({ ok: true, total: all.length, removed, remaining: all.length - removed });
     }
     if (action === 'write') {
       const rec = b.record || {};

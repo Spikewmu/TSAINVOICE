@@ -1721,6 +1721,11 @@ If they did not watch: No problem at all, I will send it right over. Can you wat
       <label class="btn sm ghost" style="cursor:pointer">Import JSON<input type="file" accept="application/json" hidden onchange="importJSON(event)"></label>
       <button class="btn sm ghost" onclick="wipe()" style="color:var(--warn);border-color:var(--warn)">Clear all</button>
     </div>
+    <div class="panel" id="dbMaintPanel" hidden style="margin-bottom:16px"><div style="padding:14px">
+      <h3 style="margin:0 0 4px">Database maintenance <span class="muted" style="font-weight:400;font-size:12px">- reduce storage + egress</span></h3>
+      <p class="fieldhelp" style="margin:0 0 10px">Records are append-only, so every edit and daily report leaves old rows behind. <b>Compact</b> removes superseded versions (keeps the latest of each) and old logs past their window. Safe - the app is latest-wins, so nothing visible changes. Super Admin only.</p>
+      <div class="row-actions"><button class="btn gold sm" onclick="dbCompactCheck()">Compact database</button></div>
+    </div></div>
     <div class="panel deWide"><h3>Call reports <span style="font-weight:400;color:var(--muted);font-size:12px">- view submitted End-of-Day reports right here, no export needed</span></h3>
       <div style="padding:14px">
         <div class="filters" style="margin:0 0 12px;align-items:flex-end">
@@ -2613,42 +2618,61 @@ async function ensureKey(){
   if(supaKey() || !CFG.endpoint || !SESSION) return;
   try{ const res=await api({action:'getKey', ...authFields()}); if(res&&res.ok&&res.supaKey){ SESSION.supaKey=res.supaKey; save(LS.auth,SESSION); } }catch(e){}
 }
-async function remoteGet(){
+async function remoteGet(sinceId){
+  // Returns {rows:[{id,data}], maxId, incremental}. sinceId>0 asks the server for only rows newer than that id
+  // (incremental sync = we stop re-downloading the whole history on every load, which was the egress blowup).
+  sinceId=Number(sinceId||0)||0;
   // Workspace-scoped read via the server: returns only the caller's tenant data (multi-tenant isolation).
-  // Falls back to the direct read if the endpoint is unavailable, so the app never goes dark mid-migration.
   if(SESSION && (SESSION.token || SESSION.pw)){
     try{
       const hdr={'Content-Type':'application/json'};
       if(SESSION.token) hdr['x-session-token']=SESSION.token; else if(SESSION.pw) hdr['x-admin-pass']=SESSION.pw; // master/break-glass reads via the admin pass
-      const r=await fetch('/api/data?action=records',{method:'POST',headers:hdr,body:'{}'});
-      if(r.ok){ const j=await r.json(); if(j && j.ok && Array.isArray(j.records)) return j.records; }
+      const r=await fetch('/api/data?action=records',{method:'POST',headers:hdr,body:JSON.stringify(sinceId?{sinceId}:{})});
+      if(r.ok){ const j=await r.json(); if(j && j.ok && Array.isArray(j.rows)) return {rows:j.rows, maxId:Number(j.maxId||0)||0, incremental:!!j.incremental}; }
     }catch(e){ console.warn('scoped read unavailable, falling back to direct read', e); }
   }
   // Primary: Supabase (records live here now). Falls back to the Apps Script sheet.
   if(supaOn()){
     try{
-      // PostgREST caps each response at 1000 rows no matter the limit param, so page through with
-      // Range headers until a short page returns. (The old limit=100000 silently loaded only the
-      // oldest 1000 rows, hiding everything newer once the table grew past 1000.)
-      const PAGE=1000, out=[];
+      // PostgREST caps each response at 1000 rows, so page with Range headers until a short page returns.
+      const PAGE=1000, out=[]; const idFilter=sinceId?('&id=gt.'+sinceId):'';
       for(let from=0;;from+=PAGE){
-        const r=await fetch(CFG.supaUrl+'/rest/v1/records?select=data&order=id.asc',{headers:supaHeaders({'Range-Unit':'items','Range':from+'-'+(from+PAGE-1)})});
+        const r=await fetch(CFG.supaUrl+'/rest/v1/records?select=id,data&order=id.asc'+idFilter,{headers:supaHeaders({'Range-Unit':'items','Range':from+'-'+(from+PAGE-1)})});
         if(!r.ok) throw new Error('supa '+r.status);
         const rows=await r.json();
-        rows.forEach(x=>{ if(x&&x.data) out.push(x.data); });
+        rows.forEach(x=>{ if(x&&x.data) out.push({id:x.id, data:x.data}); });
         if(rows.length<PAGE || from>500000) break;
       }
-      return out;
+      const maxId=out.reduce((m,x)=>(x.id>m?x.id:m), sinceId);
+      return {rows:out, maxId, incremental:sinceId>0};
     }catch(e){ console.warn('supa read fail, trying sheet',e); }
   }
   if(!CFG.endpoint) return null;
-  try{ const r=await fetch(CFG.endpoint,{method:'GET'}); const j=await r.json(); return Array.isArray(j)?j:(j.records||null); }
+  try{ const r=await fetch(CFG.endpoint,{method:'GET'}); const j=await r.json(); const arr=Array.isArray(j)?j:(j.records||null); return arr?{rows:arr.map(d=>({id:0,data:d})), maxId:0, incremental:false}:null; }
   catch(e){ return null; }
 }
 
 /* ---------------- records ---------------- */
 let RECORDS = load(LS.data, []);
-async function syncRecords(){ if(typeof SAMPLE_MODE!=='undefined' && SAMPLE_MODE) return; const r=await remoteGet(); if(r){ RECORDS=dedupeRecords(r); cacheRecords(); } applyWsConfig(); updateWsBrand(); }
+// egress guard: re-pull only when stale (throttle) and only the DELTA since our last row (incremental). See remoteGet.
+let LAST_SYNC=0;
+let LAST_MAX_ID=(function(){ try{ return Number(localStorage.getItem('tsa_maxid')||0)||0; }catch(e){ return 0; } })();
+const SYNC_THROTTLE_MS=90*1000;
+async function syncRecords(force){
+  if(typeof SAMPLE_MODE!=='undefined' && SAMPLE_MODE) return;
+  const now=Date.now();
+  // throttle: a tab switch inside the window reuses the cached records instead of re-downloading them
+  if(!force && LAST_SYNC && (now-LAST_SYNC)<SYNC_THROTTLE_MS && RECORDS.length){ applyWsConfig(); updateWsBrand(); return; }
+  const since=(RECORDS.length && LAST_MAX_ID)?LAST_MAX_ID:0; // incremental once we already have a base; full load otherwise
+  const res=await remoteGet(since);
+  if(res && Array.isArray(res.rows)){
+    if(since>0 && res.incremental){ if(res.rows.length){ const have=new Set(RECORDS.map(r=>r&&r.id).filter(Boolean)); res.rows.forEach(x=>{ const d=x&&x.data; if(d && !(d.id && have.has(d.id))) RECORDS.push(d); }); RECORDS=dedupeRecords(RECORDS); } }
+    else { RECORDS=dedupeRecords(res.rows.map(x=>x&&x.data).filter(Boolean)); }
+    if(res.maxId && res.maxId>LAST_MAX_ID){ LAST_MAX_ID=res.maxId; try{ localStorage.setItem('tsa_maxid',String(LAST_MAX_ID)); }catch(e){} }
+    LAST_SYNC=now; cacheRecords();
+  }
+  applyWsConfig(); updateWsBrand();
+}
 // Collapse accidental double-submits: same rep/client/date/role and identical values,
 // submitted within 2 minutes of each other, count once. (Physical rows stay in the sheet.)
 function recSig(r){
@@ -3887,11 +3911,11 @@ function mgrEodFillCore(acct){
 }
 async function mgrEodFill(acct){
   const date=((document.getElementById('mgrEodDate')||{}).value||todayLocal()).slice(0,10);
-  try{ await syncRecords(); }catch(_){}
+  try{ await syncRecords(true); }catch(_){}
   const sug=mgrEodFillCore(acct);
   toast(sug._n?`Pulled ${acct} from ${sug._s} setter · ${sug._c} closer EODs`:`No team EODs submitted yet for ${acct} on ${usDate(date)}`, !sug._n);
 }
-async function mgrEodFillAll(){ try{ await syncRecords(); }catch(_){} mgrEodClients().forEach(mgrEodFillCore); toast('Refreshed all offers from the team'); }
+async function mgrEodFillAll(){ try{ await syncRecords(true); }catch(_){} mgrEodClients().forEach(mgrEodFillCore); toast('Refreshed all offers from the team'); }
 function cssAttr(s){ return String(s||'').replace(/["\\]/g,'\\$&'); }
 function jsStr(s){ return String(s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
 function renderMgrEod(){
@@ -9099,6 +9123,7 @@ function repDetail(rep, role){
 
 /* ---------------- data tab ---------------- */
 function renderAll(){
+  const mp=document.getElementById('dbMaintPanel'); if(mp) mp.hidden=!(SESSION&&SESSION.role==='admin'); // Super Admin: show DB maintenance
   const keepPc=new Set(collapsePostcall(RECORDS).map(r=>r.id));
   const rows=RECORDS.filter(x=> x.type==='postcall' ? keepPc.has(x.id) : (['deal','eod'].includes(x.type)||!x.type)).sort((a,b)=>(b.submittedAt||'').localeCompare(a.submittedAt||''));
   document.getElementById('allTable').innerHTML=
@@ -9236,6 +9261,26 @@ function exportJSON(){ download('tsa_invoice_backup.json',JSON.stringify(RECORDS
 function download(name,text,mime){ const b=new Blob([text],{type:mime}),u=URL.createObjectURL(b),a=document.createElement('a'); a.href=u;a.download=name;a.click();URL.revokeObjectURL(u); }
 function importJSON(e){ const f=e.target.files[0]; if(!f)return; const rd=new FileReader(); rd.onload=()=>{ try{ const arr=JSON.parse(rd.result); if(!Array.isArray(arr))throw 0; const ids=new Set(RECORDS.map(r=>r.id)); arr.forEach(r=>{ if(!ids.has(r.id))RECORDS.push(r); }); cacheRecords(); renderAll(); renderDash(); toast('Imported '+arr.length); }catch(x){ toast('Bad JSON',true); } }; rd.readAsText(f); e.target.value=''; }
 function wipe(){ if(confirm('Clear ALL local records? Export a backup first. This does not touch shared data.')){ RECORDS=[]; cacheRecords(); renderAll(); renderDash(); toast('Cleared'); } }
+function dbMaintHdr(){ const h={'Content-Type':'application/json'}; if(SESSION&&SESSION.token) h['x-session-token']=SESSION.token; else if(SESSION&&SESSION.pw) h['x-admin-pass']=SESSION.pw; return h; }
+async function dbCompactCheck(){
+  if(!(SESSION&&SESSION.role==='admin')){ toast('Super Admin only',true); return; }
+  toast('Scanning the database...');
+  try{ const r=await fetch('/api/data?action=compact',{method:'POST',headers:dbMaintHdr(),body:'{}'}); const j=await r.json();
+    if(!(j&&j.ok)){ toast((j&&j.error)||'Scan failed',true); return; }
+    if(!j.wouldRemove){ toast('Already compact - nothing to remove ('+j.total+' rows)'); return; }
+    if(confirm('The database has '+j.total+' rows. Compacting will remove '+j.wouldRemove+' superseded / old rows and keep '+j.keeps+'.\n\nThis is safe (the app uses the latest version of each record) but cannot be undone. Export a JSON backup first if you want one.\n\nCompact now?')) dbCompactRun();
+  }catch(e){ toast('Scan failed: '+(e&&e.message||e),true); }
+}
+async function dbCompactRun(){
+  toast('Compacting...');
+  try{ const r=await fetch('/api/data?action=compact',{method:'POST',headers:dbMaintHdr(),body:JSON.stringify({confirm:true})}); const j=await r.json();
+    if(!(j&&j.ok)){ toast((j&&j.error)||'Compact failed',true); return; }
+    // resync from the compacted table so local state matches
+    RECORDS=[]; LAST_MAX_ID=0; try{ localStorage.removeItem('tsa_maxid'); }catch(e){}
+    await syncRecords(true);
+    toast('Compacted - removed '+j.removed+' rows, '+j.remaining+' remain'); renderAll(); renderDash();
+  }catch(e){ toast('Compact failed: '+(e&&e.message||e),true); }
+}
 
 /* ---------------- users ---------------- */
 function mgmtPass(){ return (SESSION && SESSION.role==='manager') ? CFG.managerCode : CFG.adminCode; }
