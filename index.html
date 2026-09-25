@@ -2119,9 +2119,11 @@ If they did not watch: No problem at all, I will send it right over. Can you wat
     <p class="hint">Connect payment processors and daily reports to a client's Slack or Discord channels. Each webhook posts to its own channel with its own message format, and every hit is logged so we can map the fields.</p>
     <div class="panel">
       <div class="filters" style="align-items:flex-end;margin:0">
-        <div class="field" style="min-width:300px"><label>Client / account</label><select id="integTarget" onchange="integPick()"></select></div>
+        <div class="field" id="integTargetWrap" style="min-width:300px"><label>Internal / other account <span class="muted" style="font-weight:400;font-size:11px">- for accounts not in the company picker</span></label><select id="integTarget" onchange="integPick()"></select></div>
+        <span id="integScopeTag" class="tag" style="align-self:center"></span>
         <span id="integPlanTag" class="tag" style="align-self:center"></span>
       </div>
+      <div id="integPickPrompt" hidden style="padding:14px 4px 2px;color:var(--muted)">Pick a company in the <b>top header</b> to set up its integrations. <span style="font-size:12px">(Or choose an internal / unmanaged account above.)</span></div>
     </div>
     <style>
       #tab-integrations .csec{cursor:pointer;user-select:none;padding:14px 16px;margin:-6px -8px 8px;border-radius:8px;transition:background .12s ease;line-height:1.35}
@@ -10318,9 +10320,25 @@ async function renderIntegrations(){
   if(unmanaged.length) opts+=`<optgroup label="Unmanaged">`+unmanaged.map(t=>`<option value="${esc(t.key)}">${esc(t.label)}</option>`).join('')+`</optgroup>`;
   sel.innerHTML=opts;
   const gkey = GLOBAL_CLIENT ? 'tsa:'+GLOBAL_CLIENT : '';
-  if(gkey && targets.some(t=>t.key===gkey)) sel.value=gkey;            // follow the global company scope
-  else if(cur && targets.some(t=>t.key===cur)) sel.value=cur;
-  renderAllWebhooks(); renderTemplateLib(); integPick(); if(!window.__integSecInit){ integApplySecState(); window.__integSecInit=1; } // default-collapse only on first open; preserve the user's open sections on later re-renders (e.g. the refresh after a Slack reconnect)
+  const wrap=document.getElementById('integTargetWrap'), prompt=document.getElementById('integPickPrompt'), body=document.getElementById('integBody'), scopeTag=document.getElementById('integScopeTag');
+  renderAllWebhooks(); renderTemplateLib();
+  if(GLOBAL_CLIENT && targets.some(t=>t.key===gkey)){
+    // a company is scoped up top - follow it and hide the redundant Client/account dropdown
+    sel.value=gkey; if(wrap) wrap.style.display='none'; if(prompt) prompt.hidden=true; if(scopeTag){ scopeTag.textContent=GLOBAL_CLIENT; scopeTag.hidden=false; }
+    integPick();
+  } else {
+    // "All companies" (or the scoped company has no target) - prompt to pick one; keep the dropdown for internal/unmanaged accounts
+    if(scopeTag) scopeTag.hidden=true;
+    if(cur && targets.some(t=>t.key===cur)) sel.value=cur; else sel.value='';
+    if(GLOBAL_CLIENT){ // scoped company isn't an integration target - just prompt
+      if(wrap) wrap.style.display='none';
+    } else {
+      if(wrap) wrap.style.display='';
+    }
+    if(sel.value){ if(prompt) prompt.hidden=true; integPick(); }
+    else { if(prompt) prompt.hidden=false; if(body) body.hidden=true; const tag=document.getElementById('integPlanTag'); if(tag) tag.textContent=''; }
+  }
+  if(!window.__integSecInit){ integApplySecState(); window.__integSecInit=1; } // default-collapse only on first open; preserve the user's open sections on later re-renders (e.g. the refresh after a Slack reconnect)
 }
 function integToggleSec(id){ const p=document.getElementById(id); if(!p) return; p.classList.toggle('collapsed'); }
 function integApplySecState(){ ['secAll','secBot','secPay','secFeeds','secEod','secGhl','integTplLib'].forEach(id=>{ const p=document.getElementById(id); if(p) p.classList.add('collapsed'); }); }
@@ -10373,7 +10391,9 @@ async function integToggle(id,on){
 }
 function integTarget(){ return INTEG_TARGETS.find(x=>x.key===(document.getElementById('integTarget')||{}).value); }
 function integPick(){
-  const t=integTarget(), body=document.getElementById('integBody'); if(!t){ if(body)body.hidden=true; return; }
+  const t=integTarget(), body=document.getElementById('integBody'), prompt=document.getElementById('integPickPrompt');
+  if(!t){ if(body)body.hidden=true; if(prompt) prompt.hidden=false; return; }
+  if(prompt) prompt.hidden=true;
   if(body) body.hidden=false; INTEG_KEY=t.key;
   const tag=document.getElementById('integPlanTag'); if(tag) tag.textContent=t.plan||'';
   renderWebhookList(); renderEodRouting(); renderGhlConfig(); renderSlackBot();
