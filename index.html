@@ -10673,10 +10673,10 @@ function renderEodRouting(){
     <p class="fieldhelp" style="margin:8px 0 0">Setters' post-call & start-of-day posts route to the Setters channel, closers' to the Closers channel (by the rep's role). Blank = the default channel.</p>
     <div style="border-top:1px solid var(--border);margin:16px 0 6px"></div>
     <div style="font-weight:500;margin:0 0 4px">Compiled Daily Report <span class="muted" style="font-weight:400;font-size:12px">- posts each morning; pick a channel to turn it on, Off to stop</span></div>
-    <div style="max-width:780px">${feedRow('Daily report channel','yesterday from EODs + today from SODs','evDailyReport',c.dailyReport,'dailyReport',`<input type="time" id="drTime" step="1800" value="${esc(c.dailyReportTime||'09:30')}" title="Send time (Central)" style="width:118px">`)}</div>
+    <div style="max-width:780px">${feedRow('Daily report channel','yesterday from EODs + today from SODs','evDailyReport',c.dailyReport,'dailyReport',`<input type="time" id="drTime" step="1800" value="${esc(c.dailyReportTime||'09:30')}" title="Send time (Central)" style="width:150px;padding:8px 10px">`)}</div>
     <div style="border-top:1px solid var(--border);margin:16px 0 6px"></div>
     <div style="font-weight:500;margin:0 0 4px">Month-to-date leaderboard <span class="muted" style="font-weight:400;font-size:12px">- posts each day; pick a channel to turn it on, Off to stop</span></div>
-    <div style="max-width:780px">${feedRow('Leaderboard channel','closers by cash, setters by sets','evLeaderboard',c.leaderboard,'leaderboard',`<input type="time" id="lbTime" step="1800" value="${esc(c.leaderboardTime||'10:00')}" title="Post time (Central)" style="width:118px">`)}</div>
+    <div style="max-width:780px">${feedRow('Leaderboard channel','closers by cash, setters by sets','evLeaderboard',c.leaderboard,'leaderboard',`<input type="time" id="lbTime" step="1800" value="${esc(c.leaderboardTime||'10:00')}" title="Post time (Central)" style="width:150px;padding:8px 10px">`)}</div>
     <div style="border-top:1px solid var(--border);margin:16px 0 6px"></div>
     <div style="max-width:780px">${feedRow('Invoicing (Send to billing)', c.botConnected?'the bot attaches the invoice PDF here':'connect the Slack bot to attach the PDF','evInvoicing',c.invoicing,'invoicing')}</div>
     <div class="row-actions" style="margin-top:14px"><button class="btn gold sm" onclick="integSaveEod()">Save routing</button></div>`;
