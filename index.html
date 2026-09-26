@@ -6088,6 +6088,24 @@ function invApprovalFor(client,from,to){
   (RECORDS||[]).forEach(x=>{ if(x.type==='invoiceapproval' && [nrmName(x.client),String(x.from||'').slice(0,10),String(x.to||'').slice(0,10)].join('|')===k){ if(!best||(x.submittedAt||'')>(best.submittedAt||'')) best=x; } });
   return best;
 }
+// Warn when the viewed period OVERLAPS another invoice for this client that's already approved/sent/paid.
+// Status is keyed to the exact from|to, so a different window (e.g. the full week vs the single retainer day)
+// would otherwise look like a fresh Draft and risk double-billing the same cash/retainer.
+function invOverlapWarn(client,from,to){
+  const f=String(from||'').slice(0,10), t=String(to||'').slice(0,10); if(!f||!t) return '';
+  const rank={draft:0,approved:1,sent:2,paid:3}; let best=null;
+  Object.values(conInvoiceLatest()).forEach(r=>{
+    if(nrmName(r.client)!==nrmName(client)) return;
+    const rf=String(r.from||'').slice(0,10), rt=String(r.to||'').slice(0,10); if(!rf||!rt) return;
+    if(rf===f && rt===t) return;                 // the current invoice's own status (shown by the pill)
+    if(!(rf<=t && rt>=f)) return;                // must overlap the viewed window
+    const st=r.status||'draft'; if(st==='draft') return;
+    if(!best || rank[st]>rank[best.status]) best=r;
+  });
+  if(!best) return '';
+  const lbl=best.status==='paid'?'Paid':best.status==='sent'?'Sent':'Approved';
+  return `<div style="margin-top:10px;padding:9px 13px;border:1px solid #e0a800;background:#fbf4e0;border-radius:9px;color:#7a5c00;font-size:12.5px">&#9888; Heads up: an invoice for <b>${esc(usDate(best.from))} to ${esc(usDate(best.to))}</b> is already <b>${lbl}</b>${best.at?' ('+esc(usDate(best.at))+')':''}. This period overlaps it - don't bill the same cash or retainer twice.</div>`;
+}
 function invStatusPill(client,from,to){
   const a=invApprovalFor(client,from,to), st=a&&a.status;
   if(st==='paid'){ return `<div style="display:inline-block;margin-top:5px;font-size:11px;color:#fff;background:#2f8f5b;border:1px solid #2f8f5b;border-radius:20px;padding:2px 10px" title="Paid${a.amount!=null?' '+money(a.amount):''}${a.by?' - marked by '+esc(a.by):''}${a.at?' on '+esc(usDate(a.at)):''}">&#10003; Paid${a.amount!=null?' '+money(a.amount):''}</div>`; }
@@ -6338,6 +6356,7 @@ function genFounderInvoice(client,from,to){
         </div>
         <div style="text-align:right"><div style="font-size:22px;font-weight:800;color:#1a2b4a;font-variant-numeric:tabular-nums">#${esc(invNo)}</div>${invStatusPill(client,from,to)}</div>
       </div>
+      ${invOverlapWarn(client,from,to)}
       <div style="border-top:1px solid #eef1f6;margin:18px 0"></div>
       <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px">
         <div><div style="font-size:12px;color:#8a93a6">Billed to</div><div style="font-weight:700;color:#1a2b4a">${esc(client)}</div></div>
