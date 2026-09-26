@@ -1704,6 +1704,7 @@ If they did not watch: No problem at all, I will send it right over. Can you wat
       <button class="btn ghost sm" id="trEditBtn" style="display:none" onclick="trEditOpen()">Edit curriculum</button>
     </div>
     <p class="hint" id="trHint"></p>
+    <div class="panel" style="margin-bottom:16px"><h3 style="margin:0 0 2px">Onboarding videos <span class="muted" style="font-weight:400;font-size:12px">- watch the walkthroughs (streamed, not downloadable)</span></h3><div style="padding:10px 2px" id="videoLib"></div></div>
     <div id="trainingWrap"></div>
   </section>
 
@@ -8725,8 +8726,26 @@ async function repSubmitIntake(){
   await addRecord({type:'reponb',user:(SESSION&&SESSION.username)||'',name:(SESSION&&SESSION.name)||'',key:'intake',done:true,data,at:new Date().toISOString()});
   toast('Details submitted'); renderTraining();
 }
+// Onboarding video library: lists the Supabase Storage bucket + streams via short-lived signed URLs (raw link never exposed)
+function vidHdr(){ const h={'Content-Type':'application/json'}; if(SESSION&&SESSION.token) h['x-session-token']=SESSION.token; else if(SESSION&&SESSION.pw) h['x-admin-pass']=SESSION.pw; return h; }
+async function renderVideoLib(){
+  const box=document.getElementById('videoLib'); if(!box) return;
+  box.innerHTML='<p class="muted" style="font-size:12px">Loading videos…</p>';
+  let j={}; try{ j=await fetch('/api/data?action=videos',{method:'POST',headers:vidHdr(),body:'{}'}).then(r=>r.json()); }catch(e){}
+  if(!(j&&j.ok)){ box.innerHTML='<p class="muted" style="font-size:12px">'+((j&&j.error)?esc(j.error):'Could not load videos')+'. Make sure the <b>onboarding-videos</b> bucket exists in Supabase Storage.</p>'; return; }
+  if(!j.videos||!j.videos.length){ box.innerHTML='<p class="muted" style="font-size:12px">No videos yet. Upload them to the <b>onboarding-videos</b> bucket in Supabase Storage and they show up here.</p>'; return; }
+  const nice=n=>String(n).replace(/\.[^.]+$/,'').replace(/[_-]+/g,' ').trim();
+  box.innerHTML='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px">'+j.videos.map((v,i)=>`<div class="panel" style="padding:10px;box-shadow:none;border:1px solid var(--border)"><div style="font-weight:600;font-size:13px;margin-bottom:6px">${esc(nice(v.name))}</div><div id="vwrap_${i}"><button class="btn gold sm" onclick="playVideo('${esc(v.name).replace(/'/g,"\\'")}','vwrap_${i}')">&#9654; Play</button></div></div>`).join('')+'</div>';
+}
+async function playVideo(name,wrapId){
+  const wrap=document.getElementById(wrapId); if(!wrap) return; wrap.innerHTML='<p class="muted" style="font-size:12px">Loading…</p>';
+  let j={}; try{ j=await fetch('/api/data?action=videoUrl',{method:'POST',headers:vidHdr(),body:JSON.stringify({path:name})}).then(r=>r.json()); }catch(e){}
+  if(!(j&&j.ok&&j.url)){ wrap.innerHTML='<p class="muted" style="font-size:12px">'+((j&&j.error)?esc(j.error):'Could not load this video')+'</p>'; return; }
+  wrap.innerHTML='<video src="'+esc(j.url)+'" controls controlsList="nodownload noremoteplayback" disablepictureinpicture oncontextmenu="return false" style="width:100%;border-radius:8px" preload="metadata"></video>';
+}
 function renderTraining(){
   const sec=document.getElementById('tab-training'); if(!sec) return;
+  try{ renderVideoLib(); }catch(e){}
   const admin=isOversight();
   const eb=document.getElementById('trEditBtn'); if(eb) eb.style.display=(SESSION&&SESSION.role==='admin')?'':'none';
   const hint=document.getElementById('trHint'), wrap=document.getElementById('trainingWrap');

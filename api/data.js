@@ -560,6 +560,27 @@ export default async function handler(req, res) {
       }
       return res.status(200).json({ ok: true, total: all.length, removed, remaining: all.length - removed });
     }
+    // ---- Onboarding videos: list the Storage bucket + mint short-lived signed URLs (service key stays server-side) ----
+    if (action === 'videos') {
+      const bucket = process.env.VIDEO_BUCKET || 'onboarding-videos';
+      try {
+        const r = await fetch(`${process.env.SUPABASE_URL}/storage/v1/object/list/${bucket}`, { method: 'POST', headers: { apikey: process.env.SUPABASE_SERVICE_KEY, Authorization: 'Bearer ' + process.env.SUPABASE_SERVICE_KEY, 'Content-Type': 'application/json' }, body: JSON.stringify({ prefix: '', limit: 200, sortBy: { column: 'name', order: 'asc' } }) });
+        if (!r.ok) { const t = await r.text(); return res.status(200).json({ ok: false, error: 'storage ' + r.status + ' ' + t.slice(0, 140) }); }
+        const rows = await r.json();
+        const videos = (rows || []).filter(o => o && o.name && o.id).map(o => ({ name: o.name, size: (o.metadata && o.metadata.size) || 0, mimetype: (o.metadata && o.metadata.mimetype) || '' }));
+        return res.status(200).json({ ok: true, bucket, videos });
+      } catch (e) { return res.status(200).json({ ok: false, error: String((e && e.message) || e) }); }
+    }
+    if (action === 'videoUrl') {
+      const bucket = process.env.VIDEO_BUCKET || 'onboarding-videos';
+      const path = String(b.path || q.path || ''); if (!path) return res.status(200).json({ ok: false, error: 'path required' });
+      try {
+        const r = await fetch(`${process.env.SUPABASE_URL}/storage/v1/object/sign/${bucket}/${encodeURIComponent(path)}`, { method: 'POST', headers: { apikey: process.env.SUPABASE_SERVICE_KEY, Authorization: 'Bearer ' + process.env.SUPABASE_SERVICE_KEY, 'Content-Type': 'application/json' }, body: JSON.stringify({ expiresIn: 60 * 60 }) });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok || !j.signedURL) return res.status(200).json({ ok: false, error: (j && j.error) || ('sign ' + r.status) });
+        return res.status(200).json({ ok: true, url: process.env.SUPABASE_URL + '/storage/v1' + j.signedURL });
+      } catch (e) { return res.status(200).json({ ok: false, error: String((e && e.message) || e) }); }
+    }
     if (action === 'write') {
       const rec = b.record || {};
       if (!rec || typeof rec !== 'object' || !rec.type) return res.status(200).json({ ok: false, error: 'record required' });
