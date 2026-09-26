@@ -1704,7 +1704,6 @@ If they did not watch: No problem at all, I will send it right over. Can you wat
       <button class="btn ghost sm" id="trEditBtn" style="display:none" onclick="trEditOpen()">Edit curriculum</button>
     </div>
     <p class="hint" id="trHint"></p>
-    <div class="panel" style="margin-bottom:16px"><h3 style="margin:0 0 2px">Onboarding videos <span class="muted" style="font-weight:400;font-size:12px">- watch the walkthroughs (streamed, not downloadable)</span></h3><div style="padding:10px 2px" id="videoLib"></div></div>
     <div id="trainingWrap"></div>
   </section>
 
@@ -8726,26 +8725,18 @@ async function repSubmitIntake(){
   await addRecord({type:'reponb',user:(SESSION&&SESSION.username)||'',name:(SESSION&&SESSION.name)||'',key:'intake',done:true,data,at:new Date().toISOString()});
   toast('Details submitted'); renderTraining();
 }
-// Onboarding video library: lists the Supabase Storage bucket + streams via short-lived signed URLs (raw link never exposed)
+// Onboarding videos hosted in Supabase Storage: attached to training modules + streamed via short-lived signed URLs (raw link never exposed).
 function vidHdr(){ const h={'Content-Type':'application/json'}; if(SESSION&&SESSION.token) h['x-session-token']=SESSION.token; else if(SESSION&&SESSION.pw) h['x-admin-pass']=SESSION.pw; return h; }
-async function renderVideoLib(){
-  const box=document.getElementById('videoLib'); if(!box) return;
-  box.innerHTML='<p class="muted" style="font-size:12px">Loading videos…</p>';
-  let j={}; try{ j=await fetch('/api/data?action=videos',{method:'POST',headers:vidHdr(),body:'{}'}).then(r=>r.json()); }catch(e){}
-  if(!(j&&j.ok)){ box.innerHTML='<p class="muted" style="font-size:12px">'+((j&&j.error)?esc(j.error):'Could not load videos')+'. Make sure the <b>onboarding-videos</b> bucket exists in Supabase Storage.</p>'; return; }
-  if(!j.videos||!j.videos.length){ box.innerHTML='<p class="muted" style="font-size:12px">No videos yet. Upload them to the <b>onboarding-videos</b> bucket in Supabase Storage and they show up here.</p>'; return; }
-  const nice=n=>String(n).replace(/\.[^.]+$/,'').replace(/[_-]+/g,' ').trim();
-  box.innerHTML='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px">'+j.videos.map((v,i)=>`<div class="panel" style="padding:10px;box-shadow:none;border:1px solid var(--border)"><div style="font-weight:600;font-size:13px;margin-bottom:6px">${esc(nice(v.name))}</div><div id="vwrap_${i}"><button class="btn gold sm" onclick="playVideo('${esc(v.name).replace(/'/g,"\\'")}','vwrap_${i}')">&#9654; Play</button></div></div>`).join('')+'</div>';
-}
-async function playVideo(name,wrapId){
+let TR_VIDEOS=[];
+async function loadBucketVideos(){ try{ const j=await fetch('/api/data?action=videos',{method:'POST',headers:vidHdr(),body:'{}'}).then(r=>r.json()); TR_VIDEOS=(j&&j.ok&&Array.isArray(j.videos))?j.videos:[]; }catch(e){ TR_VIDEOS=[]; } return TR_VIDEOS; }
+async function trPlaySupa(name,wrapId){
   const wrap=document.getElementById(wrapId); if(!wrap) return; wrap.innerHTML='<p class="muted" style="font-size:12px">Loading…</p>';
   let j={}; try{ j=await fetch('/api/data?action=videoUrl',{method:'POST',headers:vidHdr(),body:JSON.stringify({path:name})}).then(r=>r.json()); }catch(e){}
   if(!(j&&j.ok&&j.url)){ wrap.innerHTML='<p class="muted" style="font-size:12px">'+((j&&j.error)?esc(j.error):'Could not load this video')+'</p>'; return; }
-  wrap.innerHTML='<video src="'+esc(j.url)+'" controls controlsList="nodownload noremoteplayback" disablepictureinpicture oncontextmenu="return false" style="width:100%;border-radius:8px" preload="metadata"></video>';
+  wrap.innerHTML='<video src="'+esc(j.url)+'" controls controlsList="nodownload noremoteplayback" disablepictureinpicture oncontextmenu="return false" style="width:100%;max-width:640px;border-radius:10px;border:1px solid var(--border);background:#000" preload="metadata"></video>';
 }
 function renderTraining(){
   const sec=document.getElementById('tab-training'); if(!sec) return;
-  try{ renderVideoLib(); }catch(e){}
   const admin=isOversight();
   const eb=document.getElementById('trEditBtn'); if(eb) eb.style.display=(SESSION&&SESSION.role==='admin')?'':'none';
   const hint=document.getElementById('trHint'), wrap=document.getElementById('trainingWrap');
@@ -8756,6 +8747,9 @@ function renderTraining(){
 // turn a training link into an embedded player (YouTube / Vimeo / Google Drive); else a plain "Open material" link
 function trVideoEmbed(link){
   const u=String(link||'').trim(); if(!u) return ''; let src='', m;
+  // an uploaded onboarding video (Supabase Storage): stream via a signed URL on Play, never expose the raw link
+  if(/^supabase:/i.test(u)){ const name=u.replace(/^supabase:/i,''); const wid='trv_'+Math.random().toString(36).slice(2,9);
+    return `<div style="margin:10px 0;max-width:640px" id="${wid}"><button type="button" class="btn gold sm" onclick="trPlaySupa('${esc(name).replace(/'/g,"\\'")}','${wid}')">&#9654; Play video</button></div>`; }
   if(m=u.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/|live\/)|youtu\.be\/)([\w-]{6,})/i)) src='https://www.youtube.com/embed/'+m[1];
   else if(m=u.match(/vimeo\.com\/(?:video\/)?(\d+)/i)) src='https://player.vimeo.com/video/'+m[1];
   else if(m=u.match(/drive\.google\.com\/file\/d\/([\w-]+)/i)) src='https://drive.google.com/file/d/'+m[1]+'/preview';
@@ -8882,7 +8876,7 @@ function trainingRoster(){
 let TR_CFG=null, TR_SCOPE=''; // '' = global base; a client name = that client's offer add-ons
 function trCfgShape(c){ c.passPct=c.passPct||80; c.intake=Array.isArray(c.intake)?c.intake:[]; c.tasks=Array.isArray(c.tasks)?c.tasks:[]; c.modules=Array.isArray(c.modules)?c.modules:[]; c.quiz=Array.isArray(c.quiz)?c.quiz:[]; return c; }
 function trLoadScope(){ if(TR_SCOPE){ const cc=repClientOnbConfig(TR_SCOPE)||{modules:[],quiz:[]}; TR_CFG=trCfgShape(JSON.parse(JSON.stringify({modules:cc.modules||[],quiz:cc.quiz||[]}))); } else { TR_CFG=trCfgShape(JSON.parse(JSON.stringify(repOnbConfig()))); } }
-function trEditOpen(){ if(!(SESSION&&SESSION.role==='admin')){ toast('Admins only',true); return; } TR_SCOPE=''; trLoadScope(); document.getElementById('trErr').hidden=true; trRenderEditor(); document.getElementById('trModal').hidden=false; }
+function trEditOpen(){ if(!(SESSION&&SESSION.role==='admin')){ toast('Admins only',true); return; } TR_SCOPE=''; trLoadScope(); document.getElementById('trErr').hidden=true; trRenderEditor(); document.getElementById('trModal').hidden=false; loadBucketVideos().then(()=>{ try{ trRenderEditor(); }catch(e){} }); }
 function trSetScope(client){ TR_SCOPE=client||''; const e=document.getElementById('trErr'); if(e) e.hidden=true; trLoadScope(); trRenderEditor(); }
 function trEditClose(){ document.getElementById('trModal').hidden=true; }
 function trResetDefault(){ if(TR_SCOPE) TR_CFG=trCfgShape({modules:[],quiz:[]}); else TR_CFG=trCfgShape(JSON.parse(JSON.stringify(REP_ONB_DEFAULT))); trRenderEditor(); }
@@ -8915,7 +8909,7 @@ function trRenderEditor(){
   h+=`<button class="btn ghost sm" onclick="trAdd('tasks')">+ Add task</button>`;
   }
   h+=head(TR_SCOPE?('Offer training modules - '+esc(TR_SCOPE)):'Training modules');
-  h+=TR_CFG.modules.map((m,i)=>card(`<div class="filters" style="align-items:flex-end;margin:0 0 8px"><div class="field" style="flex:2"><label>Module title</label><input value="${esc(m.title||'')}" oninput="trUpd('modules',${i},'title',this.value)"></div>${del('modules',i)}</div><div class="field" style="margin:0 0 8px"><label>Content</label><textarea rows="3" oninput="trUpd('modules',${i},'body',this.value)" style="width:100%">${esc(m.body||'')}</textarea></div><div class="field" style="margin:0"><label>Video / doc link (optional)</label><input value="${esc(m.link||'')}" oninput="trUpd('modules',${i},'link',this.value)" placeholder="YouTube, Vimeo or Google Drive link - embeds automatically"></div>`)).join('');
+  h+=TR_CFG.modules.map((m,i)=>card(`<div class="filters" style="align-items:flex-end;margin:0 0 8px"><div class="field" style="flex:2"><label>Module title</label><input value="${esc(m.title||'')}" oninput="trUpd('modules',${i},'title',this.value)"></div>${del('modules',i)}</div><div class="field" style="margin:0 0 8px"><label>Content</label><textarea rows="3" oninput="trUpd('modules',${i},'body',this.value)" style="width:100%">${esc(m.body||'')}</textarea></div><div class="field" style="margin:0"><label>Video / doc link (optional)</label>${TR_VIDEOS.length?`<select onchange="if(this.value){trUpd('modules',${i},'link',this.value);trRenderEditor();}" style="width:100%;margin-bottom:6px"><option value="">- pick an uploaded onboarding video -</option>${TR_VIDEOS.map(v=>`<option value="supabase:${esc(v.name)}" ${m.link==='supabase:'+v.name?'selected':''}>${esc(v.name.replace(/\.[^.]+$/,''))}</option>`).join('')}</select>`:''}<input value="${esc(m.link||'')}" oninput="trUpd('modules',${i},'link',this.value)" placeholder="...or paste a YouTube / Vimeo / Google Drive link"></div>`)).join('');
   h+=`<button class="btn ghost sm" onclick="trAdd('modules')">+ Add module</button>`;
   h+=head(TR_SCOPE?('Offer quiz questions - '+esc(TR_SCOPE)):'Certification quiz');
   if(TR_SCOPE) h+=`<div class="muted" style="font-size:11px;margin:0 0 8px">Added to the certification quiz for ${esc(TR_SCOPE)} reps. The passing score is set on the global default.</div>`;
