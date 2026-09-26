@@ -8736,15 +8736,24 @@ async function trHydrateVideos(){
     const name=el.getAttribute('data-video'); el.removeAttribute('data-video');
     let j={}; try{ j=await fetch('/api/data?action=videoUrl',{method:'POST',headers:vidHdr(),body:JSON.stringify({path:name})}).then(r=>r.json()); }catch(e){}
     if(j&&j.ok&&j.url){
+      el.style.position='relative';
       el.innerHTML='<video crossorigin="anonymous" src="'+esc(j.url)+'" controls controlsList="nodownload noremoteplayback" disablepictureinpicture oncontextmenu="return false" style="width:100%;border-radius:10px;border:1px solid var(--border);background:#000" preload="metadata"></video>';
       const v=el.querySelector('video');
       if(v){
         // show a ~5s frame as the thumbnail (skips the recording's intro/avatar), then start from 0 on play so nothing is missed
         v.addEventListener('loadedmetadata',()=>{ try{ if(v.duration&&v.duration>6) v.currentTime=5; }catch(e){} },{once:true});
         v.addEventListener('play',()=>{ if(!v.dataset.started){ v.dataset.started='1'; try{ if(v.currentTime<=5.5) v.currentTime=0; }catch(e){} } });
-        // load a matching caption track if one exists in the bucket (<same base>.vtt)
+        // load a matching caption track if one exists in the bucket (<same base>.vtt) + a visible CC toggle
         const base=name.replace(/\.[^.]+$/,'');
-        fetch('/api/data?action=videoUrl',{method:'POST',headers:vidHdr(),body:JSON.stringify({path:base+'.vtt'})}).then(r=>r.json()).then(tj=>{ if(tj&&tj.ok&&tj.url){ const tr=document.createElement('track'); tr.kind='captions'; tr.label='English'; tr.srclang='en'; tr.default=true; tr.src=tj.url; v.appendChild(tr); } }).catch(()=>{});
+        fetch('/api/data?action=videoUrl',{method:'POST',headers:vidHdr(),body:JSON.stringify({path:base+'.vtt'})}).then(r=>r.json()).then(tj=>{ if(!(tj&&tj.ok&&tj.url)) return;
+          const tr=document.createElement('track'); tr.kind='captions'; tr.label='English'; tr.srclang='en'; tr.default=true; tr.src=tj.url; v.appendChild(tr);
+          // native controls can't host a custom button, so overlay our own CC toggle
+          const cc=document.createElement('button'); cc.type='button'; cc.textContent='CC'; cc.title='Toggle captions';
+          cc.style.cssText='position:absolute;top:8px;right:8px;z-index:2;font-size:11px;font-weight:800;letter-spacing:.05em;padding:3px 8px;border-radius:6px;cursor:pointer;border:1px solid #fff;background:rgba(0,0,0,.55);color:#fff;line-height:1';
+          const sync=()=>{ const t=v.textTracks&&v.textTracks[0]; const on=t&&t.mode==='showing'; cc.style.background=on?'#c9a227':'rgba(0,0,0,.55)'; cc.style.color=on?'#241c08':'#fff'; cc.style.borderColor=on?'#c9a227':'#fff'; };
+          cc.onclick=()=>{ const t=v.textTracks&&v.textTracks[0]; if(!t) return; t.mode=(t.mode==='showing')?'hidden':'showing'; sync(); };
+          el.appendChild(cc); setTimeout(sync,300);
+        }).catch(()=>{});
       }
     }
     else el.innerHTML='<div class="muted" style="font-size:12px">Video unavailable</div>';
