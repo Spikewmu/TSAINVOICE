@@ -10481,10 +10481,10 @@ async function renderSlackBot(){
 function integBotChanUI(c,chans){
   if(!c.botConnected) return '<p class="muted" style="font-size:12px">Save a bot token first, then Load channels.</p>';
   const opts=(chans||[]).map(ch=>`<option value="${esc(ch.id)}" ${ch.id===c.botChanId?'selected':''}>#${esc(ch.name)}${ch.private?' (private)':''}</option>`).join('');
-  const sel=chans?`<select id="botChan" style="min-width:220px"><option value="">- pick a channel -</option>${opts}</select>`:`<span class="muted" style="font-size:12px">Click <b>Load channels</b> to choose.${c.botChanName?(' Current: <b>#'+esc(c.botChanName)+'</b>'):''}</span>`;
+  const sel=chans?`<select id="botChan" onchange="integSaveBotChan()" style="min-width:220px"><option value="">- pick a channel -</option>${opts}</select>`:`<span class="muted" style="font-size:12px">Click <b>Load channels</b> to choose.${c.botChanName?(' Current: <b>#'+esc(c.botChanName)+'</b>'):''}</span>`;
   return `<div class="field" style="max-width:520px"><label>Default notifications channel ${c.botChanName?('<span class="pill good">#'+esc(c.botChanName)+'</span>'):''}</label>
-    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${sel}${chans?'<button class="btn gold sm" onclick="integSaveBotChan()">Save channel</button>':''}${c.botChanId?'<button class="btn ghost sm" onclick="integTestBot()">Send test</button>':''}</div>
-    <span class="fieldhelp">Every feed for this client posts here unless a specific webhook is set on the feed. For a private channel, invite the bot first with <code>/invite @Sales HQ Notify</code>.</span></div>`;
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${sel}${c.botChanId?'<button class="btn ghost sm" onclick="integTestBot()">Send test</button>':''}</div>
+    <span class="fieldhelp">A feed set to "Use default channel" posts here. Saves automatically. For a private channel, invite the bot first with <code>/invite @Sales HQ Notify</code>.</span></div>`;
 }
 async function integSaveBotToken(){
   const t=integTarget(); if(!t) return; const tok=(document.getElementById('botToken').value||'').trim();
@@ -10500,10 +10500,10 @@ async function integLoadChannels(quiet){
   else if(!quiet) toast((res&&res.error)||'Could not load channels - check the token + that the app is installed',true);
 }
 async function integSaveBotChan(){
-  const t=integTarget(); if(!t) return; const s=document.getElementById('botChan'); const id=s?s.value:''; if(!id){ toast('Pick a channel first',true); return; }
-  const name=String((s.options[s.selectedIndex]||{}).text||'').replace(/^#/,'').replace(/ \(private\)$/,'');
+  const t=integTarget(); if(!t) return; const s=document.getElementById('botChan'); const id=s?s.value:'';
+  const name=id?String((s.options[s.selectedIndex]||{}).text||'').replace(/^#/,'').replace(/ \(private\)$/,''):'';
   const res=await integApi('save',{key:t.key, ws:t.ws, client:t.client, botChanId:id, botChanName:name});
-  if(res&&res.ok){ INTEG_CFGS[t.key]=res.config; toast('Channel saved'); renderSlackBot(); } else toast((res&&res.error)||'Could not save',true);
+  if(res&&res.ok){ INTEG_CFGS[t.key]=res.config; toast(id?'Default channel saved':'Default channel cleared'); renderSlackBot(); } else toast((res&&res.error)||'Could not save',true);
 }
 async function integTestBot(){
   const t=integTarget(); if(!t) return; toast('Sending test...');
@@ -10659,7 +10659,7 @@ function renderEodRouting(){
   const c=INTEG_CFGS[t.key]||{};
   const feeds=document.getElementById('integFeeds');
   // clean list layout: each feed = label on the left, channel dropdown on the right
-  const feedRow=(label,sub,id,val,field,extra)=>`<div style="display:flex;gap:16px;align-items:center;justify-content:space-between;padding:10px 2px;border-bottom:1px solid var(--border)"><div style="flex:0 0 auto;min-width:210px;max-width:290px"><div style="font-weight:500;font-size:13px">${label}</div>${sub?`<div class="muted" style="font-size:11px;font-weight:400;line-height:1.3">${esc(sub)}</div>`:''}</div><div style="flex:1;max-width:420px;display:flex;gap:8px;align-items:center;justify-content:flex-end">${slackChanField(id,val,field,label)}${extra||''}</div></div>`;
+  const feedRow=(label,sub,id,val,field,extra)=>`<div style="display:flex;gap:16px;align-items:center;justify-content:space-between;padding:10px 2px;border-bottom:1px solid var(--border)"><div style="flex:0 0 auto;min-width:210px;max-width:290px"><div style="font-weight:500;font-size:13px">${label}</div>${sub?`<div class="muted" style="font-size:11px;font-weight:400;line-height:1.3">${esc(sub)}</div>`:''}</div><div style="flex:1;max-width:${extra?520:420}px;display:flex;gap:8px;align-items:center;justify-content:flex-end">${slackChanField(id,val,field,label)}${extra||''}</div></div>`;
   if(feeds) feeds.innerHTML=`
     ${c.botConnected?`<div style="display:flex;justify-content:flex-end;margin:0 0 6px"><button type="button" class="btn ghost sm" onclick="integLoadChannels()" title="Re-pull the channel list from Slack (after you add or invite the bot to a channel)">&#8635; Refresh channels</button></div>`:''}
     <div style="max-width:780px">
@@ -10673,13 +10673,12 @@ function renderEodRouting(){
     <p class="fieldhelp" style="margin:8px 0 0">Setters' post-call & start-of-day posts route to the Setters channel, closers' to the Closers channel (by the rep's role). Blank = the default channel.</p>
     <div style="border-top:1px solid var(--border);margin:16px 0 6px"></div>
     <div style="font-weight:500;margin:0 0 4px">Compiled Daily Report <span class="muted" style="font-weight:400;font-size:12px">- posts each morning; pick a channel to turn it on, Off to stop</span></div>
-    <div style="max-width:780px">${feedRow('Daily report channel','yesterday from EODs + today from SODs','evDailyReport',c.dailyReport,'dailyReport',`<input type="time" id="drTime" step="1800" value="${esc(c.dailyReportTime||'09:30')}" onchange="integSaveEod(true)" title="Send time (Central)" style="width:150px;padding:8px 10px">`)}</div>
+    <div style="max-width:780px">${feedRow('Daily report channel','yesterday from EODs + today from SODs','evDailyReport',c.dailyReport,'dailyReport',`<input type="time" id="drTime" step="1800" value="${esc(c.dailyReportTime||'09:30')}" onchange="integSaveEod(true)" title="Send time (Central)" style="flex:0 0 auto;width:140px;padding:8px 10px">`)}</div>
     <div style="border-top:1px solid var(--border);margin:16px 0 6px"></div>
     <div style="font-weight:500;margin:0 0 4px">Month-to-date leaderboard <span class="muted" style="font-weight:400;font-size:12px">- posts each day; pick a channel to turn it on, Off to stop</span></div>
-    <div style="max-width:780px">${feedRow('Leaderboard channel','closers by cash, setters by sets','evLeaderboard',c.leaderboard,'leaderboard',`<input type="time" id="lbTime" step="1800" value="${esc(c.leaderboardTime||'10:00')}" onchange="integSaveEod(true)" title="Post time (Central)" style="width:150px;padding:8px 10px">`)}</div>
+    <div style="max-width:780px">${feedRow('Leaderboard channel','closers by cash, setters by sets','evLeaderboard',c.leaderboard,'leaderboard',`<input type="time" id="lbTime" step="1800" value="${esc(c.leaderboardTime||'10:00')}" onchange="integSaveEod(true)" title="Post time (Central)" style="flex:0 0 auto;width:140px;padding:8px 10px">`)}</div>
     <div style="border-top:1px solid var(--border);margin:16px 0 6px"></div>
-    <div style="max-width:780px">${feedRow('Invoicing (Send to billing)', c.botConnected?'the bot attaches the invoice PDF here':'connect the Slack bot to attach the PDF','evInvoicing',c.invoicing,'invoicing')}</div>
-    <div class="row-actions" style="margin-top:14px"><button class="btn gold sm" onclick="integSaveEod()">Save routing</button></div>`;
+    <div style="max-width:780px">${feedRow('Invoicing (Send to billing)', c.botConnected?'the bot attaches the invoice PDF here':'connect the Slack bot to attach the PDF','evInvoicing',c.invoicing,'invoicing')}</div>`;
   const eod=document.getElementById('integEodRep');
   if(eod) eod.innerHTML=`
     <div style="font-weight:500;margin:0 0 10px">Submitted <b style="margin:0 3px">EOD reports</b> to Slack <span class="muted" style="font-weight:400;font-size:12px">- pick a channel below to turn it on, Off to stop</span></div>
@@ -10689,8 +10688,7 @@ function renderEodRouting(){
       ${feedRow('Manager EOD','','eodMgr',c.mgr,'mgr')}
       ${feedRow('Fallback (any unrouted alert)','','eodFallback',c.slack,'slack')}
     </div>
-    <p class="fieldhelp" style="margin:8px 0 0">Each EOD role posts to its channel (Off = don't post); the fallback catches any unrouted alert. Changes save automatically.</p>
-    <div class="row-actions" style="margin-top:12px"><button class="btn gold sm" onclick="integSaveEod()">Save routing</button> <span class="fieldhelp" style="margin:0">Saved automatically as you pick.</span></div>`;
+    <p class="fieldhelp" style="margin:8px 0 0">Each EOD role posts to its channel (Off = don't post); the fallback catches any unrouted alert. <b>Changes save automatically</b> as you pick.</p>`;
   renderIntegStatus(t,c);
 }
 function renderIntegStatus(t,c){
