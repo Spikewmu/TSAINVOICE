@@ -8747,6 +8747,9 @@ async function trHydrateVideos(){
         const base=name.replace(/\.[^.]+$/,'');
         fetch('/api/data?action=videoUrl',{method:'POST',headers:vidHdr(),body:JSON.stringify({path:base+'.vtt'})}).then(r=>r.json()).then(tj=>{ if(!(tj&&tj.ok&&tj.url)) return;
           const tr=document.createElement('track'); tr.kind='captions'; tr.label='English'; tr.srclang='en'; tr.default=true; tr.src=tj.url; v.appendChild(tr);
+          // pin cues near the bottom (line as a %) so they don't float high in the small inline player
+          const pinCues=()=>{ try{ const cs=tr.track&&tr.track.cues; if(cs) for(let k=0;k<cs.length;k++){ cs[k].snapToLines=false; cs[k].line=88; cs[k].align='center'; } }catch(e){} };
+          tr.addEventListener('load',pinCues); setTimeout(pinCues,600); setTimeout(pinCues,1500);
           // native controls can't host a custom button, so overlay our own CC toggle
           const cc=document.createElement('button'); cc.type='button'; cc.textContent='CC'; cc.title='Toggle captions';
           cc.style.cssText='position:absolute;top:8px;right:8px;z-index:2;font-size:11px;font-weight:800;letter-spacing:.05em;padding:3px 8px;border-radius:6px;cursor:pointer;border:1px solid #fff;background:rgba(0,0,0,.55);color:#fff;line-height:1';
