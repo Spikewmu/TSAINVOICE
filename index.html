@@ -2138,20 +2138,20 @@ If they did not watch: No problem at all, I will send it right over. Can you wat
     </div>
     <div id="integBody" hidden>
       <div id="integStatus" style="margin:0 0 12px"></div>
-      <div class="panel collapse" id="secBot"><h3 class="csec" onclick="integToggleSec('secBot')"><span class="chev">&#9662;</span>Slack bot <span class="muted" style="font-weight:400;font-size:12px">- one bot for this client; pick the channel from a dropdown (recommended)</span></h3>
-        <div class="csec-body"><div style="padding:12px" id="integBot"></div></div>
+      <div class="panel collapse" id="secBot"><h3 class="csec" onclick="integToggleSec('secBot')"><span class="chev">&#9662;</span>Slack bot &amp; notifications <span class="muted" style="font-weight:400;font-size:12px">- connect one bot, then choose where each alert posts (closed deals, post-call, SOD, EOD, daily report, leaderboard, invoicing)</span></h3>
+        <div class="csec-body"><div style="padding:12px">
+          <div id="integBot"></div>
+          <div style="border-top:1px solid var(--border);margin:18px 0 10px;padding-top:14px"><h3 style="margin:0 0 2px">Where each alert posts <span class="muted" style="font-weight:400;font-size:12px">- pick a channel to turn a feed on, Off to stop it</span></h3></div>
+          <div id="integFeeds"></div>
+          <div style="border-top:1px solid var(--border);margin:18px 0 10px;padding-top:14px"><h3 style="margin:0">EOD reports <span class="muted" style="font-weight:400;font-size:12px">- setter, closer, manager end-of-day</span></h3></div>
+          <div id="integEodRep"></div>
+        </div></div>
       </div>
       <div class="panel collapse" id="secPay"><h3 class="csec" onclick="integToggleSec('secPay')"><span class="chev">&#9662;</span>Payment webhooks <button class="btn gold sm" style="float:right" onclick="event.stopPropagation();integAddWebhook()">+ Add webhook</button><span class="muted" style="font-weight:400;font-size:12px">- one inbound URL per payment source (Whop, Elective, Fanbasis)</span></h3>
         <div class="csec-body"><div style="padding:12px">
           <p class="hint" style="margin:0 0 12px">One per source (Whop, Elective, Fanbasis, a specific offer...). Name it, paste the Slack channel it should post to, copy the inbound URL into the processor, and edit the message format. Fields you can use: <code>{{amount}}</code> <code>{{customer}}</code> <code>{{product}}</code> <code>{{currency}}</code> <code>{{event}}</code> <code>{{raw.any.path}}</code>.</p>
           <div id="integWebhooks"></div>
         </div></div>
-      </div>
-      <div class="panel collapse" id="secFeeds"><h3 class="csec" onclick="integToggleSec('secFeeds')"><span class="chev">&#9662;</span>Event feeds <span class="muted" style="font-weight:400;font-size:12px">- new closed deal, post-call, start-of-day</span></h3>
-        <div class="csec-body"><div style="padding:12px" id="integFeeds"></div></div>
-      </div>
-      <div class="panel collapse" id="secEod"><h3 class="csec" onclick="integToggleSec('secEod')"><span class="chev">&#9662;</span>EOD reports <span class="muted" style="font-weight:400;font-size:12px">- setter, closer, manager end-of-day</span></h3>
-        <div class="csec-body"><div style="padding:12px" id="integEodRep"></div></div>
       </div>
       <div class="panel collapse" id="secGhl"><h3 class="csec" onclick="integToggleSec('secGhl')"><span class="chev">&#9662;</span>CRM push (GHL) <span class="muted" style="font-weight:400;font-size:12px">- send closed deals + post-call dispositions back to the client's GHL (paid/organic attribution)</span></h3>
         <div class="csec-body"><div style="padding:12px" id="integGhl"></div></div>
@@ -10401,7 +10401,7 @@ async function renderIntegrations(){
   if(!window.__integSecInit){ integApplySecState(); window.__integSecInit=1; } // default-collapse only on first open; preserve the user's open sections on later re-renders (e.g. the refresh after a Slack reconnect)
 }
 function integToggleSec(id){ const p=document.getElementById(id); if(!p) return; p.classList.toggle('collapsed'); }
-function integApplySecState(){ ['secAll','secBot','secPay','secFeeds','secEod','secGhl','integTplLib'].forEach(id=>{ const p=document.getElementById(id); if(p) p.classList.add('collapsed'); }); }
+function integApplySecState(){ ['secAll','secBot','secPay','secGhl','integTplLib'].forEach(id=>{ const p=document.getElementById(id); if(p) p.classList.add('collapsed'); }); }
 function renderGhlConfig(){
   const t=integTarget(), box=document.getElementById('integGhl'); if(!box||!t) return;
   const c=INTEG_CFGS[t.key]||{}, has=!!c.ghl;
