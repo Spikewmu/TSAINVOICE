@@ -2133,7 +2133,8 @@ If they did not watch: No problem at all, I will send it right over. Can you wat
       #tab-integrations .panel.collapsed .csec{margin-bottom:-6px}
       #tab-integrations .panel.collapsed .csec .chev{transform:rotate(-90deg)}
     </style>
-    <div class="panel collapse" id="secAll"><h3 class="csec" onclick="integToggleSec('secAll')"><span class="chev">&#9662;</span>All webhooks <span class="muted" style="font-weight:400;font-size:12px">- every source across ALL clients (admin overview, not just the one selected above)</span></h3>
+    <!-- All webhooks: hidden for now (cross-client payment-webhook overview). Remove `hidden` to bring it back. -->
+    <div class="panel collapse" id="secAll" hidden><h3 class="csec" onclick="integToggleSec('secAll')"><span class="chev">&#9662;</span>All webhooks <span class="muted" style="font-weight:400;font-size:12px">- every source across ALL clients (admin overview, not just the one selected above)</span></h3>
       <div class="csec-body"><div style="padding:12px" id="integAll"></div></div>
     </div>
     <div id="integBody" hidden>
