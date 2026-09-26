@@ -2138,6 +2138,9 @@ If they did not watch: No problem at all, I will send it right over. Can you wat
     </div>
     <div id="integBody" hidden>
       <div id="integStatus" style="margin:0 0 12px"></div>
+      <div class="panel collapse" id="secGhl"><h3 class="csec" onclick="integToggleSec('secGhl')"><span class="chev">&#9662;</span>CRM push (GHL) <span class="muted" style="font-weight:400;font-size:12px">- send closed deals + post-call dispositions back to the client's GHL (paid/organic attribution)</span></h3>
+        <div class="csec-body"><div style="padding:12px" id="integGhl"></div></div>
+      </div>
       <div class="panel collapse" id="secBot"><h3 class="csec" onclick="integToggleSec('secBot')"><span class="chev">&#9662;</span>Slack bot &amp; notifications <span class="muted" style="font-weight:400;font-size:12px">- connect one bot, then choose where each alert posts (closed deals, post-call, SOD, EOD, daily report, leaderboard, invoicing)</span></h3>
         <div class="csec-body"><div style="padding:12px">
           <div id="integBot"></div>
@@ -2152,9 +2155,6 @@ If they did not watch: No problem at all, I will send it right over. Can you wat
           <p class="hint" style="margin:0 0 12px">One per source (Whop, Elective, Fanbasis, a specific offer...). Name it, paste the Slack channel it should post to, copy the inbound URL into the processor, and edit the message format. Fields you can use: <code>{{amount}}</code> <code>{{customer}}</code> <code>{{product}}</code> <code>{{currency}}</code> <code>{{event}}</code> <code>{{raw.any.path}}</code>.</p>
           <div id="integWebhooks"></div>
         </div></div>
-      </div>
-      <div class="panel collapse" id="secGhl"><h3 class="csec" onclick="integToggleSec('secGhl')"><span class="chev">&#9662;</span>CRM push (GHL) <span class="muted" style="font-weight:400;font-size:12px">- send closed deals + post-call dispositions back to the client's GHL (paid/organic attribution)</span></h3>
-        <div class="csec-body"><div style="padding:12px" id="integGhl"></div></div>
       </div>
     </div>
     <div class="panel collapse" id="integTplLib" style="display:none"><h3 class="csec" onclick="integToggleSec('integTplLib')"><span class="chev">&#9662;</span>Template library <span style="float:right"><button class="btn ghost sm" onclick="event.stopPropagation();tplLibSeed()">Load starters</button> <button class="btn gold sm" onclick="event.stopPropagation();tplLibAdd()">+ New template</button></span> <span class="muted" style="font-weight:400;font-size:12px">- reusable message formats, available to every client's webhooks</span></h3>
