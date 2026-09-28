@@ -4066,6 +4066,22 @@ async function conSave(){
 function conClientDeals(app){ if(!app) return []; const n=nrmName(app), seen={}; (RECORDS||[]).forEach(x=>{ if(x.type!=='deal'||nrmName(x.client)!==n) return; const k=String(x.id||''); if(k&&(!seen[k]||(x.submittedAt||'')>(seen[k].submittedAt||''))) seen[k]=x; }); return Object.values(seen); }
 function conOutstanding(app){ return conClientDeals(app).reduce((s,d)=>s+Math.max(0,(d.contractValue||0)-dealCollected(d)),0); } // total still owed across their deals
 function conPendingByMonth(app){ const m={}; conClientDeals(app).forEach(d=>{ (typeof paymentsForDeal==='function'?paymentsForDeal(d.id):[]).filter(p=>p.status==='pending').forEach(p=>{ const k=String(p.date||'').slice(0,7); if(k) m[k]=(m[k]||0)+(p.amount||0); }); }); return m; } // scheduled pending payments keyed YYYY-MM
+// Retainer/retention due to TSA in a date range = amt x (# of months whose retainer-day falls in the window).
+// This is COMPANY money (no rep commission on it), so it flows into Actual TSA + Net as pure profit. (T-667)
+// earliest date we have any activity/invoice for a client - the floor for counting retainers (don't credit retainers before they onboarded)
+function conClientStart(client){ const n=nrmName(client); let min=''; (RECORDS||[]).forEach(x=>{ if((x.type==='invoiceapproval'||x.type==='deal'||x.type==='eod'||!x.type) && nrmName(x.client)===n){ const d=String(x.from||x.date||'').slice(0,10); if(d && (!min||d<min)) min=d; } }); return min||''; }
+function conRetainerFor(client,from,to){
+  const cfg=clientBillingCfg(client); const amt=Number(cfg&&cfg.retainer)||0, day=parseInt(cfg&&cfg.retainerDay,10);
+  if(!amt||!day||day<1) return 0;
+  const today=isoLocal(new Date());
+  const floor=conClientStart(client)||'2025-01-01';
+  let f=from||floor, t=to||today;
+  if(f<floor) f=floor; if(t>today) t=today; // clamp: don't count retainers before the client's first activity, or after today (retainers actually due)
+  if(f>t) return 0;
+  let count=0, y=Number(f.slice(0,4)), m=Number(f.slice(5,7))-1; const endY=Number(t.slice(0,4)), endM=Number(t.slice(5,7))-1, guard=Math.max(0,(endY-y)*12+(endM-m))+1;
+  for(let i=0;i<guard && i<600;i++){ const dim=new Date(y,m+1,0).getDate(); const dd=Math.min(day,dim); const iso=`${y}-${String(m+1).padStart(2,'0')}-${String(dd).padStart(2,'0')}`; if(iso>=f && iso<=t) count++; m++; if(m>11){m=0;y++;} }
+  return amt*count;
+}
 function renderContracts(){
   const host=document.getElementById('tab-contracts'); if(!host) return;
   try{ rpAttach('conRange',(f,t)=>setConRange(f,t)); }catch(e){} // custom range picker (same widget used across the app)
@@ -4078,7 +4094,8 @@ function renderContracts(){
   let billedMap={}; try{ billedMap=acctBilledCash(cf,ct); }catch(e){}
   const billedFor=(name)=>{ if(!name) return null; const k=nrmName(name); let s=0; Object.keys(billedMap).forEach(cn=>{ if(nrmName(cn)===k) s+=billedMap[cn]; }); return s; };
   const invLatest=conInvoiceLatest(); // for A/R = invoices SENT to the client but not yet marked paid (all-time, independent of the period toggle)
-  const arFor=(name,feR)=>{ if(feR==null||!name) return 0; const k=nrmName(name); let ar=0; Object.values(invLatest).forEach(iv=>{ if(nrmName(iv.client)===k && iv.status==='sent') ar+=conBilledCash(iv.client,iv.from,iv.to)*feR/100; }); return ar; };
+  // A/R = the FULL amount owed on each sent-but-unpaid invoice (rev-share + retainer + any overrides), via the shared invoice calc so it matches the invoice + ledger.
+  const arFor=(name)=>{ if(!name) return 0; const k=nrmName(name); let ar=0; Object.values(invLatest).forEach(iv=>{ if(nrmName(iv.client)===k && iv.status==='sent'){ try{ ar+=founderInvoiceCalc(iv.client,String(iv.from||'').slice(0,10),String(iv.to||'').slice(0,10)).grandTotal; }catch(_){ } } }); return ar; };
   const compForClient=(client)=>{ const k=nrmName(client); let total=0; const items=[];
     [...repAll.closers,...repAll.setters].forEach(o=>{ let cc=0; Object.keys(o.byClient||{}).forEach(cn=>{ if(nrmName(cn)===k) cc+=(o.byClient[cn]||0); }); if(cc>0){ const amt=cc*repRate(o.rep,o.role)/100; if(amt>0.005){ total+=amt; items.push({who:o.rep, role:o.role, amt}); } } });
     mgrAll.forEach(m=>{ let a=0; (m.items||[]).forEach(it=>{ if(nrmName(it.client)===k) a+=(it.cash||0)*(it.rate||0)/100; }); if(a>0.005){ total+=a; items.push({who:m.rep, role:'manager override', amt:a}); } });
@@ -4091,17 +4108,19 @@ function renderContracts(){
     const collected=tsaCollectedFor(app||c.client); if(c.active!==false) totCollected+=collected;
     const cash=billedFor(app);
     const feR=(c.feTBD||c.feRate==null)?null:(Number(c.feRate)||0);
-    const act=(cash!=null&&feR!=null)?cash*feR/100:null;
+    const revShare=(cash!=null&&feR!=null)?cash*feR/100:null;
+    const ret=conRetainerFor(app||c.client,cf,ct); // retention due in the period - company money, added as pure profit
+    const act=(revShare!=null)?revShare+ret:(ret>0?ret:null); // Actual TSA = rev-share + retainer
     if(c.active!==false&&act!=null) actual+=act;
-    const cb=compForClient(app||c.client), comp=cb.total;
-    const net=(act!=null)?act-comp:null;
+    const cb=compForClient(app||c.client), comp=cb.total; // comp is on deal/payment cash only - retainer is never in here
+    const net=(act!=null)?act-comp:null; // retainer flows straight through to net (not reduced by comp)
     if(c.active!==false){ totComp+=comp; if(net!=null) totNet+=net; }
     const bd=cb.items.length?cb.items.map(it=>`  ${esc(it.who)} (${it.role}): ${money(it.amt)}`).join('&#10;'):'  none paid this period';
     const compTip=`Paid this period:&#10;${bd}`;
-    const netTip=act!=null?`Actual TSA ${money(act)}&#10;minus comp ${money(comp)}:&#10;${bd}&#10;= Net ${money(net)}`:'Set a front-end rate to see net';
+    const netTip=act!=null?`Actual TSA ${money(act)}${ret>0?' (incl. '+money(ret)+' retainer, no comp)':''}&#10;minus comp ${money(comp)}:&#10;${bd}&#10;= Net ${money(net)}`:'Set a front-end rate or retainer to see net';
     // expected future income: TSA's rev-share on the client's outstanding balance + scheduled pending payments by due month
     const outstanding=conOutstanding(app), eoOS=(feR!=null)?outstanding*feR/100:0;
-    const ar=arFor(app,feR); const expTotal=(feR!=null)?(ar+eoOS):null; // Expected = sent-unpaid invoices (A/R) + rev-share on the customer's outstanding deal balance
+    const ar=arFor(app); const expTotal=(feR!=null||ar>0)?(ar+eoOS):null; // Expected = full sent-unpaid invoices (A/R, incl. retainer) + rev-share on the customer's outstanding deal balance
     if(c.active!==false&&expTotal!=null) expOut+=expTotal;
     if(c.active!==false&&feR!=null){ const pm=conPendingByMonth(app); Object.keys(pm).forEach(k=>{ monthTSA[k]=(monthTSA[k]||0)+pm[k]*feR/100; }); }
     if(c.feTBD||c.beTBD) anyTBD=true;
