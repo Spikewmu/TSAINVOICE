@@ -10540,13 +10540,21 @@ function renderWavvConfig(){
       <div id="wavvMap"></div>
     </div>`;
 }
-function wavvRepNames(){ const s=new Set(); (USERS_CACHE||[]).forEach(u=>{ if(u&&!u.archived&&(u.name||u.username)) s.add(u.name||u.username); }); return [...s].sort((a,b)=>String(a).localeCompare(b)); }
+// reps to offer in the WAVV map: scope to THIS client's team (setters/closers assigned + its managers) so the list is short; fall back to everyone if none are assigned
+function wavvRepNames(client){
+  const k=client?nrmName(client):'', s=new Set();
+  (USERS_CACHE||[]).forEach(u=>{ if(!u||u.archived||!(u.name||u.username)) return;
+    if(k){ let on=false; try{ on=(teamsFor(u.username)||[]).map(nrmName).includes(k); }catch(e){} if(!on){ try{ on=(managedClientsForUser(u)||[]).map(nrmName).includes(k); }catch(e){} } if(!on) return; }
+    s.add(u.name||u.username); });
+  const out=[...s].sort((a,b)=>String(a).localeCompare(b));
+  return (out.length||!client) ? out : wavvRepNames(); // nobody on this client -> show all
+}
 async function integWavvLoadUsers(){
   const t=integTarget(); if(!t) return; const box=document.getElementById('wavvMap'); if(box) box.innerHTML='<p class="muted" style="font-size:12px">Loading dialer users (last 30 days)…</p>';
   const to=todayLocal(), from=isoOffset(todayLocal(),-30);
   const res=await integApi('wavvStats',{key:t.key, ws:t.ws, from, to});
   if(!(res&&res.ok)){ if(box) box.innerHTML='<p class="muted" style="font-size:12px">'+((res&&res.error==='wavv-off')?'Save + enable the WAVV key first, then load.':esc((res&&res.error)||'Could not load'))+'</p>'; return; }
-  const map=(INTEG_CFGS[t.key]||{}).wavvUserMap||{}, reps=wavvRepNames();
+  const map=(INTEG_CFGS[t.key]||{}).wavvUserMap||{}, reps=wavvRepNames(t.client);
   const rows=(res.perUser||[]).map(u=>{ const curName=map[u.userId]||''; const opts='<option value="">- unmapped -</option>'+reps.map(n=>`<option${n===curName?' selected':''}>${esc(n)}</option>`).join(''); return `<div style="display:flex;gap:10px;align-items:center;margin-bottom:6px;flex-wrap:wrap"><span class="muted" style="font-size:11px;min-width:190px;font-family:ui-monospace,monospace">${esc(u.userId)}</span><span style="font-size:11px;color:var(--muted);min-width:60px">${u.dials} dials</span><select class="wavvMapSel" data-uid="${esc(u.userId)}" style="min-width:200px">${opts}</select></div>`; }).join('');
   if(box) box.innerHTML=(rows||'<p class="muted" style="font-size:12px">No dialer activity in the last 30 days.</p>')+(rows?'<div class="row-actions" style="margin-top:8px"><button class="btn ghost sm" onclick="integWavvMatchGhl()">&#10024; Match from GHL</button><button class="btn gold sm" onclick="integWavvSaveMap()">Save names</button></div><div class="fieldhelp" style="margin-top:4px">Not sure who\'s who? <b>Match from GHL</b> pulls the names from this client\'s GHL (WAVV uses the GHL user id) and fills the dropdowns - review, then Save.</div>':'');
 }
@@ -10555,7 +10563,7 @@ async function integWavvMatchGhl(){
   const res=await integApi('ghlUsers',{key:t.key, ws:t.ws});
   if(!(res&&res.ok)){ toast('GHL: '+((res&&res.error)||'failed'),true); return; }
   const byId={}; (res.users||[]).forEach(u=>{ byId[u.id]=u.name; });
-  const reps=wavvRepNames(); let matched=0;
+  const reps=wavvRepNames(t.client); let matched=0;
   document.querySelectorAll('#wavvMap .wavvMapSel').forEach(s=>{ const uid=s.getAttribute('data-uid'); const nm=byId[uid]; if(!nm) return; matched++;
     let rep=reps.find(r=>nrmName(r)===nrmName(nm)); // prefer an existing HQ rep with that name
     if(!rep){ if(![...s.options].some(o=>o.value===nm)) s.add(new Option(nm,nm)); rep=nm; } // else use the GHL name as-is
