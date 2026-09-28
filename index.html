@@ -2054,6 +2054,7 @@ If they did not watch: No problem at all, I will send it right over. Can you wat
       <div class="field"><label>Client</label><select id="dayRepClient" onchange="renderDayReports()"></select></div>
       <span id="dayRepSummary" class="tag" style="align-self:flex-end;margin-bottom:2px"></span>
     </div>
+    <div id="dayRepWavv" style="margin:0 0 14px"></div>
     <div id="dayRepBody"></div>
   </section>
 
@@ -7170,6 +7171,27 @@ function drSodCard(x){
   addP('Projected to close today','sodProjClose'); addP('In blood today','sodBloodToday'); addP('Projected to collect this week','sodProjCollectWk'); addP('In blood to collect this week','sodBloodCollectWk');
   return drCardShell(x, grid+(proj.length?`<div style="border-top:1px solid var(--border);margin-top:6px;padding-top:6px">${proj.join('')}</div>`:''), (x.notes||'').trim());
 }
+// WAVV dialer actuals for a single client + day, shown alongside the self-reported EOD (only if that client has WAVV enabled)
+async function renderWavvDay(client, day){
+  const box=document.getElementById('dayRepWavv'); if(!box) return;
+  if(!client){ box.innerHTML=''; return; } // needs one client scoped (per-client dialer key)
+  box.innerHTML='<p class="muted" style="font-size:12px;padding:4px 2px">Checking WAVV dialer…</p>';
+  let res={}; try{ res=await integApi('wavvStats',{key:'tsa:'+client, ws:'tsa', from:day, to:day}); }catch(e){}
+  if(!(res&&res.ok)){ box.innerHTML=''; return; } // wavv-off / not configured -> show nothing
+  const hms=s=>{ s=Math.round(s||0); const h=Math.floor(s/3600), m=Math.floor((s%3600)/60); return h?(h+'h '+m+'m'):(m+'m '+(s%60)+'s'); };
+  const connPct=res.dials?Math.round(res.connects/res.dials*100):0;
+  const rows=(res.perUser||[]).map(u=>`<tr><td>${esc(u.userId)}</td><td class="num">${u.dials}</td><td class="num">${u.connects}</td><td class="num">${hms(u.seconds)}</td></tr>`).join('');
+  box.innerHTML=`<div class="panel" style="border:1px solid var(--gold-soft);margin:0"><div style="padding:12px 14px">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px"><b style="color:var(--gold-2)">WAVV dialer &middot; actual for ${esc(usDate(day))}</b><span class="muted" style="font-size:11.5px">pulled live from the dialer, alongside the self-reported EOD below</span></div>
+    <div class="cards" style="grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px">
+      <div class="kpi"><div class="lbl">Dials</div><div class="val small">${res.dials}</div></div>
+      <div class="kpi"><div class="lbl">Connects</div><div class="val small">${res.connects}</div></div>
+      <div class="kpi"><div class="lbl">Connect %</div><div class="val small">${connPct}%</div></div>
+      <div class="kpi"><div class="lbl">Talk time</div><div class="val small">${hms(res.talkSeconds)}</div></div>
+    </div>
+    ${rows?`<div class="tablewrap" style="margin-top:10px"><table style="font-size:12px"><thead><tr><th>Dialer user (WAVV id)</th><th class="num">Dials</th><th class="num">Connects</th><th class="num">Talk</th></tr></thead><tbody>${rows}</tbody></table></div><div class="fieldhelp" style="margin-top:4px">Per-agent is keyed by the dialer's user id - want real names? we can map each WAVV user id to a rep.</div>`:''}
+  </div></div>`;
+}
 function renderDayReports(){
   const body=document.getElementById('dayRepBody'); if(!body) return;
   if(repMode()){ body.innerHTML='<p class="muted" style="padding:12px 0">Managers and admins only.</p>'; const s=document.getElementById('dayRepSummary'); if(s)s.textContent=''; return; }
@@ -7178,6 +7200,7 @@ function renderDayReports(){
   const clients=dayRepClients(), sel=document.getElementById('dayRepClient');
   if(sel){ const prev=preferGlobal(clients, sel.value||''); sel.innerHTML='<option value="">All accounts</option>'+clients.map(c=>`<option${c===prev?' selected':''}>${esc(c)}</option>`).join(''); sel.value=prev; }
   const clientFilter=(sel&&sel.value)||'', scope=dashScopeClients();
+  try{ renderWavvDay(clientFilter, day); }catch(e){}
   let recs=dayRepRecs(DAYREP_KIND, day)
     .filter(r=> !scope || scope.includes(String(r.client||'').trim()))
     .filter(r=> !clientFilter || String(r.client||'').trim()===clientFilter);

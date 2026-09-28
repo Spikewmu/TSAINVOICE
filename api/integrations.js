@@ -328,6 +328,30 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true, sample: n });
       } catch (e) { return res.status(200).json({ ok: false, error: String((e && e.message) || e) }); }
     }
+    if (action === 'wavvStats') { // aggregate a WAVV team's outbound call activity for a date range (shown alongside self-reported EOD)
+      const key = String(b.key || ''); if (!key) return res.status(200).json({ ok: false, error: 'key required' });
+      const cfgs = await allByType('integration'); const cur = cfgs[key];
+      if (!cur || !mayTouch(cur)) return res.status(200).json({ ok: false, error: 'not your client' });
+      if (!cur.wavvApiKey || !cur.wavvEnabled) return res.status(200).json({ ok: false, error: 'wavv-off' }); // silently skipped by the UI
+      const from = String(b.from || '').slice(0, 10), to = String(b.to || b.from || '').slice(0, 10);
+      if (!from) return res.status(200).json({ ok: false, error: 'from required' });
+      const startedAfter = from + 'T00:00:00Z', startedBefore = to + 'T23:59:59Z';
+      try {
+        const out = []; let cursor = '';
+        for (let i = 0; i < 25; i++) { // page outbound calls (dials); cap ~5000/day for safety
+          const qs = new URLSearchParams({ direction: 'outbound', startedAfter, startedBefore, limit: '200' }); if (cursor) qs.set('cursor', cursor);
+          const r = await fetch('https://api.wavv.com/v3/calls?' + qs.toString(), { headers: { Authorization: 'Bearer ' + cur.wavvApiKey } });
+          if (r.status === 401) return res.status(200).json({ ok: false, error: 'WAVV key rejected (401)' });
+          if (!r.ok) { const t = await r.text(); return res.status(200).json({ ok: false, error: 'WAVV ' + r.status + ' ' + t.slice(0, 100) }); }
+          const j = await r.json().catch(() => ({}));
+          (j.data || []).forEach(c => out.push(c));
+          cursor = j.nextCursor || ''; if (!cursor) break;
+        }
+        let dials = 0, connects = 0, talk = 0; const per = {};
+        out.forEach(c => { dials++; const conn = !!c.answeredAt; if (conn) connects++; talk += (Number(c.seconds) || 0); const u = c.userId || '?'; const p = per[u] || (per[u] = { userId: u, dials: 0, connects: 0, seconds: 0 }); p.dials++; if (conn) p.connects++; p.seconds += (Number(c.seconds) || 0); });
+        return res.status(200).json({ ok: true, dials, connects, talkSeconds: talk, perUser: Object.values(per).sort((a, b) => b.dials - a.dials) });
+      } catch (e) { return res.status(200).json({ ok: false, error: String((e && e.message) || e) }); }
+    }
     if (action === 'log') {
       const id = String(b.id || ''); if (!id) return res.status(200).json({ ok: false, error: 'id required' });
       const hooks = await allByType('webhook'); const cur = hooks[id];
