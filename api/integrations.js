@@ -62,6 +62,7 @@ const pubCfg = d => ({ key: d.key, ws: d.ws, client: d.client || '', eodToSlack:
   // the connected Slack channel name per source (captured at OAuth connect), for display
   chan: { slack: d.slackWebhookChan||'', setter: d.eodSetterSlackChan||'', closer: d.eodCloserSlackChan||'', mgr: d.eodMgrSlackChan||'', deal: d.dealSlackChan||'', onboarding: d.onboardingSlackChan||'', postcall: d.postcallSlackChan||'', postcallSetter: d.postcallSetterSlackChan||'', postcallCloser: d.postcallCloserSlackChan||'', sod: d.sodSlackChan||'', sodSetter: d.sodSetterSlackChan||'', sodCloser: d.sodCloserSlackChan||'', dailyReport: d.dailyReportSlackChan||'', leaderboard: d.leaderboardSlackChan||'', invoicing: d.invoicingSlackChan||'' },
   botConnected: !!d.botToken, botChanId: d.botChanId || '', botChanName: d.botChanName || '', botTeamName: d.botTeamName || '', // single-bot notifications: token is write-only, channel id/name/team are safe to show
+  wavv: !!d.wavvApiKey, wavvEnabled: !!d.wavvEnabled, // WAVV dialer: API key is write-only, never returned
   ghl: !!d.ghlApiKey, ghlLocation: d.ghlLocationId || '', ghlEnabled: !!d.ghlEnabled }); // ghlApiKey itself is write-only, never returned
 const pubHook = (d, req) => ({ id: d.id, key: d.key, ws: d.ws, client: d.client || '', name: d.name || 'Webhook', processor: d.processor || 'generic', enabled: d.enabled !== false, template: d.template || DEFAULT_TEMPLATE, hasSlack: !!d.slackWebhook, slack: d.slackWebhook || '', token: d.token, inbound: baseUrl(req) + '/api/hook?t=' + d.token });
 const chanDest = u => (/discord(app)?\.com\/api\/webhooks\//i.test(String(u || '')) && !/\/slack\/?$/i.test(String(u))) ? String(u).replace(/\/+$/, '') + '/slack' : u; // Discord accepts Slack payloads at /slack
@@ -207,6 +208,8 @@ export default async function handler(req, res) {
         ghlApiKey: keepOr(b.ghlApiKey, cur && cur.ghlApiKey),
         ghlLocationId: keepOr(b.ghlLocationId, cur && cur.ghlLocationId),
         ghlEnabled: b.ghlEnabled != null ? !!b.ghlEnabled : !!(cur && cur.ghlEnabled),
+        wavvApiKey: keepOr(b.wavvApiKey, cur && cur.wavvApiKey),
+        wavvEnabled: b.wavvEnabled != null ? !!b.wavvEnabled : !!(cur && cur.wavvEnabled),
         eodToSlack: b.eodToSlack != null ? !!b.eodToSlack : !!(cur && cur.eodToSlack), updatedAt: now };
       // preserve the connected Slack CHANNEL NAMES (captured at OAuth connect, not part of this save form) - otherwise Save routing wipes them
       ['slackWebhookChan', 'eodSetterSlackChan', 'eodCloserSlackChan', 'eodMgrSlackChan', 'dealSlackChan', 'onboardingSlackChan', 'postcallSlackChan', 'postcallSetterSlackChan', 'postcallCloserSlackChan', 'sodSlackChan', 'sodSetterSlackChan', 'sodCloserSlackChan', 'dailyReportSlackChan', 'leaderboardSlackChan', 'invoicingSlackChan', 'invoicingSlackBot', 'invoicingSlackChanId'].forEach(k => { if (cur && cur[k] != null) rec[k] = cur[k]; });
@@ -309,6 +312,21 @@ export default async function handler(req, res) {
       const sample = { type: 'postcall', leadEmail: email, source: 'Paid ads', outcome: 'Won - closed', product: 'Sample Offer', cashCollected: 2500, contractValue: 5000, rep: 'Alex (test)', setter: 'Jordan (test)', callType: 'First call', date: new Date().toISOString().slice(0, 10) };
       const r = await ghlPush(cur, sample);
       return res.status(200).json(r.ok ? { ok: true, contactId: r.contactId } : r);
+    }
+    if (action === 'testWavv') { // verify the WAVV API key by listing 1 call (team-scoped Bearer key)
+      const key = String(b.key || ''); if (!key) return res.status(200).json({ ok: false, error: 'key required' });
+      const cfgs = await allByType('integration'); const cur = cfgs[key];
+      if (!cur) return res.status(200).json({ ok: false, error: 'Save the WAVV API key first' });
+      if (!mayTouch(cur)) return res.status(200).json({ ok: false, error: 'not your client' });
+      if (!cur.wavvApiKey) return res.status(200).json({ ok: false, error: 'No WAVV API key saved for this client' });
+      try {
+        const r = await fetch('https://api.wavv.com/v3/calls?direction=outbound&limit=1', { headers: { Authorization: 'Bearer ' + cur.wavvApiKey } });
+        if (r.status === 401) return res.status(200).json({ ok: false, error: 'WAVV rejected the key (401 INVALID_API_KEY) - check it' });
+        if (!r.ok) { const t = await r.text(); return res.status(200).json({ ok: false, error: 'WAVV ' + r.status + ' ' + t.slice(0, 120) }); }
+        const j = await r.json().catch(() => ({}));
+        const n = (j && Array.isArray(j.data)) ? j.data.length : 0;
+        return res.status(200).json({ ok: true, sample: n });
+      } catch (e) { return res.status(200).json({ ok: false, error: String((e && e.message) || e) }); }
     }
     if (action === 'log') {
       const id = String(b.id || ''); if (!id) return res.status(200).json({ ok: false, error: 'id required' });

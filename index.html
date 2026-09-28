@@ -2142,6 +2142,9 @@ If they did not watch: No problem at all, I will send it right over. Can you wat
       <div class="panel collapse" id="secGhl"><h3 class="csec" onclick="integToggleSec('secGhl')"><span class="chev">&#9662;</span>CRM push (GHL) <span class="muted" style="font-weight:400;font-size:12px">- send closed deals + post-call dispositions back to the client's GHL (paid/organic attribution)</span></h3>
         <div class="csec-body"><div style="padding:12px" id="integGhl"></div></div>
       </div>
+      <div class="panel collapse" id="secWavv"><h3 class="csec" onclick="integToggleSec('secWavv')"><span class="chev">&#9662;</span>WAVV Dialer <span class="muted" style="font-weight:400;font-size:12px">- add per client if they dial through WAVV (GHL-integrated); paste their API key</span></h3>
+        <div class="csec-body"><div style="padding:12px" id="integWavv"></div></div>
+      </div>
       <div class="panel collapse" id="secBot"><h3 class="csec" onclick="integToggleSec('secBot')"><span class="chev">&#9662;</span>Slack bot &amp; notifications <span class="muted" style="font-weight:400;font-size:12px">- connect one bot, then choose where each alert posts (closed deals, post-call, SOD, EOD, daily report, leaderboard, invoicing)</span></h3>
         <div class="csec-body"><div style="padding:12px">
           <div id="integBot"></div>
@@ -10462,7 +10465,7 @@ async function renderIntegrations(){
   if(!window.__integSecInit){ integApplySecState(); window.__integSecInit=1; } // default-collapse only on first open; preserve the user's open sections on later re-renders (e.g. the refresh after a Slack reconnect)
 }
 function integToggleSec(id){ const p=document.getElementById(id); if(!p) return; p.classList.toggle('collapsed'); }
-function integApplySecState(){ ['secAll','secBot','secPay','secGhl','integTplLib'].forEach(id=>{ const p=document.getElementById(id); if(p) p.classList.add('collapsed'); }); }
+function integApplySecState(){ ['secAll','secBot','secPay','secGhl','secWavv','integTplLib'].forEach(id=>{ const p=document.getElementById(id); if(p) p.classList.add('collapsed'); }); }
 function renderGhlConfig(){
   const t=integTarget(), box=document.getElementById('integGhl'); if(!box||!t) return;
   const c=INTEG_CFGS[t.key]||{}, has=!!c.ghl;
@@ -10496,6 +10499,32 @@ async function integTestGhl(){
   if(res&&res.ok) toast('Sent to GHL - check that contact’s Notes + Lead source');
   else toast('GHL: '+((res&&res.error)||'failed'),true);
 }
+// WAVV Dialer (per client): store the team API key (write-only) + test the connection
+function renderWavvConfig(){
+  const t=integTarget(), box=document.getElementById('integWavv'); if(!box||!t) return;
+  const c=INTEG_CFGS[t.key]||{}, has=!!c.wavv;
+  box.innerHTML=`
+    <p class="hint" style="margin:0 0 12px">Add this only for a client that dials through <b>WAVV</b> (their WAVV account is GHL-integrated). Paste the client's <b>WAVV API key</b> (WAVV: Integrations panel &rsaquo; API key). Team-scoped and stored server-side, never shown back. Lets HQ read that team's call activity from WAVV.</p>
+    <div class="cards" style="grid-template-columns:repeat(auto-fill,minmax(260px,1fr))">
+      <div class="field"><label>WAVV API key ${has?'<span class="pill good">&#10003; set</span>':'<span class="pill" style="opacity:.55">not set</span>'}</label>
+        <span style="display:flex;gap:6px"><input id="wavvKey" type="password" autocomplete="off" placeholder="${has?'•••• (leave blank to keep)':'paste the WAVV API key'}" style="flex:1"><button type="button" class="btn sm ghost" onclick="integReveal('wavvKey',this)">Show</button></span></div>
+    </div>
+    <label style="display:flex;gap:8px;align-items:center;font-weight:500;margin:12px 0 8px"><input type="checkbox" id="wavvOn" ${c.wavvEnabled?'checked':''}> This client uses the WAVV dialer</label>
+    <div class="row-actions" style="margin:2px 0 12px"><button class="btn gold sm" onclick="integSaveWavv()">Save WAVV</button> <button class="btn ghost sm" onclick="integTestWavv()">Test connection</button></div>`;
+}
+async function integSaveWavv(){
+  const t=integTarget(); if(!t) return; const key=((document.getElementById('wavvKey')||{}).value||'').trim();
+  const body={key:t.key, ws:t.ws, client:t.client, wavvEnabled:(document.getElementById('wavvOn')||{}).checked, wavvApiKey: key? key : '__keep__'};
+  const res=await integApi('save',body);
+  if(res&&res.ok){ INTEG_CFGS[t.key]=res.config; toast('WAVV settings saved'); renderWavvConfig(); }
+  else toast((res&&res.error)||'Could not save',true);
+}
+async function integTestWavv(){
+  const t=integTarget(); if(!t) return; toast('Checking WAVV connection...');
+  const res=await integApi('testWavv',{key:t.key, ws:t.ws});
+  if(res&&res.ok) toast('WAVV connected'+(res.sample!=null?' - key works':''));
+  else toast('WAVV: '+((res&&res.error)||'failed'),true);
+}
 function integClientLabel(key){ const t=INTEG_TARGETS.find(x=>x.key===key); return t?t.label:key; }
 function renderAllWebhooks(){
   const box=document.getElementById('integAll'); if(!box) return;
@@ -10519,7 +10548,7 @@ function integPick(){
   // auto-load the bot's channels once so the feed dropdowns are ready (no per-feed "Load channels" step)
   if((INTEG_CFGS[t.key]||{}).botConnected && !INTEG_BOT_CHANS[t.key] && !INTEG_BOT_LOADING[t.key]){ integLoadChannels(true); }
   const tag=document.getElementById('integPlanTag'); if(tag) tag.textContent=t.plan||'';
-  renderWebhookList(); renderEodRouting(); renderGhlConfig(); renderSlackBot();
+  renderWebhookList(); renderEodRouting(); renderGhlConfig(); renderWavvConfig(); renderSlackBot();
 }
 // ---- Slack bot (single-bot-per-client + channel dropdown) ----
 async function renderSlackBot(){
