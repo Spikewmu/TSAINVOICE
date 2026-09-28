@@ -6107,14 +6107,22 @@ function renderInvLedger(){
       <th style="padding:11px 12px">Client</th><th style="padding:11px 12px">Period</th><th style="padding:11px 12px;text-align:right">Amount</th><th style="padding:11px 12px">Status</th><th style="padding:11px 12px">Sent</th><th style="padding:11px 12px;text-align:right">Age</th></tr></thead>
     <tbody>${body}</tbody></table></div>`;
 }
-// open a ledger row on the Founder invoices tab, loaded to that client+period
+// open a ledger row on the Founder invoices tab, loaded to that client+period.
+// Renders directly from the row's own client+period (not by reading the form back) so the opened
+// invoice always matches the ledger amount, even if the client option or a date field didn't resolve.
 function ledOpen(encClient,from,to){
   const client=decodeURIComponent(encClient);
   invTab('gen');
-  const ic=document.getElementById('invClient'), f=document.getElementById('invFrom'), t=document.getElementById('invTo');
-  if(ic) ic.value=client; if(f) f.value=from; if(t) t.value=to;
-  invPreview();
-  const doc=document.getElementById('invoiceOut'); if(doc&&doc.scrollIntoView) try{ doc.scrollIntoView({behavior:'smooth',block:'start'}); }catch(_){}
+  const ic=document.getElementById('invClient');
+  if(ic){ if(![].some.call(ic.options,o=>o.value===client)){ ic.add(new Option(client,client)); } ic.value=client; }
+  const f=document.getElementById('invFrom'), t=document.getElementById('invTo');
+  if(f) f.value=from; if(t) t.value=to;
+  // sync the override boxes for this period, then render straight from the known values
+  const ov=invoiceOverrideFor(client,from,to);
+  const oc=document.getElementById('invOverrideCash'), on2=document.getElementById('invOverrideNote');
+  if(oc) oc.value=(ov&&ov.billedCash!=null)?ov.billedCash:''; if(on2) on2.value=(ov&&ov.note)||'';
+  const out=document.getElementById('invoiceOut'); if(out) out.innerHTML=genFounderInvoice(client,from,to); // sets LAST_INVOICE so Approve/Send/Mark paid work
+  if(out&&out.scrollIntoView) try{ out.scrollIntoView({behavior:'smooth',block:'start'}); }catch(_){}
 }
 function renderInvoicing(){
   if(!invAllowed()){ const s=document.getElementById('tab-invoicing'); if(s) s.querySelectorAll('#invGen,#invLedger,#invComm,#invForecast,#invVerify,#invSettings').forEach(e=>e.hidden=true); return; }
