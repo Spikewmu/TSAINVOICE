@@ -3128,7 +3128,7 @@ function buildGlobalClientSelect(){
 // anyone who has that selector (super admin / director / manager) - hide them. Reps (no selector) keep theirs.
 function hideRedundantClientFilters(){
   const hasGlobal = SESSION && ['admin','director','manager'].includes(SESSION.role);
-  ['fClient','rClient','arClient','drClient','rcmClient','clClient','calClient'].forEach(id=>{
+  ['fClient','rClient','arClient','drClient','rcmClient','clClient','calClient','dayRepClient','crClient'].forEach(id=>{
     const el=document.getElementById(id); if(!el) return; const f=el.closest('.field'); if(f) f.style.display = hasGlobal?'none':'';
   });
 }
