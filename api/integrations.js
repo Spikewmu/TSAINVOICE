@@ -329,6 +329,25 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true, sample: n });
       } catch (e) { return res.status(200).json({ ok: false, error: String((e && e.message) || e) }); }
     }
+    if (action === 'ghlUsers') { // list GHL users (id -> name) for a client, to auto-match WAVV dialer user ids to reps
+      const key = String(b.key || ''); if (!key) return res.status(200).json({ ok: false, error: 'key required' });
+      const cfgs = await allByType('integration'); const cur = cfgs[key];
+      if (!cur || !mayTouch(cur)) return res.status(200).json({ ok: false, error: 'not your client' });
+      if (!cur.ghlApiKey) return res.status(200).json({ ok: false, error: 'No GHL API key for this client - add it in CRM push (GHL) first' });
+      const k = String(cur.ghlApiKey), v2 = /^pit-/i.test(k), loc = String(cur.ghlLocationId || '').trim();
+      const base = v2 ? 'https://services.leadconnectorhq.com' : 'https://rest.gohighlevel.com/v1';
+      const H = v2 ? { Authorization: 'Bearer ' + k, Version: '2021-07-28' } : { Authorization: 'Bearer ' + k };
+      if (v2 && !loc) return res.status(200).json({ ok: false, error: 'Set the GHL Location ID (CRM push) first' });
+      try {
+        const url = v2 ? (base + '/users/?locationId=' + encodeURIComponent(loc)) : (base + '/users/');
+        const r = await fetch(url, { headers: H });
+        if (!r.ok) { const t = await r.text(); return res.status(200).json({ ok: false, error: 'GHL ' + r.status + ' ' + t.slice(0, 100) }); }
+        const j = await r.json().catch(() => ({}));
+        const arr = j.users || j.data || [];
+        const users = arr.map(u => ({ id: u.id || u._id || '', name: (u.name || ((u.firstName || '') + ' ' + (u.lastName || ''))).trim() || u.email || '' })).filter(u => u.id);
+        return res.status(200).json({ ok: true, users });
+      } catch (e) { return res.status(200).json({ ok: false, error: String((e && e.message) || e) }); }
+    }
     if (action === 'wavvStats') { // aggregate a WAVV team's outbound call activity for a date range (shown alongside self-reported EOD)
       const key = String(b.key || ''); if (!key) return res.status(200).json({ ok: false, error: 'key required' });
       const cfgs = await allByType('integration'); const cur = cfgs[key];
