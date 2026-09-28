@@ -888,10 +888,27 @@
     <p class="hint">Generate each client's <b>founder invoice</b> (they pay TSA weekly), auto-built from closed deals + collected payments. Billing week is <b>Monday to Sunday</b>; invoices go out <b>Wednesday</b> for the last completed week (review Wed, questions Thu, paid Fri). <b>Super Admin only.</b> Set each client's billing rate, invoice stats, and TSA's wire/ACH details under <b>Billing settings</b>.</p>
     <div class="seg" id="invSeg" style="margin-bottom:16px">
       <button class="on" data-inv="gen" onclick="invTab('gen')">Founder invoices</button>
+      <button data-inv="ledger" onclick="invTab('ledger')">Outstanding invoices</button>
       <button data-inv="comm" onclick="invTab('comm')">Rep commissions</button>
       <button data-inv="forecast" onclick="invTab('forecast')">Revenue forecast</button>
       <button data-inv="verify" onclick="invTab('verify')">$1 verification wire</button>
       <button data-inv="settings" onclick="invTab('settings')">Billing settings</button>
+    </div>
+    <div id="invLedger" hidden>
+      <div class="panel" style="padding:16px">
+        <p class="fieldhelp" style="margin:0 0 12px">Every invoice that's been <b>approved, sent, or paid</b>, so nothing slips. <b>Outstanding</b> = sent but not yet paid; the <b>Age</b> column counts days since it was sent. Follows the company picker at the top. Click any row to open that invoice.</p>
+        <div class="filters" style="align-items:flex-end;gap:12px;margin-top:2px">
+          <div class="field" style="flex:0 0 auto"><label>Show</label>
+            <div class="seg" id="ledSeg" style="flex-wrap:wrap">
+              <button data-led="outstanding" class="on" onclick="setLedFilter('outstanding')">Outstanding</button>
+              <button data-led="overdue" onclick="setLedFilter('overdue')">Overdue</button>
+              <button data-led="all" onclick="setLedFilter('all')">All</button>
+              <button data-led="paid" onclick="setLedFilter('paid')">Paid</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div id="invLedgerOut" style="margin-top:18px"></div>
     </div>
     <div id="invForecast" hidden>
       <div class="panel" style="padding:16px">
@@ -5996,6 +6013,7 @@ const INV_STAT_CATALOG=[['closedDeals','Closed deals'],['cashCollected','Cash co
 function invStatOn(key){ const bi=billingInfo(); return (bi&&bi.invStats&&typeof bi.invStats[key]==='boolean') ? bi.invStats[key] : true; } // default on
 function invTab(which){
   document.getElementById('invGen').hidden = which!=='gen';
+  const ld=document.getElementById('invLedger'); if(ld) ld.hidden = which!=='ledger';
   document.getElementById('invComm').hidden = which!=='comm';
   document.getElementById('invForecast').hidden = which!=='forecast';
   document.getElementById('invVerify').hidden = which!=='verify';
@@ -6005,9 +6023,72 @@ function invTab(which){
   if(which==='verify') invVerifyPreview();
   if(which==='comm') repCommInit();
   if(which==='forecast') renderArForecast();
+  if(which==='ledger') renderInvLedger();
+}
+// ---- Outstanding invoices ledger (T-664): every approved/sent/paid invoice in one list, so nothing slips as weeks pile up.
+// Built from invoiceapproval records (latest per client+period). Amount = paid-stamped amount, else recomputed via founderInvoiceCalc.
+let LED_FILTER='outstanding';
+function setLedFilter(f){ LED_FILTER=f; document.querySelectorAll('#ledSeg button').forEach(b=>b.classList.toggle('on', b.dataset.led===f)); renderInvLedger(); }
+function invLedgerRows(){
+  const gc=(typeof GLOBAL_CLIENT!=='undefined'&&GLOBAL_CLIENT)?nrmName(GLOBAL_CLIENT):''; // follow the top company picker
+  const rows=Object.values(conInvoiceLatest()).filter(r=>{
+    const st=r.status||'draft'; if(st==='draft') return false;            // draft = generated but never acted on; not a real outstanding invoice
+    if(gc && nrmName(r.client)!==gc) return false;
+    return true;
+  }).map(r=>{
+    const from=String(r.from||'').slice(0,10), to=String(r.to||'').slice(0,10);
+    let amount=(r.status==='paid'&&r.amount!=null)?Number(r.amount):null;
+    if(amount==null){ try{ amount=founderInvoiceCalc(r.client,from,to).grandTotal; }catch(_){ amount=0; } }
+    const sentAt=String(r.at||r.submittedAt||'').slice(0,10);
+    const ageDays=(r.status==='sent'&&sentAt)?Math.max(0,Math.round((Date.now()-new Date(sentAt+'T00:00:00').getTime())/86400000)):null;
+    return {client:r.client,from,to,status:r.status,amount:amount||0,sentAt,ageDays,by:r.by||''};
+  });
+  rows.sort((a,b)=>String(b.to).localeCompare(String(a.to))); // newest period first
+  return rows;
+}
+function renderInvLedger(){
+  const out=document.getElementById('invLedgerOut'); if(!out) return;
+  let rows=invLedgerRows();
+  if(LED_FILTER==='outstanding') rows=rows.filter(r=>r.status==='approved'||r.status==='sent');
+  else if(LED_FILTER==='paid') rows=rows.filter(r=>r.status==='paid');
+  else if(LED_FILTER==='overdue') rows=rows.filter(r=>r.status==='sent' && r.ageDays!=null && r.ageDays>7);
+  const outstanding=invLedgerRows().filter(r=>r.status==='approved'||r.status==='sent');
+  const owed=outstanding.reduce((s,r)=>s+(r.amount||0),0);
+  const overdue=outstanding.filter(r=>r.status==='sent'&&r.ageDays!=null&&r.ageDays>7);
+  const overdueOwed=overdue.reduce((s,r)=>s+(r.amount||0),0);
+  const tile=(lbl,val,color)=>`<div style="border:1px solid #e6e9ef;border-radius:11px;padding:13px 16px;background:#fff;min-width:150px"><div style="font-size:11px;color:#8a93a6">${lbl}</div><div style="font-size:22px;font-weight:800;margin-top:3px;font-variant-numeric:tabular-nums;color:${color||'#1a2b4a'}">${val}</div></div>`;
+  const summary=`<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
+    ${tile('Outstanding (unpaid)',money(owed))}
+    ${tile('Invoices awaiting payment',String(outstanding.length))}
+    ${tile('Overdue (sent 7+ days)',money(overdueOwed),overdueOwed>0?'#b4632a':'#1a2b4a')}
+  </div>`;
+  if(!rows.length){ out.innerHTML=summary+`<div class="panel" style="padding:20px"><p class="muted" style="margin:0">No ${LED_FILTER==='all'?'':LED_FILTER+' '}invoices${(typeof GLOBAL_CLIENT!=='undefined'&&GLOBAL_CLIENT)?' for '+esc(GLOBAL_CLIENT):''}.</p></div>`; return; }
+  const pill=r=>{ if(r.status==='paid') return '<span style="font-size:11px;color:#fff;background:#2f8f5b;border-radius:20px;padding:2px 10px">Paid</span>';
+    if(r.status==='sent'){ const od=r.ageDays!=null&&r.ageDays>7; return `<span style="font-size:11px;color:${od?'#b4632a':'#2f8f5b'};background:${od?'#f7ede4':'#e8f5ee'};border:1px solid ${od?'#b4632a':'#2f8f5b'};border-radius:20px;padding:2px 10px">Sent${od?' - overdue':''}</span>`; }
+    return '<span style="font-size:11px;color:#c9a227;background:#fbf4e0;border:1px solid #c9a227;border-radius:20px;padding:2px 10px">Approved</span>'; };
+  const body=rows.map(r=>`<tr style="cursor:pointer" onclick="ledOpen('${encodeURIComponent(r.client)}','${r.from}','${r.to}')" title="Open this invoice">
+    <td style="padding:11px 10px;border-bottom:1px solid #eef1f6;font-weight:600;color:#1a2b4a">${esc(r.client)}</td>
+    <td style="padding:11px 10px;border-bottom:1px solid #eef1f6;color:#6b7488;white-space:nowrap">${esc(usDate(r.from))} to ${esc(usDate(r.to))}</td>
+    <td style="padding:11px 10px;border-bottom:1px solid #eef1f6;text-align:right;font-variant-numeric:tabular-nums;font-weight:700;color:#1a2b4a">${money(r.amount)}</td>
+    <td style="padding:11px 10px;border-bottom:1px solid #eef1f6">${pill(r)}</td>
+    <td style="padding:11px 10px;border-bottom:1px solid #eef1f6;color:#6b7488;white-space:nowrap">${r.sentAt?esc(usDate(r.sentAt)):'&ndash;'}</td>
+    <td style="padding:11px 10px;border-bottom:1px solid #eef1f6;text-align:right;font-variant-numeric:tabular-nums;color:${r.ageDays!=null&&r.ageDays>7?'#b4632a':'#6b7488'}">${r.ageDays!=null?r.ageDays+'d':'&ndash;'}</td></tr>`).join('');
+  out.innerHTML=summary+`<div class="panel" style="padding:0;overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">
+    <thead><tr style="text-align:left;color:#8a93a6;font-size:11px;text-transform:uppercase;letter-spacing:.03em">
+      <th style="padding:10px 10px">Client</th><th style="padding:10px 10px">Period</th><th style="padding:10px 10px;text-align:right">Amount</th><th style="padding:10px 10px">Status</th><th style="padding:10px 10px">Sent</th><th style="padding:10px 10px;text-align:right">Age</th></tr></thead>
+    <tbody>${body}</tbody></table></div>`;
+}
+// open a ledger row on the Founder invoices tab, loaded to that client+period
+function ledOpen(encClient,from,to){
+  const client=decodeURIComponent(encClient);
+  invTab('gen');
+  const ic=document.getElementById('invClient'), f=document.getElementById('invFrom'), t=document.getElementById('invTo');
+  if(ic) ic.value=client; if(f) f.value=from; if(t) t.value=to;
+  invPreview();
+  const doc=document.getElementById('invoiceOut'); if(doc&&doc.scrollIntoView) try{ doc.scrollIntoView({behavior:'smooth',block:'start'}); }catch(_){}
 }
 function renderInvoicing(){
-  if(!invAllowed()){ const s=document.getElementById('tab-invoicing'); if(s) s.querySelectorAll('#invGen,#invComm,#invForecast,#invVerify,#invSettings').forEach(e=>e.hidden=true); return; }
+  if(!invAllowed()){ const s=document.getElementById('tab-invoicing'); if(s) s.querySelectorAll('#invGen,#invLedger,#invComm,#invForecast,#invVerify,#invSettings').forEach(e=>e.hidden=true); return; }
   fillLists();
   const f=document.getElementById('invFrom'), t=document.getElementById('invTo');
   const bw=billingWeek();
@@ -6022,6 +6103,7 @@ function renderInvoicing(){
   renderInvStatsBoxes();
   invLoadCfg();
   invPreview();
+  const led=document.getElementById('invLedger'); if(led && !led.hidden) renderInvLedger(); // keep the ledger in sync when the company picker changes
 }
 function isoLocal(d){ return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10); }
 // TSA billing week is Monday -> Sunday; invoices go out Wednesday for the LAST COMPLETED week.
@@ -6273,7 +6355,9 @@ function retainerDueInPeriod(cfg, from, to){
   while(d<=end){ const dim=new Date(d.getFullYear(),d.getMonth()+1,0).getDate(); if(d.getDate()===Math.min(day,dim)) return {amt, date:isoLocal(new Date(d))}; d.setDate(d.getDate()+1); }
   return null;
 }
-function genFounderInvoice(client,from,to){
+// Pure, side-effect-free founder-invoice math. Returns every intermediate the invoice HTML and the
+// outstanding-invoices ledger both need, so the two never drift. Does NOT touch LAST_INVOICE or the DOM.
+function founderInvoiceCalc(client,from,to){
   const ck=String(client).trim().toLowerCase();
   const inPeriod=d=>{ d=String(d||'').slice(0,10); return d&&d>=from&&d<=to; };
   // deals closed for this client in the period (the "Deals Included" table + revenue)
@@ -6314,6 +6398,11 @@ function genFounderInvoice(client,from,to){
     noCfg=!pct;
   } else { noCfg=true; }
   const retInfo=retainerDueInPeriod(cfg,from,to), retainerDue=retInfo?retInfo.amt:0, grandTotal=amountDue+retainerDue; // recurring monthly retention payment
+  return {ck,inPeriod,uniqDeals,activity,s,callsOffered,callsSet,newOut,fuOut,cashCollected,totalRevenue,recPays,con,cfg,ov,overridden,billBase,feCash,beCash,anyLineOv,billedTotal,amountDue,rateDesc,noCfg,retInfo,retainerDue,grandTotal};
+}
+function genFounderInvoice(client,from,to){
+  const C=founderInvoiceCalc(client,from,to);
+  const {uniqDeals,s,callsOffered,callsSet,newOut,fuOut,cashCollected,totalRevenue,recPays,ov,overridden,anyLineOv,amountDue,rateDesc,noCfg,retainerDue,grandTotal}=C;
   const canOv=(typeof invAllowed==='function' && invAllowed()); // Super Admin can edit the billed amount inline on the line
   const payRef='TSA - '+client; // dynamic per-company wire reference so an incoming wire is matchable to this client (T-607)
   // Net terms + late fee (T-608): issue today, due after netDays, late fee after the grace window. Shown on the invoice.
