@@ -902,6 +902,7 @@
             <div class="seg" id="ledSeg" style="flex-wrap:wrap">
               <button data-led="outstanding" class="on" onclick="setLedFilter('outstanding')">Outstanding</button>
               <button data-led="overdue" onclick="setLedFilter('overdue')">Overdue</button>
+              <button data-led="draft" onclick="setLedFilter('draft')">Draft (not sent)</button>
               <button data-led="all" onclick="setLedFilter('all')">All</button>
               <button data-led="paid" onclick="setLedFilter('paid')">Paid</button>
             </div>
@@ -6046,36 +6047,64 @@ function invLedgerRows(){
   rows.sort((a,b)=>String(b.to).localeCompare(String(a.to))); // newest period first
   return rows;
 }
+// Draft = a billing week with billable activity that has NOT been approved/sent/paid yet (still needs to go out).
+// Scans the last 8 completed Mon-Sun weeks per client; excludes any week already covered by an acted-on invoice (overlap-safe).
+function invDraftRows(){
+  const gc=(typeof GLOBAL_CLIENT!=='undefined'&&GLOBAL_CLIENT)?nrmName(GLOBAL_CLIENT):'';
+  let clients=[]; try{ clients=clientNames(); }catch(_){ clients=[]; }
+  clients=clients.filter(c=>!gc||nrmName(c)===gc);
+  const acted=Object.values(conInvoiceLatest()).filter(r=>(r.status||'draft')!=='draft'); // approved/sent/paid
+  const covered=(client,f,t)=>acted.some(r=>nrmName(r.client)===nrmName(client) && String(r.from||'').slice(0,10)<=t && String(r.to||'').slice(0,10)>=f); // overlap
+  const weeks=[]; let w=billingWeek(); // last completed Mon-Sun week
+  for(let i=0;i<8;i++){ weeks.push({from:w.from,to:w.to}); const f=new Date(w.from+'T00:00:00'), t=new Date(w.to+'T00:00:00'); f.setDate(f.getDate()-7); t.setDate(t.getDate()-7); w={from:isoLocal(f),to:isoLocal(t)}; }
+  const rows=[];
+  clients.forEach(client=>weeks.forEach(wk=>{
+    if(covered(client,wk.from,wk.to)) return;
+    let g=0; try{ g=founderInvoiceCalc(client,wk.from,wk.to).grandTotal; }catch(_){ g=0; }
+    if(g>0) rows.push({client,from:wk.from,to:wk.to,status:'draft',amount:g,sentAt:'',ageDays:null});
+  }));
+  rows.sort((a,b)=>String(b.to).localeCompare(String(a.to)));
+  return rows;
+}
 function renderInvLedger(){
   const out=document.getElementById('invLedgerOut'); if(!out) return;
-  let rows=invLedgerRows();
-  if(LED_FILTER==='outstanding') rows=rows.filter(r=>r.status==='approved'||r.status==='sent');
-  else if(LED_FILTER==='paid') rows=rows.filter(r=>r.status==='paid');
-  else if(LED_FILTER==='overdue') rows=rows.filter(r=>r.status==='sent' && r.ageDays!=null && r.ageDays>7);
+  const drafts=invDraftRows();
+  let rows;
+  if(LED_FILTER==='draft') rows=drafts;
+  else { rows=invLedgerRows();
+    if(LED_FILTER==='outstanding') rows=rows.filter(r=>r.status==='approved'||r.status==='sent');
+    else if(LED_FILTER==='paid') rows=rows.filter(r=>r.status==='paid');
+    else if(LED_FILTER==='overdue') rows=rows.filter(r=>r.status==='sent' && r.ageDays!=null && r.ageDays>7);
+  }
   const outstanding=invLedgerRows().filter(r=>r.status==='approved'||r.status==='sent');
   const owed=outstanding.reduce((s,r)=>s+(r.amount||0),0);
   const overdue=outstanding.filter(r=>r.status==='sent'&&r.ageDays!=null&&r.ageDays>7);
   const overdueOwed=overdue.reduce((s,r)=>s+(r.amount||0),0);
-  const tile=(lbl,val,color)=>`<div style="border:1px solid #e6e9ef;border-radius:11px;padding:13px 16px;background:#fff;min-width:150px"><div style="font-size:11px;color:#8a93a6">${lbl}</div><div style="font-size:22px;font-weight:800;margin-top:3px;font-variant-numeric:tabular-nums;color:${color||'#1a2b4a'}">${val}</div></div>`;
-  const summary=`<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
-    ${tile('Outstanding (unpaid)',money(owed))}
+  const draftTotal=drafts.reduce((s,r)=>s+(r.amount||0),0);
+  const tile=(lbl,val,color)=>`<div class="kpi" style="min-width:150px"><div class="lbl">${lbl}</div><div class="val small" style="${color?'color:'+color:''}">${val}</div></div>`;
+  const summary=`<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:18px">
+    ${tile('Outstanding (unpaid)',money(owed),owed>0?'var(--gold-2)':'var(--ink)')}
     ${tile('Invoices awaiting payment',String(outstanding.length))}
-    ${tile('Overdue (sent 7+ days)',money(overdueOwed),overdueOwed>0?'#b4632a':'#1a2b4a')}
+    ${tile('Overdue (sent 7+ days)',money(overdueOwed),overdueOwed>0?'var(--bad)':'var(--ink)')}
+    ${tile('Draft (not sent yet)',money(draftTotal)+' &middot; '+drafts.length,drafts.length?'var(--warn)':'var(--ink)')}
   </div>`;
   if(!rows.length){ out.innerHTML=summary+`<div class="panel" style="padding:20px"><p class="muted" style="margin:0">No ${LED_FILTER==='all'?'':LED_FILTER+' '}invoices${(typeof GLOBAL_CLIENT!=='undefined'&&GLOBAL_CLIENT)?' for '+esc(GLOBAL_CLIENT):''}.</p></div>`; return; }
-  const pill=r=>{ if(r.status==='paid') return '<span style="font-size:11px;color:#fff;background:#2f8f5b;border-radius:20px;padding:2px 10px">Paid</span>';
-    if(r.status==='sent'){ const od=r.ageDays!=null&&r.ageDays>7; return `<span style="font-size:11px;color:${od?'#b4632a':'#2f8f5b'};background:${od?'#f7ede4':'#e8f5ee'};border:1px solid ${od?'#b4632a':'#2f8f5b'};border-radius:20px;padding:2px 10px">Sent${od?' - overdue':''}</span>`; }
-    return '<span style="font-size:11px;color:#c9a227;background:#fbf4e0;border:1px solid #c9a227;border-radius:20px;padding:2px 10px">Approved</span>'; };
-  const body=rows.map(r=>`<tr style="cursor:pointer" onclick="ledOpen('${encodeURIComponent(r.client)}','${r.from}','${r.to}')" title="Open this invoice">
-    <td style="padding:11px 10px;border-bottom:1px solid #eef1f6;font-weight:600;color:#1a2b4a">${esc(r.client)}</td>
-    <td style="padding:11px 10px;border-bottom:1px solid #eef1f6;color:#6b7488;white-space:nowrap">${esc(usDate(r.from))} to ${esc(usDate(r.to))}</td>
-    <td style="padding:11px 10px;border-bottom:1px solid #eef1f6;text-align:right;font-variant-numeric:tabular-nums;font-weight:700;color:#1a2b4a">${money(r.amount)}</td>
-    <td style="padding:11px 10px;border-bottom:1px solid #eef1f6">${pill(r)}</td>
-    <td style="padding:11px 10px;border-bottom:1px solid #eef1f6;color:#6b7488;white-space:nowrap">${r.sentAt?esc(usDate(r.sentAt)):'&ndash;'}</td>
-    <td style="padding:11px 10px;border-bottom:1px solid #eef1f6;text-align:right;font-variant-numeric:tabular-nums;color:${r.ageDays!=null&&r.ageDays>7?'#b4632a':'#6b7488'}">${r.ageDays!=null?r.ageDays+'d':'&ndash;'}</td></tr>`).join('');
-  out.innerHTML=summary+`<div class="panel" style="padding:0;overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">
-    <thead><tr style="text-align:left;color:#8a93a6;font-size:11px;text-transform:uppercase;letter-spacing:.03em">
-      <th style="padding:10px 10px">Client</th><th style="padding:10px 10px">Period</th><th style="padding:10px 10px;text-align:right">Amount</th><th style="padding:10px 10px">Status</th><th style="padding:10px 10px">Sent</th><th style="padding:10px 10px;text-align:right">Age</th></tr></thead>
+  const pillStyle='font-size:11px;border-radius:20px;padding:3px 11px;font-weight:600;white-space:nowrap';
+  const pill=r=>{ if(r.status==='paid') return `<span style="${pillStyle};color:var(--good);background:var(--good-soft);border:1px solid var(--good)">Paid</span>`;
+    if(r.status==='sent'){ const od=r.ageDays!=null&&r.ageDays>7; return od?`<span style="${pillStyle};color:var(--bad);background:var(--bad-soft);border:1px solid var(--bad)">Sent &middot; overdue</span>`:`<span style="${pillStyle};color:var(--good);background:var(--good-soft);border:1px solid var(--good)">Sent</span>`; }
+    if(r.status==='draft') return `<span style="${pillStyle};color:var(--warn);background:var(--warn-soft);border:1px solid var(--warn)">Draft</span>`;
+    return `<span style="${pillStyle};color:var(--gold-2);background:var(--gold-soft);border:1px solid var(--gold)">Approved</span>`; };
+  const td='padding:12px 12px;border-bottom:1px solid var(--border)';
+  const body=rows.map(r=>`<tr class="ledrow" style="cursor:pointer" onclick="ledOpen('${encodeURIComponent(r.client)}','${r.from}','${r.to}')" title="Open this invoice">
+    <td style="${td};font-weight:600;color:var(--ink)">${esc(r.client)}</td>
+    <td style="${td};color:var(--muted);white-space:nowrap">${esc(usDate(r.from))} to ${esc(usDate(r.to))}</td>
+    <td style="${td};text-align:right;font-variant-numeric:tabular-nums;font-weight:700;color:var(--ink)">${money(r.amount)}</td>
+    <td style="${td}">${pill(r)}</td>
+    <td style="${td};color:var(--muted);white-space:nowrap">${r.sentAt?esc(usDate(r.sentAt)):'&ndash;'}</td>
+    <td style="${td};text-align:right;font-variant-numeric:tabular-nums;color:${r.ageDays!=null&&r.ageDays>7?'var(--bad)':'var(--muted)'}">${r.ageDays!=null?r.ageDays+'d':'&ndash;'}</td></tr>`).join('');
+  out.innerHTML=summary+`<div class="panel" style="padding:0;overflow-x:auto"><style>#invLedgerOut .ledrow:hover td{background:rgba(201,162,74,.07)}</style><table style="width:100%;border-collapse:collapse;font-size:13px">
+    <thead><tr style="text-align:left;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.04em">
+      <th style="padding:11px 12px">Client</th><th style="padding:11px 12px">Period</th><th style="padding:11px 12px;text-align:right">Amount</th><th style="padding:11px 12px">Status</th><th style="padding:11px 12px">Sent</th><th style="padding:11px 12px;text-align:right">Age</th></tr></thead>
     <tbody>${body}</tbody></table></div>`;
 }
 // open a ledger row on the Founder invoices tab, loaded to that client+period
