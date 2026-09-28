@@ -262,7 +262,7 @@ export default async function handler(req, res) {
       const cfgs = await allByType('integration'); const cur = cfgs[key];
       if (!cur) return res.status(200).json({ ok: false, error: 'Save/connect a channel first' });
       if (!mayTouch(cur)) return res.status(200).json({ ok: false, error: 'not your client' });
-      const FIELD_MAP = { slack: 'slackWebhook', setter: 'eodSetterSlack', closer: 'eodCloserSlack', mgr: 'eodMgrSlack', deal: 'dealSlack', onboarding: 'onboardingSlack', postcall: 'postcallSlack', postcallSetter: 'postcallSetterSlack', postcallCloser: 'postcallCloserSlack', sod: 'sodSlack', sodSetter: 'sodSetterSlack', sodCloser: 'sodCloserSlack', dailyReport: 'dailyReportSlack', leaderboard: 'leaderboardSlack', invoicing: 'invoicingSlack' };
+      const FIELD_MAP = { slack: 'slackWebhook', setter: 'eodSetterSlack', closer: 'eodCloserSlack', mgr: 'eodMgrSlack', deal: 'dealSlack', onboarding: 'onboardingSlack', postcall: 'postcallSlack', postcallSetter: 'postcallSetterSlack', postcallCloser: 'postcallCloserSlack', sod: 'sodSlack', sodSetter: 'sodSetterSlack', sodCloser: 'sodCloserSlack', dailyReport: 'dailyReportSlack', leaderboard: 'leaderboardSlack', invoicing: 'invoicingSlack', bookedCall: 'bookedCallSlack', newLead: 'newLeadSlack' };
       let dest = cur[FIELD_MAP[String(b.field || 'slack')] || 'slackWebhook'] || '';
       if (dest === '__default__') dest = cur.botChanId || ''; // "use default channel"
       if (!dest) return res.status(200).json({ ok: false, error: 'Nothing connected on this channel yet' });
@@ -297,6 +297,12 @@ export default async function handler(req, res) {
       } else if (field === 'mgr') {
         text = `EOD from Sam · ${client}`;
         bodyTxt = `📝 *EOD · Sam* (Manager) · ${client}\nSetters 4 · Closers 3 · 22 calls · ${money(12000)} cash`;
+      } else if (field === 'bookedCall') {
+        text = `New booked call · Sample Prospect · ${client}`;
+        bodyTxt = `📅 *New booked call*\n• Prospect: Sample Prospect\n• Phone: +1 512 555 0123\n• Email: prospect@example.com\n• Setter: Jordan\n• Closer: Alex\n• When: ${new Date().toISOString().slice(0, 10)} 2:00 PM`;
+      } else if (field === 'newLead') {
+        text = `New lead · Sample Lead · ${client}`;
+        bodyTxt = `🚨 *New lead* - call now (speed to lead!)\n• Name: Sample Lead\n• Phone: +1 512 555 0123\n• Email: lead@example.com\n• Source: Instagram`;
       } else {
         text = `Sales HQ test · ${client}`;
         bodyTxt = `🔔 *Fallback channel* · ${client}\nAny alert with no specific channel set lands here.`;
