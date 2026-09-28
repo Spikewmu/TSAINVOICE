@@ -16,13 +16,27 @@
 // Booked call (webhook): https://<host>/api/ghl-lead?to=<slack>&kind=booked
 import { supa, slackPost } from './_lib.js';
 
-// load a client's integration config (bot token + per-feed channels), same key scheme as data.js integrationFor
+// normalize a client name for tolerant matching (ignore case, punctuation, and parentheticals like "(Ryan)")
+const nrm = s => String(s || '').toLowerCase().replace(/\(.*?\)/g, '').replace(/[^a-z0-9]/g, '');
+// load a client's integration config (bot token + per-feed channels), same key scheme as data.js integrationFor.
+// Exact key match first; then fall back to a normalized client-name match so the GHL URL's client= doesn't have to be pixel-exact.
 async function loadIntegration(client) {
   try {
     const r = await supa(`records?select=data&type=eq.integration&data->>key=eq.${encodeURIComponent('tsa:' + client)}&order=submitted_at.desc&limit=1`);
+    if (r && r.ok) { const rows = await r.json(); if (rows[0] && rows[0].data) return rows[0].data; }
+  } catch (e) { }
+  try {
+    const r = await supa(`records?select=data,submitted_at&type=eq.integration&order=submitted_at.desc`);
     if (!r || !r.ok) return null;
     const rows = await r.json();
-    return (rows[0] && rows[0].data) || null;
+    const want = nrm(client); if (!want) return null;
+    const seen = {};
+    for (const row of rows) { // rows are newest-first; take the first (latest) match per client
+      const d = row && row.data; if (!d) continue;
+      const name = d.client || String(d.key || '').replace(/^tsa:/, '');
+      if (nrm(name) === want && !seen[want]) return d;
+    }
+    return null;
   } catch (e) { return null; }
 }
 
