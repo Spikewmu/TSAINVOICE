@@ -6439,7 +6439,7 @@ function founderInvoiceCalc(client,from,to){
 }
 function genFounderInvoice(client,from,to){
   const C=founderInvoiceCalc(client,from,to);
-  const {uniqDeals,s,callsOffered,callsSet,newOut,fuOut,cashCollected,totalRevenue,recPays,ov,overridden,anyLineOv,amountDue,rateDesc,noCfg,retainerDue,grandTotal}=C;
+  const {uniqDeals,s,callsOffered,callsSet,newOut,fuOut,cashCollected,totalRevenue,recPays,ov,overridden,billBase,anyLineOv,billedTotal,amountDue,rateDesc,noCfg,retInfo,retainerDue,grandTotal}=C;
   const canOv=(typeof invAllowed==='function' && invAllowed()); // Super Admin can edit the billed amount inline on the line
   const payRef='TSA - '+client; // dynamic per-company wire reference so an incoming wire is matchable to this client (T-607)
   // Net terms + late fee (T-608): issue today, due after netDays, late fee after the grace window. Shown on the invoice.
