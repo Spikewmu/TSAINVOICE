@@ -62,7 +62,7 @@ const pubCfg = d => ({ key: d.key, ws: d.ws, client: d.client || '', eodToSlack:
   // the connected Slack channel name per source (captured at OAuth connect), for display
   chan: { slack: d.slackWebhookChan||'', setter: d.eodSetterSlackChan||'', closer: d.eodCloserSlackChan||'', mgr: d.eodMgrSlackChan||'', deal: d.dealSlackChan||'', onboarding: d.onboardingSlackChan||'', postcall: d.postcallSlackChan||'', postcallSetter: d.postcallSetterSlackChan||'', postcallCloser: d.postcallCloserSlackChan||'', sod: d.sodSlackChan||'', sodSetter: d.sodSetterSlackChan||'', sodCloser: d.sodCloserSlackChan||'', dailyReport: d.dailyReportSlackChan||'', leaderboard: d.leaderboardSlackChan||'', invoicing: d.invoicingSlackChan||'' },
   botConnected: !!d.botToken, botChanId: d.botChanId || '', botChanName: d.botChanName || '', botTeamName: d.botTeamName || '', // single-bot notifications: token is write-only, channel id/name/team are safe to show
-  wavv: !!d.wavvApiKey, wavvEnabled: !!d.wavvEnabled, // WAVV dialer: API key is write-only, never returned
+  wavv: !!d.wavvApiKey, wavvEnabled: !!d.wavvEnabled, wavvUserMap: d.wavvUserMap || {}, // WAVV dialer: API key write-only; user-id->rep map is safe to show
   ghl: !!d.ghlApiKey, ghlLocation: d.ghlLocationId || '', ghlEnabled: !!d.ghlEnabled }); // ghlApiKey itself is write-only, never returned
 const pubHook = (d, req) => ({ id: d.id, key: d.key, ws: d.ws, client: d.client || '', name: d.name || 'Webhook', processor: d.processor || 'generic', enabled: d.enabled !== false, template: d.template || DEFAULT_TEMPLATE, hasSlack: !!d.slackWebhook, slack: d.slackWebhook || '', token: d.token, inbound: baseUrl(req) + '/api/hook?t=' + d.token });
 const chanDest = u => (/discord(app)?\.com\/api\/webhooks\//i.test(String(u || '')) && !/\/slack\/?$/i.test(String(u))) ? String(u).replace(/\/+$/, '') + '/slack' : u; // Discord accepts Slack payloads at /slack
@@ -210,6 +210,7 @@ export default async function handler(req, res) {
         ghlEnabled: b.ghlEnabled != null ? !!b.ghlEnabled : !!(cur && cur.ghlEnabled),
         wavvApiKey: keepOr(b.wavvApiKey, cur && cur.wavvApiKey),
         wavvEnabled: b.wavvEnabled != null ? !!b.wavvEnabled : !!(cur && cur.wavvEnabled),
+        wavvUserMap: (b.wavvUserMap && typeof b.wavvUserMap === 'object') ? b.wavvUserMap : ((cur && cur.wavvUserMap) || {}),
         eodToSlack: b.eodToSlack != null ? !!b.eodToSlack : !!(cur && cur.eodToSlack), updatedAt: now };
       // preserve the connected Slack CHANNEL NAMES (captured at OAuth connect, not part of this save form) - otherwise Save routing wipes them
       ['slackWebhookChan', 'eodSetterSlackChan', 'eodCloserSlackChan', 'eodMgrSlackChan', 'dealSlackChan', 'onboardingSlackChan', 'postcallSlackChan', 'postcallSetterSlackChan', 'postcallCloserSlackChan', 'sodSlackChan', 'sodSetterSlackChan', 'sodCloserSlackChan', 'dailyReportSlackChan', 'leaderboardSlackChan', 'invoicingSlackChan', 'invoicingSlackBot', 'invoicingSlackChanId'].forEach(k => { if (cur && cur[k] != null) rec[k] = cur[k]; });
@@ -349,7 +350,9 @@ export default async function handler(req, res) {
         }
         let dials = 0, connects = 0, talk = 0; const per = {};
         out.forEach(c => { dials++; const conn = !!c.answeredAt; if (conn) connects++; talk += (Number(c.seconds) || 0); const u = c.userId || '?'; const p = per[u] || (per[u] = { userId: u, dials: 0, connects: 0, seconds: 0 }); p.dials++; if (conn) p.connects++; p.seconds += (Number(c.seconds) || 0); });
-        return res.status(200).json({ ok: true, dials, connects, talkSeconds: talk, perUser: Object.values(per).sort((a, b) => b.dials - a.dials) });
+        const map = cur.wavvUserMap || {};
+        const perUser = Object.values(per).map(p => ({ ...p, name: map[p.userId] || '' })).sort((a, b) => b.dials - a.dials);
+        return res.status(200).json({ ok: true, dials, connects, talkSeconds: talk, perUser });
       } catch (e) { return res.status(200).json({ ok: false, error: String((e && e.message) || e) }); }
     }
     if (action === 'log') {

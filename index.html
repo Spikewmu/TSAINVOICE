@@ -7180,7 +7180,7 @@ async function renderWavvDay(client, day){
   if(!(res&&res.ok)){ box.innerHTML=''; return; } // wavv-off / not configured -> show nothing
   const hms=s=>{ s=Math.round(s||0); const h=Math.floor(s/3600), m=Math.floor((s%3600)/60); return h?(h+'h '+m+'m'):(m+'m '+(s%60)+'s'); };
   const connPct=res.dials?Math.round(res.connects/res.dials*100):0;
-  const rows=(res.perUser||[]).map(u=>`<tr><td>${esc(u.userId)}</td><td class="num">${u.dials}</td><td class="num">${u.connects}</td><td class="num">${hms(u.seconds)}</td></tr>`).join('');
+  const rows=(res.perUser||[]).map(u=>`<tr><td>${u.name?('<b>'+esc(u.name)+'</b>'):('<span class="muted">'+esc(u.userId)+'</span>')}</td><td class="num">${u.dials}</td><td class="num">${u.connects}</td><td class="num">${hms(u.seconds)}</td></tr>`).join('');
   box.innerHTML=`<div class="panel" style="border:1px solid var(--gold-soft);margin:0"><div style="padding:12px 14px">
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px"><b style="color:var(--gold-2)">WAVV dialer &middot; actual for ${esc(usDate(day))}</b><span class="muted" style="font-size:11.5px">pulled live from the dialer, alongside the self-reported EOD below</span></div>
     <div class="cards" style="grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px">
@@ -7189,7 +7189,7 @@ async function renderWavvDay(client, day){
       <div class="kpi"><div class="lbl">Connect %</div><div class="val small">${connPct}%</div></div>
       <div class="kpi"><div class="lbl">Talk time</div><div class="val small">${hms(res.talkSeconds)}</div></div>
     </div>
-    ${rows?`<div class="tablewrap" style="margin-top:10px"><table style="font-size:12px"><thead><tr><th>Dialer user (WAVV id)</th><th class="num">Dials</th><th class="num">Connects</th><th class="num">Talk</th></tr></thead><tbody>${rows}</tbody></table></div><div class="fieldhelp" style="margin-top:4px">Per-agent is keyed by the dialer's user id - want real names? we can map each WAVV user id to a rep.</div>`:''}
+    ${rows?`<div class="tablewrap" style="margin-top:10px"><table style="font-size:12px"><thead><tr><th>Rep</th><th class="num">Dials</th><th class="num">Connects</th><th class="num">Talk</th></tr></thead><tbody>${rows}</tbody></table></div><div class="fieldhelp" style="margin-top:4px">Names come from the WAVV user-id map (Admin &rsaquo; Integrations &rsaquo; WAVV Dialer). Unmapped ids show grey.</div>`:''}
   </div></div>`;
 }
 function renderDayReports(){
@@ -10533,7 +10533,29 @@ function renderWavvConfig(){
         <span style="display:flex;gap:6px"><input id="wavvKey" type="password" autocomplete="off" placeholder="${has?'•••• (leave blank to keep)':'paste the WAVV API key'}" style="flex:1"><button type="button" class="btn sm ghost" onclick="integReveal('wavvKey',this)">Show</button></span></div>
     </div>
     <label style="display:flex;gap:8px;align-items:center;font-weight:500;margin:12px 0 8px"><input type="checkbox" id="wavvOn" ${c.wavvEnabled?'checked':''}> This client uses the WAVV dialer</label>
-    <div class="row-actions" style="margin:2px 0 12px"><button class="btn gold sm" onclick="integSaveWavv()">Save WAVV</button> <button class="btn ghost sm" onclick="integTestWavv()">Test connection</button></div>`;
+    <div class="row-actions" style="margin:2px 0 12px"><button class="btn gold sm" onclick="integSaveWavv()">Save WAVV</button> <button class="btn ghost sm" onclick="integTestWavv()">Test connection</button></div>
+    <div style="border-top:1px solid var(--border);margin-top:8px;padding-top:12px">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><b style="font-size:13px">Map dialer users to reps</b><button type="button" class="btn ghost sm" onclick="integWavvLoadUsers()">Load dialer users</button></div>
+      <p class="fieldhelp" style="margin:6px 0 8px">WAVV identifies each agent by a user id. Load the recent ids and assign each to a rep so the SOD/EOD reports show real names.</p>
+      <div id="wavvMap"></div>
+    </div>`;
+}
+function wavvRepNames(){ const s=new Set(); (USERS_CACHE||[]).forEach(u=>{ if(u&&!u.archived&&(u.name||u.username)) s.add(u.name||u.username); }); return [...s].sort((a,b)=>String(a).localeCompare(b)); }
+async function integWavvLoadUsers(){
+  const t=integTarget(); if(!t) return; const box=document.getElementById('wavvMap'); if(box) box.innerHTML='<p class="muted" style="font-size:12px">Loading dialer users (last 30 days)…</p>';
+  const to=todayLocal(), from=isoOffset(todayLocal(),-30);
+  const res=await integApi('wavvStats',{key:t.key, ws:t.ws, from, to});
+  if(!(res&&res.ok)){ if(box) box.innerHTML='<p class="muted" style="font-size:12px">'+((res&&res.error==='wavv-off')?'Save + enable the WAVV key first, then load.':esc((res&&res.error)||'Could not load'))+'</p>'; return; }
+  const map=(INTEG_CFGS[t.key]||{}).wavvUserMap||{}, reps=wavvRepNames();
+  const rows=(res.perUser||[]).map(u=>{ const curName=map[u.userId]||''; const opts='<option value="">- unmapped -</option>'+reps.map(n=>`<option${n===curName?' selected':''}>${esc(n)}</option>`).join(''); return `<div style="display:flex;gap:10px;align-items:center;margin-bottom:6px;flex-wrap:wrap"><span class="muted" style="font-size:11px;min-width:190px;font-family:ui-monospace,monospace">${esc(u.userId)}</span><span style="font-size:11px;color:var(--muted);min-width:60px">${u.dials} dials</span><select class="wavvMapSel" data-uid="${esc(u.userId)}" style="min-width:200px">${opts}</select></div>`; }).join('');
+  if(box) box.innerHTML=(rows||'<p class="muted" style="font-size:12px">No dialer activity in the last 30 days.</p>')+(rows?'<div class="row-actions" style="margin-top:8px"><button class="btn gold sm" onclick="integWavvSaveMap()">Save names</button></div>':'');
+}
+async function integWavvSaveMap(){
+  const t=integTarget(); if(!t) return; const map={};
+  document.querySelectorAll('#wavvMap .wavvMapSel').forEach(s=>{ const uid=s.getAttribute('data-uid'), v=s.value; if(uid&&v) map[uid]=v; });
+  const res=await integApi('save',{key:t.key, ws:t.ws, client:t.client, wavvUserMap:map});
+  if(res&&res.ok){ INTEG_CFGS[t.key]=res.config; toast('Rep names saved - they now show on the SOD/EOD reports'); }
+  else toast((res&&res.error)||'Could not save',true);
 }
 async function integSaveWavv(){
   const t=integTarget(); if(!t) return; const key=((document.getElementById('wavvKey')||{}).value||'').trim();
