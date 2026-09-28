@@ -56,11 +56,12 @@ const keepOr = (val, prev) => (val === '') ? '' : ((val && val !== '__keep__') ?
 const pubCfg = d => ({ key: d.key, ws: d.ws, client: d.client || '', eodToSlack: !!d.eodToSlack,
   slack: d.slackWebhook || '', setter: d.eodSetterSlack || '', closer: d.eodCloserSlack || '', mgr: d.eodMgrSlack || '',
   deal: d.dealSlack || '', onboarding: d.onboardingSlack || '', postcall: d.postcallSlack || '', postcallSetter: d.postcallSetterSlack || '', postcallCloser: d.postcallCloserSlack || '', sod: d.sodSlack || '', sodSetter: d.sodSetterSlack || '', sodCloser: d.sodCloserSlack || '',
+  bookedCall: d.bookedCallSlack || '', newLead: d.newLeadSlack || '', // GHL-driven feeds (relayed via /api/ghl-lead)
   dailyReport: d.dailyReportSlack || '', dailyReportOn: !!d.dailyReportOn, dailyReportTime: d.dailyReportTime || '09:30',
   leaderboard: d.leaderboardSlack || '', leaderboardOn: !!d.leaderboardOn, leaderboardTime: d.leaderboardTime || '10:00',
   invoicing: d.invoicingSlack || '', invoicingPdf: !!(d.invoicingSlackBot && d.invoicingSlackChanId),
   // the connected Slack channel name per source (captured at OAuth connect), for display
-  chan: { slack: d.slackWebhookChan||'', setter: d.eodSetterSlackChan||'', closer: d.eodCloserSlackChan||'', mgr: d.eodMgrSlackChan||'', deal: d.dealSlackChan||'', onboarding: d.onboardingSlackChan||'', postcall: d.postcallSlackChan||'', postcallSetter: d.postcallSetterSlackChan||'', postcallCloser: d.postcallCloserSlackChan||'', sod: d.sodSlackChan||'', sodSetter: d.sodSetterSlackChan||'', sodCloser: d.sodCloserSlackChan||'', dailyReport: d.dailyReportSlackChan||'', leaderboard: d.leaderboardSlackChan||'', invoicing: d.invoicingSlackChan||'' },
+  chan: { slack: d.slackWebhookChan||'', setter: d.eodSetterSlackChan||'', closer: d.eodCloserSlackChan||'', mgr: d.eodMgrSlackChan||'', deal: d.dealSlackChan||'', onboarding: d.onboardingSlackChan||'', postcall: d.postcallSlackChan||'', postcallSetter: d.postcallSetterSlackChan||'', postcallCloser: d.postcallCloserSlackChan||'', sod: d.sodSlackChan||'', sodSetter: d.sodSetterSlackChan||'', sodCloser: d.sodCloserSlackChan||'', dailyReport: d.dailyReportSlackChan||'', leaderboard: d.leaderboardSlackChan||'', invoicing: d.invoicingSlackChan||'', bookedCall: d.bookedCallSlackChan||'', newLead: d.newLeadSlackChan||'' },
   botConnected: !!d.botToken, botChanId: d.botChanId || '', botChanName: d.botChanName || '', botTeamName: d.botTeamName || '', // single-bot notifications: token is write-only, channel id/name/team are safe to show
   wavv: !!d.wavvApiKey, wavvEnabled: !!d.wavvEnabled, wavvUserMap: d.wavvUserMap || {}, // WAVV dialer: API key write-only; user-id->rep map is safe to show
   ghl: !!d.ghlApiKey, ghlLocation: d.ghlLocationId || '', ghlEnabled: !!d.ghlEnabled }); // ghlApiKey itself is write-only, never returned
@@ -201,6 +202,8 @@ export default async function handler(req, res) {
         leaderboardOn: b.leaderboardOn != null ? !!b.leaderboardOn : !!(cur && cur.leaderboardOn),
         leaderboardTime: keepOr(b.leaderboardTime, cur && cur.leaderboardTime) || '10:00',
         invoicingSlack: keepOr(b.invoicingSlack, cur && cur.invoicingSlack),
+        bookedCallSlack: keepOr(b.bookedCallSlack, cur && cur.bookedCallSlack),
+        newLeadSlack: keepOr(b.newLeadSlack, cur && cur.newLeadSlack),
         botToken: keepOr(b.botToken, cur && cur.botToken),
         botTeamName: keepOr(b.botTeamName, cur && cur.botTeamName),
         botChanId: keepOr(b.botChanId, cur && cur.botChanId),
@@ -213,7 +216,7 @@ export default async function handler(req, res) {
         wavvUserMap: (b.wavvUserMap && typeof b.wavvUserMap === 'object') ? b.wavvUserMap : ((cur && cur.wavvUserMap) || {}),
         eodToSlack: b.eodToSlack != null ? !!b.eodToSlack : !!(cur && cur.eodToSlack), updatedAt: now };
       // preserve the connected Slack CHANNEL NAMES (captured at OAuth connect, not part of this save form) - otherwise Save routing wipes them
-      ['slackWebhookChan', 'eodSetterSlackChan', 'eodCloserSlackChan', 'eodMgrSlackChan', 'dealSlackChan', 'onboardingSlackChan', 'postcallSlackChan', 'postcallSetterSlackChan', 'postcallCloserSlackChan', 'sodSlackChan', 'sodSetterSlackChan', 'sodCloserSlackChan', 'dailyReportSlackChan', 'leaderboardSlackChan', 'invoicingSlackChan', 'invoicingSlackBot', 'invoicingSlackChanId'].forEach(k => { if (cur && cur[k] != null) rec[k] = cur[k]; });
+      ['slackWebhookChan', 'eodSetterSlackChan', 'eodCloserSlackChan', 'eodMgrSlackChan', 'dealSlackChan', 'onboardingSlackChan', 'postcallSlackChan', 'postcallSetterSlackChan', 'postcallCloserSlackChan', 'sodSlackChan', 'sodSetterSlackChan', 'sodCloserSlackChan', 'dailyReportSlackChan', 'leaderboardSlackChan', 'invoicingSlackChan', 'bookedCallSlackChan', 'newLeadSlackChan', 'invoicingSlackBot', 'invoicingSlackChanId'].forEach(k => { if (cur && cur[k] != null) rec[k] = cur[k]; });
       const r = await supa('records', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ rid: rec.id, type: 'integration', submitted_at: now, data: rec }) });
       if (!r || !r.ok) return res.status(200).json({ ok: false, error: 'db write failed' });
       return res.status(200).json({ ok: true, config: pubCfg(rec) });

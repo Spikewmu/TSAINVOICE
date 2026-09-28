@@ -10980,7 +10980,17 @@ function renderEodRouting(){
     <div style="font-weight:500;margin:0 0 4px">Month-to-date leaderboard <span class="muted" style="font-weight:400;font-size:12px">- posts each day; pick a channel to turn it on, Off to stop</span></div>
     <div style="max-width:780px">${feedRow('Leaderboard channel','closers by cash, setters by sets','evLeaderboard',c.leaderboard,'leaderboard',`<input type="time" id="lbTime" step="1800" value="${esc(c.leaderboardTime||'10:00')}" onchange="integSaveEod(true)" title="Post time (Central)" style="flex:0 0 auto;width:140px;padding:8px 10px">`)}</div>
     <div style="border-top:1px solid var(--border);margin:16px 0 6px"></div>
-    <div style="max-width:780px">${feedRow('Invoicing (Send to billing)', c.botConnected?'the bot attaches the invoice PDF here':'connect the Slack bot to attach the PDF','evInvoicing',c.invoicing,'invoicing')}</div>`;
+    <div style="max-width:780px">${feedRow('Invoicing (Send to billing)', c.botConnected?'the bot attaches the invoice PDF here':'connect the Slack bot to attach the PDF','evInvoicing',c.invoicing,'invoicing')}</div>
+    <div style="border-top:1px solid var(--border);margin:16px 0 6px"></div>
+    <div style="font-weight:500;margin:0 0 4px">GHL notifications <span class="muted" style="font-weight:400;font-size:12px">- booked calls &amp; new leads, fired from a GHL workflow into the channel you pick</span></div>
+    <div style="max-width:780px">
+      ${feedRow('New booked call','prospect name, phone, email, setter (or auto booking), closer, day/time','evBookedCall',c.bookedCall,'bookedCall')}
+      ${feedRow('New lead','name, phone, email, source - speed-to-lead alert','evNewLead',c.newLead,'newLead')}
+    </div>
+    ${(function(){ const url=location.origin+'/api/ghl-lead?client='+encodeURIComponent(t.client||''); return `<div class="fieldhelp" style="margin:8px 0 0;max-width:780px">Pick a channel above, then in <b>${esc(t.client||'this client')}'s GHL</b> add a workflow (trigger: <b>Appointment - customer booked</b> for booked calls, or <b>Contact created</b> for leads) with a <b>Webhook</b> action:<br>
+      &bull; <b>Booked calls URL:</b> <code style="user-select:all">${esc(url)}&kind=booked</code><br>
+      &bull; <b>New leads URL:</b> <code style="user-select:all">${esc(url)}&kind=lead</code><br>
+      In the webhook's <b>Custom Data</b>, add <code>setter</code> and <code>closer</code> (map GHL merge fields) so their names show; if no setter is mapped it posts <b>Auto booking</b>. Needs the Slack bot connected above.</div>`; })()}`;
   const eod=document.getElementById('integEodRep');
   if(eod) eod.innerHTML=`
     <div style="font-weight:500;margin:0 0 10px">Submitted <b style="margin:0 3px">EOD reports</b> to Slack <span class="muted" style="font-weight:400;font-size:12px">- pick a channel below to turn it on, Off to stop</span></div>
@@ -11045,7 +11055,8 @@ async function integSaveEod(auto){
     eodSetterSlack:g('eodSetter'), eodCloserSlack:g('eodCloser'), eodMgrSlack:g('eodMgr'), slackWebhook:g('eodFallback'),
     dealSlack:g('evDeal'), onboardingSlack:g('evOnboarding'), postcallSetterSlack:g('evPostcallSetter'), postcallCloserSlack:g('evPostcallCloser'), sodSetterSlack:g('evSodSetter'), sodCloserSlack:g('evSodCloser'),
     dailyReportSlack:g('evDailyReport'), dailyReportOn:!!g('evDailyReport'), dailyReportTime:((document.getElementById('drTime')||{}).value||'09:30'),
-    leaderboardSlack:g('evLeaderboard'), leaderboardOn:!!g('evLeaderboard'), leaderboardTime:((document.getElementById('lbTime')||{}).value||'10:00'), invoicingSlack:g('evInvoicing')};
+    leaderboardSlack:g('evLeaderboard'), leaderboardOn:!!g('evLeaderboard'), leaderboardTime:((document.getElementById('lbTime')||{}).value||'10:00'), invoicingSlack:g('evInvoicing'),
+    bookedCallSlack:g('evBookedCall'), newLeadSlack:g('evNewLead')};
   const res=await integApi('save',body);
   if(res&&res.ok){ INTEG_CFGS[t.key]=res.config; renderIntegStatus(t,res.config); if(auto){ toast('Saved'); } else { toast('Routing saved'); renderEodRouting(); } }
   else toast((res&&res.error)||'Could not save',true);
