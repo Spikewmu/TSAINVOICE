@@ -4380,30 +4380,48 @@ function renderConTrends(){
 }
 /* ===== T-665: client payment health score (invoice sent -> paid timeliness) ===== */
 // reconstruct each invoice's first "issued" (sent/approved) and first "paid" timestamp from the append-only status log
+const INVOICE_DUE_DAYS=2; // an invoice is "due" this many days after it's sent; paid later = late
+function daysBetweenIso(a,b){ if(!a||!b) return null; const d1=new Date(a+'T00:00:00'), d2=new Date(b+'T00:00:00'); if(isNaN(d1)||isNaN(d2)) return null; return Math.round((d2-d1)/86400000); }
 function invTimeline(){
   const m={};
-  (RECORDS||[]).forEach(x=>{ if(x.type!=='invoiceapproval'||!x.client) return; const k=nrmName(x.client)+'|'+String(x.from||'').slice(0,10)+'|'+String(x.to||'').slice(0,10); (m[k]=m[k]||{client:x.client,recs:[]}).recs.push(x); });
-  return Object.values(m).map(g=>{ g.recs.sort((a,b)=>String(a.at||a.submittedAt||'').localeCompare(String(b.at||b.submittedAt||''))); let issuedAt='',paidAt='',status='';
-    g.recs.forEach(r=>{ const t=String(r.at||r.submittedAt||''); if((r.status==='sent'||r.status==='approved')&&!issuedAt) issuedAt=t; if(r.status==='paid'&&!paidAt) paidAt=t; status=r.status; });
-    return {client:g.client, issuedAt, paidAt, status}; });
+  (RECORDS||[]).forEach(x=>{ if(x.type!=='invoiceapproval'||!x.client) return; const from=String(x.from||'').slice(0,10), to=String(x.to||'').slice(0,10); const k=nrmName(x.client)+'|'+from+'|'+to; (m[k]=m[k]||{client:x.client,from,to,recs:[]}).recs.push(x); });
+  return Object.values(m).map(g=>{ g.recs.sort((a,b)=>String(a.at||a.submittedAt||'').localeCompare(String(b.at||b.submittedAt||''))); let issuedAt='',status='',paidRec=null;
+    g.recs.forEach(r=>{ const t=String(r.at||r.submittedAt||''); if((r.status==='sent'||r.status==='approved')&&!issuedAt) issuedAt=t; if(r.status==='paid') paidRec=r; status=r.status; });
+    const issuedDate=String(issuedAt).slice(0,10);
+    const paidDate = paidRec ? (paidRec.paidDate || String(paidRec.at||paidRec.submittedAt||'').slice(0,10)) : ''; // explicit editable paid date, else the timestamp it was marked
+    return {client:g.client, from:g.from, to:g.to, issuedAt, issuedDate, paidDate, status}; });
+}
+// graded 5-point health bands
+function healthBand(score){
+  if(score>=95) return {lbl:'Excellent',col:'var(--good)'};
+  if(score>=90) return {lbl:'Great',col:'var(--good)'};
+  if(score>=85) return {lbl:'Good',col:'var(--good)'};
+  if(score>=80) return {lbl:'Fair',col:'var(--warn)'};
+  if(score>=75) return {lbl:'Watch',col:'var(--warn)'};
+  if(score>=70) return {lbl:'Slipping',col:'var(--warn)'};
+  if(score>=60) return {lbl:'Poor',col:'var(--bad)'};
+  return {lbl:'At risk',col:'var(--bad)'};
 }
 function clientPaymentHealth(client){
-  const k=nrmName(client), tl=invTimeline().filter(t=>nrmName(t.client)===k && t.issuedAt);
-  let openOverdue=0; const scored=[];
+  const k=nrmName(client), tl=invTimeline().filter(t=>nrmName(t.client)===k && t.issuedDate);
+  const todayIso=todayLocal();
+  let openOverdue=0; const scored=[], invoices=[];
   tl.forEach(t=>{ let days=null;
-    if(t.status==='paid'&&t.paidAt) days=Math.max(0,(new Date(t.paidAt)-new Date(t.issuedAt))/86400000);
-    else if(t.status==='sent'){ days=Math.max(0,(Date.now()-new Date(t.issuedAt))/86400000); if(days>7) openOverdue++; }
+    if(t.status==='paid'&&t.paidDate) days=Math.max(0,daysBetweenIso(t.issuedDate,t.paidDate)||0);
+    else if(t.status==='sent'){ days=Math.max(0,daysBetweenIso(t.issuedDate,todayIso)||0); if(days>INVOICE_DUE_DAYS) openOverdue++; }
     else return; // drafts / approved-not-sent don't score
-    scored.push({issuedAt:t.issuedAt, days}); });
+    scored.push({issuedDate:t.issuedDate, days});
+    invoices.push({from:t.from,to:t.to,issuedDate:t.issuedDate,paidDate:t.status==='paid'?t.paidDate:'',status:t.status,days});
+  });
   const cnt=scored.length; if(!cnt) return null;
-  const late=scored.filter(x=>x.days>7).length, avg=scored.reduce((s,x)=>s+x.days,0)/cnt, lateRate=late/cnt;
-  let score=Math.round(Math.max(0,Math.min(100, 100 - Math.max(0,avg-3)*4 - lateRate*25 - openOverdue*8)));
-  const band= score>=85?{lbl:'Excellent',col:'var(--good)'} : score>=70?{lbl:'Good',col:'var(--good)'} : score>=50?{lbl:'Watch',col:'var(--warn)'} : {lbl:'At risk',col:'var(--bad)'};
-  // trend: is the client paying FASTER (improving) or SLOWER (slipping) than before? compare the latest invoice to the average of the earlier ones
-  scored.sort((a,b)=>String(a.issuedAt).localeCompare(String(b.issuedAt)));
+  const late=scored.filter(x=>x.days>INVOICE_DUE_DAYS).length, avg=scored.reduce((s,x)=>s+x.days,0)/cnt, lateRate=late/cnt;
+  let score=Math.round(Math.max(0,Math.min(100, 100 - Math.max(0,avg-INVOICE_DUE_DAYS)*5 - openOverdue*10))); // due in 2 days; each avg day late = -5, each open-overdue invoice = -10
+  const band=healthBand(score);
+  scored.sort((a,b)=>String(a.issuedDate).localeCompare(String(b.issuedDate)));
   let trend='none';
   if(cnt>=2){ const latest=scored[cnt-1].days, prior=scored.slice(0,-1), pavg=prior.reduce((s,x)=>s+x.days,0)/prior.length, diff=pavg-latest; trend=Math.abs(diff)<1?'flat':(diff>0?'up':'down'); } // up = fewer days now = healthier
-  return {score,avg,lateRate,openOverdue,cnt,band,trend};
+  invoices.sort((a,b)=>String(b.issuedDate).localeCompare(String(a.issuedDate)));
+  return {score,avg,lateRate,openOverdue,cnt,band,trend,invoices};
 }
 function healthTrendCell(t){
   if(t==='up') return '<span style="color:var(--good);font-weight:700" title="Paying faster than before - improving">&#9650; improving</span>';
@@ -4411,11 +4429,54 @@ function healthTrendCell(t){
   if(t==='flat') return '<span class="muted" title="Holding steady">&rarr; steady</span>';
   return '<span class="muted" title="Needs a second invoice to show a trend">&ndash;</span>';
 }
+function conHealthToggle(id){ const el=document.getElementById(id); if(el) el.hidden=!el.hidden; }
 function renderConHealth(){
   const host=document.getElementById('conHealth'); if(!host) return;
-  const rows=contractsEffective().filter(c=>c.active!==false).map(c=>{ const h=clientPaymentHealth(conMatchClient(c)||c.client); return h?{client:c.client,h}:null; }).filter(Boolean).sort((a,b)=>a.h.score-b.h.score);
+  const canEdit=!!(SESSION&&['admin','director','manager'].includes(SESSION.role));
+  const rows=contractsEffective().filter(c=>c.active!==false).map(c=>{ const app=conMatchClient(c)||c.client; const h=clientPaymentHealth(app); return h?{client:c.client,app,h}:null; }).filter(Boolean).sort((a,b)=>a.h.score-b.h.score);
   if(!rows.length){ host.innerHTML='<p class="muted" style="margin:0;padding:6px 2px">No sent invoices yet - health scores appear once invoices are marked sent and paid.</p>'; return; }
-  host.innerHTML=`<table style="width:100%;font-size:12px"><thead><tr><th style="text-align:left;padding:6px 8px">Client</th><th style="text-align:right;padding:6px 8px">Invoices</th><th style="text-align:right;padding:6px 8px">Avg days to pay</th><th style="text-align:right;padding:6px 8px">On-time</th><th style="text-align:right;padding:6px 8px">Open overdue</th><th style="text-align:right;padding:6px 8px" title="Whether they are paying faster (improving) or slower (slipping) than their earlier invoices">Trend</th><th style="text-align:right;padding:6px 8px">Health</th></tr></thead><tbody>${rows.map(r=>{ const h=r.h; return `<tr><td style="padding:6px 8px"><b>${esc(r.client)}</b></td><td style="text-align:right;padding:6px 8px">${h.cnt}</td><td style="text-align:right;padding:6px 8px">${h.avg.toFixed(1)}d</td><td style="text-align:right;padding:6px 8px">${Math.round((1-h.lateRate)*100)}%</td><td style="text-align:right;padding:6px 8px">${h.openOverdue>0?`<span style="color:var(--bad);font-weight:700">${h.openOverdue}</span>`:'0'}</td><td style="text-align:right;padding:6px 8px;white-space:nowrap">${healthTrendCell(h.trend)}</td><td style="text-align:right;padding:6px 8px"><span style="display:inline-block;min-width:96px;padding:2px 8px;border-radius:20px;font-weight:800;color:${h.band.col};border:1px solid ${h.band.col}">${h.band.lbl} &middot; ${h.score}</span></td></tr>`; }).join('')}</tbody></table>`;
+  const th='text-align:right;padding:6px 8px', dth='text-align:left;padding:4px 8px;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.03em';
+  const head=`<thead><tr><th style="text-align:left;padding:6px 8px">Client</th><th style="${th}">Invoices</th><th style="${th}">Avg days to pay</th><th style="${th}">On-time</th><th style="${th}">Open overdue</th><th style="${th}" title="Paying faster (improving) or slower (slipping) than earlier invoices">Trend</th><th style="${th}">Health</th></tr></thead>`;
+  const body=rows.map((r,idx)=>{ const h=r.h, rid='conh-'+idx;
+    const main=`<tr class="conhmain" style="cursor:pointer" onclick="conHealthToggle('${rid}')" title="Click for the invoice-by-invoice detail"><td style="padding:6px 8px"><span style="font-size:9px;opacity:.65;margin-right:4px">&#9660;</span><b>${esc(r.client)}</b></td><td style="${th}">${h.cnt}</td><td style="${th}">${h.avg.toFixed(1)}d</td><td style="${th}">${Math.round((1-h.lateRate)*100)}%</td><td style="${th}">${h.openOverdue>0?`<span style="color:var(--bad);font-weight:700">${h.openOverdue}</span>`:'0'}</td><td style="${th};white-space:nowrap">${healthTrendCell(h.trend)}</td><td style="${th}"><span style="display:inline-block;min-width:104px;padding:2px 8px;border-radius:20px;font-weight:800;color:${h.band.col};border:1px solid ${h.band.col}">${h.band.lbl} &middot; ${h.score}</span></td></tr>`;
+    const invRows=h.invoices.map(iv=>{
+      const paidCell = iv.status==='paid' ? esc(usDate(iv.paidDate)) : `<span class="muted">unpaid</span>`;
+      const late = iv.days>INVOICE_DUE_DAYS;
+      const daysCell = iv.status==='paid' ? `<span style="color:${late?'var(--warn)':'var(--good)'}">${iv.days}d</span>` : `<span style="color:${late?'var(--bad)':'var(--muted)'}">${iv.days}d open</span>`;
+      const editCell = (canEdit && iv.status==='paid') ? `<a class="linklike" style="cursor:pointer;font-size:11px" onclick="event.stopPropagation();conHealthEditPaid('${jsStr(r.app)}','${iv.from}','${iv.to}')">Edit paid date</a>` : '';
+      return `<tr><td style="padding:5px 8px">${esc(usDate(iv.from))} &ndash; ${esc(usDate(iv.to))}</td><td style="padding:5px 8px">${iv.issuedDate?esc(usDate(iv.issuedDate)):'<span class="muted">-</span>'}</td><td style="padding:5px 8px">${paidCell}</td><td style="text-align:right;padding:5px 8px">${daysCell}</td><td style="text-align:right;padding:5px 8px">${editCell}</td></tr>`;
+    }).join('');
+    const detail=`<tr class="conhdetail" id="${rid}" hidden><td colspan="7" style="padding:0 8px 12px;background:rgba(255,255,255,.02)"><div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:8px 0 4px">Invoice detail - sent vs paid (due in ${INVOICE_DUE_DAYS} days)</div><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr><th style="${dth}">Period</th><th style="${dth}">Invoice sent</th><th style="${dth}">Marked paid</th><th style="${dth};text-align:right">Days to pay</th><th style="${dth};text-align:right"></th></tr></thead><tbody>${invRows||'<tr><td colspan="5" class="muted" style="padding:6px 8px">No invoices.</td></tr>'}</tbody></table></td></tr>`;
+    return main+detail;
+  }).join('');
+  host.innerHTML=`<table style="width:100%;font-size:12px">${head}<tbody>${body}</tbody></table>`;
+}
+// Edit an invoice's paid date (in case it wasn't marked paid the day it landed) so the payment-health timeline stays accurate
+let INV_PAID_CTX=null;
+function conHealthEditPaid(app,from,to){
+  if(!(SESSION&&['admin','director','manager'].includes(SESSION.role))){ toast('Managers / admins only',true); return; }
+  let m=document.getElementById('invPaidModal');
+  if(!m){ m=document.createElement('div'); m.className='modal'; m.id='invPaidModal'; m.hidden=true; m.onclick=e=>{ if(e.target===m) invPaidClose(); };
+    m.innerHTML=`<div class="modalcard" style="width:min(420px,96vw)"><h3 style="margin:0 0 4px">Edit paid date</h3><p class="hint" id="invPaidSub" style="margin:0 0 12px"></p><div class="field" style="position:relative"><label>Date the invoice was actually paid</label><div class="rangewrap"><input type="text" id="invPaidDate_txt" readonly placeholder="Pick a day" onclick="dayPopToggle('invPaidDate',event)"><input type="hidden" id="invPaidDate"><div class="rangepop" id="invPaidDate_pop" hidden onclick="event.stopPropagation()"></div></div></div><div class="row-actions" style="margin-top:14px"><button class="btn gold sm" onclick="invPaidSave()">Save paid date</button><button class="btn ghost sm" onclick="invPaidClose()">Cancel</button></div></div>`;
+    document.body.appendChild(m);
+  }
+  INV_PAID_CTX={app,from,to};
+  const tl=invTimeline().find(t=>nrmName(t.client)===nrmName(app)&&t.from===from&&t.to===to);
+  const cur=(tl&&tl.paidDate)||todayLocal();
+  const sub=document.getElementById('invPaidSub'); if(sub) sub.innerHTML=esc(app)+' &middot; '+esc(usDate(from))+' to '+esc(usDate(to));
+  const hid=document.getElementById('invPaidDate'); if(hid) hid.value=cur;
+  dayPickAttach('invPaidDate', function(){});
+  m.hidden=false;
+}
+function invPaidClose(){ const m=document.getElementById('invPaidModal'); if(m) m.hidden=true; INV_PAID_CTX=null; }
+async function invPaidSave(){
+  if(!INV_PAID_CTX) return; const {app,from,to}=INV_PAID_CTX;
+  const d=(document.getElementById('invPaidDate')||{}).value||''; if(!d){ toast('Pick a date first',true); return; }
+  let amount=null;
+  (RECORDS||[]).forEach(x=>{ if(x.type==='invoiceapproval'&&nrmName(x.client)===nrmName(app)&&String(x.from||'').slice(0,10)===from&&String(x.to||'').slice(0,10)===to&&x.status==='paid'&&x.amount!=null) amount=x.amount; });
+  if(amount==null){ try{ amount=founderInvoiceCalc(app,from,to).grandTotal; }catch(e){ amount=0; } }
+  try{ await addRecord({type:'invoiceapproval', client:app, from, to, status:'paid', amount, paidDate:d, at:new Date().toISOString(), by:(SESSION&&SESSION.name)||''}); toast('Paid date set to '+usDate(d)); invPaidClose(); try{ renderContracts(); }catch(e){} }
+  catch(e){ toast('Could not save the paid date',true); }
 }
 /* ===== FAQ (T-495): reps ask -> the client (founder) or an admin answers -> saved to a searchable master FAQ ===== */
 function collapseFaq(){ const m={}; (RECORDS||[]).forEach(x=>{ if(x.type!=='faq'||!x.id)return; if(!m[x.id]||(x.submittedAt||'')>(m[x.id].submittedAt||'')) m[x.id]=x; }); return Object.values(m).filter(r=>!r.deleted); }
@@ -6481,24 +6542,24 @@ function renderInvLedger(){
   else { rows=invLedgerRows();
     if(LED_FILTER==='outstanding') rows=rows.filter(r=>r.status==='approved'||r.status==='sent');
     else if(LED_FILTER==='paid') rows=rows.filter(r=>r.status==='paid');
-    else if(LED_FILTER==='overdue') rows=rows.filter(r=>r.status==='sent' && r.ageDays!=null && r.ageDays>7);
+    else if(LED_FILTER==='overdue') rows=rows.filter(r=>r.status==='sent' && r.ageDays!=null && r.ageDays>INVOICE_DUE_DAYS);
   }
   const outstanding=invLedgerRows().filter(r=>r.status==='approved'||r.status==='sent');
   const owed=outstanding.reduce((s,r)=>s+(r.amount||0),0);
-  const overdue=outstanding.filter(r=>r.status==='sent'&&r.ageDays!=null&&r.ageDays>7);
+  const overdue=outstanding.filter(r=>r.status==='sent'&&r.ageDays!=null&&r.ageDays>INVOICE_DUE_DAYS);
   const overdueOwed=overdue.reduce((s,r)=>s+(r.amount||0),0);
   const draftTotal=drafts.reduce((s,r)=>s+(r.amount||0),0);
   const tile=(lbl,val,color)=>`<div class="kpi" style="min-width:150px"><div class="lbl">${lbl}</div><div class="val small" style="${color?'color:'+color:''}">${val}</div></div>`;
   const summary=`<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:18px">
     ${tile('Outstanding (unpaid)',money(owed),owed>0?'var(--gold-2)':'var(--ink)')}
     ${tile('Invoices awaiting payment',String(outstanding.length))}
-    ${tile('Overdue (sent 7+ days)',money(overdueOwed),overdueOwed>0?'var(--bad)':'var(--ink)')}
+    ${tile('Overdue (past '+INVOICE_DUE_DAYS+'-day due)',money(overdueOwed),overdueOwed>0?'var(--bad)':'var(--ink)')}
     ${tile('Draft (not sent yet)',money(draftTotal)+' &middot; '+drafts.length,drafts.length?'var(--warn)':'var(--ink)')}
   </div>`;
   if(!rows.length){ out.innerHTML=summary+`<div class="panel" style="padding:20px"><p class="muted" style="margin:0">No ${LED_FILTER==='all'?'':LED_FILTER+' '}invoices${(typeof GLOBAL_CLIENT!=='undefined'&&GLOBAL_CLIENT)?' for '+esc(GLOBAL_CLIENT):''}.</p></div>`; return; }
   const pillStyle='font-size:11px;border-radius:20px;padding:3px 11px;font-weight:600;white-space:nowrap';
   const pill=r=>{ if(r.status==='paid') return `<span style="${pillStyle};color:var(--good);background:var(--good-soft);border:1px solid var(--good)">Paid</span>`;
-    if(r.status==='sent'){ const od=r.ageDays!=null&&r.ageDays>7; return od?`<span style="${pillStyle};color:var(--bad);background:var(--bad-soft);border:1px solid var(--bad)">Sent &middot; overdue</span>`:`<span style="${pillStyle};color:var(--good);background:var(--good-soft);border:1px solid var(--good)">Sent</span>`; }
+    if(r.status==='sent'){ const od=r.ageDays!=null&&r.ageDays>INVOICE_DUE_DAYS; return od?`<span style="${pillStyle};color:var(--bad);background:var(--bad-soft);border:1px solid var(--bad)">Sent &middot; overdue</span>`:`<span style="${pillStyle};color:var(--good);background:var(--good-soft);border:1px solid var(--good)">Sent</span>`; }
     if(r.status==='draft') return `<span style="${pillStyle};color:var(--warn);background:var(--warn-soft);border:1px solid var(--warn)">Draft</span>`;
     return `<span style="${pillStyle};color:var(--gold-2);background:var(--gold-soft);border:1px solid var(--gold)">Approved</span>`; };
   const td='padding:12px 12px;border-bottom:1px solid var(--border)';
@@ -6508,7 +6569,7 @@ function renderInvLedger(){
     <td style="${td};text-align:right;font-variant-numeric:tabular-nums;font-weight:700;color:var(--ink)">${money(r.amount)}</td>
     <td style="${td}">${pill(r)}</td>
     <td style="${td};color:var(--muted);white-space:nowrap">${r.sentAt?esc(usDate(r.sentAt)):'&ndash;'}</td>
-    <td style="${td};text-align:right;font-variant-numeric:tabular-nums;color:${r.ageDays!=null&&r.ageDays>7?'var(--bad)':'var(--muted)'}">${r.ageDays!=null?r.ageDays+'d':'&ndash;'}</td></tr>`).join('');
+    <td style="${td};text-align:right;font-variant-numeric:tabular-nums;color:${r.ageDays!=null&&r.ageDays>INVOICE_DUE_DAYS?'var(--bad)':'var(--muted)'}">${r.ageDays!=null?r.ageDays+'d':'&ndash;'}</td></tr>`).join('');
   out.innerHTML=summary+`<div class="panel" style="padding:0;overflow-x:auto"><style>#invLedgerOut .ledrow:hover td{background:rgba(201,162,74,.07)}</style><table style="width:100%;border-collapse:collapse;font-size:13px">
     <thead><tr style="text-align:left;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.04em">
       <th style="padding:11px 12px">Client</th><th style="padding:11px 12px">Period</th><th style="padding:11px 12px;text-align:right">Amount</th><th style="padding:11px 12px">Status</th><th style="padding:11px 12px">Sent</th><th style="padding:11px 12px;text-align:right">Age</th></tr></thead>
@@ -6649,7 +6710,7 @@ function invStatusPill(client,from,to){
 async function setInvStatus(status){
   const li=LAST_INVOICE; if(!li||!li.client) return false;
   const rec={type:'invoiceapproval', client:li.client, from:li.from, to:li.to, status, by:(SESSION&&SESSION.name)||'', at:new Date().toISOString()};
-  if(status==='paid') rec.amount=li.amountDue||0; // stamp what TSA actually banked so Contracts can total collected revenue
+  if(status==='paid'){ rec.amount=li.amountDue||0; rec.paidDate=todayLocal(); } // stamp what TSA banked + the paid date (editable later on Contracts > payment health)
   await addRecord(rec);
   return true;
 }
