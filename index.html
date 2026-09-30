@@ -517,6 +517,7 @@
   <div class="navgroup collapsed">
     <button class="navhead"><svg class="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg><span class="nlabel">Billing</span><svg class="nchev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
     <div class="navsub">
+      <button data-tab="arap">AR / AP</button>
       <button data-tab="invoicing">Invoicing</button>
       <button data-tab="payouts">Payouts</button>
       <button data-tab="contracts">Contracts</button>
@@ -1369,6 +1370,15 @@
   </section>
 
   <!-- ===== CONTRACTS (lender view) ===== -->
+  <!-- ===== AR / AP DASHBOARD ===== -->
+  <section id="tab-arap" hidden>
+    <h2 class="section">AR / AP</h2>
+    <p class="hint">Money in vs money out at a glance. <b>Accounts receivable</b> = what clients owe TSA (invoices sent but unpaid + TSA's rev-share on uncollected deal balances). <b>Accounts payable</b> = what TSA owes the team on the upcoming payday (commissions, manager overrides, one-time payouts). Admin and director.</p>
+    <div id="arapKpis" style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:14px"></div>
+    <div class="panel"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap"><h3 style="margin:0">Accounts receivable <span class="muted" style="font-weight:400;font-size:12px">- owed to TSA, most owed first</span></h3><a class="linklike" style="cursor:pointer;font-size:12px" onclick="conExpectedDetail('__all__')">Full reconciliation &rarr;</a></div><div class="tablewrap" style="margin-top:10px"><table id="arapArTable"></table></div></div>
+    <div class="panel"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap"><h3 style="margin:0">Accounts payable <span class="muted" style="font-weight:400;font-size:12px">- owed by TSA on the upcoming payday</span></h3><a class="linklike" style="cursor:pointer;font-size:12px" onclick="showTab('payouts')">Go to Payouts &rarr;</a></div><div class="tablewrap" style="margin-top:10px"><table id="arapApTable"></table></div></div>
+  </section>
+
   <section id="tab-contracts" hidden>
     <h2 class="section">Contracts</h2>
     <p class="hint">Active client contracts, their revenue-share terms, and forecasted TSA revenue - the view for the lender. <b>Forecast</b> = your expected monthly client collections x the rev-share %. <b>Actual</b> = live cash collected from the app (front-end rate applied). Contracts are created in <b>Client Overview</b> (onboarding); use <b>Edit</b> here to fine-tune flip %, forecast, notes, or the app-account mapping. Admin and director only.</p>
@@ -3013,8 +3023,8 @@ function startApp(){
 // base tabs a login TIER can see; per-account responsibilities add to this in applyNavAccess()
 function baseAllow(role){
   return ({
-    admin:['dash','halloffame','master','mydeals','reps','scorecards','clients','onboarding','meeting','promises','mtgprep','timeoff','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dialer','dailyreport','dayreports','hotlist','adminreport','recruiting','messages','invoicing','payouts','contracts','onbaudit','ghlmap','pcfields','data','users','integrations','settings','reprequests','playbook','resources','faq','kickoff','webinarsop'],
-    director:['dash','halloffame','master','mydeals','reps','scorecards','clients','onboarding','meeting','promises','mtgprep','timeoff','users','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','dialer','dailyreport','dayreports','hotlist','recruiting','messages','adminreport','contracts','onbaudit','ghlmap','pcfields','reprequests','playbook','resources','faq','kickoff','webinarsop'],
+    admin:['dash','halloffame','master','mydeals','reps','scorecards','clients','onboarding','meeting','promises','mtgprep','timeoff','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dialer','dailyreport','dayreports','hotlist','adminreport','recruiting','messages','invoicing','payouts','contracts','arap','onbaudit','ghlmap','pcfields','data','users','integrations','settings','reprequests','playbook','resources','faq','kickoff','webinarsop'],
+    director:['dash','halloffame','master','mydeals','reps','scorecards','clients','onboarding','meeting','promises','mtgprep','timeoff','users','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','dialer','dailyreport','dayreports','hotlist','recruiting','messages','adminreport','contracts','arap','onbaudit','ghlmap','pcfields','reprequests','playbook','resources','faq','kickoff','webinarsop'],
     manager:['dash','halloffame','master','mydeals','reps','scorecards','clients','onboarding','meeting','promises','mtgprep','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','speedtolead','dialer','dailyreport','dayreports','hotlist','adminreport','recruiting','messages','reprequests','playbook','resources','faq','kickoff','webinarsop'],
     founder:['dash','mtgprep','hotlist','faq'],
     recruiter:['dash','recruiting','messages','timeoff','reprequests','playbook','resources','faq','kickoff','webinarsop'],
@@ -3183,9 +3193,9 @@ function showTab(t){
   document.querySelectorAll('#tabs button[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
   document.querySelectorAll('#tabs .navgroup').forEach(g=>{ if(g.querySelector('button[data-tab="'+t+'"]')) g.classList.remove('collapsed'); }); // reveal the active tab's group
 
-  ['dash','halloffame','master','mydeals','reps','clients','onboarding','meeting','promises','mtgprep','timeoff','deal','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dialer','dailyreport','dayreports','hotlist','adminreport','reprequests','recruiting','messages','invoicing','payouts','contracts','onbaudit','ghlmap','pcfields','data','users','integrations','settings','playbook','resources','faq','kickoff','webinarsop','scorecards'].forEach(x=>{ const el=document.getElementById('tab-'+x); if(el) el.hidden = (x!==t); });
+  ['dash','halloffame','master','mydeals','reps','clients','onboarding','meeting','promises','mtgprep','timeoff','deal','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dialer','dailyreport','dayreports','hotlist','adminreport','reprequests','recruiting','messages','invoicing','payouts','contracts','arap','onbaudit','ghlmap','pcfields','data','users','integrations','settings','playbook','resources','faq','kickoff','webinarsop','scorecards'].forEach(x=>{ const el=document.getElementById('tab-'+x); if(el) el.hidden = (x!==t); });
   // stale-while-revalidate: render instantly from the cached records, then refresh in the background
-  const render={dash:renderDash, halloffame:renderHallOfFame, master:renderMaster, mydeals:renderMyDeals, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, promises:renderPromisesTab, mtgprep:renderMtgPrep, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, mgreodview:renderMgrEodView, contracts:renderContracts, faq:renderFaq, playbook:renderPlaybook, scorecards:renderScorecards, webinar:renderWebinars, calllog:renderCallLog, calendar:renderCalendar, speedtolead:renderSpeedToLead, dialer:renderDialer, dailyreport:renderDailyReport, dayreports:renderDayReports, hotlist:renderHotList, adminreport:renderAdminReport, payouts:renderPayouts, reprequests:renderRepRequests, recruiting:renderRecruiting, messages:renderMessages, training:renderTraining, invoicing:renderInvoicing, data:renderAll}[t];
+  const render={dash:renderDash, halloffame:renderHallOfFame, master:renderMaster, mydeals:renderMyDeals, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, promises:renderPromisesTab, mtgprep:renderMtgPrep, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, mgreodview:renderMgrEodView, arap:renderArAp, contracts:renderContracts, faq:renderFaq, playbook:renderPlaybook, scorecards:renderScorecards, webinar:renderWebinars, calllog:renderCallLog, calendar:renderCalendar, speedtolead:renderSpeedToLead, dialer:renderDialer, dailyreport:renderDailyReport, dayreports:renderDayReports, hotlist:renderHotList, adminreport:renderAdminReport, payouts:renderPayouts, reprequests:renderRepRequests, recruiting:renderRecruiting, messages:renderMessages, training:renderTraining, invoicing:renderInvoicing, data:renderAll}[t];
   if(render){ render(); hqApplyTooltips(); syncRecords().then(()=>{ if(currentTab()===t){ render(); hqApplyTooltips(); } buildGlobalClientSelect(); buildViewAsUserSelect(); updateNavBadges(); renderReminders(); }); }
   updateNavBadges();
   setTimeout(hqApplyTooltips,0); // catch tabs whose render runs outside the map above
@@ -4247,6 +4257,36 @@ function conExpectedDetail(which){
     <div style="font-size:13px;color:var(--muted);margin:0 0 14px">Total expected to still come in: <b style="color:var(--gold-2)">${money(grand)}</b>. Use this to reconcile - chase the A/R and make sure every closed deal is fully collected.</div>
     ${blocks}`;
   m.hidden=false;
+}
+// AR / AP dashboard: money owed TO us (receivable) vs money we owe OUT (payable), at a glance
+function renderArAp(){
+  const kpiW=document.getElementById('arapKpis'); if(!kpiW) return;
+  // AR = what clients owe TSA (unpaid invoices + rev-share on uncollected deal balances)
+  const arList=contractsEffective().filter(c=>c.active!==false).map(c=>{ try{ return conClientExpected(c.client); }catch(e){ return null; } }).filter(x=>x&&x.expTotal>0.005).sort((a,b)=>b.expTotal-a.expTotal);
+  const arTotal=arList.reduce((s,x)=>s+x.expTotal,0);
+  // AP = what TSA owes the team on the upcoming payday (unpaid commissions/overrides/webinar + one-time payouts dated in the cycle)
+  const c=poCycleObj(), map=poStatusMap(), ck=poKey(c);
+  let data={closers:[],setters:[]}; try{ data=repCommData(c.from,c.to,''); }catch(e){}
+  const roleLbl={closer:'Closer',setter:'Setter',manager:'Manager',webinar:'Webinar host'};
+  let roleAll=[]; try{ roleAll=[...data.closers.map(o=>({...o,role:'closer'})),...data.setters.map(o=>({...o,role:'setter'})),...poManagerData(c.from,c.to).map(o=>({...o,role:'manager'})),...poWebinarData(c.from,c.to).map(o=>({...o,role:'webinar'}))].filter(o=>o.commission>0.0001); }catch(e){}
+  const apMap={};
+  roleAll.forEach(o=>{ const st=poStatus(map,ck,o.rep,o.role); if(st&&st.paid) return; const k=nrmName(o.rep)+'|'+o.role; (apMap[k]=apMap[k]||{rep:o.rep,role:roleLbl[o.role]||o.role,amt:0}); apMap[k].amt+=o.commission; });
+  (manualPayouts()||[]).forEach(m=>{ if(m.paid) return; const d=String(m.date||'').slice(0,10); if(!(d&&d>=c.from&&d<=c.to)) return; const k=nrmName(m.rep)+'|'+(m.role||'One-time'); (apMap[k]=apMap[k]||{rep:m.rep,role:m.role||'One-time',amt:0}); apMap[k].amt+=Number(m.amount)||0; });
+  const apList=Object.values(apMap).filter(x=>x.amt>0.005).sort((a,b)=>b.amt-a.amt);
+  const apTotal=apList.reduce((s,x)=>s+x.amt,0);
+  let collected=0; try{ contractsEffective().filter(x=>x.active!==false).forEach(cc=>{ collected+=tsaCollectedFor(conMatchClient(cc)||cc.client); }); }catch(e){}
+  const net=arTotal-apTotal;
+  const card=(l,v,color,tip)=>`<div class="kpi" style="flex:1;min-width:160px${tip?';cursor:help':''}"${tip?` title="${esc(tip)}"`:''}><div class="lbl">${l}</div><div class="val"${color?` style="color:${color}"`:''}>${v}</div></div>`;
+  kpiW.innerHTML=card('Receivable (owed to us)',money(arTotal),'var(--gold-2)','Total accounts receivable: invoices sent but unpaid + TSA rev-share on clients’ uncollected deal balances.')
+    +card('Payable (we owe)',money(apTotal),'var(--warn)','What TSA owes the team on the upcoming payday: unpaid commissions, manager overrides, webinar pay, and one-time payouts.')
+    +card('Net position',money(net),net>=0?'var(--good)':'var(--bad)','Receivable minus payable - roughly what’s coming in versus going out.')
+    +card('Collected to date',money(collected),null,'What TSA has actually banked all-time (paid invoices).');
+  const art=document.getElementById('arapArTable');
+  if(art){ const rows=arList.map(x=>`<tr><td><b>${esc(x.client)}</b></td><td class="num">${x.arTotal>0?money(x.arTotal):'<span class="muted">-</span>'}</td><td class="num">${x.eoOS>0?money(x.eoOS):'<span class="muted">-</span>'}</td><td class="num" style="font-weight:700"><a onclick="conExpectedDetail('${jsStr(x.client)}')" style="cursor:pointer;color:var(--gold-2);text-decoration:underline">${money(x.expTotal)}</a></td></tr>`).join('');
+    art.innerHTML=`<thead><tr><th>Client</th><th class="num" title="Invoices sent but not yet paid">Invoiced (unpaid)</th><th class="num" title="TSA rev-share on the client's uncollected deal balances">Rev-share on o/s</th><th class="num">Total owed to us</th></tr></thead><tbody>${rows||'<tr><td colspan="4" class="muted" style="padding:14px">Nothing outstanding - everything invoiced has been collected.</td></tr>'}${arList.length?`<tr style="border-top:2px solid var(--gold);font-weight:800"><td>Total AR</td><td></td><td></td><td class="num">${money(arTotal)}</td></tr>`:''}</tbody>`; }
+  const apt=document.getElementById('arapApTable');
+  if(apt){ const rows=apList.map(x=>`<tr><td><b>${esc(x.rep)}</b></td><td>${esc(x.role)}</td><td class="num" style="font-weight:700">${money(x.amt)}</td></tr>`).join('');
+    apt.innerHTML=`<thead><tr><th>Person</th><th>Role</th><th class="num">We owe</th></tr></thead><tbody>${rows||'<tr><td colspan="3" class="muted" style="padding:14px">Nothing owed for the upcoming payday.</td></tr>'}${apList.length?`<tr style="border-top:2px solid var(--gold);font-weight:800"><td>Total AP</td><td></td><td class="num">${money(apTotal)}</td></tr>`:''}</tbody>`; }
 }
 function renderContracts(){
   const host=document.getElementById('tab-contracts'); if(!host) return;
