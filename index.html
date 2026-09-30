@@ -4300,7 +4300,20 @@ function conLineChart(months, series, opts){
   for(let i=0;i<=nT;i++){ const val=niceMax-i*step, yy=padT+plotH*i/nT; g+=`<line x1="${padL}" y1="${yy.toFixed(1)}" x2="${W-padR}" y2="${yy.toFixed(1)}" stroke="var(--border)" stroke-opacity=".45"/><text x="${padL-6}" y="${(yy+3).toFixed(1)}" text-anchor="end" font-size="9" fill="var(--muted)">${fmt(val)}</text>`; }
   months.forEach((m,i)=>{ g+=`<text x="${x(i).toFixed(1)}" y="${H-padB+15}" text-anchor="middle" font-size="9" fill="var(--muted)">${esc(m.label)}</text>`; });
   series.forEach(s=>{ const pts=s.data.map((v,i)=> v==null?null:`${x(i).toFixed(1)},${y(v).toFixed(1)}`).filter(Boolean).join(' '); g+=`<polyline points="${pts}" fill="none" stroke="${s.color}" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round" ${s.dashed?'stroke-dasharray="5 4"':''}/>`; s.data.forEach((v,i)=>{ if(v==null)return; g+=`<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="2.6" fill="${s.color}"/>`; }); });
+  // hover: one transparent vertical band per x-index that shows every series' value at that point
+  const tf=opts.tipFmt||fmt, half=(n>1?plotW/(n-1)/2:plotW/2);
+  months.forEach((m,i)=>{ const cx=x(i), rx=Math.max(padL,cx-half), rw=Math.max(1,Math.min(W-padR,cx+half)-rx);
+    const payload={label:m.label, rows:series.map(s=>({n:s.name,c:s.color,vf:(s.data[i]==null?'–':tf(s.data[i]))}))};
+    g+=`<rect x="${rx.toFixed(1)}" y="${padT}" width="${rw.toFixed(1)}" height="${plotH}" fill="transparent" style="cursor:crosshair" onmousemove="chartTipShow(event,this)" onmouseleave="chartTipHide()" data-tip='${JSON.stringify(payload).replace(/'/g,"&#39;")}'></rect>`; });
   return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block">${g}</svg>`;
+}
+// shared floating tooltip for the SVG line charts (Contracts trends + Dialer)
+function chartTipEl(){ let t=document.getElementById('chartTip'); if(!t){ t=document.createElement('div'); t.id='chartTip'; t.style.cssText='position:fixed;z-index:9999;pointer-events:none;background:#1c1710;border:1px solid var(--gold-soft,#2A2012);color:var(--ink,#ECE5D7);font-size:12px;padding:8px 10px;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.5);opacity:0;transition:opacity .08s;max-width:260px'; document.body.appendChild(t); } return t; }
+function chartTipShow(evt,rect){ let p; try{ p=JSON.parse(rect.getAttribute('data-tip')); }catch(e){ return; } const t=chartTipEl();
+  t.innerHTML=`<div style="font-weight:700;margin-bottom:5px">${esc(p.label)}</div>`+p.rows.map(r=>`<div style="display:flex;align-items:center;gap:7px;line-height:1.6"><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${r.c};flex:0 0 auto"></span><span style="flex:1">${esc(r.n)}</span><b style="margin-left:8px">${esc(r.vf)}</b></div>`).join('');
+  t.style.opacity='1'; const pad=14; let xx=evt.clientX+pad, yy=evt.clientY+pad, w=t.offsetWidth, h=t.offsetHeight; if(xx+w>window.innerWidth-8) xx=evt.clientX-w-pad; if(yy+h>window.innerHeight-8) yy=evt.clientY-h-pad; t.style.left=Math.max(8,xx)+'px'; t.style.top=Math.max(8,yy)+'px';
+}
+function chartTipHide(){ const t=document.getElementById('chartTip'); if(t) t.style.opacity='0';
 }
 function renderConTrends(){
   const host=document.getElementById('conTrends'); if(!host) return;
@@ -4312,7 +4325,7 @@ function renderConTrends(){
   const chart=conLineChart(d.months,[
     {name:'Gross collected', color:'var(--gold-2)', data:d.collected},
     {name:'Net after comp', color:'var(--good)', data:d.net},
-    {name:'Outstanding', color:'var(--bad)', data:d.outstanding, dashed:true}]);
+    {name:'Outstanding', color:'var(--bad)', data:d.outstanding, dashed:true}],{tipFmt:money});
   const q={}; d.months.forEach((m,i)=>{ const yr=m.key.slice(0,4), mo=parseInt(m.key.slice(5,7)), qq='Q'+(Math.floor((mo-1)/3)+1)+" '"+yr.slice(2); (q[qq]=q[qq]||{label:qq,coll:0,net:0,out:0}); q[qq].coll+=d.collected[i]; q[qq].net+=d.net[i]; q[qq].out=d.outstanding[i]; });
   const qs=Object.values(q);
   const qtable=`<div class="tablewrap" style="overflow-x:auto;margin-top:14px"><table style="width:100%;font-size:12px"><thead><tr><th style="text-align:left;padding:6px 8px">Quarter</th><th style="text-align:right;padding:6px 8px">Gross collected</th><th style="text-align:right;padding:6px 8px">Net after comp</th><th style="text-align:right;padding:6px 8px">Outstanding (end)</th></tr></thead><tbody>${qs.map(x=>`<tr><td style="padding:6px 8px"><b>${x.label}</b></td><td style="text-align:right;padding:6px 8px">${money(x.coll)}</td><td style="text-align:right;padding:6px 8px;color:${x.net<0?'var(--warn)':'var(--good)'}">${money(x.net)}</td><td style="text-align:right;padding:6px 8px;color:var(--gold-2)">${money(x.out)}</td></tr>`).join('')}</tbody></table></div>`;
@@ -7682,7 +7695,8 @@ function dlrRenderCards(agg){ const cards=document.getElementById('dlrCards'); i
 function dlrRenderTrend(daily){ const host=document.getElementById('dlrTrend'); if(!host) return; if(!daily.length){ host.innerHTML='<p class="muted" style="padding:12px">No days in range.</p>'; return; }
   const labels=daily.map(x=>{ const dt=new Date(x.day+'T00:00:00'); return {label:(dt.getMonth()+1)+'/'+dt.getDate()}; });
   const legend=`<div style="display:flex;gap:18px;font-size:11px;margin:0 0 6px 4px"><span><span style="display:inline-block;width:14px;height:3px;background:var(--gold-2);vertical-align:middle;margin-right:6px"></span>Dials</span><span><span style="display:inline-block;width:14px;height:3px;background:var(--good);vertical-align:middle;margin-right:6px"></span>Connects</span></div>`;
-  host.innerHTML=legend+conLineChart(labels,[{name:'Dials',color:'var(--gold-2)',data:daily.map(x=>x.dials)},{name:'Connects',color:'var(--good)',data:daily.map(x=>x.connects)}],{fmt:v=>Math.round(v).toLocaleString()});
+  const numFmt=v=>Math.round(v).toLocaleString();
+  host.innerHTML=legend+conLineChart(labels,[{name:'Dials',color:'var(--gold-2)',data:daily.map(x=>x.dials)},{name:'Connects',color:'var(--good)',data:daily.map(x=>x.connects)}],{fmt:numFmt,tipFmt:numFmt});
 }
 function dlrRenderByRep(agg){ const host=document.getElementById('dlrByRep'); if(!host) return; const users=(agg.perUser||[]).slice().sort((a,b)=>(b.dials||0)-(a.dials||0)); if(!users.length){ host.innerHTML='<p class="muted" style="padding:8px 4px">No per-rep data. Map WAVV user ids to reps under Admin &rsaquo; Integrations &rsaquo; WAVV Dialer.</p>'; return; }
   const maxD=Math.max(1,...users.map(u=>u.dials||0));
