@@ -517,7 +517,7 @@
   <div class="navgroup collapsed">
     <button class="navhead"><svg class="ni" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg><span class="nlabel">Billing</span><svg class="nchev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
     <div class="navsub">
-      <button data-tab="arap">AR / AP</button>
+      <button data-tab="arap">Ledger / P&amp;L</button>
       <button data-tab="invoicing">Invoicing</button>
       <button data-tab="payouts">Payouts</button>
       <button data-tab="contracts">Contracts</button>
@@ -1370,11 +1370,27 @@
   </section>
 
   <!-- ===== CONTRACTS (lender view) ===== -->
-  <!-- ===== AR / AP DASHBOARD ===== -->
+  <!-- ===== LEDGER / P&L ===== -->
   <section id="tab-arap" hidden>
-    <h2 class="section">AR / AP</h2>
-    <p class="hint">Money in vs money out at a glance. <b>Accounts receivable</b> = what clients owe TSA (invoices sent but unpaid + TSA's rev-share on uncollected deal balances). <b>Accounts payable</b> = what TSA owes the team on the upcoming payday (commissions, manager overrides, one-time payouts). Admin and director.</p>
-    <div id="arapKpis" style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:14px"></div>
+    <h2 class="section">Ledger / P&amp;L</h2>
+    <p class="hint">The whole picture: revenue earned, minus team comp, minus operating expenses (software, tools, contractors) = <b>net profit</b>. Log expenses below. Also shows accounts receivable (owed to us) and accounts payable (we owe). Admin and director.</p>
+    <div class="filters" style="margin:0 0 12px;align-items:center;gap:10px;flex-wrap:wrap">
+      <div class="seg" id="ldgPeriodSeg"><button onclick="setLdgPeriod('thismonth')" class="on">This month</button><button onclick="setLdgPeriod('lastmonth')">Last month</button><button onclick="setLdgPeriod('quarter')">This quarter</button><button onclick="setLdgPeriod('year')">This year</button><button onclick="setLdgPeriod('all')">All-time</button></div>
+      <div class="field" style="position:relative;margin:0;min-width:230px"><div class="rangewrap"><input type="text" id="ldgRange_txt" readonly placeholder="Custom range" onclick="rpToggle('ldgRange',event)"><input type="hidden" id="ldgRange_from"><input type="hidden" id="ldgRange_to"><div class="rangepop" id="ldgRange_pop" hidden onclick="event.stopPropagation()"></div></div></div>
+    </div>
+    <div id="ldgPnl" style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:16px"></div>
+    <div class="panel" id="ldgExpPanel" style="overflow:visible;position:relative;z-index:10">
+      <div style="padding:12px 14px 0"><h3 style="margin:0">Operating expenses <span class="muted" style="font-weight:400;font-size:12px">- software, tools, contractors, ads, anything that comes out of the business</span></h3></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;padding:12px 14px 4px">
+        <div class="field" style="margin:0;position:relative;min-width:150px"><label>Date</label><div class="rangewrap"><input type="text" id="expDate_txt" readonly placeholder="Pick a day" onclick="dayPopToggle('expDate',event)"><input type="hidden" id="expDate"><div class="rangepop" id="expDate_pop" hidden onclick="event.stopPropagation()"></div></div></div>
+        <div class="field" style="margin:0;min-width:150px"><label>Category</label><select id="expCat"><option>Software / Tools</option><option>Contractors / Payroll</option><option>Advertising</option><option>Subscriptions</option><option>Office / Admin</option><option>Fees / Processing</option><option>Other</option></select></div>
+        <div class="field" style="margin:0;flex:1;min-width:180px"><label>Vendor / description</label><input id="expVendor" placeholder="e.g. GoHighLevel, Zoom, contractor name"></div>
+        <div class="field" style="margin:0;width:120px"><label>Amount ($)</label><input id="expAmt" type="number" min="0" step="0.01" placeholder="0.00"></div>
+        <label class="field" style="margin:0;font-weight:400;display:flex;align-items:center;gap:6px;padding-bottom:8px"><input type="checkbox" id="expRecurring"> Monthly recurring</label>
+        <button class="btn gold sm" id="expAddBtn" style="margin-bottom:2px" onclick="addExpense()">Add expense</button>
+      </div>
+      <div class="tablewrap"><table id="ldgExpTable"></table></div>
+    </div>
     <div class="panel"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap"><h3 style="margin:0">Accounts receivable <span class="muted" style="font-weight:400;font-size:12px">- owed to TSA, most owed first</span></h3><a class="linklike" style="cursor:pointer;font-size:12px" onclick="conExpectedDetail('__all__')">Full reconciliation &rarr;</a></div><div class="tablewrap" style="margin-top:10px"><table id="arapArTable"></table></div></div>
     <div class="panel"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap"><h3 style="margin:0">Accounts payable <span class="muted" style="font-weight:400;font-size:12px">- owed by TSA on the upcoming payday</span></h3><a class="linklike" style="cursor:pointer;font-size:12px" onclick="showTab('payouts')">Go to Payouts &rarr;</a></div><div class="tablewrap" style="margin-top:10px"><table id="arapApTable"></table></div></div>
   </section>
@@ -4258,9 +4274,81 @@ function conExpectedDetail(which){
     ${blocks}`;
   m.hidden=false;
 }
-// AR / AP dashboard: money owed TO us (receivable) vs money we owe OUT (payable), at a glance
+/* ===== Ledger / P&L: revenue - comp - operating expenses = net profit, + AR/AP ===== */
+let LDG_PERIOD='thismonth', LDG_FROM='', LDG_TO='';
+function ldgRanges(){ const d=new Date();
+  const mo={from:isoLocal(new Date(d.getFullYear(),d.getMonth(),1)), to:isoLocal(new Date(d.getFullYear(),d.getMonth()+1,0)), label:'This month'};
+  const lm={from:isoLocal(new Date(d.getFullYear(),d.getMonth()-1,1)), to:isoLocal(new Date(d.getFullYear(),d.getMonth(),0)), label:'Last month'};
+  const q=Math.floor(d.getMonth()/3), qtr={from:isoLocal(new Date(d.getFullYear(),q*3,1)), to:isoLocal(new Date(d.getFullYear(),q*3+3,0)), label:'This quarter'};
+  const yr={from:isoLocal(new Date(d.getFullYear(),0,1)), to:isoLocal(new Date(d.getFullYear(),11,31)), label:'This year'};
+  return {thismonth:mo, lastmonth:lm, quarter:qtr, year:yr, all:{from:'',to:'',label:'All-time'}, custom:{from:LDG_FROM,to:LDG_TO,label:'Custom range'}};
+}
+function setLdgPeriod(p){ LDG_PERIOD=p; document.querySelectorAll('#ldgPeriodSeg button').forEach(b=>b.classList.remove('on')); const idx={thismonth:0,lastmonth:1,quarter:2,year:3,all:4}[p]; const bs=document.querySelectorAll('#ldgPeriodSeg button'); if(bs[idx])bs[idx].classList.add('on'); renderArAp(); }
+function setLdgRange(f,t){ LDG_FROM=f; LDG_TO=t; LDG_PERIOD='custom'; document.querySelectorAll('#ldgPeriodSeg button').forEach(b=>b.classList.remove('on')); renderArAp(); }
+// expense records (latest-wins per id, soft delete)
+function expenseRecords(){ const m={}; (RECORDS||[]).forEach(x=>{ if(x.type!=='expense'||!x.id) return; if(!m[x.id]||(x.submittedAt||'')>(m[x.id].submittedAt||'')) m[x.id]=x; }); return Object.values(m).filter(x=>!x.deleted); }
+// how much an expense counts toward [from,to]: one-off = if its date is in range; recurring monthly = amount x months from its start through the range
+function expenseInPeriod(e, from, to){ const amt=Number(e.amount)||0; if(!amt) return 0; const d=String(e.date||'').slice(0,10); if(!d) return 0;
+  if(!e.recurring){ return ((!from||d>=from)&&(!to||d<=to))?amt:0; }
+  const start=d, end=to||isoLocal(new Date()); let f=from||start; if(f<start) f=start; if(f>end) return 0;
+  let y=+f.slice(0,4), m=+f.slice(5,7)-1, ey=+end.slice(0,4), em=+end.slice(5,7)-1, n=0, guard=0;
+  while((y<ey||(y===ey&&m<=em)) && guard<600){ n++; m++; if(m>11){m=0;y++;} guard++; }
+  return amt*n;
+}
+let EXP_EDIT_ID=null;
+async function addExpense(){ if(!(SESSION&&['admin','director'].includes(SESSION.role))){ toast('Admins only',true); return; }
+  const date=(document.getElementById('expDate')||{}).value||todayLocal();
+  const cat=(document.getElementById('expCat')||{}).value||'Other';
+  const vendor=((document.getElementById('expVendor')||{}).value||'').trim();
+  const amt=parseFloat((document.getElementById('expAmt')||{}).value);
+  const recurring=!!(document.getElementById('expRecurring')||{}).checked;
+  if(!(amt>0)){ toast('Enter a valid amount',true); return; }
+  try{
+    if(EXP_EDIT_ID){ const cur=expenseRecords().find(x=>x.id===EXP_EDIT_ID)||{id:EXP_EDIT_ID};
+      await addRecord(Object.assign({},cur,{type:'expense',id:EXP_EDIT_ID,date,category:cat,vendor,amount:Math.round(amt*100)/100,recurring,by:(SESSION&&SESSION.name)||''}));
+      EXP_EDIT_ID=null; const b=document.getElementById('expAddBtn'); if(b) b.textContent='Add expense'; toast('Expense updated');
+    } else { await addRecord({type:'expense',id:uid(),date,category:cat,vendor,amount:Math.round(amt*100)/100,recurring,by:(SESSION&&SESSION.name)||''}); toast('Expense added'); }
+    ['expVendor','expAmt'].forEach(id=>{ const e=document.getElementById(id); if(e) e.value=''; }); const rc=document.getElementById('expRecurring'); if(rc) rc.checked=false;
+    renderArAp();
+  }catch(e){ toast('Could not save the expense',true); }
+}
+function expenseEdit(id){ const e=expenseRecords().find(x=>x.id===id); if(!e) return; EXP_EDIT_ID=id;
+  const sv=(i,v)=>{ const el=document.getElementById(i); if(el) el.value=v; };
+  const d=document.getElementById('expDate'); if(d){ d.value=e.date||todayLocal(); try{ dayPickSync('expDate'); }catch(_){} }
+  sv('expCat',e.category||'Other'); sv('expVendor',e.vendor||''); sv('expAmt',e.amount!=null?e.amount:''); const rc=document.getElementById('expRecurring'); if(rc) rc.checked=!!e.recurring;
+  const b=document.getElementById('expAddBtn'); if(b) b.textContent='Update expense';
+  const p=document.getElementById('ldgExpPanel'); if(p) p.scrollIntoView({behavior:'smooth',block:'center'});
+}
+async function expenseDel(id){ if(!(SESSION&&['admin','director'].includes(SESSION.role))){ toast('Admins only',true); return; } const cur=expenseRecords().find(x=>x.id===id); if(!cur) return; if(!confirm('Remove this expense?')) return; try{ await addRecord(Object.assign({},cur,{deleted:true})); toast('Removed'); renderArAp(); }catch(e){ toast('Could not remove',true); } }
+// total TSA revenue (Actual TSA) earned in a period = rev-share on billed cash + retainers, across active clients (mirrors Contracts)
+function tsaActualForPeriod(from,to){ let billed={}; try{ billed=acctBilledCash(from||'0000-01-01',to||'9999-12-31'); }catch(e){} let total=0;
+  contractsEffective().filter(c=>c.active!==false).forEach(c=>{ const app=(typeof conMatchClient==='function'?conMatchClient(c):null)||c.client; const feR=(c.feTBD||c.feRate==null)?null:(Number(c.feRate)||0); let cash=0; Object.keys(billed).forEach(cn=>{ if(nrmName(cn)===nrmName(app)) cash+=billed[cn]; }); const rev=(feR!=null)?cash*feR/100:0; let ret=0; try{ ret=conRetainerFor(app,from||'0000-01-01',to||'9999-12-31'); }catch(e){} total+=rev+ret; });
+  return total; }
 function renderArAp(){
-  const kpiW=document.getElementById('arapKpis'); if(!kpiW) return;
+  const kpiW=document.getElementById('arapKpis')||document.getElementById('ldgPnl'); if(!kpiW) return;
+  // period
+  try{ rpAttach('ldgRange',(f,t)=>setLdgRange(f,t)); }catch(e){}
+  const rng=ldgRanges()[LDG_PERIOD]||ldgRanges().thismonth; const pf=rng.from||'0000-01-01', pt=rng.to||'9999-12-31';
+  // ---- P&L ----
+  const revenue=tsaActualForPeriod(rng.from,rng.to);
+  let comp=0; try{ comp=trendCompTotal(pf,pt); }catch(e){}
+  const gross=revenue-comp;
+  const exps=expenseRecords().map(e=>({e, amt:expenseInPeriod(e, rng.from, rng.to)})).filter(x=>x.amt>0.0001).sort((a,b)=>b.amt-a.amt);
+  const opex=exps.reduce((s,x)=>s+x.amt,0);
+  const netProfit=gross-opex;
+  const pnl=document.getElementById('ldgPnl');
+  const card=(l,v,color,tip)=>`<div class="kpi" style="flex:1;min-width:150px${tip?';cursor:help':''}"${tip?` title="${esc(tip)}"`:''}><div class="lbl">${l}</div><div class="val"${color?` style="color:${color}"`:''}>${v}</div></div>`;
+  if(pnl) pnl.innerHTML=card('Revenue (Actual TSA)',money(revenue),'var(--gold-2)','Rev-share earned on billed cash + retainers this period, across active clients.')
+    +card('Comp paid',money(comp),'var(--warn)','Commissions + manager overrides for the period (from the payout engine).')
+    +card('Gross (after comp)',money(gross),gross>=0?'var(--good)':'var(--bad)','Revenue minus team comp - before operating expenses.')
+    +card('Operating expenses',money(opex),'var(--warn)','Software, tools, contractors, ads and other business expenses logged below.')
+    +card('NET PROFIT',money(netProfit),netProfit>=0?'var(--good)':'var(--bad)','The bottom line: revenue minus comp minus operating expenses for '+esc(rng.label)+'.');
+  // ---- expenses table ----
+  const et=document.getElementById('ldgExpTable');
+  if(et){ const rows=exps.map(x=>{ const e=x.e; return `<tr><td style="white-space:nowrap;padding:6px 8px">${e.date?esc(usDate(e.date)):'-'}</td><td style="padding:6px 8px">${esc(e.category||'Other')}</td><td style="padding:6px 8px">${esc(e.vendor||'')}${e.recurring?' <span class="pill" style="font-size:9px">monthly</span>':''}</td><td class="num" style="padding:6px 8px;font-weight:600">${money(x.amt)}${e.recurring&&Math.abs(x.amt-(Number(e.amount)||0))>0.001?` <span class="muted" style="font-size:10px">(${money(Number(e.amount)||0)}/mo)</span>`:''}</td><td style="padding:6px 8px;white-space:nowrap"><button class="btn ghost sm" style="padding:2px 9px" title="Edit" onclick="expenseEdit('${e.id}')">&#9998;</button> <button class="btn ghost sm" style="color:var(--warn);border-color:var(--warn);padding:2px 9px" title="Delete" onclick="expenseDel('${e.id}')">&times;</button></td></tr>`; }).join('');
+    et.innerHTML=`<thead><tr><th style="text-align:left">Date</th><th style="text-align:left">Category</th><th style="text-align:left">Vendor / description</th><th class="num">Amount</th><th></th></tr></thead><tbody>${rows||'<tr><td colspan="5" class="muted" style="padding:14px">No expenses logged for this period. Add software, tools, contractors, etc. above.</td></tr>'}${exps.length?`<tr style="border-top:2px solid var(--gold);font-weight:800"><td>Total expenses</td><td></td><td></td><td class="num">${money(opex)}</td><td></td></tr>`:''}</tbody>`;
+    try{ dayPickAttach('expDate', function(){}); const ed=document.getElementById('expDate'); if(ed&&!ed.value){ ed.value=todayLocal(); dayPickSync('expDate'); } }catch(e){}
+  }
   // AR = what clients owe TSA (unpaid invoices + rev-share on uncollected deal balances)
   const arList=contractsEffective().filter(c=>c.active!==false).map(c=>{ try{ return conClientExpected(c.client); }catch(e){ return null; } }).filter(x=>x&&x.expTotal>0.005).sort((a,b)=>b.expTotal-a.expTotal);
   const arTotal=arList.reduce((s,x)=>s+x.expTotal,0);
@@ -4274,13 +4362,6 @@ function renderArAp(){
   (manualPayouts()||[]).forEach(m=>{ if(m.paid) return; const d=String(m.date||'').slice(0,10); if(!(d&&d>=c.from&&d<=c.to)) return; const k=nrmName(m.rep)+'|'+(m.role||'One-time'); (apMap[k]=apMap[k]||{rep:m.rep,role:m.role||'One-time',amt:0}); apMap[k].amt+=Number(m.amount)||0; });
   const apList=Object.values(apMap).filter(x=>x.amt>0.005).sort((a,b)=>b.amt-a.amt);
   const apTotal=apList.reduce((s,x)=>s+x.amt,0);
-  let collected=0; try{ contractsEffective().filter(x=>x.active!==false).forEach(cc=>{ collected+=tsaCollectedFor(conMatchClient(cc)||cc.client); }); }catch(e){}
-  const net=arTotal-apTotal;
-  const card=(l,v,color,tip)=>`<div class="kpi" style="flex:1;min-width:160px${tip?';cursor:help':''}"${tip?` title="${esc(tip)}"`:''}><div class="lbl">${l}</div><div class="val"${color?` style="color:${color}"`:''}>${v}</div></div>`;
-  kpiW.innerHTML=card('Receivable (owed to us)',money(arTotal),'var(--gold-2)','Total accounts receivable: invoices sent but unpaid + TSA rev-share on clients’ uncollected deal balances.')
-    +card('Payable (we owe)',money(apTotal),'var(--warn)','What TSA owes the team on the upcoming payday: unpaid commissions, manager overrides, webinar pay, and one-time payouts.')
-    +card('Net position',money(net),net>=0?'var(--good)':'var(--bad)','Receivable minus payable - roughly what’s coming in versus going out.')
-    +card('Collected to date',money(collected),null,'What TSA has actually banked all-time (paid invoices).');
   const art=document.getElementById('arapArTable');
   if(art){ const rows=arList.map(x=>`<tr><td><b>${esc(x.client)}</b></td><td class="num">${x.arTotal>0?money(x.arTotal):'<span class="muted">-</span>'}</td><td class="num">${x.eoOS>0?money(x.eoOS):'<span class="muted">-</span>'}</td><td class="num" style="font-weight:700"><a onclick="conExpectedDetail('${jsStr(x.client)}')" style="cursor:pointer;color:var(--gold-2);text-decoration:underline">${money(x.expTotal)}</a></td></tr>`).join('');
     art.innerHTML=`<thead><tr><th>Client</th><th class="num" title="Invoices sent but not yet paid">Invoiced (unpaid)</th><th class="num" title="TSA rev-share on the client's uncollected deal balances">Rev-share on o/s</th><th class="num">Total owed to us</th></tr></thead><tbody>${rows||'<tr><td colspan="4" class="muted" style="padding:14px">Nothing outstanding - everything invoiced has been collected.</td></tr>'}${arList.length?`<tr style="border-top:2px solid var(--gold);font-weight:800"><td>Total AR</td><td></td><td></td><td class="num">${money(arTotal)}</td></tr>`:''}</tbody>`; }
