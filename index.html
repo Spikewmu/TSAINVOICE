@@ -6403,16 +6403,22 @@ function renderMyDeals(){
   // reps see their own commission forecast; oversight (admin/director/manager) don't - the team totals here read as personal pay and confuse. They use My payouts (their own) + the deal cards.
   const topHtml=(showMyPayout?myPayoutHtml():'')+(oversight?'':myDealsForecastHtml());
   const seen={}, uniq=[];
-  (RECORDS||[]).filter(x=>x.type==='deal').filter(d=>(oversight||effCloserOf(d)===me) && (!GLOBAL_CLIENT||String(d.client||'')===GLOBAL_CLIENT))
+  // a MANAGER only sees deals on the accounts they actually run (so Keithan doesn't see Quantum if he isn't its manager); admins/directors see all
+  const mgrScope = (SESSION && SESSION.role==='manager') ? new Set(managedClientsForUser(SESSION).map(nrmName)) : null;
+  (RECORDS||[]).filter(x=>x.type==='deal').filter(d=>(oversight||effCloserOf(d)===me) && (!GLOBAL_CLIENT||String(d.client||'')===GLOBAL_CLIENT) && (!mgrScope || mgrScope.has(nrmName(d.client))))
     .sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.submittedAt||'').localeCompare(a.submittedAt||''))
     .forEach(d=>{ const k=String(d.id||''); if(k&&!seen[k]){ seen[k]=1; uniq.push(d); } });
-  if(!uniq.length){ wrap.innerHTML=topHtml+`<div class="panel" style="padding:20px"><p class="muted" style="margin:0">${oversight?'No closed deals yet.':'No closed deals to manage yet. Your payout and commission are shown above; deals you close show here so you can log wires and later payments.'}</p></div>`; return; }
+  if(!uniq.length){ const mgrNone = SESSION&&SESSION.role==='manager' && mgrScope && mgrScope.size===0; wrap.innerHTML=topHtml+`<div class="panel" style="padding:20px"><p class="muted" style="margin:0">${mgrNone?'You are not set as the manager on any account yet, so there are no team deals to show here. Your own pay is shown above. (Set closer/setter managers on each account in Client Overview.)':(oversight?'No closed deals on your accounts yet.':'No closed deals to manage yet. Your payout and commission are shown above; deals you close show here so you can log wires and later payments.')}</p></div>`; return; }
   wrap.innerHTML=topHtml+`<div class="cards" style="grid-template-columns:repeat(auto-fill,minmax(250px,290px));gap:10px">`+uniq.map(d=>{
     const contract=d.contractValue||0, collected=dealCollected(d), pend=dealPending(d), bal=Math.max(0,contract-collected);
     const paid=contract>0&&collected>=contract;
     const badge=paid?'<span class="chip" style="background:rgba(74,160,80,.15);color:#7bd487">paid in full</span>':(pend>0?`<span class="chip" style="background:rgba(212,175,90,.15);color:var(--gold)">${money(pend)} pending</span>`:(bal>0?`<span class="chip" style="background:rgba(212,175,90,.12);color:var(--gold)">bal ${money(bal)}</span>`:''));
     const barPct=contract>0?Math.min(100,Math.round(collected/contract*100)):0;
-    const who=oversight&&String(d.rep||'').trim()!==me?`<div class="muted" style="font-size:11px;margin-top:2px">closer: ${esc(d.rep||'')}</div>`:'';
+    const cl=latestClients().find(c=>nrmName(c.name)===nrmName(d.client))||{};
+    const cloName=effCloserOf(d)||d.rep||'', setName=effSetterOf(d)||'';
+    const mgrTag=(nm,mgr)=>`${esc(nm||'-')}${mgr?` <span class="muted" style="font-weight:400">(mgr: ${esc(mgr)})</span>`:''}`;
+    const team=oversight?`<div style="font-size:11px;margin:0 0 8px;line-height:1.6;border-top:1px solid var(--border);padding-top:6px"><div><span class="muted" style="display:inline-block;width:52px">Closer:</span> ${mgrTag(cloName,cl.closerMgr)}</div><div><span class="muted" style="display:inline-block;width:52px">Setter:</span> ${mgrTag(setName,cl.setterMgr)}</div></div>`:'';
+    const who='';
     const commOv=(String(d.commRep||'')!==''||String(d.commSetter||'')!=='')?`<div style="font-size:11px;margin-top:2px;color:var(--gold)">commission &rarr; ${esc(effCloserOf(d)||'-')}${d.commSetter?(' / '+esc(effSetterOf(d))):''}</div>`:'';
     const np=nextExpectedPayment(d);
     const nextLine = np ? `<div style="font-size:11px;margin:0 0 8px;color:var(--gold)">&#9203; Next: ${money(np.amount||0)}${np.method?' '+esc(np.method):''} ${np.date?esc(usDate(np.date)):'<span class="muted">(no date)</span>'}</div>` : '';
@@ -6425,7 +6431,7 @@ function renderMyDeals(){
         <div><div class="muted" style="font-size:9.5px;text-transform:uppercase;letter-spacing:.03em">Balance</div><div style="font-size:14px">${money(bal)}</div></div>
       </div>
       <div class="bar" style="height:5px;margin-bottom:8px"><i style="width:${barPct}%"></i></div>
-      ${nextLine}${commOv}
+      ${team}${nextLine}${commOv}
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px"><div class="row-actions"><button class="btn gold sm" onclick="openPayments('${esc(String(d.id))}')">Manage payments</button>${dcCanEdit()?`<button class="btn ghost sm" onclick="openDealCredit('${esc(String(d.id))}')">Credit</button>`:''}</div>${who}</div>
     </div>`;
   }).join('')+`</div>`;
