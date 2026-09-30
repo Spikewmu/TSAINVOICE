@@ -1383,6 +1383,12 @@
           <div class="field"><label>Expected client collections $/mo</label><input id="conf_beMonthly" type="number" min="0" step="0.01"></div>
           <div class="field"><label>Unknown?</label><label style="font-weight:400;display:flex;align-items:center;gap:6px;margin-top:6px"><input id="conf_beTBD" type="checkbox"> Rate TBD / confirm</label></div>
         </div>
+        <div class="formhead" style="margin-top:10px"><b>Monthly retainer <span style="font-weight:400;color:var(--muted);font-size:12px">- fixed Retention Payment, full net to TSA (no rep comp)</span></b></div>
+        <div class="grid3">
+          <div class="field"><label>Monthly retainer ($)</label><input id="conf_retainer" type="number" min="0" step="100" placeholder="e.g. 3000"><span class="fieldhelp">Blank = none.</span></div>
+          <div class="field"><label>Bills on day of month</label><input id="conf_retainerDay" type="number" min="1" max="31" step="1" placeholder="1-31"></div>
+          <div class="field"><label>Duration (months)</label><input id="conf_retainerMonths" type="number" min="0" step="1" placeholder="blank = ongoing"><span class="fieldhelp">How many months it recurs (e.g. <b>3</b>). Blank / 0 = ongoing.</span></div>
+        </div>
         <div class="formhead" style="margin-top:10px"><b>Special / notes</b></div>
         <div class="grid3">
           <div class="field"><label>One-time / special %</label><input id="conf_flipRate" type="number" min="0" step="0.1"></div>
@@ -4130,6 +4136,8 @@ function conEdit(name){
   set('conf_feRate',c.feRate); set('conf_feTBD',!!c.feTBD); set('conf_feMonthly',c.feMonthly);
   set('conf_beRate',c.beRate); set('conf_beTBD',!!c.beTBD); set('conf_beMonthly',c.beMonthly);
   set('conf_flipRate',c.flipRate); set('conf_flipNote',c.flipNote); set('conf_notes',c.notes);
+  const bc=clientBillingCfg(cur||c.client)||{}; // retainer lives on the app account's billing config
+  set('conf_retainer',bc.retainer); set('conf_retainerDay',bc.retainerDay); set('conf_retainerMonths',bc.retainerMonths);
   f.scrollIntoView({behavior:'smooth',block:'center'});
 }
 function conCancel(){ const f=document.getElementById('conForm'); if(f) f.hidden=true; }
@@ -4142,7 +4150,17 @@ async function conSave(){
     feRate:feTBD?null:numOr(val('conf_feRate')), feTBD, feMonthly:numOr(val('conf_feMonthly'))||0,
     beRate:beTBD?null:numOr(val('conf_beRate')), beTBD, beMonthly:numOr(val('conf_beMonthly'))||0,
     flipRate:numOr(val('conf_flipRate'))||0, flipNote:String(val('conf_flipNote')||'').trim(), notes:String(val('conf_notes')||'').trim()};
-  try{ await addRecord(rec); toast('Contract saved'); const f=document.getElementById('conForm'); if(f) f.hidden=true; renderContracts(); }
+  try{
+    await addRecord(rec);
+    // retainer lives on the app account's clientbilling record so conRetainerFor/invoices pick it up - preserve any other billing fields
+    const retClient=String(val('conf_app')||client).trim();
+    const ret=numOr(val('conf_retainer'));
+    const retDay=(function(){ const v=parseInt(String(val('conf_retainerDay')||'').trim(),10); return isNaN(v)?null:Math.min(31,Math.max(1,v)); })();
+    const retMonths=(function(){ const raw=String(val('conf_retainerMonths')||'').trim(); if(raw==='') return null; const v=parseInt(raw,10); return isNaN(v)?null:Math.max(0,v); })();
+    const pb=clientBillingCfg(retClient)||{};
+    await addRecord({type:'clientbilling', client:retClient, mode:pb.mode||'flat', flatRate:pb.flatRate!=null?pb.flatRate:null, closerRate:pb.closerRate!=null?pb.closerRate:null, setterRate:pb.setterRate!=null?pb.setterRate:null, overrideRate:pb.overrideRate!=null?pb.overrideRate:null, frontEndOnly:!!pb.frontEndOnly, retainer:ret, retainerDay:retDay, retainerMonths:retMonths, by:(SESSION&&SESSION.name)||''});
+    toast('Contract saved'); const f=document.getElementById('conForm'); if(f) f.hidden=true; renderContracts();
+  }
   catch(e){ toast('Save failed: '+(e&&e.message||e),true); }
 }
 // Expected FUTURE income: a client's outstanding (contracted-but-uncollected) money + scheduled pending payments.
