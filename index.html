@@ -487,7 +487,7 @@
       <button data-tab="calllog">Call Log</button>
       <button data-tab="calendar">Calendar</button>
       <button data-tab="speedtolead">Speed to Lead</button>
-      <button data-tab="dialer">Dialer (WAVV)</button>
+      <button data-tab="dialer" id="navDialerBtn">Dialer (WAVV)</button>
       <button data-tab="adminreport">Admin Report</button>
     </div>
   </div>
@@ -3055,10 +3055,21 @@ function applyNavAccess(){
   // Sample (demo) mode: hide pages we never show prospects (Contracts = billing/legal)
   if(typeof SAMPLE_MODE!=='undefined' && SAMPLE_MODE){ ['contracts'].forEach(t=>{ const i=allow.indexOf(t); if(i>=0) allow.splice(i,1); }); }
   document.querySelectorAll('#tabs button[data-tab]').forEach(b=>{ b.hidden = !allow.includes(b.dataset.tab); });
+  // Dialer (WAVV): only show when the scoped client actually has WAVV activated (not just role-permitted)
+  const dbtn=document.getElementById('navDialerBtn');
+  if(dbtn && !dbtn.hidden){ dbtn.hidden = !(GLOBAL_CLIENT && clientHasWavv(GLOBAL_CLIENT)); }
+  if(!__integLoaded) loadIntegCfgsOnce(); // load integration configs once so the WAVV gate can evaluate
   pruneNavGroups();
   applyFlatNav();
   updateNavBadges();
 }
+// which clients have the WAVV dialer turned on (from the integration configs) - used to gate the Dialer nav item
+let __integLoaded=false;
+async function loadIntegCfgsOnce(force){
+  if(__integLoaded && !force) return; if(!(SESSION && ['admin','director','manager'].includes(SESSION.role))) return;
+  try{ const res=await integApi('get',{}); if(res && !res.error){ INTEG_CFGS={}; ((res.configs)||[]).forEach(c=>INTEG_CFGS[c.key]=c); __integLoaded=true; try{ applyNavAccess(); }catch(e){} } }catch(e){}
+}
+function clientHasWavv(name){ if(!name) return false; const c=INTEG_CFGS['tsa:'+name]; if(c) return !!(c.wavvEnabled||c.wavv); const nn=nrmName(name); return Object.keys(INTEG_CFGS).some(k=>{ const cc=INTEG_CFGS[k]; return cc && nrmName((cc.client||k).replace(/^tsa:/,''))===nn && (cc.wavvEnabled||cc.wavv); }); }
 // Founder view: render the nav as a flat list of pages (no collapsible "Setter/Closer tools / Resources / Recruiting" group headers)
 function applyFlatNav(){ try{ const nav=document.getElementById('tabs'); if(nav) nav.classList.toggle('flatnav', !!(SESSION && SESSION.role==='founder')); }catch(_){} }
 // super-admin "view as" - preview the app as another role (layout only; the real access/token is unchanged, resets on reload)
@@ -3191,7 +3202,7 @@ function buildGlobalClientSelect(){
 // anyone who has that selector (super admin / director / manager) - hide them. Reps (no selector) keep theirs.
 function hideRedundantClientFilters(){
   const hasGlobal = SESSION && ['admin','director','manager'].includes(SESSION.role);
-  ['fClient','rClient','arClient','drClient','rcmClient','clClient','calClient','dayRepClient','crClient'].forEach(id=>{
+  ['fClient','rClient','arClient','drClient','rcmClient','clClient','calClient','dayRepClient','crClient','dlrClient'].forEach(id=>{
     const el=document.getElementById(id); if(!el) return; const f=el.closest('.field'); if(f) f.style.display = hasGlobal?'none':'';
   });
 }
@@ -3202,7 +3213,9 @@ function setGlobalClient(v){
   try{ (v && v!==SAMPLE_CLIENT)?localStorage.setItem('tsa_global_client',v):localStorage.removeItem('tsa_global_client'); }catch(e){} // never persist sample mode (its data isn't loaded on refresh)
   const sel=document.getElementById('gClient'); if(sel) sel.value=GLOBAL_CLIENT;
   updateViewingTag();
-  const t=currentTab(); if(t) showTab(t); else renderDash(); // re-render the active tab so its per-tab client filter follows the global scope
+  try{ applyNavAccess(); }catch(e){} // re-evaluate the WAVV-gated Dialer item for the new company
+  let t=currentTab(); const tb=t&&document.querySelector('#tabs button[data-tab="'+t+'"]'); if(tb && tb.hidden) t='dash'; // if the active tab is now hidden (e.g. Dialer on a non-WAVV company), fall back to the dashboard
+  if(t) showTab(t); else renderDash(); // re-render the active tab so its per-tab client filter follows the global scope
   toast(v===SAMPLE_CLIENT?'Sample mode - demo data only, nothing is saved':(GLOBAL_CLIENT?('Scoped to '+GLOBAL_CLIENT):'Showing all companies'));
 }
 /* ---------------- Sample (demo) mode: swap the whole app to fake data for a safe walkthrough ----------------
@@ -11010,6 +11023,7 @@ async function renderIntegrations(){
   const sel=document.getElementById('integTarget'); if(!sel) return;
   const res=await integApi('get',{}); if(res&&res.error==='not-provisioned'){ const b=document.getElementById('integBody'); if(b)b.hidden=true; sel.innerHTML='<option>Backend not provisioned</option>'; return; }
   INTEG_CFGS={}; ((res&&res.configs)||[]).forEach(c=>INTEG_CFGS[c.key]=c);
+  __integLoaded=true; try{ applyNavAccess(); }catch(e){} // keep the WAVV-gated Dialer nav item in sync with the latest configs
   INTEG_HOOKS=(res&&res.webhooks)||[]; INTEG_TEMPLATES=(res&&res.templates)||[]; INTEG_SLACK_OAUTH=!!(res&&res.slackOauth); INTEG_SLACK_APPS=(res&&res.slackApps)||{}; INTEG_NOTIFY_OAUTH=!!(res&&res.notifyOauth);
   const isSuper=!!(res&&res.super), targets=[];
   if(isSuper){
