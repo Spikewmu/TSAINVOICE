@@ -1348,6 +1348,17 @@
     </div>
     <div id="poKpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin:12px 0"></div>
     <div class="panel" id="poOwePanel" style="margin:0 0 14px;border-color:var(--gold-soft)"><div style="display:flex;justify-content:space-between;align-items:baseline;padding:12px 14px 0;gap:8px;flex-wrap:wrap"><h3 style="margin:0">Who we owe <span class="muted" style="font-weight:400;font-size:12px">- everyone still unpaid this payday, most owed first (the mirror of Outstanding invoices)</span></h3></div><div class="tablewrap"><table id="poOweTable"></table></div></div>
+    <div class="panel" id="poManualPanel" style="margin:0 0 14px">
+      <div style="padding:12px 14px 0"><h3 style="margin:0">Manual / one-time payouts <span class="muted" style="font-weight:400;font-size:12px">- ad-hoc pay the engine doesn't compute (overrides, good-faith, webinar/faceless, bonuses). These roll into "Who we owe".</span></h3></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;padding:12px 14px 4px">
+        <div class="field" style="margin:0;min-width:150px"><label>Person</label><input id="mpoRep" placeholder="e.g. Keithan Lewis"></div>
+        <div class="field" style="margin:0;width:110px"><label>Amount ($)</label><input id="mpoAmt" type="number" min="0" step="1" placeholder="150"></div>
+        <div class="field" style="margin:0;position:relative;min-width:150px"><label>Date</label><div class="rangewrap"><input type="text" id="mpoDate_txt" readonly placeholder="Pick a day" onclick="dayPopToggle('mpoDate',event)"><input type="hidden" id="mpoDate"><div class="rangepop" id="mpoDate_pop" hidden onclick="event.stopPropagation()"></div></div></div>
+        <div class="field" style="margin:0;flex:1;min-width:220px"><label>For (what it's for)</label><input id="mpoNote" placeholder="e.g. Barry Hanson - 3% of $5,000 collected 9/7"></div>
+        <button class="btn gold sm" style="margin-bottom:2px" onclick="addManualPayout()">Add payout</button>
+      </div>
+      <div class="tablewrap"><table id="poManualTable"></table></div>
+    </div>
     <div class="panel" style="margin:0 0 14px"><div style="display:flex;justify-content:space-between;align-items:baseline;padding:12px 14px 0;gap:8px;flex-wrap:wrap"><h3 style="margin:0">Closers</h3><button class="btn ghost sm" onclick="poMarkAll('closer')">Mark all paid</button></div><div class="tablewrap"><table id="poCloserTable"></table></div></div>
     <div class="panel" style="margin:0 0 14px"><div style="display:flex;justify-content:space-between;align-items:baseline;padding:12px 14px 0;gap:8px;flex-wrap:wrap"><h3 style="margin:0">Setters</h3><button class="btn ghost sm" onclick="poMarkAll('setter')">Mark all paid</button></div><div class="tablewrap"><table id="poSetterTable"></table></div></div>
     <div class="panel" style="margin:0 0 14px"><div style="display:flex;justify-content:space-between;align-items:baseline;padding:12px 14px 0;gap:8px;flex-wrap:wrap"><h3 style="margin:0">Managers <span class="muted" style="font-weight:400;font-size:12px">- override on their teams' cash</span></h3><button class="btn ghost sm" onclick="poMarkAll('manager')">Mark all paid</button></div><div class="tablewrap"><table id="poMgrTable"></table></div></div>
@@ -7470,17 +7481,53 @@ function renderPayouts(){
   const wbt=document.getElementById('poWebTable'); if(wbt) wbt.innerHTML=webHead+`<tbody>${webRows||`<tr><td colspan="6" class="muted" style="padding:14px">No webinar-host pay this cycle. Deals need the webinar tag (or "Webinar" source) + a webinar % set on the account in Rep Commission Breakdown.</td></tr>`}</tbody>`;
   const all=[...data.closers.map(o=>({...o,role:'closer'})),...data.setters.map(o=>({...o,role:'setter'})),...poManagerData(c.from,c.to).map(o=>({...o,role:'manager'})),...poWebinarData(c.from,c.to).map(o=>({...o,role:'webinar'}))].filter(o=>o.commission>0.0001);
   let total=0,paidSum=0; all.forEach(o=>{ total+=o.commission; const st=poStatus(map,ck,o.rep,o.role); if(st&&st.paid) paidSum+=o.commission; });
+  // Manual / one-time payouts (ad-hoc, standalone - not cycle-computed): fold into the totals + "Who we owe"
+  try{ dayPickAttach('mpoDate', function(){}); const md=document.getElementById('mpoDate'); if(md && !md.value){ md.value=todayLocal(); dayPickSync('mpoDate'); } }catch(e){}
+  const manual=manualPayouts();
+  const manUnpaid=manual.filter(m=>!m.paid), manPaidList=manual.filter(m=>m.paid);
+  const manTot=manual.reduce((s,m)=>s+(Number(m.amount)||0),0), manPaidSum=manPaidList.reduce((s,m)=>s+(Number(m.amount)||0),0);
+  const grand=total+manTot, grandPaid=paidSum+manPaidSum;
   const kpi=(l,v,accent)=>`<div class="panel hlkpi${accent?' accent':''}"><div class="lbl">${l}</div><div class="val">${v}</div></div>`;
-  const kw=document.getElementById('poKpis'); if(kw) kw.innerHTML=kpi('Total to pay',money(total))+kpi('Paid',money(paidSum))+kpi('Remaining',money(total-paidSum),true);
-  // "Who we owe" - one consolidated list of everyone still unpaid this payday (mirror of the Outstanding invoices ledger)
+  const kw=document.getElementById('poKpis'); if(kw) kw.innerHTML=kpi('Total to pay',money(grand))+kpi('Paid',money(grandPaid))+kpi('Remaining',money(grand-grandPaid),true);
+  // "Who we owe" - one consolidated list of everyone still unpaid this payday + any unpaid one-time payouts (mirror of the Outstanding invoices ledger)
   const roleLbl={closer:'Closer',setter:'Setter',manager:'Manager',webinar:'Webinar host'};
-  const owe=all.map(o=>{ const st=poStatus(map,ck,o.rep,o.role); return {rep:o.rep, role:o.role, amt:o.commission, paid:!!(st&&st.paid)}; }).filter(o=>!o.paid).sort((a,b)=>b.amt-a.amt);
+  const owe=all.map(o=>{ const st=poStatus(map,ck,o.rep,o.role); return {rep:o.rep, role:o.role, amt:o.commission, paid:!!(st&&st.paid), kind:'comp'}; }).filter(o=>!o.paid);
+  manUnpaid.forEach(m=>owe.push({rep:m.rep, role:'One-time', note:m.note||'', amt:Number(m.amount)||0, kind:'manual', id:m.id}));
+  owe.sort((a,b)=>b.amt-a.amt);
   const oweHead=`<thead><tr><th>Person</th><th>Role</th><th class="num">Owed</th><th></th></tr></thead>`;
-  const oweBody=owe.length?owe.map(o=>`<tr><td><b>${esc(o.rep)}</b></td><td>${roleLbl[o.role]||esc(o.role)}</td><td class="num" style="font-weight:700">${money(o.amt)}</td><td><button class="btn gold sm" onclick="markPayout('${jsStr(o.rep)}','${o.role}',${o.amt},true)">Mark paid</button></td></tr>`).join(''):`<tr><td colspan="4" class="muted" style="padding:14px">Everyone's paid for this payday - nothing outstanding.</td></tr>`;
+  const oweBody=owe.length?owe.map(o=>{
+    const roleCell = o.kind==='manual' ? ('One-time'+(o.note?` <span class="muted" style="font-size:11px">- ${esc(o.note)}</span>`:'')) : (roleLbl[o.role]||esc(o.role));
+    const btn = o.kind==='manual' ? `<button class="btn gold sm" onclick="manualPayoutMark('${o.id}',true)">Mark paid</button>` : `<button class="btn gold sm" onclick="markPayout('${jsStr(o.rep)}','${o.role}',${o.amt},true)">Mark paid</button>`;
+    return `<tr><td><b>${esc(o.rep)}</b></td><td>${roleCell}</td><td class="num" style="font-weight:700">${money(o.amt)}</td><td>${btn}</td></tr>`;
+  }).join(''):`<tr><td colspan="4" class="muted" style="padding:14px">Everyone's paid - nothing outstanding.</td></tr>`;
   const oweTot=owe.reduce((s,o)=>s+o.amt,0);
   const oweFoot=owe.length?`<tr style="border-top:2px solid var(--gold);font-weight:800"><td>Total owed</td><td></td><td class="num">${money(oweTot)}</td><td></td></tr>`:'';
   const ot=document.getElementById('poOweTable'); if(ot) ot.innerHTML=oweHead+`<tbody>${oweBody}${oweFoot}</tbody>`;
+  // Manual payouts table (all, newest first)
+  const mHead=`<thead><tr><th>Person</th><th>For</th><th>Date</th><th class="num">Amount</th><th>Status</th><th></th></tr></thead>`;
+  const mBody=manual.length?manual.slice().sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))).map(m=>{
+    const paid=!!m.paid, badge=paid?`<span class="pill good">Paid${m.paidAt?' · '+esc(usDate(m.paidAt)):''}</span>`:`<span class="pill warn">Unpaid</span>`;
+    const act=`<button class="btn ghost sm" onclick="manualPayoutMark('${m.id}',${paid?'false':'true'})">${paid?'Undo':'Mark paid'}</button> <button class="btn ghost sm" style="color:var(--warn);border-color:var(--warn)" onclick="manualPayoutDel('${m.id}')">Remove</button>`;
+    return `<tr><td><b>${esc(m.rep)}</b></td><td>${esc(m.note||'')}${m.client?` <span class="muted">· ${esc(m.client)}</span>`:''}</td><td style="white-space:nowrap">${m.date?esc(usDate(m.date)):'-'}</td><td class="num" style="font-weight:700">${money(Number(m.amount)||0)}</td><td>${badge}</td><td>${act}</td></tr>`;
+  }).join(''):`<tr><td colspan="6" class="muted" style="padding:14px">No manual payouts yet. Add a one-time payment above (e.g. Keithan 3% override on a deal, Ra-eez good-faith).</td></tr>`;
+  const mtb=document.getElementById('poManualTable'); if(mtb) mtb.innerHTML=mHead+`<tbody>${mBody}</tbody>`;
 }
+function manualPayouts(){ const m={}; (RECORDS||[]).forEach(x=>{ if(x.type!=='manualpayout'||!x.id) return; if(!m[x.id]||(x.submittedAt||'')>(m[x.id].submittedAt||'')) m[x.id]=x; }); return Object.values(m).filter(x=>!x.deleted); }
+async function addManualPayout(){
+  if(!poCanEdit()){ toast('Super Admin only',true); return; }
+  const rep=((document.getElementById('mpoRep')||{}).value||'').trim();
+  const amt=parseFloat((document.getElementById('mpoAmt')||{}).value);
+  const date=(document.getElementById('mpoDate')||{}).value||todayLocal();
+  const note=((document.getElementById('mpoNote')||{}).value||'').trim();
+  if(!rep){ toast('Enter a person',true); return; }
+  if(!(amt>0)){ toast('Enter a valid amount',true); return; }
+  try{ await addRecord({type:'manualpayout', id:uid(), rep, amount:Math.round(amt*100)/100, date, note, paid:false, by:(SESSION&&SESSION.name)||''});
+    ['mpoRep','mpoAmt','mpoNote'].forEach(id=>{ const e=document.getElementById(id); if(e) e.value=''; });
+    toast('Added one-time payout: '+money(amt)+' for '+rep); renderPayouts();
+  }catch(e){ toast('Could not add the payout',true); }
+}
+async function manualPayoutMark(id,paid){ if(!poCanEdit()){ toast('Super Admin only',true); return; } const cur=manualPayouts().find(x=>x.id===id); if(!cur) return; try{ await addRecord(Object.assign({},cur,{paid:!!paid, paidAt:paid?new Date().toISOString():''})); toast(paid?'Marked paid':'Marked unpaid'); renderPayouts(); }catch(e){ toast('Could not update',true); } }
+async function manualPayoutDel(id){ if(!poCanEdit()){ toast('Super Admin only',true); return; } const cur=manualPayouts().find(x=>x.id===id); if(!cur) return; if(!confirm('Remove this one-time payout?')) return; try{ await addRecord(Object.assign({},cur,{deleted:true})); toast('Removed'); renderPayouts(); }catch(e){ toast('Could not remove',true); } }
 function repCommInit(){
   const cs=document.getElementById('rcmClient'); if(cs){ const cur=cs.value; cs.innerHTML='<option value="">All offers</option>'+clientNames().map(c=>`<option>${esc(c)}</option>`).join(''); cs.value=preferGlobal(clientNames(), cur); }
   const f=document.getElementById('rcmFrom'), t=document.getElementById('rcmTo'), c=payCycle();
