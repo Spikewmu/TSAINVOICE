@@ -6128,7 +6128,10 @@ function invDraftRows(){
   const rows=[];
   clients.forEach(client=>weeks.forEach(wk=>{
     if(covered(client,wk.from,wk.to)) return;
-    let g=0; try{ g=founderInvoiceCalc(client,wk.from,wk.to).grandTotal; }catch(_){ g=0; }
+    // Draft = unbilled REV-SHARE (deals/payments) for the week, NOT the monthly retainer. The retainer is a
+    // deliberate recurring charge tracked on Contracts/Expected; counting it weekly created phantom drafts (e.g. a
+    // pre-onboarding month showing the retainer as "unbilled"). (T-665c)
+    let g=0; try{ g=founderInvoiceCalc(client,wk.from,wk.to).amountDue||0; }catch(_){ g=0; }
     if(g>0) rows.push({client,from:wk.from,to:wk.to,status:'draft',amount:g,sentAt:'',ageDays:null});
   }));
   rows.sort((a,b)=>String(b.to).localeCompare(String(a.to)));
