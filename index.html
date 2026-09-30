@@ -4319,7 +4319,16 @@ function renderContracts(){
     +card('Actual TSA ('+esc(rl)+')',money(actual),'Actual TSA revenue for '+rl+' = the front-end rate applied to the cash actually billed this period, plus any retainer due (retainer is pure profit, no rep comp). What we really earned in the selected period.')
     +card('Net after comp ('+esc(rl)+')','<span style="color:'+(totNet<0?'var(--warn)':'var(--good)')+'">'+money(totNet)+'</span>','Net profit for '+rl+' = Actual TSA minus the commissions + manager overrides actually paid out this period. The retainer flows straight to net (nobody is paid a % on it).')
     +card('Next 12 mo (recurring + o/s)',money(next12),'Rough 12-month outlook = the monthly forecast × 12 (recurring revenue) plus everything currently outstanding (invoiced + o/s). A ceiling-ish view of the next year if nothing changes.');
-  const t=document.getElementById('conTable'); if(t) t.innerHTML=`<thead><tr><th>Client</th><th>Status</th><th class="num" title="Front-end / Back-end rev-share %">Rev share</th><th class="num">Forecast/mo</th><th class="num" title="Front-end rate applied to billed cash this period">Actual TSA</th><th class="num" title="Commissions + manager overrides actually paid out this period (from Payouts)">Comp paid</th><th class="num" title="Actual TSA revenue minus comp paid this period - the real net">Net</th><th class="num" title="What TSA has actually banked (invoices marked paid), all-time">Collected</th><th class="num" title="Owed to TSA now: sent-but-unpaid invoices + rev-share on customer outstanding deal balances">Expected</th><th></th></tr></thead><tbody>${rows}${totalRow}</tbody>`;
+  const th=(lbl,tip)=>`<th class="num" style="cursor:help" title="${esc(tip)}">${lbl}</th>`;
+  const t=document.getElementById('conTable'); if(t) t.innerHTML=`<thead><tr><th>Client</th><th>Status</th>`
+    +th('Rev share','Front-end / Back-end rev-share % TSA earns on this client’s collected cash.')
+    +th('Forecast/mo','Projected recurring TSA revenue per month = expected monthly client collections × rev-share %, plus any monthly retainer.')
+    +th('Actual TSA','Rev-share TSA EARNED this period on the cash the client actually collected (front-end rate × collected cash), plus any retainer. Earned - not necessarily invoiced or banked by TSA yet.')
+    +th('Comp paid','Commissions + manager overrides actually paid to the team this period (from Payouts). Never includes the retainer.')
+    +th('Net','Actual TSA minus Comp paid this period = the real profit on the offer.')
+    +th('Collected','What TSA has actually BANKED - invoices you sent and marked paid (all-time, not limited by the period).')
+    +th('Expected','Money still OWED to TSA now = invoices sent but not yet paid + your rev-share on the client’s uncollected deal balances. This is the A/R to chase.')
+    +`<th></th></tr></thead><tbody>${rows}${totalRow}</tbody>`;
   const fc=document.getElementById('conForecast'); if(fc) fc.innerHTML=`<thead><tr>${months.map(m=>`<th class="num">${esc(m.label)}</th>`).join('')}<th class="num">Next 12 mo</th></tr></thead><tbody><tr>${months.map(m=>`<td class="num">${money(m.amt)}</td>`).join('')}<td class="num"><b>${money(next12)}</b></td></tr></tbody>`;
   const note=document.getElementById('conNote'); if(note) note.style.display=anyTBD?'':'none';
   try{ renderConTrends(); }catch(e){}   // T-666 cash-trend charts
