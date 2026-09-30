@@ -1347,6 +1347,7 @@
       <div id="poCycleSub" class="muted" style="font-size:13px"></div>
     </div>
     <div id="poKpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin:12px 0"></div>
+    <div class="panel" id="poOwePanel" style="margin:0 0 14px;border-color:var(--gold-soft)"><div style="display:flex;justify-content:space-between;align-items:baseline;padding:12px 14px 0;gap:8px;flex-wrap:wrap"><h3 style="margin:0">Who we owe <span class="muted" style="font-weight:400;font-size:12px">- everyone still unpaid this payday, most owed first (the mirror of Outstanding invoices)</span></h3></div><div class="tablewrap"><table id="poOweTable"></table></div></div>
     <div class="panel" style="margin:0 0 14px"><div style="display:flex;justify-content:space-between;align-items:baseline;padding:12px 14px 0;gap:8px;flex-wrap:wrap"><h3 style="margin:0">Closers</h3><button class="btn ghost sm" onclick="poMarkAll('closer')">Mark all paid</button></div><div class="tablewrap"><table id="poCloserTable"></table></div></div>
     <div class="panel" style="margin:0 0 14px"><div style="display:flex;justify-content:space-between;align-items:baseline;padding:12px 14px 0;gap:8px;flex-wrap:wrap"><h3 style="margin:0">Setters</h3><button class="btn ghost sm" onclick="poMarkAll('setter')">Mark all paid</button></div><div class="tablewrap"><table id="poSetterTable"></table></div></div>
     <div class="panel" style="margin:0 0 14px"><div style="display:flex;justify-content:space-between;align-items:baseline;padding:12px 14px 0;gap:8px;flex-wrap:wrap"><h3 style="margin:0">Managers <span class="muted" style="font-weight:400;font-size:12px">- override on their teams' cash</span></h3><button class="btn ghost sm" onclick="poMarkAll('manager')">Mark all paid</button></div><div class="tablewrap"><table id="poMgrTable"></table></div></div>
@@ -7376,6 +7377,14 @@ function renderPayouts(){
   let total=0,paidSum=0; all.forEach(o=>{ total+=o.commission; const st=poStatus(map,ck,o.rep,o.role); if(st&&st.paid) paidSum+=o.commission; });
   const kpi=(l,v,accent)=>`<div class="panel hlkpi${accent?' accent':''}"><div class="lbl">${l}</div><div class="val">${v}</div></div>`;
   const kw=document.getElementById('poKpis'); if(kw) kw.innerHTML=kpi('Total to pay',money(total))+kpi('Paid',money(paidSum))+kpi('Remaining',money(total-paidSum),true);
+  // "Who we owe" - one consolidated list of everyone still unpaid this payday (mirror of the Outstanding invoices ledger)
+  const roleLbl={closer:'Closer',setter:'Setter',manager:'Manager',webinar:'Webinar host'};
+  const owe=all.map(o=>{ const st=poStatus(map,ck,o.rep,o.role); return {rep:o.rep, role:o.role, amt:o.commission, paid:!!(st&&st.paid)}; }).filter(o=>!o.paid).sort((a,b)=>b.amt-a.amt);
+  const oweHead=`<thead><tr><th>Person</th><th>Role</th><th class="num">Owed</th><th></th></tr></thead>`;
+  const oweBody=owe.length?owe.map(o=>`<tr><td><b>${esc(o.rep)}</b></td><td>${roleLbl[o.role]||esc(o.role)}</td><td class="num" style="font-weight:700">${money(o.amt)}</td><td><button class="btn gold sm" onclick="markPayout('${jsStr(o.rep)}','${o.role}',${o.amt},true)">Mark paid</button></td></tr>`).join(''):`<tr><td colspan="4" class="muted" style="padding:14px">Everyone's paid for this payday - nothing outstanding.</td></tr>`;
+  const oweTot=owe.reduce((s,o)=>s+o.amt,0);
+  const oweFoot=owe.length?`<tr style="border-top:2px solid var(--gold);font-weight:800"><td>Total owed</td><td></td><td class="num">${money(oweTot)}</td><td></td></tr>`:'';
+  const ot=document.getElementById('poOweTable'); if(ot) ot.innerHTML=oweHead+`<tbody>${oweBody}${oweFoot}</tbody>`;
 }
 function repCommInit(){
   const cs=document.getElementById('rcmClient'); if(cs){ const cur=cs.value; cs.innerHTML='<option value="">All offers</option>'+clientNames().map(c=>`<option>${esc(c)}</option>`).join(''); cs.value=preferGlobal(clientNames(), cur); }
