@@ -1386,7 +1386,7 @@
         <div class="field" style="margin:0;min-width:150px"><label>Category</label><select id="expCat"><option>Software / Tools</option><option>Contractors / Payroll</option><option>Advertising</option><option>Subscriptions</option><option>Office / Admin</option><option>Fees / Processing</option><option>Other</option></select></div>
         <div class="field" style="margin:0;flex:1;min-width:180px"><label>Vendor / description</label><input id="expVendor" placeholder="e.g. GoHighLevel, Zoom, contractor name"></div>
         <div class="field" style="margin:0;width:120px"><label>Amount ($)</label><input id="expAmt" type="number" min="0" step="0.01" placeholder="0.00"></div>
-        <label class="field" style="margin:0;font-weight:400;display:flex;align-items:center;gap:6px;padding-bottom:8px"><input type="checkbox" id="expRecurring"> Monthly recurring</label>
+        <div class="field" style="margin:0;min-width:120px"><label>Recurs</label><select id="expRecur"><option value="none">One-time</option><option value="monthly">Monthly</option><option value="yearly">Yearly</option></select></div>
         <button class="btn gold sm" id="expAddBtn" style="margin-bottom:2px" onclick="addExpense()">Add expense</button>
       </div>
       <div class="tablewrap"><table id="ldgExpTable"></table></div>
@@ -4288,9 +4288,12 @@ function setLdgRange(f,t){ LDG_FROM=f; LDG_TO=t; LDG_PERIOD='custom'; document.q
 // expense records (latest-wins per id, soft delete)
 function expenseRecords(){ const m={}; (RECORDS||[]).forEach(x=>{ if(x.type!=='expense'||!x.id) return; if(!m[x.id]||(x.submittedAt||'')>(m[x.id].submittedAt||'')) m[x.id]=x; }); return Object.values(m).filter(x=>!x.deleted); }
 // how much an expense counts toward [from,to]: one-off = if its date is in range; recurring monthly = amount x months from its start through the range
+function expenseRecur(e){ return e.recur || (e.recurring?'monthly':'none'); } // back-compat: old records used a recurring boolean
 function expenseInPeriod(e, from, to){ const amt=Number(e.amount)||0; if(!amt) return 0; const d=String(e.date||'').slice(0,10); if(!d) return 0;
-  if(!e.recurring){ return ((!from||d>=from)&&(!to||d<=to))?amt:0; }
-  const start=d, end=to||isoLocal(new Date()); let f=from||start; if(f<start) f=start; if(f>end) return 0;
+  const recur=expenseRecur(e);
+  if(recur==='none'){ return ((!from||d>=from)&&(!to||d<=to))?amt:0; }
+  const end=to||isoLocal(new Date()); let f=from||d; if(f<d) f=d; if(f>end) return 0;
+  if(recur==='yearly'){ const sd=new Date(d+'T00:00:00'); let n=0; for(let yr=sd.getFullYear(); yr<=+end.slice(0,4); yr++){ const iso=isoLocal(new Date(yr, sd.getMonth(), sd.getDate())); if(iso>=f && iso<=end) n++; } return amt*n; }
   let y=+f.slice(0,4), m=+f.slice(5,7)-1, ey=+end.slice(0,4), em=+end.slice(5,7)-1, n=0, guard=0;
   while((y<ey||(y===ey&&m<=em)) && guard<600){ n++; m++; if(m>11){m=0;y++;} guard++; }
   return amt*n;
@@ -4301,21 +4304,21 @@ async function addExpense(){ if(!(SESSION&&['admin','director'].includes(SESSION
   const cat=(document.getElementById('expCat')||{}).value||'Other';
   const vendor=((document.getElementById('expVendor')||{}).value||'').trim();
   const amt=parseFloat((document.getElementById('expAmt')||{}).value);
-  const recurring=!!(document.getElementById('expRecurring')||{}).checked;
+  const recur=((document.getElementById('expRecur')||{}).value)||'none';
   if(!(amt>0)){ toast('Enter a valid amount',true); return; }
   try{
     if(EXP_EDIT_ID){ const cur=expenseRecords().find(x=>x.id===EXP_EDIT_ID)||{id:EXP_EDIT_ID};
-      await addRecord(Object.assign({},cur,{type:'expense',id:EXP_EDIT_ID,date,category:cat,vendor,amount:Math.round(amt*100)/100,recurring,by:(SESSION&&SESSION.name)||''}));
+      await addRecord(Object.assign({},cur,{type:'expense',id:EXP_EDIT_ID,date,category:cat,vendor,amount:Math.round(amt*100)/100,recur,recurring:recur==='monthly',by:(SESSION&&SESSION.name)||''}));
       EXP_EDIT_ID=null; const b=document.getElementById('expAddBtn'); if(b) b.textContent='Add expense'; toast('Expense updated');
-    } else { await addRecord({type:'expense',id:uid(),date,category:cat,vendor,amount:Math.round(amt*100)/100,recurring,by:(SESSION&&SESSION.name)||''}); toast('Expense added'); }
-    ['expVendor','expAmt'].forEach(id=>{ const e=document.getElementById(id); if(e) e.value=''; }); const rc=document.getElementById('expRecurring'); if(rc) rc.checked=false;
+    } else { await addRecord({type:'expense',id:uid(),date,category:cat,vendor,amount:Math.round(amt*100)/100,recur,recurring:recur==='monthly',by:(SESSION&&SESSION.name)||''}); toast('Expense added'); }
+    ['expVendor','expAmt'].forEach(id=>{ const e=document.getElementById(id); if(e) e.value=''; }); const rc=document.getElementById('expRecur'); if(rc) rc.value='none';
     renderArAp();
   }catch(e){ toast('Could not save the expense',true); }
 }
 function expenseEdit(id){ const e=expenseRecords().find(x=>x.id===id); if(!e) return; EXP_EDIT_ID=id;
   const sv=(i,v)=>{ const el=document.getElementById(i); if(el) el.value=v; };
   const d=document.getElementById('expDate'); if(d){ d.value=e.date||todayLocal(); try{ dayPickSync('expDate'); }catch(_){} }
-  sv('expCat',e.category||'Other'); sv('expVendor',e.vendor||''); sv('expAmt',e.amount!=null?e.amount:''); const rc=document.getElementById('expRecurring'); if(rc) rc.checked=!!e.recurring;
+  sv('expCat',e.category||'Other'); sv('expVendor',e.vendor||''); sv('expAmt',e.amount!=null?e.amount:''); sv('expRecur',expenseRecur(e));
   const b=document.getElementById('expAddBtn'); if(b) b.textContent='Update expense';
   const p=document.getElementById('ldgExpPanel'); if(p) p.scrollIntoView({behavior:'smooth',block:'center'});
 }
@@ -4347,7 +4350,7 @@ function renderArAp(){
     +card('NET PROFIT',money(netProfit),netProfit>=0?'var(--good)':'var(--bad)','The bottom line: revenue minus comp minus operating expenses for '+esc(rng.label)+'.');
   // ---- expenses table ----
   const et=document.getElementById('ldgExpTable');
-  if(et){ const rows=exps.map(x=>{ const e=x.e; return `<tr><td style="white-space:nowrap;padding:6px 8px">${e.date?esc(usDate(e.date)):'-'}</td><td style="padding:6px 8px">${esc(e.category||'Other')}</td><td style="padding:6px 8px">${esc(e.vendor||'')}${e.recurring?' <span class="pill" style="font-size:9px">monthly</span>':''}</td><td class="num" style="padding:6px 8px;font-weight:600">${money(x.amt)}${e.recurring&&Math.abs(x.amt-(Number(e.amount)||0))>0.001?` <span class="muted" style="font-size:10px">(${money(Number(e.amount)||0)}/mo)</span>`:''}</td><td style="padding:6px 8px;white-space:nowrap"><button class="btn ghost sm" style="padding:2px 9px" title="Edit" onclick="expenseEdit('${e.id}')">&#9998;</button> <button class="btn ghost sm" style="color:var(--warn);border-color:var(--warn);padding:2px 9px" title="Delete" onclick="expenseDel('${e.id}')">&times;</button></td></tr>`; }).join('');
+  if(et){ const rows=exps.map(x=>{ const e=x.e, rc=expenseRecur(e), per=rc==='yearly'?'/yr':(rc==='monthly'?'/mo':''); return `<tr><td style="white-space:nowrap;padding:6px 8px">${e.date?esc(usDate(e.date)):'-'}</td><td style="padding:6px 8px">${esc(e.category||'Other')}</td><td style="padding:6px 8px">${esc(e.vendor||'')}${rc!=='none'?` <span class="pill" style="font-size:9px">${rc}</span>`:''}</td><td class="num" style="padding:6px 8px;font-weight:600">${money(x.amt)}${rc!=='none'&&Math.abs(x.amt-(Number(e.amount)||0))>0.001?` <span class="muted" style="font-size:10px">(${money(Number(e.amount)||0)}${per})</span>`:''}</td><td style="padding:6px 8px;white-space:nowrap"><button class="btn ghost sm" style="padding:2px 9px" title="Edit" onclick="expenseEdit('${e.id}')">&#9998;</button> <button class="btn ghost sm" style="color:var(--warn);border-color:var(--warn);padding:2px 9px" title="Delete" onclick="expenseDel('${e.id}')">&times;</button></td></tr>`; }).join('');
     et.innerHTML=`<thead><tr><th style="text-align:left">Date</th><th style="text-align:left">Category</th><th style="text-align:left">Vendor / description</th><th class="num">Amount</th><th></th></tr></thead><tbody>${rows||'<tr><td colspan="5" class="muted" style="padding:14px">No expenses logged for this period. Add software, tools, contractors, etc. above.</td></tr>'}${exps.length?`<tr style="border-top:2px solid var(--gold);font-weight:800"><td>Total expenses</td><td></td><td></td><td class="num">${money(opex)}</td><td></td></tr>`:''}</tbody>`;
     try{ dayPickAttach('expDate', function(){}); const ed=document.getElementById('expDate'); if(ed&&!ed.value){ ed.value=todayLocal(); dayPickSync('expDate'); } }catch(e){}
   }
