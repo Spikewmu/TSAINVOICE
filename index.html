@@ -4331,6 +4331,7 @@ function renderArAp(){
   const rng=ldgRanges()[LDG_PERIOD]||ldgRanges().thismonth; const pf=rng.from||'0000-01-01', pt=rng.to||'9999-12-31';
   // ---- P&L ----
   const revenue=tsaActualForPeriod(rng.from,rng.to);
+  let collected=0; try{ (typeof invPaidRecords==='function'?invPaidRecords():[]).forEach(r=>{ const pd=String(r.paidDate||r.at||'').slice(0,10); if(pd&&(!rng.from||pd>=rng.from)&&(!rng.to||pd<=rng.to)) collected+=Number(r.amount)||0; }); }catch(e){} // cash actually banked (invoices paid) in the period
   let comp=0; try{ comp=trendCompTotal(pf,pt); }catch(e){}
   const gross=revenue-comp;
   const exps=expenseRecords().map(e=>({e, amt:expenseInPeriod(e, rng.from, rng.to)})).filter(x=>x.amt>0.0001).sort((a,b)=>b.amt-a.amt);
@@ -4338,7 +4339,8 @@ function renderArAp(){
   const netProfit=gross-opex;
   const pnl=document.getElementById('ldgPnl');
   const card=(l,v,color,tip)=>`<div class="kpi" style="flex:1;min-width:150px${tip?';cursor:help':''}"${tip?` title="${esc(tip)}"`:''}><div class="lbl">${l}</div><div class="val"${color?` style="color:${color}"`:''}>${v}</div></div>`;
-  if(pnl) pnl.innerHTML=card('Revenue (Actual TSA)',money(revenue),'var(--gold-2)','Rev-share earned on billed cash + retainers this period, across active clients.')
+  if(pnl) pnl.innerHTML=card('Revenue (Actual TSA)',money(revenue),'var(--gold-2)','Rev-share EARNED on billed cash + retainers this period, across active clients. Earned, not necessarily banked yet.')
+    +card('Collected (cash in)',money(collected),'#7bd487','Cash TSA actually BANKED this period - invoices marked paid. This is the real money in; Revenue is what was earned.')
     +card('Comp paid',money(comp),'var(--warn)','Commissions + manager overrides for the period (from the payout engine).')
     +card('Gross (after comp)',money(gross),gross>=0?'var(--good)':'var(--bad)','Revenue minus team comp - before operating expenses.')
     +card('Operating expenses',money(opex),'var(--warn)','Software, tools, contractors, ads and other business expenses logged below.')
