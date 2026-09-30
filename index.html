@@ -2388,11 +2388,19 @@ If they did not watch: No problem at all, I will send it right over. Can you wat
     </style>
     <p class="hint" style="margin:0 0 4px">Sales HQ will deactivate their login, set their termination date to today, and drop them from the roster + all pickers. Confirm you've handled the handoff first. All their history is kept and you can reactivate anytime.</p>
     <div class="fieldhelp" style="margin:0 0 12px;color:var(--gold-2)">Check each step to enable Offboard.</div>
-    <div style="display:flex;flex-direction:column;gap:10px">
+    <div style="display:flex;flex-direction:column;gap:10px" id="offSteps">
       <label class="offrow"><input type="checkbox" class="offchk" onchange="offToggle()"><span>Reassigned their leads to an active rep</span></label>
       <label class="offrow"><input type="checkbox" class="offchk" onchange="offToggle()"><span>Moved their calendar events / bookings to an active rep</span></label>
       <label class="offrow"><input type="checkbox" class="offchk" onchange="offToggle()"><span>Removed them from the client's Slack channels</span></label>
       <label class="offrow"><input type="checkbox" class="offchk" onchange="offToggle()"><span>Removed from any founder-specific programs</span></label>
+    </div>
+    <div id="offCustomEditWrap" style="margin-top:12px" hidden>
+      <a class="linklike" style="cursor:pointer;font-size:12px" onclick="offToggleEditor()"><span id="offEditToggleLbl">&#43; Add / edit this account's own offboard steps</span></a>
+      <div id="offCustomEditor" hidden style="margin-top:8px;border:1px solid var(--border);border-radius:10px;padding:10px 12px">
+        <div class="fieldhelp" style="margin:0 0 6px">Extra steps for <b id="offEditClient"></b> - one per line. These auto-populate on every offboard for this account.</div>
+        <textarea id="offCustomText" rows="4" style="width:100%" placeholder="e.g. Revoke access to the funnel builder&#10;Remove from the client's ad accounts"></textarea>
+        <div class="row-actions" style="margin-top:8px"><button class="btn gold sm" onclick="offSaveCustom()">Save steps</button><button class="btn ghost sm" onclick="offToggleEditor()">Close</button></div>
+      </div>
     </div>
     <div class="fieldhelp" style="margin:14px 0 0">After you confirm, you'll be asked separately whether to also delete them from GHL (that step names the exact accounts and cannot be undone).</div>
     <div class="row-actions" style="margin-top:14px"><button class="btn gold sm" id="offConfirmBtn" onclick="offConfirm()" disabled style="opacity:.5;cursor:not-allowed">Offboard</button><button class="btn ghost sm" onclick="offClose()">Cancel</button></div>
@@ -10244,13 +10252,36 @@ async function runArchive(username, archive){
 }
 // Interactive offboard checklist (T-599): the manager must confirm the handoff before HQ deactivates + (optionally) removes from GHL
 let OFF_USER=null;
+// T-643: per-account custom offboard steps (billable). Latest-wins `offboardsteps` record per client.
+function offboardStepsFor(client){ const ck=nrmName(client); let best=null; (RECORDS||[]).forEach(x=>{ if(x.type!=='offboardsteps'||nrmName(x.client)!==ck) return; if(!best||String(x.submittedAt||'')>String(best.submittedAt||'')) best=x; }); if(!best) return []; try{ return (Array.isArray(best.steps)?best.steps:JSON.parse(best.steps||'[]')).filter(s=>String(s||'').trim()); }catch(e){ return []; } }
+let OFF_EDIT_CLIENT='';
 function openOffboard(username){
   if(!canManageUser(username)){ toast('You can only offboard Sales Managers and below',true); return; }
   OFF_USER=username; const u=userByName(username)||{username};
   const nm=document.getElementById('offName'); if(nm) nm.textContent=(u.name||username);
+  const box=document.getElementById('offSteps');
+  if(box){ box.querySelectorAll('.offcustom').forEach(n=>n.remove()); // drop any previously-injected custom rows
+    const clients=((typeof teamsFor==='function'?teamsFor(username):[])||[]).filter(Boolean);
+    clients.forEach(cl=>{ offboardStepsFor(cl).forEach(step=>{ const lab=document.createElement('label'); lab.className='offrow offcustom'; lab.innerHTML=`<input type="checkbox" class="offchk" onchange="offToggle()"><span>${esc(step)} <span class="muted" style="font-size:11px">- ${esc(cl)}</span></span>`; box.appendChild(lab); }); });
+    OFF_EDIT_CLIENT=clients[0]||'';
+  }
   document.querySelectorAll('#offModal .offchk').forEach(c=>{ c.checked=false; });
+  // editor: admins/managers/founders can add this account's own steps
+  const canEdit=!!(SESSION && ['admin','director','manager','founder'].includes(SESSION.role)) && OFF_EDIT_CLIENT;
+  const ew=document.getElementById('offCustomEditWrap'); if(ew) ew.hidden=!canEdit;
+  const ed=document.getElementById('offCustomEditor'); if(ed) ed.hidden=true;
+  const ec=document.getElementById('offEditClient'); if(ec) ec.textContent=OFF_EDIT_CLIENT;
+  const et=document.getElementById('offCustomText'); if(et) et.value=offboardStepsFor(OFF_EDIT_CLIENT).join('\n');
   offToggle();
   const mo=document.getElementById('offModal'); if(mo) mo.hidden=false;
+}
+function offToggleEditor(){ const ed=document.getElementById('offCustomEditor'); if(ed) ed.hidden=!ed.hidden; }
+async function offSaveCustom(){
+  if(!OFF_EDIT_CLIENT){ toast('No account linked to this rep',true); return; }
+  const raw=(document.getElementById('offCustomText')||{}).value||'';
+  const steps=raw.split('\n').map(s=>s.trim()).filter(Boolean);
+  try{ await addRecord({type:'offboardsteps', client:OFF_EDIT_CLIENT, steps:JSON.stringify(steps), by:(SESSION&&SESSION.name)||''}); toast('Saved '+steps.length+' custom offboard step'+(steps.length===1?'':'s')+' for '+OFF_EDIT_CLIENT); const u=OFF_USER; offClose(); if(u) openOffboard(u); }
+  catch(e){ toast('Could not save steps',true); }
 }
 function offClose(){ const mo=document.getElementById('offModal'); if(mo) mo.hidden=true; OFF_USER=null; }
 function offToggle(){ const all=[...document.querySelectorAll('#offModal .offchk')].every(c=>c.checked); const b=document.getElementById('offConfirmBtn'); if(b){ b.disabled=!all; b.style.opacity=all?'1':'.5'; b.style.cursor=all?'pointer':'not-allowed'; } }
