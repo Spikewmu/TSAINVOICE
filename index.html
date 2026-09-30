@@ -1377,6 +1377,8 @@
       <p id="conNote" class="hint" style="display:none;margin:10px 14px 0">Rows marked <span class="pill warn">TBD</span> are excluded from the forecast totals until you confirm the rate. Actual TSA applies the front-end rate to the <b>billed</b> cash this period (the same amount the invoices bill on, including per-line billing overrides like billing on $9,500 instead of $10,000), not raw cash collected. The app does not tag front-end vs back-end payments, so it applies the front-end rate to all of it. Any <b>monthly retainer</b> due in the period is added to Actual TSA as <b>pure profit</b> (retention is company money - no rep commission is ever paid on it) and is included in Forecast/mo as recurring revenue. <b>Comp paid</b> = commissions + manager overrides actually attributed to that client this period (from the Payouts engine, following per-offer rates and the no-setter rule) - never includes the retainer; <b>Net</b> = Actual TSA minus Comp paid = the real profit on the offer for the period. Hover Comp paid or Net to see who was paid what. <b>Expected</b> = money owed to TSA now = <b>sent-but-unpaid invoices</b> (marked "sent" on Invoicing, not yet marked paid) plus rev-share on the customer's outstanding deal balance; it moves to <b>Collected</b> when you mark the invoice paid.</p>
     </div>
     <div class="panel"><h3 style="margin:0">Forecasted TSA revenue by month <span style="font-weight:400;color:var(--muted);font-size:12px">- recurring forecast + scheduled outstanding payments (rev-share on money already contracted)</span></h3><div class="tablewrap" style="margin-top:10px"><table id="conForecast"></table></div></div>
+    <div class="panel"><h3 style="margin:0">Cash trends <span style="font-weight:400;color:var(--muted);font-size:12px">- gross collected, net after comp, and outstanding liability, month over month + by quarter</span></h3><div id="conTrends" style="padding:12px 4px 6px"></div></div>
+    <div class="panel"><h3 style="margin:0">Client payment health <span style="font-weight:400;color:var(--muted);font-size:12px">- how fast each client pays (invoice sent &rarr; paid)</span></h3><div style="padding:2px 2px 6px"><p class="hint" style="margin:0 0 8px">Score blends average days-to-pay, on-time rate, and any open overdue invoices. Lower days = healthier. Watch a client trending late as a liability signal.</p><div class="tablewrap" id="conHealth" style="overflow-x:auto"></div></div></div>
   </section>
 
   <!-- ===== SCORECARDS ===== -->
@@ -4197,6 +4199,98 @@ function renderContracts(){
   const t=document.getElementById('conTable'); if(t) t.innerHTML=`<thead><tr><th>Client</th><th>Status</th><th class="num" title="Front-end / Back-end rev-share %">Rev share</th><th class="num">Forecast/mo</th><th class="num" title="Front-end rate applied to billed cash this period">Actual TSA</th><th class="num" title="Commissions + manager overrides actually paid out this period (from Payouts)">Comp paid</th><th class="num" title="Actual TSA revenue minus comp paid this period - the real net">Net</th><th class="num" title="What TSA has actually banked (invoices marked paid), all-time">Collected</th><th class="num" title="Owed to TSA now: sent-but-unpaid invoices + rev-share on customer outstanding deal balances">Expected</th><th></th></tr></thead><tbody>${rows}${totalRow}</tbody>`;
   const fc=document.getElementById('conForecast'); if(fc) fc.innerHTML=`<thead><tr>${months.map(m=>`<th class="num">${esc(m.label)}</th>`).join('')}<th class="num">Next 12 mo</th></tr></thead><tbody><tr>${months.map(m=>`<td class="num">${money(m.amt)}</td>`).join('')}<td class="num"><b>${money(next12)}</b></td></tr></tbody>`;
   const note=document.getElementById('conNote'); if(note) note.style.display=anyTBD?'':'none';
+  try{ renderConTrends(); }catch(e){}   // T-666 cash-trend charts
+  try{ renderConHealth(); }catch(e){}   // T-665 payment health scores
+}
+/* ===== T-666: cash trends (gross collected / net after comp / outstanding liability) by month + quarter ===== */
+// total comp actually paid across all clients in a date range (same basis Contracts uses: rep commissions + manager overrides + webinar)
+function trendCompTotal(from,to){
+  let rep={closers:[],setters:[]},mgr=[],web=[];
+  try{ rep=repCommData(from,to,''); }catch(e){}
+  try{ mgr=poManagerData(from,to); }catch(e){}
+  try{ web=poWebinarData(from,to); }catch(e){}
+  let total=0;
+  [...(rep.closers||[]),...(rep.setters||[])].forEach(o=>{ let cc=0; Object.keys(o.byClient||{}).forEach(cn=>cc+=(o.byClient[cn]||0)); total+=cc*repRate(o.rep,o.role)/100; });
+  mgr.forEach(m=>{ (m.items||[]).forEach(it=>total+=(it.cash||0)*(it.rate||0)/100); });
+  web.forEach(w=>{ (w.items||[]).forEach(it=>total+=(it.amt!=null?it.amt:(it.cash||0)*(it.rate||0)/100)); });
+  return total;
+}
+function conTrendData(nMonths){
+  const now=new Date(), months=[];
+  for(let i=nMonths-1;i>=0;i--){ const d=new Date(now.getFullYear(), now.getMonth()-i, 1); months.push({key:`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`, label:d.toLocaleString('en-US',{month:'short',year:'2-digit'})}); }
+  const idx={}; months.forEach((m,i)=>idx[m.key]=i);
+  const collected=months.map(()=>0), billed=months.map(()=>0), net=months.map(()=>0), comp=months.map(()=>0);
+  const paid=invPaidRecords();
+  paid.forEach(r=>{ const mk=String(r.at||r.submittedAt||'').slice(0,7); if(mk in idx) collected[idx[mk]]+=Number(r.amount)||0; }); // gross banked, by paid month
+  // billed (grand total incl. retainer) recognized at the invoice period end, for the running liability line
+  const invs=Object.values(conInvoiceLatest()).filter(iv=>['approved','sent','paid'].includes(iv.status));
+  const gtOf=iv=>{ try{ return founderInvoiceCalc(iv.client,String(iv.from||'').slice(0,10),String(iv.to||'').slice(0,10)).grandTotal||0; }catch(e){ return 0; } };
+  let openBilled=0, openColl=0;
+  invs.forEach(iv=>{ const mk=String(iv.to||'').slice(0,7); const g=gtOf(iv); if(mk in idx) billed[idx[mk]]+=g; else if(mk && mk<months[0].key) openBilled+=g; });
+  paid.forEach(r=>{ const mk=String(r.at||r.submittedAt||'').slice(0,7); if(mk && mk<months[0].key) openColl+=Number(r.amount)||0; });
+  months.forEach((m,i)=>{ const from=m.key+'-01', last=new Date(parseInt(m.key.slice(0,4)),parseInt(m.key.slice(5,7)),0).getDate(), to=m.key+'-'+String(last).padStart(2,'0'); comp[i]=trendCompTotal(from,to); net[i]=collected[i]-comp[i]; });
+  const outstanding=months.map(()=>0); let runB=openBilled, runC=openColl;
+  months.forEach((m,i)=>{ runB+=billed[i]; runC+=collected[i]; outstanding[i]=Math.max(0,runB-runC); });
+  return {months,collected,net,comp,billed,outstanding};
+}
+// lightweight multi-series line chart (SVG, theme colors), reuses chartAxis for a tight round scale
+function conLineChart(months, series){
+  const n=months.length; if(!n) return '<div class="muted" style="padding:20px;text-align:center">No data yet.</div>';
+  const W=760,H=210,padL=54,padR=14,padT=12,padB=32, plotW=W-padL-padR, plotH=H-padT-padB;
+  const vals=series.flatMap(s=>s.data.filter(v=>v!=null)); const maxV=Math.max(1,...vals);
+  const ax=chartAxis(maxV), niceMax=ax.max, step=ax.step, nT=Math.max(1,Math.round(niceMax/step));
+  const fmt=v=>{ v=Math.round(v); return v>=1000?'$'+(v/1000).toFixed(v>=10000?0:1)+'k':'$'+v; };
+  const x=i=> padL + (n===1? plotW/2 : i*plotW/(n-1)), y=v=> padT + plotH*(1 - (v/niceMax));
+  let g='';
+  for(let i=0;i<=nT;i++){ const val=niceMax-i*step, yy=padT+plotH*i/nT; g+=`<line x1="${padL}" y1="${yy.toFixed(1)}" x2="${W-padR}" y2="${yy.toFixed(1)}" stroke="var(--border)" stroke-opacity=".45"/><text x="${padL-6}" y="${(yy+3).toFixed(1)}" text-anchor="end" font-size="9" fill="var(--muted)">${fmt(val)}</text>`; }
+  months.forEach((m,i)=>{ g+=`<text x="${x(i).toFixed(1)}" y="${H-padB+15}" text-anchor="middle" font-size="9" fill="var(--muted)">${esc(m.label)}</text>`; });
+  series.forEach(s=>{ const pts=s.data.map((v,i)=> v==null?null:`${x(i).toFixed(1)},${y(v).toFixed(1)}`).filter(Boolean).join(' '); g+=`<polyline points="${pts}" fill="none" stroke="${s.color}" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round" ${s.dashed?'stroke-dasharray="5 4"':''}/>`; s.data.forEach((v,i)=>{ if(v==null)return; g+=`<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="2.6" fill="${s.color}"/>`; }); });
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block">${g}</svg>`;
+}
+function renderConTrends(){
+  const host=document.getElementById('conTrends'); if(!host) return;
+  const d=conTrendData(12);
+  const legend=`<div style="display:flex;gap:18px;flex-wrap:wrap;font-size:11px;margin:0 0 6px 4px">
+    <span><span style="display:inline-block;width:14px;height:3px;background:var(--gold-2);vertical-align:middle;margin-right:6px"></span>Gross collected</span>
+    <span><span style="display:inline-block;width:14px;height:3px;background:var(--good);vertical-align:middle;margin-right:6px"></span>Net after comp</span>
+    <span><span style="display:inline-block;width:14px;height:3px;background:var(--bad);vertical-align:middle;margin-right:6px;border-top:2px dashed var(--bad)"></span>Outstanding (liability)</span></div>`;
+  const chart=conLineChart(d.months,[
+    {name:'Gross collected', color:'var(--gold-2)', data:d.collected},
+    {name:'Net after comp', color:'var(--good)', data:d.net},
+    {name:'Outstanding', color:'var(--bad)', data:d.outstanding, dashed:true}]);
+  const q={}; d.months.forEach((m,i)=>{ const yr=m.key.slice(0,4), mo=parseInt(m.key.slice(5,7)), qq='Q'+(Math.floor((mo-1)/3)+1)+" '"+yr.slice(2); (q[qq]=q[qq]||{label:qq,coll:0,net:0,out:0}); q[qq].coll+=d.collected[i]; q[qq].net+=d.net[i]; q[qq].out=d.outstanding[i]; });
+  const qs=Object.values(q);
+  const qtable=`<div class="tablewrap" style="overflow-x:auto;margin-top:14px"><table style="width:100%;font-size:12px"><thead><tr><th style="text-align:left;padding:6px 8px">Quarter</th><th style="text-align:right;padding:6px 8px">Gross collected</th><th style="text-align:right;padding:6px 8px">Net after comp</th><th style="text-align:right;padding:6px 8px">Outstanding (end)</th></tr></thead><tbody>${qs.map(x=>`<tr><td style="padding:6px 8px"><b>${x.label}</b></td><td style="text-align:right;padding:6px 8px">${money(x.coll)}</td><td style="text-align:right;padding:6px 8px;color:${x.net<0?'var(--warn)':'var(--good)'}">${money(x.net)}</td><td style="text-align:right;padding:6px 8px;color:var(--gold-2)">${money(x.out)}</td></tr>`).join('')}</tbody></table></div>`;
+  host.innerHTML=legend+chart+qtable;
+}
+/* ===== T-665: client payment health score (invoice sent -> paid timeliness) ===== */
+// reconstruct each invoice's first "issued" (sent/approved) and first "paid" timestamp from the append-only status log
+function invTimeline(){
+  const m={};
+  (RECORDS||[]).forEach(x=>{ if(x.type!=='invoiceapproval'||!x.client) return; const k=nrmName(x.client)+'|'+String(x.from||'').slice(0,10)+'|'+String(x.to||'').slice(0,10); (m[k]=m[k]||{client:x.client,recs:[]}).recs.push(x); });
+  return Object.values(m).map(g=>{ g.recs.sort((a,b)=>String(a.at||a.submittedAt||'').localeCompare(String(b.at||b.submittedAt||''))); let issuedAt='',paidAt='',status='';
+    g.recs.forEach(r=>{ const t=String(r.at||r.submittedAt||''); if((r.status==='sent'||r.status==='approved')&&!issuedAt) issuedAt=t; if(r.status==='paid'&&!paidAt) paidAt=t; status=r.status; });
+    return {client:g.client, issuedAt, paidAt, status}; });
+}
+function clientPaymentHealth(client){
+  const k=nrmName(client), tl=invTimeline().filter(t=>nrmName(t.client)===k && t.issuedAt);
+  let sum=0,cnt=0,late=0,openOverdue=0;
+  tl.forEach(t=>{ let days=null;
+    if(t.status==='paid'&&t.paidAt) days=Math.max(0,(new Date(t.paidAt)-new Date(t.issuedAt))/86400000);
+    else if(t.status==='sent'){ days=Math.max(0,(Date.now()-new Date(t.issuedAt))/86400000); if(days>7) openOverdue++; }
+    else return; // drafts / approved-not-sent don't score
+    sum+=days; cnt++; if(days>7) late++; });
+  if(!cnt) return null;
+  const avg=sum/cnt, lateRate=late/cnt;
+  let score=Math.round(Math.max(0,Math.min(100, 100 - Math.max(0,avg-3)*4 - lateRate*25 - openOverdue*8)));
+  const band= score>=85?{lbl:'Excellent',col:'var(--good)'} : score>=70?{lbl:'Good',col:'var(--good)'} : score>=50?{lbl:'Watch',col:'var(--warn)'} : {lbl:'At risk',col:'var(--bad)'};
+  return {score,avg,lateRate,openOverdue,cnt,band};
+}
+function renderConHealth(){
+  const host=document.getElementById('conHealth'); if(!host) return;
+  const rows=contractsEffective().filter(c=>c.active!==false).map(c=>{ const h=clientPaymentHealth(conMatchClient(c)||c.client); return h?{client:c.client,h}:null; }).filter(Boolean).sort((a,b)=>a.h.score-b.h.score);
+  if(!rows.length){ host.innerHTML='<p class="muted" style="margin:0;padding:6px 2px">No sent invoices yet - health scores appear once invoices are marked sent and paid.</p>'; return; }
+  host.innerHTML=`<table style="width:100%;font-size:12px"><thead><tr><th style="text-align:left;padding:6px 8px">Client</th><th style="text-align:right;padding:6px 8px">Invoices</th><th style="text-align:right;padding:6px 8px">Avg days to pay</th><th style="text-align:right;padding:6px 8px">On-time</th><th style="text-align:right;padding:6px 8px">Open overdue</th><th style="text-align:right;padding:6px 8px">Health</th></tr></thead><tbody>${rows.map(r=>{ const h=r.h; return `<tr><td style="padding:6px 8px"><b>${esc(r.client)}</b></td><td style="text-align:right;padding:6px 8px">${h.cnt}</td><td style="text-align:right;padding:6px 8px">${h.avg.toFixed(1)}d</td><td style="text-align:right;padding:6px 8px">${Math.round((1-h.lateRate)*100)}%</td><td style="text-align:right;padding:6px 8px">${h.openOverdue>0?`<span style="color:var(--bad);font-weight:700">${h.openOverdue}</span>`:'0'}</td><td style="text-align:right;padding:6px 8px"><span style="display:inline-block;min-width:96px;padding:2px 8px;border-radius:20px;font-weight:800;color:${h.band.col};border:1px solid ${h.band.col}">${h.band.lbl} &middot; ${h.score}</span></td></tr>`; }).join('')}</tbody></table>`;
 }
 /* ===== FAQ (T-495): reps ask -> the client (founder) or an admin answers -> saved to a searchable master FAQ ===== */
 function collapseFaq(){ const m={}; (RECORDS||[]).forEach(x=>{ if(x.type!=='faq'||!x.id)return; if(!m[x.id]||(x.submittedAt||'')>(m[x.id].submittedAt||'')) m[x.id]=x; }); return Object.values(m).filter(r=>!r.deleted); }
