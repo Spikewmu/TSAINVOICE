@@ -7434,6 +7434,7 @@ async function poMarkAll(role){ if(!poCanEdit()){ toast('Super Admin only',true)
 function renderPayouts(){
   const sec=document.getElementById('tab-payouts'); if(!sec) return;
   const c=poCycleObj(), data=repCommData(c.from,c.to,''), map=poStatusMap(), ck=poKey(c);
+  const manual=manualPayouts(); // one-time payouts, used by the role sections + the manual table + the totals
   const isNext=poKey(poCycleObj())===poKey(nextPayoutCycle());
   document.querySelectorAll('#poSeg button').forEach((b,i)=>b.classList.toggle('on', i===0 && isNext));
   const fmtLong=iso=>{ const p=String(iso||'').split('-').map(Number); return (p.length===3)?new Date(p[0],p[1]-1,p[2]).toLocaleDateString('en-US',{weekday:'short',month:'long',day:'numeric',year:'numeric'}):usDate(iso); };
@@ -7490,7 +7491,6 @@ function renderPayouts(){
   // Manual / one-time payouts (ad-hoc, standalone - not cycle-computed): fold into the totals + "Who we owe"
   try{ dayPickAttach('mpoDate', function(){}); const md=document.getElementById('mpoDate'); if(md && !md.value){ md.value=todayLocal(); dayPickSync('mpoDate'); } }catch(e){}
   try{ const rs=document.getElementById('mpoRep'); if(rs){ const cur=rs.value, ppl=[...new Set((USERS_CACHE||[]).filter(u=>!u.archived).map(u=>String(u.name||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b)); rs.innerHTML='<option value="">- pick a person -</option>'+ppl.map(n=>`<option>${esc(n)}</option>`).join(''); if(cur && ppl.includes(cur)) rs.value=cur; } }catch(e){}
-  const manual=manualPayouts();
   const manUnpaid=manual.filter(m=>!m.paid), manPaidList=manual.filter(m=>m.paid);
   const manTot=manual.reduce((s,m)=>s+(Number(m.amount)||0),0), manPaidSum=manPaidList.reduce((s,m)=>s+(Number(m.amount)||0),0);
   const grand=total+manTot, grandPaid=paidSum+manPaidSum;
