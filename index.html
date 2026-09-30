@@ -5100,14 +5100,14 @@ function renderMtgPrep(){
     </div>`;
 }
 function mtgPrepAdd(){ const sel=document.getElementById('mpClient'), client=(sel&&sel.value)||''; if(!client){ toast('Pick a client first',true); return; } const el=document.getElementById('mpAddText'), t=(el&&el.value||'').trim(); if(!t){ toast('Type something to add',true); return; } const founder=SESSION&&SESSION.role==='founder', wk=mpWeekRange();
-  addRecord({type:'mtgprep',id:uid(),client,weekStart:wk.weekStart,text:t,side:founder?'Founder':'TSA',by:(SESSION&&SESSION.name)||'',status:'open',addedAt:new Date().toISOString()}).then(()=>{ if(el) el.value=''; toast('Added to the prep sheet'); renderMtgPrep(); }); }
+  addRecord({type:'mtgprep',id:uid(),client,weekStart:wk.weekStart,text:t,side:founder?'Founder':'TSA',by:(SESSION&&SESSION.name)||'',status:'open',addedAt:new Date().toISOString()}).then(()=>{ if(el) el.value=''; toast('Added to the prep sheet'); if(founder){ try{ slackNotify('New Monday prep-sheet question from '+((SESSION&&SESSION.name)||'a founder')+' ('+client+'): '+t); }catch(e){} } renderMtgPrep(); try{ renderNotifBell(); }catch(e){} }); }
 function mtgPrepToggle(id){ const cur=mtgPrepItemsAll().find(x=>x.id===id); if(!cur) return; addRecord(Object.assign({},cur,{status:cur.status==='done'?'open':'done'})).then(renderMtgPrep); }
 function mtgPrepDel(id){ if(!(SESSION&&['admin','director','manager'].includes(SESSION.role))){ toast('Managers / admins only',true); return; } const cur=mtgPrepItemsAll().find(x=>x.id===id); if(!cur) return; if(!confirm('Remove this item from the prep sheet?')) return; addRecord(Object.assign({},cur,{deleted:true})).then(renderMtgPrep); }
 // founder submits a question/topic; the team (or the founder) replies to it - a running thread on each item
 function mtgPrepReply(id){ const cur=mtgPrepItemsAll().find(x=>x.id===id); if(!cur) return; const el=document.getElementById('mpr_'+id), t=(el&&el.value||'').trim(); if(!t){ toast('Type a reply first',true); return; }
   const founder=SESSION&&SESSION.role==='founder'; const comments=Array.isArray(cur.comments)?cur.comments.slice():[];
   comments.push({text:t, side:founder?'Founder':'TSA', by:(SESSION&&SESSION.name)||'', at:new Date().toISOString()});
-  addRecord(Object.assign({},cur,{comments})).then(()=>{ toast('Reply added'); renderMtgPrep(); }); }
+  addRecord(Object.assign({},cur,{comments})).then(()=>{ toast('Reply added'); if(founder){ try{ slackNotify('Monday prep-sheet reply from '+((SESSION&&SESSION.name)||'a founder')+' ('+(cur.client||'')+'): '+t); }catch(e){} } renderMtgPrep(); try{ renderNotifBell(); }catch(e){} }); }
 function mtgPrepSummaryText(){ const sel=document.getElementById('mpClient'), client=(sel&&sel.value)||'', wk=mpWeekRange(); const nums=mtgPrepNumbers(client,wk.from,wk.to); const items=mtgPrepItems(client,wk.weekStart);
   const lines=[`*${client} - Monday Prep Sheet*`, `Week of ${wk.label}`, ``, `Last week: ${nums.closes} closes | ${money(nums.cash)} collected | ${nums.connects} calls taken | ${nums.sets} calls set`, ``, `Topics for Monday:`];
   const open=items.filter(x=>x.status!=='done'); const done=items.filter(x=>x.status==='done');
@@ -9181,7 +9181,19 @@ function buildNotifications(){
   if(mu>0) items.push({n:mu,ic:NICO.msg,text:mu+' new message'+(mu>1?'s':''),sub:'Candidate replies waiting',tab:'messages'});
   if(SESSION && ['admin','manager','webinarteam'].includes(SESSION.role)){ const p=pendingApprovalsCount(); if(p>0) items.push({n:p,ic:NICO.clock,text:p+' time-off request'+(p>1?'s':''),sub:'Waiting for your approval',tab:'timeoff'}); }
   if(SESSION && ['setter','closer'].includes(SESSION.role)){ const d=myUnseenDecisions().length; if(d>0) items.push({n:d,ic:NICO.clock,text:d+' time-off update'+(d>1?'s':''),sub:'Decision on your request',tab:'timeoff'}); }
+  try{ const pq=prepQuestionCount(); if(pq.n>0) items.push({n:pq.n, ic:NICO.msg, text:pq.n+(pq.forFounder?(' prep-sheet repl'+(pq.n>1?'ies':'y')):(' prep-sheet question'+(pq.n>1?'s':''))), sub:pq.forFounder?'The team responded on your Monday prep sheet':'A founder is waiting on you (Monday prep sheet)', tab:'mtgprep'}); }catch(e){}
   return items;
+}
+// Monday prep sheet: for TSA, count founder questions still awaiting a reply; for a founder, count items the team has replied to. "Done" items drop off.
+function prepQuestionCount(){
+  if(!SESSION) return {n:0,forFounder:false};
+  const founder=SESSION.role==='founder';
+  let items=mtgPrepItemsAll().filter(x=>!x.deleted && x.status!=='done');
+  const lastSide=x=>{ const c=Array.isArray(x.comments)?x.comments:[]; return c.length?c[c.length-1].side:(x.side||'TSA'); };
+  if(founder){ const set=new Set((teamsFor(SESSION.username)||[]).map(nrmName)); if(SESSION.name) set.add(nrmName(SESSION.name));
+    const n=items.filter(x=>set.has(nrmName(x.client)) && Array.isArray(x.comments) && x.comments.length && lastSide(x)==='TSA').length; return {n, forFounder:true}; }
+  const sc=dashScopeClients(); if(sc){ const set=new Set(sc.map(nrmName)); items=items.filter(x=>set.has(nrmName(x.client))); }
+  const n=items.filter(x=>lastSide(x)==='Founder').length; return {n, forFounder:false}; // founder asked, no TSA reply yet
 }
 function renderNotifPanel(items){ const panel=document.getElementById('notifPanel'); if(!panel) return; items=items||buildNotifications();
   panel.innerHTML='<h4>Notifications</h4>'+(items.length?items.map(i=>`<div class="notifitem" onclick="notifGo('${i.tab}')"><span class="ni-ic">${i.ic}</span><span class="ni-tx">${esc(i.text)}<small>${esc(i.sub||'')}</small></span></div>`).join(''):'<div class="notifempty">You are all caught up.</div>'); }
