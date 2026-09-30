@@ -4083,6 +4083,54 @@ function conRetainerFor(client,from,to){
   for(let i=0;i<guard && i<600;i++){ const dim=new Date(y,m+1,0).getDate(); const dd=Math.min(day,dim); const iso=`${y}-${String(m+1).padStart(2,'0')}-${String(dd).padStart(2,'0')}`; if(iso>=f && iso<=t) count++; m++; if(m>11){m=0;y++;} }
   return amt*count;
 }
+// ---- Expected / outstanding reconciliation (T-666b): click the Expected cell to see exactly what's owed ----
+// = sent-but-unpaid invoices (A/R) + TSA rev-share on each closed deal's uncollected balance, so nothing closed goes uncollected.
+function conClientExpected(clientName){
+  const c=conByName(clientName), app=conMatchClient(c);
+  const feR=(c.feTBD||c.feRate==null)?null:(Number(c.feRate)||0), k=nrmName(clientName);
+  const invs=Object.values(conInvoiceLatest()).filter(iv=>nrmName(iv.client)===k && iv.status==='sent').map(iv=>{
+    const f=String(iv.from||'').slice(0,10), t=String(iv.to||'').slice(0,10); let amt=0; try{ amt=founderInvoiceCalc(iv.client,f,t).grandTotal; }catch(_){}
+    return {from:f,to:t,amt,at:String(iv.at||iv.submittedAt||'').slice(0,10)};
+  }).sort((a,b)=>String(a.to).localeCompare(String(b.to)));
+  const arTotal=invs.reduce((s,x)=>s+(x.amt||0),0);
+  const deals=(app?conClientDeals(app):[]).map(d=>{ const cv=Number(d.contractValue)||0, col=dealCollected(d), rem=Math.max(0,cv-col); return {lead:d.lead||d.product||'Deal', date:String(d.date||'').slice(0,10), cv, col, rem, rev:(feR!=null)?rem*feR/100:0}; })
+    .filter(d=>d.rem>0.005).sort((a,b)=>b.rem-a.rem);
+  const osTotal=deals.reduce((s,d)=>s+d.rem,0), eoOS=deals.reduce((s,d)=>s+d.rev,0);
+  return {client:c.client, feR, invs, arTotal, deals, osTotal, eoOS, expTotal:arTotal+eoOS};
+}
+function conExpBlock(x){
+  const td='padding:8px 10px;border-bottom:1px solid var(--border);font-size:12.5px';
+  const arRows=x.invs.length?x.invs.map(iv=>`<tr><td style="${td}">${esc(usDate(iv.from))} to ${esc(usDate(iv.to))}</td><td style="${td};text-align:right;font-variant-numeric:tabular-nums">${money(iv.amt)}</td><td style="${td};color:var(--muted)">${iv.at?esc(usDate(iv.at)):'-'}</td></tr>`).join(''):`<tr><td colspan="3" style="${td};color:var(--muted)">No sent-but-unpaid invoices.</td></tr>`;
+  const dealRows=x.deals.length?x.deals.map(d=>`<tr><td style="${td}">${esc(d.lead)}${d.date?` <span class="muted" style="font-size:11px">${esc(usDate(d.date))}</span>`:''}</td><td style="${td};text-align:right;font-variant-numeric:tabular-nums">${money(d.cv)}</td><td style="${td};text-align:right;font-variant-numeric:tabular-nums">${money(d.col)}</td><td style="${td};text-align:right;font-variant-numeric:tabular-nums;color:var(--warn)">${money(d.rem)}</td><td style="${td};text-align:right;font-variant-numeric:tabular-nums">${x.feR!=null?money(d.rev):'<span class="muted">set rate</span>'}</td></tr>`).join(''):`<tr><td colspan="5" style="${td};color:var(--muted)">No outstanding deal balances.</td></tr>`;
+  const th='padding:8px 10px;text-align:left;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.03em';
+  return `<div style="margin-bottom:18px">
+    <div style="font-weight:700;color:var(--ink);margin:0 0 8px">${esc(x.client)} <span class="muted" style="font-weight:400;font-size:12px">- expected ${money(x.expTotal)}</span></div>
+    <div style="font-size:12px;color:var(--gold-2);font-weight:600;margin:6px 0 4px">A/R - invoices sent, not yet paid: ${money(x.arTotal)}</div>
+    <table style="width:100%;border-collapse:collapse"><thead><tr><th style="${th}">Period</th><th style="${th};text-align:right">Amount owed</th><th style="${th}">Sent</th></tr></thead><tbody>${arRows}</tbody></table>
+    <div style="font-size:12px;color:var(--gold-2);font-weight:600;margin:12px 0 4px">Outstanding deal balances - closed but not fully collected${x.feR!=null?` (TSA rev-share ${x.feR}% of the remaining)`:''}: ${money(x.eoOS)}${x.osTotal>0?` <span class="muted" style="font-weight:400">on ${money(x.osTotal)} customer balance</span>`:''}</div>
+    <table style="width:100%;border-collapse:collapse"><thead><tr><th style="${th}">Deal</th><th style="${th};text-align:right">Contract</th><th style="${th};text-align:right">Collected</th><th style="${th};text-align:right">Remaining</th><th style="${th};text-align:right">TSA rev-share</th></tr></thead><tbody>${dealRows}</tbody></table>
+  </div>`;
+}
+function conExpClose(){ const m=document.getElementById('conExpModal'); if(m) m.hidden=true; }
+function conExpectedDetail(which){
+  let m=document.getElementById('conExpModal');
+  if(!m){ m=document.createElement('div'); m.className='modal'; m.id='conExpModal'; m.hidden=true; m.onclick=e=>{ if(e.target===m) conExpClose(); }; m.innerHTML='<div class="modalcard" style="width:min(760px,96vw);max-height:90vh;overflow:auto" id="conExpCard"></div>'; document.body.appendChild(m); }
+  const card=document.getElementById('conExpCard');
+  let blocks, grand, title;
+  if(which==='__all__'){
+    const list=contractsEffective().filter(c=>c.active!==false).map(c=>conClientExpected(c.client)).filter(x=>x.expTotal>0.005).sort((a,b)=>b.expTotal-a.expTotal);
+    grand=list.reduce((s,x)=>s+x.expTotal,0);
+    title=`Outstanding reconciliation - all active clients`;
+    blocks=list.length?list.map(conExpBlock).join(''):'<p class="muted">Nothing outstanding. Everything closed has been collected.</p>';
+  } else {
+    const x=conClientExpected(which); grand=x.expTotal; title=`Outstanding - ${esc(x.client)}`;
+    blocks=conExpBlock(x);
+  }
+  card.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><h3 style="margin:0">${title}</h3><button class="btn ghost sm" onclick="conExpClose()">Close</button></div>
+    <div style="font-size:13px;color:var(--muted);margin:0 0 14px">Total expected to still come in: <b style="color:var(--gold-2)">${money(grand)}</b>. Use this to reconcile - chase the A/R and make sure every closed deal is fully collected.</div>
+    ${blocks}`;
+  m.hidden=false;
+}
 function renderContracts(){
   const host=document.getElementById('tab-contracts'); if(!host) return;
   try{ rpAttach('conRange',(f,t)=>setConRange(f,t)); }catch(e){} // custom range picker (same widget used across the app)
@@ -4135,10 +4183,10 @@ function renderContracts(){
       +`<td class="num" title="${compTip}">${comp>0?`${money(comp)} <span class="muted" style="font-size:10px">&#9432;</span>`:'<span class="muted">-</span>'}</td>`
       +`<td class="num" title="${netTip}">${net!=null?`<b style="color:${net<0?'var(--warn)':'var(--good)'}">${money(net)}</b>${act>0?`<div class="muted" style="font-size:11px">${Math.round(net/act*100)}% of TSA rev</div>`:''}`:'<span class="muted">-</span>'}</td>`
       +`<td class="num">${collected>0?'<b>'+money(collected)+'</b>':'<span class="muted">-</span>'}</td>`
-      +`<td class="num" style="white-space:nowrap" title="Owed to TSA now: sent-but-unpaid invoices plus rev-share on the customer outstanding deal balance">${expTotal>0?`<b>${money(expTotal)}</b><div class="muted" style="font-size:11px">${[ar>0?money(ar)+' invoiced':'',(eoOS>0&&outstanding>0)?money(eoOS)+' of '+money(outstanding)+' o/s':''].filter(Boolean).join('<br>')}</div>`:'<span class="muted">-</span>'}</td>`
+      +`<td class="num" style="white-space:nowrap" title="Click for the outstanding breakdown (what's owed, so you can reconcile)">${expTotal>0?`<a onclick="conExpectedDetail('${jsStr(c.client)}')" style="cursor:pointer;color:var(--gold-2);text-decoration:underline;font-weight:800">${money(expTotal)}</a><div class="muted" style="font-size:11px">${[ar>0?money(ar)+' invoiced':'',(eoOS>0&&outstanding>0)?money(eoOS)+' of '+money(outstanding)+' o/s':''].filter(Boolean).join('<br>')}</div>`:'<span class="muted">-</span>'}</td>`
       +`<td><button class="btn ghost sm" onclick="conEdit('${jsStr(c.client)}')">Edit</button></td></tr>`;
   }).join('');
-  const totalRow=`<tr style="border-top:2px solid var(--gold);font-weight:800"><td>Total <span class="muted" style="font-weight:400;font-size:11px">- active</span></td><td></td><td></td><td class="num">${money(fcMonth)}</td><td class="num">${money(actual)}</td><td class="num">${money(totComp)}</td><td class="num" style="color:${totNet<0?'var(--warn)':'var(--good)'}">${money(totNet)}${actual>0?`<div class="muted" style="font-weight:400;font-size:11px">${Math.round(totNet/actual*100)}% of TSA rev</div>`:''}</td><td class="num" style="color:var(--gold-2)">${money(totCollected)}</td><td class="num">${money(expOut)}</td><td></td></tr>`;
+  const totalRow=`<tr style="border-top:2px solid var(--gold);font-weight:800"><td>Total <span class="muted" style="font-weight:400;font-size:11px">- active</span></td><td></td><td></td><td class="num">${money(fcMonth)}</td><td class="num">${money(actual)}</td><td class="num">${money(totComp)}</td><td class="num" style="color:${totNet<0?'var(--warn)':'var(--good)'}">${money(totNet)}${actual>0?`<div class="muted" style="font-weight:400;font-size:11px">${Math.round(totNet/actual*100)}% of TSA rev</div>`:''}</td><td class="num" style="color:var(--gold-2)">${money(totCollected)}</td><td class="num">${expOut>0?`<a onclick="conExpectedDetail('__all__')" style="cursor:pointer;color:var(--gold-2);text-decoration:underline;font-weight:800" title="Full outstanding reconciliation across all active clients">${money(expOut)}</a>`:money(expOut)}</td><td></td></tr>`;
   const months=[], d0=new Date(); d0.setDate(1);
   const firstKey=`${d0.getFullYear()}-${String(d0.getMonth()+1).padStart(2,'0')}`;
   let pastDue=0; Object.keys(monthTSA).forEach(k=>{ if(k<firstKey) pastDue+=monthTSA[k]; }); // overdue scheduled income rolls into this month
@@ -6417,11 +6465,19 @@ function retainerDueInPeriod(cfg, from, to){
 function founderInvoiceCalc(client,from,to){
   const ck=String(client).trim().toLowerCase();
   const inPeriod=d=>{ d=String(d||'').slice(0,10); return d&&d>=from&&d<=to; };
+  // Never double-bill: exclude any deal/payment whose date falls inside a DIFFERENT already-invoiced (approved/sent/paid)
+  // period for this client. So widening or shifting the date range over a week you already billed + got paid on won't
+  // re-bill those same people. The invoice's OWN period (exact from|to) is never excluded, so it still shows in full. (T-665b)
+  const nc=nrmName(client);
+  const billedRanges=Object.values(conInvoiceLatest()).filter(r=>{ if(nrmName(r.client)!==nc) return false; if((r.status||'draft')==='draft') return false; const rf=String(r.from||'').slice(0,10), rt=String(r.to||'').slice(0,10); if(!rf||!rt) return false; if(rf===from && rt===to) return false; return true; }).map(r=>({from:String(r.from||'').slice(0,10),to:String(r.to||'').slice(0,10)}));
+  const alreadyBilled=d=>{ const dd=String(d||'').slice(0,10); return !!dd && billedRanges.some(r=>dd>=r.from && dd<=r.to); };
   // deals closed for this client in the period (the "Deals Included" table + revenue)
-  const deals=(RECORDS||[]).filter(x=>x.type==='deal' && String(x.client||'').trim().toLowerCase()===ck && inPeriod(x.date))
+  const dealsAll=(RECORDS||[]).filter(x=>x.type==='deal' && String(x.client||'').trim().toLowerCase()===ck && inPeriod(x.date))
     .sort((a,b)=>(a.date||'').localeCompare(b.date||''));
-  // dedupe deals by id (append-only backend, latest-wins)
-  const seen={}, uniqDeals=[]; deals.forEach(d=>{ const k=String(d.id||''); if(k&&seen[k])return; if(k)seen[k]=1; uniqDeals.push(d); });
+  // dedupe deals by id (append-only backend, latest-wins), then drop any already billed on another invoice
+  const seen={}, uniqAll=[]; dealsAll.forEach(d=>{ const k=String(d.id||''); if(k&&seen[k])return; if(k)seen[k]=1; uniqAll.push(d); });
+  const uniqDeals=uniqAll.filter(d=>!alreadyBilled(d.date));
+  const excludedDeals=uniqAll.length-uniqDeals.length;
   // stat cards via the shared aggregator over activity (deals + collapsed EODs + confirmed payments) for this client+period
   const activity=activityRecords().filter(x=>String(x.client||'').trim().toLowerCase()===ck && inPeriod(x.date));
   const s=agg(activity);
@@ -6430,7 +6486,8 @@ function founderInvoiceCalc(client,from,to){
   activity.forEach(x=>{ if(x.type==='eod'||!x.type){ callsOffered+=x.callsOffered||0; callsSet+=x.callsSet||0; newOut+=x.newOutreach||0; fuOut+=x.followUpOutreach||0; } });
   const cashCollected=s.cashCollected, totalRevenue=s.contractValue;
   // confirmed later payments (recurring / wire that cleared in the period) -> their own rows so the deals table reconciles to cash
-  const recPays=paymentsCollapsed().filter(p=>p.status==='confirmed' && String(p.client||'').trim().toLowerCase()===ck && inPeriod(p.date)).sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+  const recPaysAll=paymentsCollapsed().filter(p=>p.status==='confirmed' && String(p.client||'').trim().toLowerCase()===ck && inPeriod(p.date)).sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+  const recPays=recPaysAll.filter(p=>!alreadyBilled(p.date)); const excludedPays=recPaysAll.length-recPays.length; // drop payments already billed on another invoice
   // amount due (hybrid) - % of cash collected in the period
   // ---- Amount due: bill off the Contracts page (front-end & back-end rev-share %); fall back to Billing settings ----
   const con=contractRatesFor(client), cfg=clientBillingCfg(client);
@@ -6455,11 +6512,12 @@ function founderInvoiceCalc(client,from,to){
     noCfg=!pct;
   } else { noCfg=true; }
   const retInfo=retainerDueInPeriod(cfg,from,to), retainerDue=retInfo?retInfo.amt:0, grandTotal=amountDue+retainerDue; // recurring monthly retention payment
-  return {ck,inPeriod,uniqDeals,activity,s,callsOffered,callsSet,newOut,fuOut,cashCollected,totalRevenue,recPays,con,cfg,ov,overridden,billBase,feCash,beCash,anyLineOv,billedTotal,amountDue,rateDesc,noCfg,retInfo,retainerDue,grandTotal};
+  return {ck,inPeriod,uniqDeals,activity,s,callsOffered,callsSet,newOut,fuOut,cashCollected,totalRevenue,recPays,con,cfg,ov,overridden,billBase,feCash,beCash,anyLineOv,billedTotal,amountDue,rateDesc,noCfg,retInfo,retainerDue,grandTotal,excludedDeals,excludedPays};
 }
 function genFounderInvoice(client,from,to){
   const C=founderInvoiceCalc(client,from,to);
-  const {uniqDeals,s,callsOffered,callsSet,newOut,fuOut,cashCollected,totalRevenue,recPays,ov,overridden,billBase,anyLineOv,billedTotal,amountDue,rateDesc,noCfg,retInfo,retainerDue,grandTotal}=C;
+  const {uniqDeals,s,callsOffered,callsSet,newOut,fuOut,cashCollected,totalRevenue,recPays,ov,overridden,billBase,anyLineOv,billedTotal,amountDue,rateDesc,noCfg,retInfo,retainerDue,grandTotal,excludedDeals,excludedPays}=C;
+  const excludedNote=((excludedDeals||0)+(excludedPays||0))>0 ? `<div style="margin-top:10px;padding:9px 13px;border:1px solid #2f8f5b;background:#e8f5ee;border-radius:9px;color:#1f6b45;font-size:12.5px">&#10003; ${(excludedDeals||0)+(excludedPays||0)} ${((excludedDeals||0)+(excludedPays||0))===1?'deal/payment was':'deals/payments were'} already billed on a prior invoice for this client and ${((excludedDeals||0)+(excludedPays||0))===1?'is':'are'} excluded here, so no one is billed twice.</div>` : '';
   const canOv=(typeof invAllowed==='function' && invAllowed()); // Super Admin can edit the billed amount inline on the line
   const payRef='TSA - '+client; // dynamic per-company wire reference so an incoming wire is matchable to this client (T-607)
   // Net terms + late fee (T-608): issue today, due after netDays, late fee after the grace window. Shown on the invoice.
@@ -6508,6 +6566,7 @@ function genFounderInvoice(client,from,to){
         <div style="text-align:right"><div style="font-size:22px;font-weight:800;color:#1a2b4a;font-variant-numeric:tabular-nums">#${esc(invNo)}</div>${invStatusPill(client,from,to)}</div>
       </div>
       ${invOverlapWarn(client,from,to)}
+      ${excludedNote}
       <div style="border-top:1px solid #eef1f6;margin:18px 0"></div>
       <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px">
         <div><div style="font-size:12px;color:#8a93a6">Billed to</div><div style="font-weight:700;color:#1a2b4a">${esc(client)}</div></div>
