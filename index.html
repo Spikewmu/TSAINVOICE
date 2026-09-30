@@ -1649,8 +1649,8 @@ If they did not watch: No problem at all, I will send it right over. Can you wat
     <p class="hint">Live call activity pulled from a client's WAVV dialer - dials, connects, connect rate, and talk time, by day and by rep. Pick a client that dials through WAVV (set up under Admin &rsaquo; Integrations &rsaquo; WAVV Dialer). Follows the top company selector. Managers and admins.</p>
     <div class="filters" style="margin:0 0 12px;align-items:flex-end;gap:12px;flex-wrap:wrap">
       <div class="field"><label>Client</label><select id="dlrClient" onchange="renderDialer()"></select></div>
-      <div class="field"><label>Date range</label><div class="rangewrap"><input type="text" id="dlrRange_txt" readonly placeholder="Click a start day, then an end day" onclick="rpToggle('dlrRange',event)"><input type="hidden" id="dlrRange_from"><input type="hidden" id="dlrRange_to"><div class="rangepop" id="dlrRange_pop" hidden onclick="event.stopPropagation()"></div></div></div>
-      <div class="field"><label>Quick range</label><div class="row-actions"><button class="btn ghost sm" onclick="dlrPreset('7')">Last 7d</button><button class="btn ghost sm" onclick="dlrPreset('14')">Last 14d</button><button class="btn ghost sm" onclick="dlrPreset('30')">Last 30d</button></div></div>
+      <div class="field"><label>Date range</label><div class="rangewrap"><input type="text" id="dlrRange_txt" readonly placeholder="Click a start day, then an end day" onclick="rpToggle('dlrRange',event)"><input type="hidden" id="dlrRange_from"><input type="hidden" id="dlrRange_to"><div class="rangepop" id="dlrRange_pop" hidden onclick="event.stopPropagation()"></div></div><span class="fieldhelp">Click a <b>start day</b>, then an <b>end day</b> in the calendar to pick any custom range (or click a single day for just that day).</span></div>
+      <div class="field"><label>Quick range</label><div class="row-actions"><button class="btn ghost sm" onclick="dlrPreset('today')">Today</button><button class="btn ghost sm" onclick="dlrPreset('yesterday')">Yesterday</button><button class="btn ghost sm" onclick="dlrPreset('week')">Last week</button><button class="btn ghost sm" onclick="dlrPreset('7')">Last 7d</button><button class="btn ghost sm" onclick="dlrPreset('14')">Last 14d</button><button class="btn ghost sm" onclick="dlrPreset('30')">Last 30d</button></div></div>
       <button class="btn gold sm" id="dlrLoadBtn" onclick="renderDialer(true)">Load</button>
     </div>
     <div id="dlrCards" style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:14px"></div>
@@ -7920,7 +7920,12 @@ async function renderWavvDay(client, day){
 }
 /* ===== T-674: WAVV dialer reporting - dials/connects/talk by day + by rep, as charts ===== */
 function dlrHms(s){ s=Math.round(s||0); const h=Math.floor(s/3600), m=Math.floor((s%3600)/60); return h?(h+'h '+m+'m'):(m+'m '+(s%60)+'s'); }
-function dlrPreset(p){ const t=todayLocal(), from=isoOffset(t,-(parseInt(p,10)-1)); const ff=document.getElementById('dlrRange_from'), ft=document.getElementById('dlrRange_to'), tx=document.getElementById('dlrRange_txt'); if(ff)ff.value=from; if(ft)ft.value=t; if(tx)tx.value=usDate(from)+' – '+usDate(t); renderDialer(true); }
+function dlrPreset(p){ const t=todayLocal(); let from,to;
+  if(p==='today'){ from=to=t; }
+  else if(p==='yesterday'){ from=to=isoOffset(t,-1); }
+  else if(p==='week'){ const lw=billingWeek(); from=lw.from; to=lw.to; } // last completed Mon-Sun week
+  else { from=isoOffset(t,-(parseInt(p,10)-1)); to=t; }
+  const ff=document.getElementById('dlrRange_from'), ft=document.getElementById('dlrRange_to'), tx=document.getElementById('dlrRange_txt'); if(ff)ff.value=from; if(ft)ft.value=to; if(tx)tx.value=(from===to?usDate(from):usDate(from)+' – '+usDate(to)); renderDialer(true); }
 let __dlrKey='';
 async function renderDialer(force){
   const sel=document.getElementById('dlrClient'); if(!sel) return;
