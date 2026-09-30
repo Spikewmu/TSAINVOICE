@@ -6330,9 +6330,9 @@ function setMyDealsFC(w){ MYDEALS_FC=w; renderMyDeals(); }
 function myDealsForecastHtml(){
   const f=myDealsForecast();
   const seg=[['7','7 days'],['14','14 days'],['30','30 days'],['all','All pending']].map(([v,l])=>`<button class="${f.win===v?'on':''}" onclick="setMyDealsFC('${v}')">${l}</button>`).join('');
-  const head=f.oversight?'Rep commission':'Your commission';
+  const head=f.oversight?'Team rep commission <span style="font-weight:400;text-transform:none;letter-spacing:0">- what the reps earn (not your own pay - see My payouts above)</span>':'Your commission';
   const winLbl=f.win==='all'?'all pending':('next '+f.win+' days');
-  const expSub=f.oversight?'to pay out':'not yet received';
+  const expSub=f.oversight?'to pay the reps':'not yet received';
   return `<div class="panel" style="margin:0 0 14px;padding:14px">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px">
       <div class="muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.03em;padding-top:2px">${head}</div>
@@ -6345,9 +6345,9 @@ function myDealsForecastHtml(){
         <div class="muted" style="font-size:12px">on ${money(f.cash)} ${expSub} &middot; ${f.n} payment${f.n===1?'':'s'} (${winLbl})${f.undated?` &middot; ${f.undated} undated`:''}</div>
       </div>
       <div style="flex:1 1 200px;min-width:180px;background:rgba(74,160,80,.07);border:1px solid rgba(74,160,80,.25);border-radius:10px;padding:11px 13px">
-        <div class="muted" style="font-size:10px;text-transform:uppercase;letter-spacing:.03em">Earned &middot; collected</div>
+        <div class="muted" style="font-size:10px;text-transform:uppercase;letter-spacing:.03em">${f.oversight?'Team earned &middot; collected':'Earned &middot; collected'}</div>
         <div style="font-size:25px;font-weight:800;color:#7bd487;font-variant-numeric:tabular-nums">${money(f.earnedComm)}</div>
-        <div class="muted" style="font-size:12px">on ${money(f.earnedCash)} already collected</div>
+        <div class="muted" style="font-size:12px">${f.oversight?'rep commission on ':'on '}${money(f.earnedCash)} already collected</div>
       </div>
     </div>
   </div>`;
@@ -6359,19 +6359,27 @@ function myPayoutHtml(){
   const me=String((SESSION&&SESSION.name)||'').trim(); if(!me) return '';
   if(SESSION && ['admin','director'].includes(SESSION.role)) return ''; // leaders use the full Payouts page
   const cyc = MY_PAYCHECK==='next' ? payCycle() : nextPayoutCycle();
-  let data; try{ data=repCommData(cyc.from,cyc.to,''); }catch(e){ return ''; }
+  let data; try{ data=repCommData(cyc.from,cyc.to,''); }catch(e){ data={closers:[],setters:[]}; }
   const mine=[...data.closers.filter(o=>nrmName(o.rep)===nrmName(me)), ...data.setters.filter(o=>nrmName(o.rep)===nrmName(me))];
-  const total=mine.reduce((s,o)=>s+o.commission,0);
-  const items=[]; mine.forEach(o=>o.items.forEach(it=>items.push(Object.assign({role:o.role,effRate:o.effRate},it))));
+  // include a manager's override, a host's webinar pay, and any one-time payouts dated in this cycle - so managers see their real paycheck
+  let mgrPay=[], webPay=[]; try{ mgrPay=poManagerData(cyc.from,cyc.to).filter(o=>nrmName(o.rep)===nrmName(me)); }catch(e){} try{ webPay=poWebinarData(cyc.from,cyc.to).filter(o=>nrmName(o.rep)===nrmName(me)); }catch(e){}
+  const inCyc=d=>{ d=String(d||'').slice(0,10); return d && d>=cyc.from && d<=cyc.to; };
+  const myManual=(typeof manualPayouts==='function'?manualPayouts():[]).filter(m=>nrmName(m.rep)===nrmName(me) && inCyc(m.date));
+  const items=[];
+  mine.forEach(o=>o.items.forEach(it=>items.push({date:it.date, who:it.lead||'-', client:it.client, role:o.role==='setter'?'Set':'Close', kind:it.kind, cash:it.cash, raw:it.raw, rate:it.rate, amt:(it.cash||0)*(it.rate||0)/100})));
+  mgrPay.forEach(o=>(o.items||[]).forEach(it=>items.push({date:'', who:it.client||'-', client:'', role:'Manager override', cash:it.cash, rate:it.rate, amt:(it.cash||0)*(it.rate||0)/100})));
+  webPay.forEach(o=>(o.items||[]).forEach(it=>items.push({date:it.date||'', who:it.client||'-', client:'', role:'Webinar', cash:it.cash||0, rate:it.rate||0, amt:(it.amt!=null?it.amt:(it.cash||0)*(it.rate||0)/100)})));
+  myManual.forEach(m=>items.push({date:m.date, who:m.note||'-', client:'', role:m.role||'One-time', cash:null, rate:null, amt:Number(m.amount)||0}));
+  const total=items.reduce((s,it)=>s+(it.amt||0),0);
   items.sort((a,b)=>String(a.date||'').localeCompare(String(b.date||'')));
   const fmtLong=iso=>{ const p=String(iso||'').split('-').map(Number); return (p.length===3)?new Date(p[0],p[1]-1,p[2]).toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'}):usDate(iso); };
   const rows=items.map(it=>`<tr>
-    <td style="padding:6px 8px;color:var(--muted);white-space:nowrap">${esc(usDate(it.date))}</td>
-    <td style="padding:6px 8px">${esc(it.lead||'-')}${it.client?`<span class="muted"> · ${esc(it.client)}</span>`:''}</td>
-    <td style="padding:6px 8px;color:var(--muted)">${it.role==='setter'?'Set':'Close'}${it.kind&&it.kind!=='Deal'?' · '+esc(it.kind):''}</td>
-    <td class="num" style="padding:6px 8px">${money(it.cash)}${(it.raw!=null&&Math.abs(it.raw-it.cash)>0.001)?` <span class="muted" style="text-decoration:line-through">${money(it.raw)}</span>`:''}</td>
-    <td class="num" style="padding:6px 8px">${(it.rate||0)}%</td>
-    <td class="num" style="padding:6px 8px;font-weight:600">${money((it.cash||0)*(it.rate||0)/100)}</td></tr>`).join('');
+    <td style="padding:6px 8px;color:var(--muted);white-space:nowrap">${it.date?esc(usDate(it.date)):'&ndash;'}</td>
+    <td style="padding:6px 8px">${esc(it.who||'-')}${it.client?`<span class="muted"> · ${esc(it.client)}</span>`:''}</td>
+    <td style="padding:6px 8px;color:var(--muted)">${esc(it.role)}${it.kind&&it.kind!=='Deal'?' · '+esc(it.kind):''}</td>
+    <td class="num" style="padding:6px 8px">${it.cash==null?'&ndash;':money(it.cash)}${(it.raw!=null&&Math.abs(it.raw-it.cash)>0.001)?` <span class="muted" style="text-decoration:line-through">${money(it.raw)}</span>`:''}</td>
+    <td class="num" style="padding:6px 8px">${it.rate==null?'&ndash;':(it.rate||0)+'%'}</td>
+    <td class="num" style="padding:6px 8px;font-weight:600">${money(it.amt||0)}</td></tr>`).join('');
   const upOn=MY_PAYCHECK==='upcoming';
   return `<div class="panel" style="margin:0 0 14px;padding:0;overflow:hidden">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;padding:14px 16px 0">
@@ -6390,7 +6398,8 @@ function renderMyDeals(){
   const oversight=SESSION&&['admin','director','manager'].includes(SESSION.role);
   const me=String((SESSION&&SESSION.name)||'').trim();
   const isRep=SESSION&&(SESSION.role==='closer'||SESSION.role==='setter');
-  const topHtml=(isRep?myPayoutHtml():'')+myDealsForecastHtml();
+  const showMyPayout=SESSION&&['closer','setter','manager','webinarteam'].includes(SESSION.role); // managers + hosts also see their own paycheck breakdown
+  const topHtml=(showMyPayout?myPayoutHtml():'')+myDealsForecastHtml();
   const seen={}, uniq=[];
   (RECORDS||[]).filter(x=>x.type==='deal').filter(d=>(oversight||effCloserOf(d)===me) && (!GLOBAL_CLIENT||String(d.client||'')===GLOBAL_CLIENT))
     .sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.submittedAt||'').localeCompare(a.submittedAt||''))
