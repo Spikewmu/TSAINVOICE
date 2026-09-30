@@ -7433,6 +7433,17 @@ async function logWebinar(){ if(!rcCanEdit()){ toast('Super Admin only',true); r
   try{ await addRecord({type:'webinarrun', id:uid(), client, date, host, attendees, by:(SESSION&&SESSION.name)||''}); toast('Webinar logged'); const a=document.getElementById('wlAttend'); if(a) a.value=''; renderWebinarLog(); }
   catch(e){ toast('Failed: '+((e&&e.message)||e),true); } }
 function delWebinarRun(id){ const cur=webinarRuns().find(x=>x.id===id); if(!cur||!rcCanEdit()) return; addRecord(Object.assign({},cur,{deleted:true})).then(renderWebinarLog); }
+// Which Payouts section a one-time payout files under: its category if that maps to a section, else the person's role
+const MPO_CAT_SEC={'Closer':'closer','Setter':'setter','Manager override':'manager','Webinar host':'webinar'};
+const MPO_ROLE_SEC={closer:'closer',setter:'setter',manager:'manager',webinarteam:'webinar'};
+function mpoUserRole(name){ const u=(USERS_CACHE||[]).find(x=>nrmName(x.name)===nrmName(name)); if(!u) return ''; try{ return primaryRole(rolesFor(u.username)); }catch(e){ return u.role||''; } }
+function mpoSectionFor(m){ return MPO_CAT_SEC[m.role] || MPO_ROLE_SEC[mpoUserRole(m.rep)] || ''; }
+// mark every one-time payout for a person in a given section paid/unpaid at once
+async function manualPayoutMarkGroup(sec,rep,paid){ if(!poCanEdit()){ toast('Super Admin only',true); return; }
+  const items=manualPayouts().filter(m=>mpoSectionFor(m)===sec && nrmName(m.rep)===nrmName(rep) && (paid? !m.paid : !!m.paid));
+  if(!items.length){ renderPayouts(); return; }
+  try{ for(const m of items){ await addRecord(Object.assign({},m,{paid:!!paid, paidAt:paid?new Date().toISOString():''})); } toast(paid?'Marked paid':'Marked unpaid'); renderPayouts(); }
+  catch(e){ toast('Could not update',true); } }
 async function poMarkAll(role){ if(!poCanEdit()){ toast('Super Admin only',true); return; }
   const c=poCycleObj(), map=poStatusMap(), ck=poKey(c);
   const list=(role==='manager')?poManagerData(c.from,c.to):(role==='webinar')?poWebinarData(c.from,c.to):(function(){ const data=repCommData(c.from,c.to,''); return role==='closer'?data.closers:data.setters; })();
@@ -7472,13 +7483,21 @@ function renderPayouts(){
     return `<tr><td><button class="linklike" onclick="poToggle('pod-${rid}')" title="Show the accounts behind this override">${esc(o.rep)} <span style="font-size:9px;opacity:.7">&#9660;</span></button></td><td class="num">${money(o.cash)}</td><td class="num">${o.rate}%</td><td class="num" style="font-weight:700">${money(o.commission)}</td><td>${badge}</td><td>${act}</td></tr>`+detail;
   }).join('');
   // manual/one-time payouts routed into their category's section (Closer/Setter/Manager override/Webinar host); the rest stay in the Manual table
-  const catToSec={'Closer':'closer','Setter':'setter','Manager override':'manager','Webinar host':'webinar'};
   const manualActions=m=>{ const paid=!!m.paid; return `<button class="btn ${paid?'ghost':'gold'} sm" onclick="manualPayoutMark('${m.id}',${paid?'false':'true'})">${paid?'Undo':'Mark paid'}</button> <button class="btn ghost sm" onclick="manualPayoutEdit('${m.id}')">Edit</button> <button class="btn ghost sm" style="color:var(--warn);border-color:var(--warn)" onclick="manualPayoutDel('${m.id}')">Remove</button>`; };
-  const manualSectionRows=cat=>manual.filter(m=>(m.role||'')===cat).map(m=>{ const amt=Number(m.amount)||0, paid=!!m.paid; const badge=paid?`<span class="pill good">Paid${m.paidAt?' · '+esc(usDate(m.paidAt)):''}</span>`:`<span class="pill warn">Unpaid</span>`; return `<tr><td><b>${esc(m.rep)}</b> <span class="pill" style="font-size:9px">one-time</span>${m.note?`<div class="muted" style="font-size:11px">${esc(m.note)}</div>`:''}</td><td class="num" style="color:var(--muted)">&ndash;</td><td class="num" style="color:var(--muted)">&ndash;</td><td class="num" style="font-weight:700">${money(amt)}</td><td>${badge}</td><td style="white-space:nowrap">${manualActions(m)}</td></tr>`; }).join('');
   const emptyRow=(cols,msg)=>`<tr><td colspan="${cols}" class="muted" style="padding:14px">${msg}</td></tr>`;
-  const ct=document.getElementById('poCloserTable'); if(ct){ const cr=rowsFor(data.closers,'closer'), cm=manualSectionRows('Closer'); ct.innerHTML=head+`<tbody>${cr}${cm}${(!cr&&!cm)?emptyRow(6,'No closer commissions this cycle.'):''}</tbody>`; }
-  const stt=document.getElementById('poSetterTable'); if(stt){ const sr=rowsFor(data.setters,'setter'), sm=manualSectionRows('Setter'); stt.innerHTML=head+`<tbody>${sr}${sm}${(!sr&&!sm)?emptyRow(6,'No setter commissions this cycle.'):''}</tbody>`; }
-  const mgt=document.getElementById('poMgrTable'); if(mgt){ const mm=manualSectionRows('Manager override'); mgt.innerHTML=mgrHead+`<tbody>${mgrRows}${mm}${(!mgrRows&&!mm)?emptyRow(6,"No manager overrides this cycle. Set each manager's override % on Rep Commission Breakdown."):''}</tbody>`; }
+  // group one-time payouts into ONE consolidated, expandable row per person per section (like Carolina's closer row)
+  const manBySec={closer:{},setter:{},manager:{},webinar:{}}, manNoSec=[];
+  manual.forEach(m=>{ const sec=mpoSectionFor(m); if(sec&&manBySec[sec]){ (manBySec[sec][nrmName(m.rep)]=manBySec[sec][nrmName(m.rep)]||{rep:m.rep,items:[]}).items.push(m); } else manNoSec.push(m); });
+  const manualPersonRows=sec=>Object.values(manBySec[sec]||{}).map((g,gi)=>{ const rid='man-'+sec+'-'+gi; const tot=g.items.reduce((s,x)=>s+(Number(x.amount)||0),0); const anyUnpaid=g.items.some(x=>!x.paid), allPaid=g.items.every(x=>x.paid);
+    const badge=allPaid?`<span class="pill good">Paid</span>`:(g.items.some(x=>x.paid)?`<span class="pill warn">Part-paid</span>`:`<span class="pill warn">Unpaid</span>`);
+    const act=anyUnpaid?`<button class="btn gold sm" onclick="manualPayoutMarkGroup('${sec}','${jsStr(g.rep)}',true)">Mark paid</button>`:`<button class="btn ghost sm" onclick="manualPayoutMarkGroup('${sec}','${jsStr(g.rep)}',false)">Undo</button>`;
+    const detRows=g.items.slice().sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))).map(m=>{ const paid=!!m.paid; return `<tr><td style="padding:5px 8px;white-space:nowrap">${m.date?esc(usDate(m.date)):'-'}</td><td style="padding:5px 8px">${esc(m.note||'')} <span class="muted">(${esc(m.role||'one-time')})</span></td><td class="num" style="padding:5px 8px;font-weight:600">${money(Number(m.amount)||0)}</td><td style="padding:5px 8px">${paid?'<span class="pill good">Paid</span>':'<span class="pill warn">Unpaid</span>'}</td><td class="mpoAct" style="padding:5px 8px">${manualActions(m)}</td></tr>`; }).join('');
+    const detail=`<tr class="poDetail" id="pod-${rid}" hidden><td colspan="6" style="padding:0 10px 12px;background:rgba(255,255,255,.02)"><div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:8px 0 4px">One-time payouts for ${esc(g.rep)} (${g.items.length})</div><table style="width:100%;border-collapse:collapse;font-size:12.5px;table-layout:fixed"><colgroup><col style="width:14%"><col style="width:44%"><col style="width:12%"><col style="width:12%"><col style="width:18%"></colgroup><thead><tr style="color:var(--muted);border-bottom:1px solid var(--border)"><th style="text-align:left;padding:4px 8px">Date</th><th style="text-align:left;padding:4px 8px">For</th><th style="text-align:right;padding:4px 8px">Amount</th><th style="text-align:left;padding:4px 8px">Status</th><th></th></tr></thead><tbody>${detRows}</tbody></table></td></tr>`;
+    return `<tr><td><button class="linklike" onclick="poToggle('pod-${rid}')" title="Show the one-time payouts behind this">${esc(g.rep)} <span class="pill" style="font-size:9px">one-time</span> <span style="font-size:9px;opacity:.7">&#9660;</span></button></td><td class="num" style="color:var(--muted)">&ndash;</td><td class="num" style="color:var(--muted)">&ndash;</td><td class="num" style="font-weight:700">${money(tot)}</td><td>${badge}</td><td style="white-space:nowrap">${act}</td></tr>`+detail;
+  }).join('');
+  const ct=document.getElementById('poCloserTable'); if(ct){ const cr=rowsFor(data.closers,'closer'), cm=manualPersonRows('closer'); ct.innerHTML=head+`<tbody>${cr}${cm}${(!cr&&!cm)?emptyRow(6,'No closer commissions this cycle.'):''}</tbody>`; }
+  const stt=document.getElementById('poSetterTable'); if(stt){ const sr=rowsFor(data.setters,'setter'), sm=manualPersonRows('setter'); stt.innerHTML=head+`<tbody>${sr}${sm}${(!sr&&!sm)?emptyRow(6,'No setter commissions this cycle.'):''}</tbody>`; }
+  const mgt=document.getElementById('poMgrTable'); if(mgt){ const mm=manualPersonRows('manager'); mgt.innerHTML=mgrHead+`<tbody>${mgrRows}${mm}${(!mgrRows&&!mm)?emptyRow(6,"No manager overrides this cycle. Set each manager's override % on Rep Commission Breakdown."):''}</tbody>`; }
   // Webinar hosts: their per-account webinar % on webinar-lead deals' cash this cycle
   const webHead=`<thead><tr><th>Webinar host</th><th class="num">Basis</th><th class="num">Rate / fee</th><th class="num">Webinar pay</th><th>Status</th><th></th></tr></thead>`;
   const webRows=poWebinarData(c.from,c.to).filter(o=>o.commission>0.0001).map((o,idx)=>{
@@ -7495,7 +7514,7 @@ function renderPayouts(){
     const rateCell=o.flat?money(o.count?o.commission/o.count:0):(o.rate+'%');
     return `<tr><td><button class="linklike" onclick="poToggle('pod-${rid}')" title="Show what's behind this pay">${esc(o.rep)} <span style="font-size:9px;opacity:.7">&#9660;</span></button></td><td class="num">${cashCell}</td><td class="num">${rateCell}</td><td class="num" style="font-weight:700">${money(o.commission)}</td><td>${badge}</td><td>${act}</td></tr>`+detail;
   }).join('');
-  const wbt=document.getElementById('poWebTable'); if(wbt){ const wm=manualSectionRows('Webinar host'); wbt.innerHTML=webHead+`<tbody>${webRows}${wm}${(!webRows&&!wm)?emptyRow(6,'No webinar-host pay this cycle. Deals need the webinar tag (or "Webinar" source) + a webinar % set on the account in Rep Commission Breakdown.'):''}</tbody>`; }
+  const wbt=document.getElementById('poWebTable'); if(wbt){ const wm=manualPersonRows('webinar'); wbt.innerHTML=webHead+`<tbody>${webRows}${wm}${(!webRows&&!wm)?emptyRow(6,'No webinar-host pay this cycle. Deals need the webinar tag (or "Webinar" source) + a webinar % set on the account in Rep Commission Breakdown.'):''}</tbody>`; }
   const all=[...data.closers.map(o=>({...o,role:'closer'})),...data.setters.map(o=>({...o,role:'setter'})),...poManagerData(c.from,c.to).map(o=>({...o,role:'manager'})),...poWebinarData(c.from,c.to).map(o=>({...o,role:'webinar'}))].filter(o=>o.commission>0.0001);
   let total=0,paidSum=0; all.forEach(o=>{ total+=o.commission; const st=poStatus(map,ck,o.rep,o.role); if(st&&st.paid) paidSum+=o.commission; });
   // Manual / one-time payouts (ad-hoc, standalone - not cycle-computed): fold into the totals + "Who we owe"
@@ -7509,7 +7528,8 @@ function renderPayouts(){
   // "Who we owe" - one consolidated list of everyone still unpaid this payday + any unpaid one-time payouts (mirror of the Outstanding invoices ledger)
   const roleLbl={closer:'Closer',setter:'Setter',manager:'Manager',webinar:'Webinar host'};
   const owe=all.map(o=>{ const st=poStatus(map,ck,o.rep,o.role); return {rep:o.rep, role:o.role, amt:o.commission, paid:!!(st&&st.paid), kind:'comp'}; }).filter(o=>!o.paid);
-  manUnpaid.forEach(m=>owe.push({rep:m.rep, role:m.role||'One-time', note:m.note||'', amt:Number(m.amount)||0, kind:'manual', id:m.id}));
+  const manOweMap={}; manUnpaid.forEach(m=>{ const k=nrmName(m.rep)+'|'+(m.role||'One-time'); (manOweMap[k]=manOweMap[k]||{rep:m.rep, role:m.role||'One-time', amt:0, notes:[]}); manOweMap[k].amt+=Number(m.amount)||0; if(m.note) manOweMap[k].notes.push(m.note); }); // consolidate multiple one-time lines per person+category
+  Object.values(manOweMap).forEach(g=>owe.push({rep:g.rep, role:g.role, note:g.notes.length>1?(g.notes.length+' one-time items'):(g.notes[0]||''), amt:g.amt, kind:'manual'}));
   owe.sort((a,b)=>b.amt-a.amt);
   const oweHead=`<thead><tr><th>Person</th><th>Role</th><th class="num">Owed</th></tr></thead>`;
   const oweBody=owe.length?owe.map(o=>{
@@ -7522,7 +7542,7 @@ function renderPayouts(){
   // Manual payouts table (all, newest first)
   const mCols=`<colgroup><col style="width:14%"><col style="width:11%"><col style="width:31%"><col style="width:10%"><col style="width:9%"><col style="width:9%"><col style="width:16%"></colgroup>`;
   const mHead=`${mCols}<thead><tr><th style="text-align:left">Person</th><th style="text-align:left">Category</th><th style="text-align:left">For</th><th style="text-align:left">Date</th><th class="num">Amount</th><th style="text-align:left">Status</th><th></th></tr></thead>`;
-  const manualOther=manual.filter(m=>!catToSec[m.role]); // categorized ones show in their role section instead
+  const manualOther=manNoSec; // ones that don't map to a role section (no matching category or role) show here; the rest are consolidated in their section above
   const mBody=manualOther.length?manualOther.slice().sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))).map(m=>{
     const paid=!!m.paid, badge=paid?`<span class="pill good">Paid${m.paidAt?' · '+esc(usDate(m.paidAt)):''}</span>`:`<span class="pill warn">Unpaid</span>`;
     return `<tr><td><b>${esc(m.rep)}</b></td><td>${esc(m.role||'One-time')}</td><td class="mpoFor">${esc(m.note||'')}${m.client?` <span class="muted">· ${esc(m.client)}</span>`:''}</td><td>${m.date?esc(usDate(m.date)):'-'}</td><td class="num" style="font-weight:700">${money(Number(m.amount)||0)}</td><td>${badge}</td><td class="mpoAct">${manualActions(m)}</td></tr>`;
