@@ -486,6 +486,7 @@
       <button data-tab="calllog">Call Log</button>
       <button data-tab="calendar">Calendar</button>
       <button data-tab="speedtolead">Speed to Lead</button>
+      <button data-tab="dialer">Dialer (WAVV)</button>
       <button data-tab="adminreport">Admin Report</button>
     </div>
   </div>
@@ -1603,6 +1604,21 @@ If they did not watch: No problem at all, I will send it right over. Can you wat
       <div class="panel" style="margin:0"><h3>By rep <span style="font-weight:400;color:var(--muted);font-size:12px">- avg time to first call</span></h3><div class="tablewrap"><table id="splByRep"></table></div></div>
       <div class="panel" style="margin:0"><h3>Leads <span id="splLeadFilterTag" style="font-weight:400;font-size:12.5px;color:var(--muted)"></span><select id="splLeadView" onchange="splRenderLeads()" style="float:right;font-size:12px;padding:3px 6px"><option value="slowest">Slowest / uncalled</option><option value="within">Called within target</option><option value="uncalled">Not called yet</option><option value="all">All called (fastest first)</option></select></h3><div class="tablewrap"><table id="splLeads"></table></div></div>
     </div>
+  </section>
+
+  <!-- ===== DIALER (WAVV) REPORTING ===== -->
+  <section id="tab-dialer" hidden>
+    <h2 class="section">Dialer (WAVV)</h2>
+    <p class="hint">Live call activity pulled from a client's WAVV dialer - dials, connects, connect rate, and talk time, by day and by rep. Pick a client that dials through WAVV (set up under Admin &rsaquo; Integrations &rsaquo; WAVV Dialer). Follows the top company selector. Managers and admins.</p>
+    <div class="filters" style="margin:0 0 12px;align-items:flex-end;gap:12px;flex-wrap:wrap">
+      <div class="field"><label>Client</label><select id="dlrClient" onchange="renderDialer()"></select></div>
+      <div class="field"><label>Date range</label><div class="rangewrap"><input type="text" id="dlrRange_txt" readonly placeholder="Click a start day, then an end day" onclick="rpToggle('dlrRange',event)"><input type="hidden" id="dlrRange_from"><input type="hidden" id="dlrRange_to"><div class="rangepop" id="dlrRange_pop" hidden onclick="event.stopPropagation()"></div></div></div>
+      <div class="field"><label>Quick range</label><div class="row-actions"><button class="btn ghost sm" onclick="dlrPreset('7')">Last 7d</button><button class="btn ghost sm" onclick="dlrPreset('14')">Last 14d</button><button class="btn ghost sm" onclick="dlrPreset('30')">Last 30d</button></div></div>
+      <button class="btn gold sm" id="dlrLoadBtn" onclick="renderDialer(true)">Load</button>
+    </div>
+    <div id="dlrCards" style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:14px"></div>
+    <div class="panel"><h3 style="margin:0">Daily activity <span style="font-weight:400;color:var(--muted);font-size:12px">- dials &amp; connects per day</span></h3><div id="dlrTrend" style="padding:12px 4px 6px"></div></div>
+    <div class="panel"><h3 style="margin:0">By rep <span style="font-weight:400;color:var(--muted);font-size:12px">- dials, connects, connect rate, talk time over the range</span></h3><div id="dlrByRep" style="padding:6px 2px"></div></div>
   </section>
 
   <!-- ===== RECRUITING ===== -->
@@ -2958,9 +2974,9 @@ function startApp(){
 // base tabs a login TIER can see; per-account responsibilities add to this in applyNavAccess()
 function baseAllow(role){
   return ({
-    admin:['dash','halloffame','master','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','dayreports','hotlist','adminreport','recruiting','messages','invoicing','payouts','contracts','onbaudit','ghlmap','pcfields','data','users','integrations','settings','reprequests','playbook','resources','faq','kickoff','webinarsop'],
-    director:['dash','halloffame','master','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','dailyreport','dayreports','hotlist','recruiting','messages','adminreport','contracts','onbaudit','ghlmap','pcfields','reprequests','playbook','resources','faq','kickoff','webinarsop'],
-    manager:['dash','halloffame','master','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','speedtolead','dailyreport','dayreports','hotlist','adminreport','recruiting','messages','reprequests','playbook','resources','faq','kickoff','webinarsop'],
+    admin:['dash','halloffame','master','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dialer','dailyreport','dayreports','hotlist','adminreport','recruiting','messages','invoicing','payouts','contracts','onbaudit','ghlmap','pcfields','data','users','integrations','settings','reprequests','playbook','resources','faq','kickoff','webinarsop'],
+    director:['dash','halloffame','master','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','dialer','dailyreport','dayreports','hotlist','recruiting','messages','adminreport','contracts','onbaudit','ghlmap','pcfields','reprequests','playbook','resources','faq','kickoff','webinarsop'],
+    manager:['dash','halloffame','master','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','speedtolead','dialer','dailyreport','dayreports','hotlist','adminreport','recruiting','messages','reprequests','playbook','resources','faq','kickoff','webinarsop'],
     founder:['dash','hotlist','faq'],
     recruiter:['dash','recruiting','messages','timeoff','reprequests','playbook','resources','faq','kickoff','webinarsop'],
     webinarteam:['dash','meeting','promises','timeoff','webinar','playbook','resources','faq','kickoff','webinarsop'],
@@ -3109,9 +3125,9 @@ function showTab(t){
   document.querySelectorAll('#tabs button[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
   document.querySelectorAll('#tabs .navgroup').forEach(g=>{ if(g.querySelector('button[data-tab="'+t+'"]')) g.classList.remove('collapsed'); }); // reveal the active tab's group
 
-  ['dash','halloffame','master','mydeals','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dailyreport','dayreports','hotlist','adminreport','reprequests','recruiting','messages','invoicing','payouts','contracts','onbaudit','ghlmap','pcfields','data','users','integrations','settings','playbook','resources','faq','kickoff','webinarsop','scorecards'].forEach(x=>{ const el=document.getElementById('tab-'+x); if(el) el.hidden = (x!==t); });
+  ['dash','halloffame','master','mydeals','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dialer','dailyreport','dayreports','hotlist','adminreport','reprequests','recruiting','messages','invoicing','payouts','contracts','onbaudit','ghlmap','pcfields','data','users','integrations','settings','playbook','resources','faq','kickoff','webinarsop','scorecards'].forEach(x=>{ const el=document.getElementById('tab-'+x); if(el) el.hidden = (x!==t); });
   // stale-while-revalidate: render instantly from the cached records, then refresh in the background
-  const render={dash:renderDash, halloffame:renderHallOfFame, master:renderMaster, mydeals:renderMyDeals, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, promises:renderPromisesTab, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, mgreodview:renderMgrEodView, contracts:renderContracts, faq:renderFaq, playbook:renderPlaybook, scorecards:renderScorecards, webinar:renderWebinars, calllog:renderCallLog, calendar:renderCalendar, speedtolead:renderSpeedToLead, dailyreport:renderDailyReport, dayreports:renderDayReports, hotlist:renderHotList, adminreport:renderAdminReport, payouts:renderPayouts, reprequests:renderRepRequests, recruiting:renderRecruiting, messages:renderMessages, training:renderTraining, invoicing:renderInvoicing, data:renderAll}[t];
+  const render={dash:renderDash, halloffame:renderHallOfFame, master:renderMaster, mydeals:renderMyDeals, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, promises:renderPromisesTab, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, mgreodview:renderMgrEodView, contracts:renderContracts, faq:renderFaq, playbook:renderPlaybook, scorecards:renderScorecards, webinar:renderWebinars, calllog:renderCallLog, calendar:renderCalendar, speedtolead:renderSpeedToLead, dialer:renderDialer, dailyreport:renderDailyReport, dayreports:renderDayReports, hotlist:renderHotList, adminreport:renderAdminReport, payouts:renderPayouts, reprequests:renderRepRequests, recruiting:renderRecruiting, messages:renderMessages, training:renderTraining, invoicing:renderInvoicing, data:renderAll}[t];
   if(render){ render(); hqApplyTooltips(); syncRecords().then(()=>{ if(currentTab()===t){ render(); hqApplyTooltips(); } buildGlobalClientSelect(); buildViewAsUserSelect(); updateNavBadges(); renderReminders(); }); }
   updateNavBadges();
   setTimeout(hqApplyTooltips,0); // catch tabs whose render runs outside the map above
@@ -4256,12 +4272,13 @@ function conTrendData(nMonths){
   return {months,collected,net,comp,billed,outstanding};
 }
 // lightweight multi-series line chart (SVG, theme colors), reuses chartAxis for a tight round scale
-function conLineChart(months, series){
+function conLineChart(months, series, opts){
+  opts=opts||{};
   const n=months.length; if(!n) return '<div class="muted" style="padding:20px;text-align:center">No data yet.</div>';
   const W=760,H=210,padL=54,padR=14,padT=12,padB=32, plotW=W-padL-padR, plotH=H-padT-padB;
   const vals=series.flatMap(s=>s.data.filter(v=>v!=null)); const maxV=Math.max(1,...vals);
   const ax=chartAxis(maxV), niceMax=ax.max, step=ax.step, nT=Math.max(1,Math.round(niceMax/step));
-  const fmt=v=>{ v=Math.round(v); return v>=1000?'$'+(v/1000).toFixed(v>=10000?0:1)+'k':'$'+v; };
+  const fmt=opts.fmt || (v=>{ v=Math.round(v); return v>=1000?'$'+(v/1000).toFixed(v>=10000?0:1)+'k':'$'+v; });
   const x=i=> padL + (n===1? plotW/2 : i*plotW/(n-1)), y=v=> padT + plotH*(1 - (v/niceMax));
   let g='';
   for(let i=0;i<=nT;i++){ const val=niceMax-i*step, yy=padT+plotH*i/nT; g+=`<line x1="${padL}" y1="${yy.toFixed(1)}" x2="${W-padR}" y2="${yy.toFixed(1)}" stroke="var(--border)" stroke-opacity=".45"/><text x="${padL-6}" y="${(yy+3).toFixed(1)}" text-anchor="end" font-size="9" fill="var(--muted)">${fmt(val)}</text>`; }
@@ -7515,6 +7532,41 @@ async function renderWavvDay(client, day){
     </div>
     ${rows?`<div class="tablewrap" style="margin-top:10px"><table style="font-size:12px"><thead><tr><th>Rep</th><th class="num">Dials</th><th class="num">Connects</th><th class="num">Talk</th></tr></thead><tbody>${rows}</tbody></table></div><div class="fieldhelp" style="margin-top:4px">Names come from the WAVV user-id map (Admin &rsaquo; Integrations &rsaquo; WAVV Dialer). Unmapped ids show grey.</div>`:''}
   </div></div>`;
+}
+/* ===== T-674: WAVV dialer reporting - dials/connects/talk by day + by rep, as charts ===== */
+function dlrHms(s){ s=Math.round(s||0); const h=Math.floor(s/3600), m=Math.floor((s%3600)/60); return h?(h+'h '+m+'m'):(m+'m '+(s%60)+'s'); }
+function dlrPreset(p){ const t=todayLocal(), from=isoOffset(t,-(parseInt(p,10)-1)); const ff=document.getElementById('dlrRange_from'), ft=document.getElementById('dlrRange_to'), tx=document.getElementById('dlrRange_txt'); if(ff)ff.value=from; if(ft)ft.value=t; if(tx)tx.value=usDate(from)+' – '+usDate(t); renderDialer(true); }
+let __dlrKey='';
+async function renderDialer(force){
+  const sel=document.getElementById('dlrClient'); if(!sel) return;
+  const sc=dashScopeClients(), clist=sc?sc.filter(c=>c!==' none'):clientNames();
+  const prev=preferGlobal(clist, sel.value||''); sel.innerHTML=clist.map(c=>`<option>${esc(c)}</option>`).join(''); sel.value=prev||clist[0]||'';
+  try{ rpAttach('dlrRange', ()=>renderDialer(true)); }catch(e){}
+  let from=((document.getElementById('dlrRange_from')||{}).value||'').slice(0,10), to=((document.getElementById('dlrRange_to')||{}).value||'').slice(0,10);
+  if(!from||!to){ const t=todayLocal(); from=isoOffset(t,-6); to=t; const ff=document.getElementById('dlrRange_from'), ft=document.getElementById('dlrRange_to'), tx=document.getElementById('dlrRange_txt'); if(ff)ff.value=from; if(ft)ft.value=to; if(tx)tx.value=usDate(from)+' – '+usDate(to); }
+  const client=sel.value, cards=document.getElementById('dlrCards'), trend=document.getElementById('dlrTrend'), byRep=document.getElementById('dlrByRep');
+  if(!client){ if(cards)cards.innerHTML=''; if(trend)trend.innerHTML='<p class="muted" style="padding:12px">Pick a client that uses WAVV.</p>'; if(byRep)byRep.innerHTML=''; return; }
+  const key=client+'|'+from+'|'+to; if(!force && key===__dlrKey) return; __dlrKey=key; // don't re-hit WAVV on incidental re-renders
+  if(cards) cards.innerHTML=''; if(byRep) byRep.innerHTML=''; if(trend) trend.innerHTML='<p class="muted" style="padding:12px">Loading WAVV dialer…</p>';
+  const btn=document.getElementById('dlrLoadBtn'); if(btn){ btn.disabled=true; btn.textContent='Loading…'; }
+  try{
+    let agg={}; try{ agg=await integApi('wavvStats',{key:'tsa:'+client, ws:'tsa', from, to}); }catch(e){}
+    if(!(agg&&agg.ok)){ if(trend) trend.innerHTML='<p class="muted" style="padding:12px">No WAVV data for '+esc(client)+' in this range. Set WAVV up for this client under Admin &rsaquo; Integrations &rsaquo; WAVV Dialer.</p>'; return; }
+    const days=[]; let d=from, guard=0; while(d<=to && guard<40){ days.push(d); d=isoOffset(d,1); guard++; } // per-day trend, capped at ~40 days
+    const daily=[]; for(const day of days){ let r={}; try{ r=await integApi('wavvStats',{key:'tsa:'+client, ws:'tsa', from:day, to:day}); }catch(e){} daily.push({day, dials:(r&&r.ok)?(r.dials||0):0, connects:(r&&r.ok)?(r.connects||0):0}); }
+    dlrRenderCards(agg); dlrRenderTrend(daily); dlrRenderByRep(agg);
+  } finally { if(btn){ btn.disabled=false; btn.textContent='Load'; } }
+}
+function dlrRenderCards(agg){ const cards=document.getElementById('dlrCards'); if(!cards) return; const connPct=agg.dials?Math.round(agg.connects/agg.dials*100):0; const card=(l,v)=>`<div class="kpi" style="flex:1;min-width:150px"><div class="lbl">${l}</div><div class="val">${v}</div></div>`; cards.innerHTML=card('Dials',(agg.dials||0).toLocaleString())+card('Connects',(agg.connects||0).toLocaleString())+card('Connect %',connPct+'%')+card('Talk time',dlrHms(agg.talkSeconds)); }
+function dlrRenderTrend(daily){ const host=document.getElementById('dlrTrend'); if(!host) return; if(!daily.length){ host.innerHTML='<p class="muted" style="padding:12px">No days in range.</p>'; return; }
+  const labels=daily.map(x=>{ const dt=new Date(x.day+'T00:00:00'); return {label:(dt.getMonth()+1)+'/'+dt.getDate()}; });
+  const legend=`<div style="display:flex;gap:18px;font-size:11px;margin:0 0 6px 4px"><span><span style="display:inline-block;width:14px;height:3px;background:var(--gold-2);vertical-align:middle;margin-right:6px"></span>Dials</span><span><span style="display:inline-block;width:14px;height:3px;background:var(--good);vertical-align:middle;margin-right:6px"></span>Connects</span></div>`;
+  host.innerHTML=legend+conLineChart(labels,[{name:'Dials',color:'var(--gold-2)',data:daily.map(x=>x.dials)},{name:'Connects',color:'var(--good)',data:daily.map(x=>x.connects)}],{fmt:v=>Math.round(v).toLocaleString()});
+}
+function dlrRenderByRep(agg){ const host=document.getElementById('dlrByRep'); if(!host) return; const users=(agg.perUser||[]).slice().sort((a,b)=>(b.dials||0)-(a.dials||0)); if(!users.length){ host.innerHTML='<p class="muted" style="padding:8px 4px">No per-rep data. Map WAVV user ids to reps under Admin &rsaquo; Integrations &rsaquo; WAVV Dialer.</p>'; return; }
+  const maxD=Math.max(1,...users.map(u=>u.dials||0));
+  const rows=users.map(u=>{ const pct=u.dials?Math.round((u.connects||0)/u.dials*100):0, bar=Math.round((u.dials||0)/maxD*100); return `<tr><td>${u.name?('<b>'+esc(u.name)+'</b>'):('<span class="muted">'+esc(u.userId)+'</span>')}</td><td style="min-width:120px"><div style="background:var(--gold-soft);border-radius:5px;height:14px"><div style="background:var(--gold-2);height:14px;border-radius:5px;width:${bar}%"></div></div></td><td class="num">${(u.dials||0).toLocaleString()}</td><td class="num">${(u.connects||0).toLocaleString()}</td><td class="num">${pct}%</td><td class="num">${dlrHms(u.seconds)}</td></tr>`; }).join('');
+  host.innerHTML=`<div class="tablewrap"><table style="width:100%;font-size:12px"><thead><tr><th style="text-align:left">Rep</th><th style="text-align:left"></th><th class="num">Dials</th><th class="num">Connects</th><th class="num">Connect %</th><th class="num">Talk</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 function renderDayReports(){
   const body=document.getElementById('dayRepBody'); if(!body) return;
