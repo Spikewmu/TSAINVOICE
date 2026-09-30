@@ -1098,6 +1098,7 @@
       <div class="field followOnly" hidden><label>Follow-up date</label><input type="date" name="followUpDate"><span class="fieldhelp">The date the next call is booked for.</span></div>
       <div class="field followOnly" hidden><label>Follow-up time</label><input type="time" name="followUpTime"><span class="fieldhelp">Start time of the booked follow-up.</span></div>
       <div class="field dqOnly" hidden><label>DQ reason</label><select name="dqReason"><option value="">-</option><option>Financial DQ</option><option>Personally unsuitable</option><option>Not interested</option><option>Other (see notes)</option></select><span class="fieldhelp">Why they did not qualify. Kept general across all offers, add detail in notes.</span></div>
+      <div class="field qualOnly" hidden><label>Lead quality (SQL / MQL) *</label><select name="qualLevel"><option value="">-</option><option value="SQL">SQL &ndash; truly qualified (finances, desire, urgency)</option><option value="MQL">MQL &ndash; connected only, not fully qualified</option></select><span class="fieldhelp">Was this a real qualified opportunity (SQL) or just a connected / marketing-qualified lead (MQL)? Sets the real ramp + close-rate denominator, so "10 connected" reads as "3 SQL of 10".</span></div>
       <div class="field wonOnly" hidden><label>Product sold</label><select name="product"></select><span class="fieldhelp">This client's offer that was sold.</span></div>
       <div class="field wonOnly" hidden><label>Contract value ($)</label><input type="number" name="contractValue" min="0" step="0.01" placeholder="0.00" oninput="schedRemainId('pcSched')"></div>
       <div class="field wonOnly" hidden><label>Cash collected ($)</label><input type="number" name="cashCollected" min="0" step="0.01" placeholder="0.00" oninput="schedRemainId('pcSched')"><span class="fieldhelp">What they paid <b>today</b>. The rest goes below as expected payments.</span></div>
@@ -1537,8 +1538,10 @@ If they did not watch: No problem at all, I will send it right over. Can you wat
       <div class="field"><label>Type</label><select id="clRole" onchange="renderCallLog()"><option value="">All calls</option><option value="Closer">Closing calls</option><option value="Setter">Conversations</option></select></div>
       <div class="field"><label>Rep</label><select id="clRep" onchange="renderCallLog()"></select></div>
       <div class="field"><label>Outcome</label><select id="clOutcome" onchange="renderCallLog()"><option value="">All</option></select></div>
+      <div class="field"><label title="Filter closing calls by whether the closer marked the lead a real qualified opportunity (SQL) or connected-only (MQL)">Lead quality</label><select id="clQual" onchange="renderCallLog()"><option value="">All</option><option value="SQL">SQL only</option><option value="MQL">MQL only</option></select></div>
       <button class="btn ghost sm" onclick="renderCallLog()">Refresh</button>
     </div>
+    <div id="clQualBar" style="margin:0 0 8px"></div>
     <div class="panel" style="margin-top:6px"><div class="tablewrap"><table id="callLogTable"></table></div></div>
   </section>
 
@@ -3542,6 +3545,11 @@ function postcallOutcomeChanged(){
   document.querySelectorAll('#postcallForm .wonOnly').forEach(e=>e.hidden=!won);
   document.querySelectorAll('#postcallForm .dqOnly').forEach(e=>e.hidden=!dq);
   document.querySelectorAll('#postcallForm .followOnly').forEach(e=>e.hidden=!fu);
+  // T-669: SQL vs MQL box - closer only, on outcomes where a real qualifying conversation happened (Won/Lost/Follow-up/Disqualified), NOT no-show/rescheduled/canceled
+  const pcRole=(document.querySelector('#postcallForm [name=role]')||{}).value||'Closer';
+  const showQual = pcRole==='Closer' && sel && /(^Won|^Lost|Follow-up booked|^Disqualified)/.test(sel.value||'');
+  document.querySelectorAll('#postcallForm .qualOnly').forEach(e=>e.hidden=!showQual);
+  const ql=document.querySelector('#postcallForm [name=qualLevel]'); if(ql) ql.required=!!showQual;
   const em=document.querySelector('#postcallForm [name=leadEmail]'), eml=document.getElementById('pcEmailLabel');
   if(em) em.required=!!won; if(eml) eml.textContent = won ? 'Lead email *' : 'Lead email'; // required only when it's a close
   if(won) postcallClientChanged();
@@ -3794,9 +3802,14 @@ function clRangePreset(p){ rangePreset('clRange_from','clRange_to',p,''); rpAtta
 function renderCallLog(){
   const recs=collapsePostcall(RECORDS); fillCallLogFilters(recs);
   const gv=id=>{ const e=document.getElementById(id); return e?e.value:''; };
-  const from=gv('clRange_from').slice(0,10),to=gv('clRange_to').slice(0,10),c=gv('clClient'),r=gv('clRole'),rep=gv('clRep'),oc=gv('clOutcome'),sc=dashScopeClients();
-  const rows=recs.filter(x=>((!from&&!to)||inRange(x.date,from,to))&&(!c||x.client===c)&&(!r||(x.role||'')===r)&&(!rep||String(x.rep||'').trim()===rep)&&(!oc||(x.outcome||'')===oc)&&(!sc||sc.includes(x.client)))
+  const from=gv('clRange_from').slice(0,10),to=gv('clRange_to').slice(0,10),c=gv('clClient'),r=gv('clRole'),rep=gv('clRep'),oc=gv('clOutcome'),ql=gv('clQual'),sc=dashScopeClients();
+  const rows=recs.filter(x=>((!from&&!to)||inRange(x.date,from,to))&&(!c||x.client===c)&&(!r||(x.role||'')===r)&&(!rep||String(x.rep||'').trim()===rep)&&(!oc||(x.outcome||'')===oc)&&(!ql||(x.qualLevel||'')===ql)&&(!sc||sc.includes(x.client)))
     .sort((a,b)=>((b.date||'')+(b.submittedAt||'')).localeCompare((a.date||'')+(a.submittedAt||'')));
+  // T-669: SQL vs MQL summary across the CLOSING calls in the current filter (only qualifying outcomes carry a quality mark)
+  const qbar=document.getElementById('clQualBar');
+  if(qbar){ const closers=rows.filter(x=>x.role==='Closer' && (x.qualLevel==='SQL'||x.qualLevel==='MQL'));
+    const sql=closers.filter(x=>x.qualLevel==='SQL').length, mql=closers.length-sql, connected=closers.length;
+    qbar.innerHTML = connected ? `<div class="panel" style="padding:8px 12px;display:flex;gap:20px;flex-wrap:wrap;align-items:center;font-size:12px"><b>Closing calls, this filter:</b> <span><b style="color:var(--good)">${sql}</b> SQL</span> <span><b style="color:var(--warn)">${mql}</b> MQL</span> <span class="muted">of ${connected} connected</span> <span class="muted">&middot; ${connected?Math.round(sql/connected*100):0}% truly qualified</span></div>` : ''; }
   const cols=`<colgroup><col style="width:9%"><col style="width:15%"><col style="width:13%"><col style="width:12%"><col style="width:23%"><col style="width:10%"><col style="width:11%"><col style="width:7%"></colgroup>`;
   const head=`${cols}<thead><tr><th>Date</th><th>Client</th><th>Type</th><th>Rep</th><th>Lead</th><th>Source</th><th>Outcome</th><th>Recording</th></tr></thead><tbody>`;
   const isAdmin=!!(SESSION&&SESSION.role==='admin'), sampleOn=(typeof SAMPLE_MODE!=='undefined'&&SAMPLE_MODE);
@@ -3808,7 +3821,8 @@ function renderCallLog(){
     const crmBtn=(isAdmin && !sampleOn && (x.client||'') && ((x.leadEmail||'').trim()||(x.lead||'').trim()))?`<button class="btn ghost sm" style="padding:2px 8px;font-size:11px" title="Play the last call recording from this lead's GHL" data-client="${esc(x.client||'')}" data-email="${esc(x.leadEmail||'')}" data-lead="${esc((x.lead||'').trim())}" onclick="crmPlayRecording(this)">&#127911; CRM</button>`:'';
     const watch=(watchLink+(watchLink&&crmBtn?' ':'')+crmBtn)||'<span class="muted">-</span>';
     const hasNote=!!(x.notes&&x.notes.trim());
-    const main=`<tr class="${hasNote?'clmain':''}"><td>${esc(usDate(x.date))}</td><td>${esc(x.client||'')}</td><td>${esc(type)}</td><td>${esc(x.rep||'')}</td><td>${esc(x.lead||'')}${x.leadEmail?'<br><span class="muted" style="font-size:11px">'+esc(x.leadEmail)+'</span>':''}</td><td>${esc(x.source||'')}</td><td>${callLogPill(x.outcome)}${fu}${dq}${(/book|set|callback|schedul/i.test(String(x.outcome||''))&&(x.lead||'').trim())?`<div class="clappt" data-client="${esc(x.client||'')}" data-lead="${esc((x.lead||'').trim().toLowerCase())}" style="font-size:11px;color:var(--gold,#c9a227);margin-top:3px"></div>`:''}</td><td>${watch}</td></tr>`;
+    const qual=(x.qualLevel==='SQL'||x.qualLevel==='MQL')?` <span class="pill" style="font-size:10px;color:${x.qualLevel==='SQL'?'var(--good)':'var(--warn)'};border:1px solid ${x.qualLevel==='SQL'?'var(--good)':'var(--warn)'}">${x.qualLevel}</span>`:'';
+    const main=`<tr class="${hasNote?'clmain':''}"><td>${esc(usDate(x.date))}</td><td>${esc(x.client||'')}</td><td>${esc(type)}</td><td>${esc(x.rep||'')}</td><td>${esc(x.lead||'')}${x.leadEmail?'<br><span class="muted" style="font-size:11px">'+esc(x.leadEmail)+'</span>':''}</td><td>${esc(x.source||'')}</td><td>${callLogPill(x.outcome)}${qual}${fu}${dq}${(/book|set|callback|schedul/i.test(String(x.outcome||''))&&(x.lead||'').trim())?`<div class="clappt" data-client="${esc(x.client||'')}" data-lead="${esc((x.lead||'').trim().toLowerCase())}" style="font-size:11px;color:var(--gold,#c9a227);margin-top:3px"></div>`:''}</td><td>${watch}</td></tr>`;
     const note=hasNote?`<tr class="clnoterow"><td colspan="8"><span class="cllabel">Notes</span>${esc(x.notes)}</td></tr>`:'';
     return main+note;
   }).join(''):`<tr><td colspan="8" class="muted" style="padding:16px">No calls logged in this range.</td></tr>`;
