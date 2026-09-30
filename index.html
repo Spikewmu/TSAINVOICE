@@ -1338,6 +1338,7 @@
   <!-- ===== PAYOUTS (what TSA owes reps each pay cycle) ===== -->
   <section id="tab-payouts" hidden>
     <h2 class="section">Payouts</h2>
+    <style>#poCloserTable,#poSetterTable,#poMgrTable,#poWebTable{width:100%}#tab-payouts .poDetail td{white-space:normal;overflow-wrap:anywhere;word-break:break-word}#tab-payouts .poDetail .btn{margin:0 4px 4px 0}#tab-payouts .poDetail .mpoAct{white-space:normal}</style>
     <p class="hint">What TSA owes setters &amp; closers on the <b>upcoming payday</b> (defaults to the next one). Reps are paid twice a month, in arrears: earnings <b>1st-15th</b> pay on the <b>last day of the month</b>; earnings <b>16th-EOM</b> pay the <b>15th of next month</b>. Mark each rep paid as you send it. Super Admin only.</p>
     <div class="filters" style="align-items:flex-end;gap:12px">
       <div class="field"><label>Payday</label><div class="seg" id="poSeg"><button onclick="poSetCycle('next')">Next payout</button><button onclick="poSetCycle('earlier')">&#8592; Earlier</button><button onclick="poSetCycle('later')">Later &#8594;</button></div></div>
@@ -6399,7 +6400,8 @@ function renderMyDeals(){
   const me=String((SESSION&&SESSION.name)||'').trim();
   const isRep=SESSION&&(SESSION.role==='closer'||SESSION.role==='setter');
   const showMyPayout=SESSION&&['closer','setter','manager','webinarteam'].includes(SESSION.role); // managers + hosts also see their own paycheck breakdown
-  const topHtml=(showMyPayout?myPayoutHtml():'')+myDealsForecastHtml();
+  // reps see their own commission forecast; oversight (admin/director/manager) don't - the team totals here read as personal pay and confuse. They use My payouts (their own) + the deal cards.
+  const topHtml=(showMyPayout?myPayoutHtml():'')+(oversight?'':myDealsForecastHtml());
   const seen={}, uniq=[];
   (RECORDS||[]).filter(x=>x.type==='deal').filter(d=>(oversight||effCloserOf(d)===me) && (!GLOBAL_CLIENT||String(d.client||'')===GLOBAL_CLIENT))
     .sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.submittedAt||'').localeCompare(a.submittedAt||''))
@@ -7483,7 +7485,7 @@ function renderPayouts(){
     return `<tr><td><button class="linklike" onclick="poToggle('pod-${rid}')" title="Show the accounts behind this override">${esc(o.rep)} <span style="font-size:9px;opacity:.7">&#9660;</span></button></td><td class="num">${money(o.cash)}</td><td class="num">${o.rate}%</td><td class="num" style="font-weight:700">${money(o.commission)}</td><td>${badge}</td><td>${act}</td></tr>`+detail;
   }).join('');
   // manual/one-time payouts routed into their category's section (Closer/Setter/Manager override/Webinar host); the rest stay in the Manual table
-  const manualActions=m=>{ const paid=!!m.paid; return `<button class="btn ${paid?'ghost':'gold'} sm" onclick="manualPayoutMark('${m.id}',${paid?'false':'true'})">${paid?'Undo':'Mark paid'}</button> <button class="btn ghost sm" onclick="manualPayoutEdit('${m.id}')">Edit</button> <button class="btn ghost sm" style="color:var(--warn);border-color:var(--warn)" onclick="manualPayoutDel('${m.id}')">Remove</button>`; };
+  const manualActions=m=>{ const paid=!!m.paid; return `<button class="btn ${paid?'ghost':'gold'} sm" onclick="manualPayoutMark('${m.id}',${paid?'false':'true'})">${paid?'Undo':'Mark paid'}</button> <button class="btn ghost sm" onclick="manualPayoutEdit('${m.id}')">Edit</button> <button class="btn ghost sm" style="color:var(--warn);border-color:var(--warn);padding:2px 8px" title="Delete this payout" onclick="manualPayoutDel('${m.id}')">&times;</button>`; };
   const emptyRow=(cols,msg)=>`<tr><td colspan="${cols}" class="muted" style="padding:14px">${msg}</td></tr>`;
   // group one-time payouts into ONE consolidated, expandable row per person per section (like Carolina's closer row)
   const manBySec={closer:{},setter:{},manager:{},webinar:{}}, manNoSec=[];
