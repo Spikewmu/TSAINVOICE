@@ -6375,7 +6375,7 @@ function myPayoutHtml(){
   items.sort((a,b)=>String(a.date||'').localeCompare(String(b.date||'')));
   const fmtLong=iso=>{ const p=String(iso||'').split('-').map(Number); return (p.length===3)?new Date(p[0],p[1]-1,p[2]).toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'}):usDate(iso); };
   const rows=items.map(it=>`<tr>
-    <td style="padding:6px 8px;color:var(--muted);white-space:nowrap">${it.date?esc(usDate(it.date)):'&ndash;'}</td>
+    <td style="padding:6px 8px;color:var(--muted);white-space:nowrap">${it.date?esc(usDate(it.date)):((it.role==='Manager override'||it.role==='Webinar')?'this cycle':'&ndash;')}</td>
     <td style="padding:6px 8px">${esc(it.who||'-')}${it.client?`<span class="muted"> · ${esc(it.client)}</span>`:''}</td>
     <td style="padding:6px 8px;color:var(--muted)">${esc(it.role)}${it.kind&&it.kind!=='Deal'?' · '+esc(it.kind):''}</td>
     <td class="num" style="padding:6px 8px">${it.cash==null?'&ndash;':money(it.cash)}${(it.raw!=null&&Math.abs(it.raw-it.cash)>0.001)?` <span class="muted" style="text-decoration:line-through">${money(it.raw)}</span>`:''}</td>
@@ -7391,9 +7391,11 @@ async function markPayout(rep,role,amount,paid){ if(!poCanEdit()){ toast('Super 
 // the date a manager started running an account (earliest of their function since-dates on that account); '' = no start date recorded (pays on all, legacy)
 function mgrSinceForAccount(name, client){ const c=latestClients().find(x=>nrmName(x.name)===nrmName(client)); if(!c) return ''; const k=nrmName(name); const ds=[]; [['setterMgr','setterMgrSince'],['closerMgr','closerMgrSince'],['webinarMgr','webinarMgrSince']].forEach(([mf,sf])=>{ if(c[mf]&&nrmName(c[mf])===k && c[sf]) ds.push(String(c[sf]).slice(0,10)); }); return ds.length?ds.sort()[0]:''; }
 // billed cash on ONE account within [from,to], floored at `since` (so a manager isn't paid on closes before they took the account)
-function acctBilledCashSince(client, from, to, since){ const f=(since&&since>from)?since:from; const inP=d=>{ d=String(d||'').slice(0,10); return d&&d>=f&&d<=to; }; let cash=0; const seen={};
-  (RECORDS||[]).filter(x=>x.type==='deal'&&nrmName(x.client)===nrmName(client)&&inP(x.date)).forEach(d=>{ const id=String(d.id||''); if(id&&seen[id])return; if(id)seen[id]=1; cash+=lineBilled('d:'+id,Number(d.cashCollected)||0); });
-  paymentsCollapsed().filter(p=>p.status==='confirmed'&&nrmName(p.client)===nrmName(client)&&inP(p.date)).forEach(p=>{ cash+=lineBilled('p:'+String(p.pid||p.id||''),Number(p.amount)||0); });
+function acctBilledCashSince(client, from, to, since, setterOnly){ const f=(since&&since>from)?since:from; const inP=d=>{ d=String(d||'').slice(0,10); return d&&d>=f&&d<=to; };
+  const hasSetter=x=>!setterOnly || !!String((typeof effSetterOf==='function'?effSetterOf(x):(x.setter||''))||'').trim(); // setterOnly: only deals a setter actually worked count (no setter on the call = no setter-manager credit)
+  let cash=0; const seen={};
+  (RECORDS||[]).filter(x=>x.type==='deal'&&nrmName(x.client)===nrmName(client)&&inP(x.date)).forEach(d=>{ const id=String(d.id||''); if(id&&seen[id])return; if(id)seen[id]=1; if(!hasSetter(d))return; cash+=lineBilled('d:'+id,Number(d.cashCollected)||0); });
+  paymentsCollapsed().filter(p=>p.status==='confirmed'&&nrmName(p.client)===nrmName(client)&&inP(p.date)).forEach(p=>{ if(!hasSetter(p))return; cash+=lineBilled('p:'+String(p.pid||p.id||''),Number(p.amount)||0); });
   return cash; }
 function poManagerData(from,to){
   const inP=d=>{ d=String(d||'').slice(0,10); return d && d>=from && d<=to; };
@@ -7404,7 +7406,8 @@ function poManagerData(from,to){
   (USERS_CACHE||[]).forEach(u=>{ if(!u||u.archived||!u.username)return; let roles=[]; try{ roles=(typeof rolesFor==='function'?rolesFor(u.username):null)||[u.role]; }catch(e){ roles=[u.role]; } if(!roles.includes('manager'))return;
     const name=u.name||u.username;
     let cash=0, commission=0; const items=[]; // per-account override rate (T-625): a manager's % can differ per offer
-    managedClientsForUser(u).forEach(cl=>{ const since=mgrSinceForAccount(name,cl); const cc= since ? acctBilledCashSince(cl,from,to,since) : (clientCash[cl]||0); if(cc<=0) return; const rate=mgrClientRate(name,cl); if(!rate) return; cash+=cc; commission+=cc*rate/100; items.push({client:cl,cash:cc,rate,since}); });
+    managedClientsForUser(u).forEach(cl=>{ const since=mgrSinceForAccount(name,cl); const fns=(typeof mgrFnsOnClient==='function'?mgrFnsOnClient(name,cl):[]); const setterOnly = fns.length>0 && !fns.includes('clo'); // pure setter-manager -> only deals a setter actually worked count; closer manager earns on all cash
+      const cc=acctBilledCashSince(cl,from,to,since,setterOnly); if(cc<=0) return; const rate=mgrClientRate(name,cl); if(!rate) return; cash+=cc; commission+=cc*rate/100; items.push({client:cl,cash:cc,rate,since,setterOnly}); });
     if(commission<=0) return;
     const eff=cash?commission/cash*100:0;
     out.push({rep:name, role:'manager', cash, rate:Math.round(eff*10)/10, effRate:eff, commission, items});
