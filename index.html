@@ -4756,7 +4756,7 @@ function nextMeetingDate(){
 }
 function mtgDates(){ const ds=new Set([nextMeetingDate(),todayLocal()]); if(MTG_EXTRA)ds.add(MTG_EXTRA); collapseAgenda(RECORDS).forEach(x=>ds.add((x.date||'').slice(0,10))); collapsePromises(RECORDS).forEach(x=>ds.add((x.date||'').slice(0,10))); return [...ds].filter(Boolean).sort().reverse(); }
 function fillMtgSelects(){
-  const md=document.getElementById('mtgDate'); if(md && !md.value){ md.value=todayCentral(); } // single date field: default to today (Central time), then keep whatever the user picks
+  const md=document.getElementById('mtgDate'); const _t=todayCentral(); if(md && (!md.value || md.value<_t)){ md.value=_t; const _tx=document.getElementById('mtgDate_txt'); if(_tx) _tx.value=usDate(_t); } // default/advance to today (Central) on open so notes show without a refresh; a future date the user picked to prep early is kept
   dayPickAttach('mtgDate', renderMeeting); // styled single-day picker feeds the hidden #mtgDate, re-renders on pick
   const clients=clientNames();
   const pc=document.getElementById('prClient'); if(pc){ const cur=pc.value; pc.innerHTML='<option value="">- none -</option>'+clients.map(c=>`<option>${esc(c)}</option>`).join(''); if(cur)pc.value=cur; }
