@@ -1978,17 +1978,17 @@ If they did not watch: No problem at all, I will send it right over. Can you wat
         <div class="field full" id="ccCommHead" style="border-top:1px solid var(--border);padding-top:12px;margin-top:2px"><label style="font-size:13px;font-weight:700;color:var(--gold)">Commission on this offer</label><span class="fieldhelp">The per-account comp used for payouts and net margin - set it here once. Blank % = fall back to the default rate.</span></div>
         <div class="field full"><label>Setter manager</label>
           <div style="display:flex;gap:8px;align-items:center">
-            <select name="setterMgr" style="flex:1"></select>
+            <select name="setterMgr" id="ccSetMgr" style="flex:1" onchange="ccUpdateMgrPh()"></select>
             <input id="ccSetMgrPct" type="number" min="0" max="100" step="0.5" placeholder="%" style="width:90px" title="Setter-manager % on this account"> <span class="muted" style="font-size:13px">%</span>
           </div></div>
         <div class="field full"><label>Closer manager</label>
           <div style="display:flex;gap:8px;align-items:center">
-            <select name="closerMgr" style="flex:1"></select>
+            <select name="closerMgr" id="ccCloMgr" style="flex:1" onchange="ccUpdateMgrPh()"></select>
             <input id="ccCloMgrPct" type="number" min="0" max="100" step="0.5" placeholder="%" style="width:90px" title="Closer-manager % on this account"> <span class="muted" style="font-size:13px">%</span>
           </div></div>
         <div class="field full"><label>Webinar manager <span style="font-weight:400;color:var(--muted)">- used for webinar billing/comp</span></label>
           <div style="display:flex;gap:8px;align-items:center">
-            <select name="webinarMgr" style="flex:1"></select>
+            <select name="webinarMgr" id="ccWebMgr" style="flex:1" onchange="ccUpdateMgrPh()"></select>
             <input id="ccWebMgrPct" type="number" min="0" max="100" step="0.5" placeholder="%" style="width:90px" title="Webinar-host % on this account"> <span class="muted" style="font-size:13px">%</span>
           </div></div>
         <div class="field full"><label>Webinar host pay</label>
@@ -11007,9 +11007,13 @@ function editClient(name){
   if(gi('ccWebMgrPct')) gi('ccWebMgrPct').value=av('web');
   if(gi('ccRepSetPct')) gi('ccRepSetPct').value=av('rep_set');
   if(gi('ccRepCloPct')) gi('ccRepCloPct').value=av('rep_clo');
+  ccUpdateMgrPh(); // show each manager's default override rate as the placeholder when the per-account box is blank
   ccRenderExceptions(clientRepsWithOverride(c.name));
   clientModalShow();
 }
+// show the selected manager's default override rate as the % placeholder (blank box = that default applies)
+function ccUpdateMgrPh(){ const map=[['ccSetMgr','ccSetMgrPct'],['ccCloMgr','ccCloMgrPct'],['ccWebMgr','ccWebMgrPct']];
+  map.forEach(([selId,inpId])=>{ const sel=document.getElementById(selId), inp=document.getElementById(inpId); if(!sel||!inp) return; const nm=(sel.value||'').trim(); let r=null; try{ r=nm?mgrOverrideRaw(nm):null; }catch(e){} inp.placeholder=(r!=null&&r!=='')?(r+' (default)'):'%'; }); }
 async function saveClient(e){
   e.preventDefault();
   const o=formObj(e.target); o.type='client'; o.monthly=parseFloat(o.monthly)||0; o.monthlyGoal=parseFloat(o.monthlyGoal)||0;
