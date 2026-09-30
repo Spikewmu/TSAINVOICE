@@ -1286,7 +1286,7 @@
   <!-- ===== MONDAY MEETING PREP SHEET (T-668) ===== -->
   <section id="tab-mtgprep" hidden>
     <h2 class="section">Monday Meeting Prep Sheet</h2>
-    <p class="hint">The running prep sheet for the weekly TakeOver meeting. Last week's numbers fill in automatically; the team and the founder both add topics, announcements, and questions through the week (Mon&ndash;Sun), then check them off as they're covered. Founders see their own account.</p>
+    <p class="hint">The running prep sheet for the weekly TakeOver meeting. Last week's numbers fill in automatically; the team and the founder both add topics, announcements, and questions through the week (Mon&ndash;Sun). <b>The founder can submit a question and the team replies right on the item</b> (a back-and-forth thread); check an item off once it's covered or answered. Founders see their own account.</p>
     <div class="filters" style="margin:0 0 12px;align-items:flex-end;gap:12px;flex-wrap:wrap">
       <div class="field" id="mpClientWrap"><label>Client</label><select id="mpClient" onchange="renderMtgPrep()"></select></div>
       <div class="seg" id="mpWeekSeg"><button class="on" onclick="setMpWeek('this')">This week</button><button onclick="setMpWeek('last')">Last week</button></div>
@@ -5058,7 +5058,13 @@ function renderMtgPrep(){
   const done=items.filter(x=>x.status==='done');
   const isMgr=SESSION&&['admin','director','manager'].includes(SESSION.role);
   const sideBadge=s=>`<span class="pill" style="font-size:10px">${s==='Founder'?'Founder':'TSA'}</span>`;
-  const row=x=>`<label class="offrow" style="display:flex;align-items:flex-start;gap:10px;padding:9px 12px;border:1px solid var(--border);border-radius:9px;margin-bottom:6px;cursor:pointer"><input type="checkbox" ${x.status==='done'?'checked':''} onchange="mtgPrepToggle('${x.id}')" style="margin-top:3px;flex:0 0 auto"><span style="flex:1"><span style="${x.status==='done'?'text-decoration:line-through;opacity:.6':''}">${esc(x.text)}</span> ${sideBadge(x.side)} <span class="muted" style="font-size:11px">${esc(x.by||'')}</span>${isMgr?` <a class="linklike" style="cursor:pointer;color:var(--warn);font-size:11px" onclick="event.preventDefault();mtgPrepDel('${x.id}')">remove</a>`:''}</span></label>`;
+  const row=x=>{ const comments=Array.isArray(x.comments)?x.comments:[];
+    const thread=comments.map(c=>`<div style="margin-left:28px;padding:5px 0;font-size:12px;border-top:1px dashed var(--border);display:flex;gap:7px;align-items:flex-start"><span class="pill" style="font-size:10px;flex:0 0 auto;color:${c.side==='Founder'?'var(--gold-2)':'var(--good)'};border:1px solid ${c.side==='Founder'?'var(--gold-2)':'var(--good)'}">${c.side==='Founder'?'Founder':'TSA'}</span><span style="flex:1">${esc(c.text)} <span class="muted" style="font-size:11px">${esc(c.by||'')}</span></span></div>`).join('');
+    return `<div class="offrow" style="display:block;padding:9px 12px;border:1px solid var(--border);border-radius:9px;margin-bottom:6px">
+      <div style="display:flex;align-items:flex-start;gap:10px"><input type="checkbox" ${x.status==='done'?'checked':''} onchange="mtgPrepToggle('${x.id}')" style="margin-top:3px;flex:0 0 auto" title="Check off when covered / answered"><span style="flex:1"><span style="${x.status==='done'?'text-decoration:line-through;opacity:.6':''}">${esc(x.text)}</span> ${sideBadge(x.side)} <span class="muted" style="font-size:11px">${esc(x.by||'')}</span>${isMgr?` <a class="linklike" style="cursor:pointer;color:var(--warn);font-size:11px" onclick="mtgPrepDel('${x.id}')">remove</a>`:''}</span></div>
+      ${thread}
+      <div style="display:flex;gap:8px;margin:8px 0 0 28px"><input id="mpr_${x.id}" placeholder="${founder?'Reply / add detail':'Respond to this'}" style="flex:1;min-width:160px;font-size:12px" onkeydown="if(event.key==='Enter'){event.preventDefault();mtgPrepReply('${x.id}');}"><button class="btn ghost sm" onclick="mtgPrepReply('${x.id}')">Reply</button></div>
+    </div>`; };
   host.innerHTML=numHtml
    +`<div class="panel"><h3 style="margin:0 0 8px">Topics, announcements &amp; questions <span style="font-weight:400;color:var(--muted);font-size:12px">- ${founder?'add anything you want covered on Monday':'team + founder items, running Mon-Sun'}</span></h3>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px"><input id="mpAddText" placeholder="${founder?'What would you like covered on Monday?':'Add a topic, number, change, or announcement'}" style="flex:1;min-width:220px" onkeydown="if(event.key==='Enter'){event.preventDefault();mtgPrepAdd();}"><button class="btn gold sm" onclick="mtgPrepAdd()">Add</button></div>
@@ -5070,10 +5076,16 @@ function mtgPrepAdd(){ const sel=document.getElementById('mpClient'), client=(se
   addRecord({type:'mtgprep',id:uid(),client,weekStart:wk.weekStart,text:t,side:founder?'Founder':'TSA',by:(SESSION&&SESSION.name)||'',status:'open',addedAt:new Date().toISOString()}).then(()=>{ if(el) el.value=''; toast('Added to the prep sheet'); renderMtgPrep(); }); }
 function mtgPrepToggle(id){ const cur=mtgPrepItemsAll().find(x=>x.id===id); if(!cur) return; addRecord(Object.assign({},cur,{status:cur.status==='done'?'open':'done'})).then(renderMtgPrep); }
 function mtgPrepDel(id){ if(!(SESSION&&['admin','director','manager'].includes(SESSION.role))){ toast('Managers / admins only',true); return; } const cur=mtgPrepItemsAll().find(x=>x.id===id); if(!cur) return; if(!confirm('Remove this item from the prep sheet?')) return; addRecord(Object.assign({},cur,{deleted:true})).then(renderMtgPrep); }
+// founder submits a question/topic; the team (or the founder) replies to it - a running thread on each item
+function mtgPrepReply(id){ const cur=mtgPrepItemsAll().find(x=>x.id===id); if(!cur) return; const el=document.getElementById('mpr_'+id), t=(el&&el.value||'').trim(); if(!t){ toast('Type a reply first',true); return; }
+  const founder=SESSION&&SESSION.role==='founder'; const comments=Array.isArray(cur.comments)?cur.comments.slice():[];
+  comments.push({text:t, side:founder?'Founder':'TSA', by:(SESSION&&SESSION.name)||'', at:new Date().toISOString()});
+  addRecord(Object.assign({},cur,{comments})).then(()=>{ toast('Reply added'); renderMtgPrep(); }); }
 function mtgPrepSummaryText(){ const sel=document.getElementById('mpClient'), client=(sel&&sel.value)||'', wk=mpWeekRange(); const nums=mtgPrepNumbers(client,wk.from,wk.to); const items=mtgPrepItems(client,wk.weekStart);
   const lines=[`*${client} - Monday Prep Sheet*`, `Week of ${wk.label}`, ``, `Last week: ${nums.closes} closes | ${money(nums.cash)} collected | ${nums.connects} calls taken | ${nums.sets} calls set`, ``, `Topics for Monday:`];
   const open=items.filter(x=>x.status!=='done'); const done=items.filter(x=>x.status==='done');
-  if(open.length) open.forEach(x=>lines.push(`- ${x.text} (${x.side||'TSA'}${x.by?', '+x.by:''})`)); else lines.push('- (none added yet)');
+  const withReplies=x=>{ lines.push(`- ${x.text} (${x.side||'TSA'}${x.by?', '+x.by:''})`); (Array.isArray(x.comments)?x.comments:[]).forEach(c=>lines.push(`    > ${c.side||'TSA'}: ${c.text}`)); };
+  if(open.length) open.forEach(withReplies); else lines.push('- (none added yet)');
   if(done.length){ lines.push('', 'Covered:'); done.forEach(x=>lines.push(`- ${x.text}`)); }
   return lines.join('\n'); }
 function mtgPrepCopy(){ const txt=mtgPrepSummaryText(); const done=()=>toast('Prep summary copied - paste into the client’s Slack'); try{ navigator.clipboard.writeText(txt).then(done,()=>{ mpFallbackCopy(txt); done(); }); }catch(e){ mpFallbackCopy(txt); done(); } }
