@@ -3585,11 +3585,13 @@ function postcallOutcomeChanged(){
   document.querySelectorAll('#postcallForm .wonOnly').forEach(e=>e.hidden=!won);
   document.querySelectorAll('#postcallForm .dqOnly').forEach(e=>e.hidden=!dq);
   document.querySelectorAll('#postcallForm .followOnly').forEach(e=>e.hidden=!fu);
-  // T-669: SQL vs MQL box - closer only, on outcomes where a real qualifying conversation happened (Won/Lost/Follow-up/Disqualified), NOT no-show/rescheduled/canceled
-  const pcRole=(document.querySelector('#postcallForm [name=role]')||{}).value||'Closer';
-  const showQual = pcRole==='Closer' && sel && /(^Won|^Lost|Follow-up booked|^Disqualified)/.test(sel.value||'');
+  // T-669: SQL vs MQL box - closer only. Visible up front (including before an outcome is picked), hidden only for the no-conversation outcomes (No-show / Rescheduled / Canceled). Required once a qualifying outcome is chosen.
+  const pcRoleV=(document.querySelector('#postcallForm [name=role]')||{}).value||'Closer';
+  const outV=(sel&&sel.value)||'';
+  const noConvo=/^(No-show|Rescheduled|Canceled)/.test(outV);
+  const showQual = pcRoleV==='Closer' && !noConvo;
   document.querySelectorAll('#postcallForm .qualOnly').forEach(e=>e.hidden=!showQual);
-  const ql=document.querySelector('#postcallForm [name=qualLevel]'); if(ql) ql.required=!!showQual;
+  const ql=document.querySelector('#postcallForm [name=qualLevel]'); if(ql) ql.required = showQual && !!outV;
   const em=document.querySelector('#postcallForm [name=leadEmail]'), eml=document.getElementById('pcEmailLabel');
   if(em) em.required=!!won; if(eml) eml.textContent = won ? 'Lead email *' : 'Lead email'; // required only when it's a close
   if(won) postcallClientChanged();
