@@ -486,7 +486,7 @@
       <button data-tab="mgreod">Manager EOD</button>
       <button data-tab="calllog">Call Log</button>
       <button data-tab="calendar">Calendar</button>
-      <button data-tab="speedtolead">Speed to Lead</button>
+      <button data-tab="speedtolead" id="navSpeedBtn">Speed to Lead</button>
       <button data-tab="dialer" id="navDialerBtn">Dialer (WAVV)</button>
       <button data-tab="adminreport">Admin Report</button>
     </div>
@@ -3062,6 +3062,10 @@ function applyNavAccess(){
   const dbtn=document.getElementById('navDialerBtn');
   if(dbtn && !dbtn.hidden){ dbtn.hidden = !(GLOBAL_CLIENT && clientHasWavv(GLOBAL_CLIENT)); }
   if(!__integLoaded) loadIntegCfgsOnce(); // load integration configs once so the WAVV gate can evaluate
+  // Speed to Lead: only show when the scoped client has a GHL connection (same activation gate as the Dialer)
+  const sbtn=document.getElementById('navSpeedBtn');
+  if(sbtn && !sbtn.hidden){ sbtn.hidden = !(GLOBAL_CLIENT && clientHasGhl(GLOBAL_CLIENT)); }
+  if(!__splLoaded) loadSpeedClientsOnce();
   pruneNavGroups();
   applyFlatNav();
   updateNavBadges();
@@ -3073,6 +3077,10 @@ async function loadIntegCfgsOnce(force){
   try{ const res=await integApi('get',{}); if(res && !res.error){ INTEG_CFGS={}; ((res.configs)||[]).forEach(c=>INTEG_CFGS[c.key]=c); __integLoaded=true; try{ applyNavAccess(); }catch(e){} } }catch(e){}
 }
 function clientHasWavv(name){ if(!name) return false; const c=INTEG_CFGS['tsa:'+name]; if(c) return !!(c.wavvEnabled||c.wavv); const nn=nrmName(name); return Object.keys(INTEG_CFGS).some(k=>{ const cc=INTEG_CFGS[k]; return cc && nrmName((cc.client||k).replace(/^tsa:/,''))===nn && (cc.wavvEnabled||cc.wavv); }); }
+// which clients have a GHL connection (from the speed-to-lead client list) - used to gate the Speed to Lead nav item
+let __splLoaded=false;
+async function loadSpeedClientsOnce(){ if(__splLoaded) return; if(!(SESSION && ['admin','director','manager'].includes(SESSION.role))) return; try{ const res=await splApi({action:'speedToLeadClients'}); if(res){ __splClients=(res.clients)||[]; __splLoaded=true; try{ applyNavAccess(); }catch(e){} } }catch(e){} }
+function clientHasGhl(name){ if(!name) return false; const nn=nrmName(name); return (__splClients||[]).some(c=>nrmName(c.client||'')===nn); }
 // Founder view: render the nav as a flat list of pages (no collapsible "Setter/Closer tools / Resources / Recruiting" group headers)
 function applyFlatNav(){ try{ const nav=document.getElementById('tabs'); if(nav) nav.classList.toggle('flatnav', !!(SESSION && SESSION.role==='founder')); }catch(_){} }
 // super-admin "view as" - preview the app as another role (layout only; the real access/token is unchanged, resets on reload)
@@ -5739,7 +5747,7 @@ async function renderSpeedToLead(){
   const sel=document.getElementById('splClient');
   if(sel && !__splClients.length){
     sel.innerHTML='<option>Loading clients...</option>';
-    const res=await splApi({action:'speedToLeadClients'}); __splClients=(res&&res.clients)||[];
+    const res=await splApi({action:'speedToLeadClients'}); __splClients=(res&&res.clients)||[]; __splLoaded=true;
     sel.innerHTML = __splClients.length ? __splClients.map(c=>`<option value="${esc(c.locationId)}">${esc(c.client)}</option>`).join('') : '<option value="">No connected GHL accounts</option>';
   }
   // follow the global company scope: select that client + auto-load its speed-to-lead data
@@ -5774,7 +5782,7 @@ async function dashSpeedInit(){
   const founder = SESSION.role==='founder';
   const clientName = founder ? ((teamsFor(SESSION.username)[0])||'') : ((document.getElementById('fClient')||{}).value||'');
   if(!clientName){ panel.hidden=true; return; } // admin on "All clients" -> hide (needs a specific account)
-  if(!__splClients.length){ try{ const res=await splApi({action:'speedToLeadClients'}); __splClients=(res&&res.clients)||[]; }catch(e){} }
+  if(!__splClients.length){ try{ const res=await splApi({action:'speedToLeadClients'}); __splClients=(res&&res.clients)||[]; __splLoaded=true; }catch(e){} }
   const match=(__splClients||[]).find(c=>String(c.client).toLowerCase()===String(clientName).toLowerCase());
   if(!match){ panel.hidden=true; return; } // no v2 GHL connection for this client
   const changed=(match.locationId!==__dashSpeedLoc); __dashSpeedLoc=match.locationId; panel.hidden=false;
@@ -5838,7 +5846,7 @@ async function dashBookedInit(){
   const founder = SESSION.role==='founder';
   const clientName = founder ? ((teamsFor(SESSION.username)[0])||'') : ((document.getElementById('fClient')||{}).value||'');
   if(!clientName){ panel.hidden=true; return; } // needs a specific account (per-client GHL pull)
-  if(!__splClients.length){ try{ const res=await splApi({action:'speedToLeadClients'}); __splClients=(res&&res.clients)||[]; }catch(e){} }
+  if(!__splClients.length){ try{ const res=await splApi({action:'speedToLeadClients'}); __splClients=(res&&res.clients)||[]; __splLoaded=true; }catch(e){} }
   const match=(__splClients||[]).find(c=>String(c.client).toLowerCase()===String(clientName).toLowerCase());
   if(!match){ panel.hidden=true; return; } // no v2 GHL connection for this client
   const changed=(__dashBookedClient!==clientName); __dashBookedClient=clientName; __dashBookedLoc=match.locationId; panel.hidden=false;
