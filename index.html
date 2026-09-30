@@ -10507,7 +10507,10 @@ function mgrSinceClose(){ const m=document.getElementById('mgrSinceModal'); if(m
 async function mgrSinceSave(){ if(!MGR_SINCE_CTX) return; const {client,field}=MGR_SINCE_CTX; const d=(document.getElementById('mgrSinceDate')||{}).value||''; if(!d){ toast('Pick a date first',true); return; }
   const cur=latestClients().find(x=>nrmName(x.name)===nrmName(client)); if(!cur){ toast('Account not found',true); return; }
   const {_t,...clean}=cur; const rec=Object.assign({},clean,{type:'client'}); rec[field+'Since']=d;
-  try{ await addRecord(rec); toast('Start date set to '+usDate(d)); mgrSinceClose(); if(ROLE_EDIT){ try{ renderRolesTable(userByName(ROLE_EDIT)); }catch(e){} } }
+  try{ await addRecord(rec); toast('Start date set to '+usDate(d)); mgrSinceClose();
+    if(typeof ROLE_EDIT!=='undefined' && ROLE_EDIT){ try{ renderRolesTable(userByName(ROLE_EDIT)); }catch(e){} }
+    if(typeof USER_EDIT!=='undefined' && USER_EDIT){ const w=document.getElementById('ueRespWrap'); if(w && !w.hidden){ try{ ueRenderResp(userByName(USER_EDIT)); }catch(e){} } }
+  }
   catch(e){ toast('Could not save the start date',true); } }
 async function saveRoles(){
   if(!ROLE_EDIT) return;
@@ -10605,7 +10608,9 @@ function ueReasonToggle(){ const w=document.getElementById('ueReasonWrap'); if(w
 function ueRenderResp(u){
   const cs=latestClients().slice().sort((a,b)=>String(a.name).localeCompare(String(b.name)));
   if(!cs.length){ document.getElementById('ueRespTable').innerHTML=`<p class="muted" style="padding:10px">Add clients on the Client Overview tab first.</p>`; return; }
-  const cell=(c,role,f)=>{ const holder=c[f]||'', mine=isMgrField(holder,u), other=(holder&&!mine)?holder:''; return `<td><input type="checkbox" data-client="${esc(c.name)}" data-role="${role}" ${mine?'checked':''}>${other?`<span class="heldother" title="Currently ${esc(holder)} - ticking takes it over">${esc(other)}</span>`:''}</td>`; };
+  const cell=(c,role,f)=>{ const holder=c[f]||'', mine=isMgrField(holder,u), other=(holder&&!mine)?holder:''; const sf=f+'Since';
+    const sinceLink = mine ? `<a class="linklike" style="display:block;font-size:10px;cursor:pointer;margin-top:3px" onclick="editMgrSince('${jsStr(c.name)}','${f}')" title="When they started on this account - override only pays on closes from this date">${c[sf]?('since '+usDate(c[sf])):'&#9888; set start date'}</a>`:'';
+    return `<td><input type="checkbox" data-client="${esc(c.name)}" data-role="${role}" ${mine?'checked':''}>${other?`<span class="heldother" title="Currently ${esc(holder)} - ticking takes it over">${esc(other)}</span>`:''}${sinceLink}</td>`; };
   document.getElementById('ueRespTable').innerHTML=`<div style="overflow-x:auto"><table class="respmatrix"><thead><tr><th>Account</th><th>Webinar</th><th>Setters</th><th>Closers</th></tr></thead><tbody>`
     +cs.map(c=>`<tr><td>${esc(c.name)}</td>${cell(c,'web','webinarMgr')}${cell(c,'set','setterMgr')}${cell(c,'clo','closerMgr')}</tr>`).join('')
     +`</tbody></table></div>`;
@@ -10666,7 +10671,9 @@ async function userEditSave(){
       const curc=latestClients().find(x=>x.name===cn); if(!curc) return;
       const {_t,...clean}=curc, s=sel[cn];
       const fld=(f,checked)=> checked ? name : (isMgrField(curc[f],u) ? '' : (curc[f]||''));
+      const sinceFld=(f,nextVal)=>{ const sf=f+'Since'; if(nextVal===name) return isMgrField(curc[f],u) ? (curc[sf]||todayLocal()) : todayLocal(); if(nextVal==='') return ''; return curc[sf]||''; };
       const next={ webinarMgr:fld('webinarMgr',s.web), setterMgr:fld('setterMgr',s.set), closerMgr:fld('closerMgr',s.clo) };
+      next.webinarMgrSince=sinceFld('webinarMgr',next.webinarMgr); next.setterMgrSince=sinceFld('setterMgr',next.setterMgr); next.closerMgrSince=sinceFld('closerMgr',next.closerMgr);
       if(next.webinarMgr!==(curc.webinarMgr||'')||next.setterMgr!==(curc.setterMgr||'')||next.closerMgr!==(curc.closerMgr||''))
         jobs.push(addRecord(Object.assign({},clean,next,{type:'client'})));
     });
