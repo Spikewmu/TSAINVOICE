@@ -473,6 +473,7 @@
     <div class="navsub">
       <button data-tab="meeting">Meeting</button>
       <button data-tab="promises">Promises</button>
+      <button data-tab="mtgprep">Monday Prep Sheet</button>
     </div>
   </div>
   <div class="navgroup collapsed">
@@ -1280,6 +1281,21 @@
       </div>
     </div>
     <div class="panel"><div class="tablewrap"><table id="pmTable"></table></div></div>
+  </section>
+
+  <!-- ===== MONDAY MEETING PREP SHEET (T-668) ===== -->
+  <section id="tab-mtgprep" hidden>
+    <h2 class="section">Monday Meeting Prep Sheet</h2>
+    <p class="hint">The running prep sheet for the weekly TakeOver meeting. Last week's numbers fill in automatically; the team and the founder both add topics, announcements, and questions through the week (Mon&ndash;Sun), then check them off as they're covered. Founders see their own account.</p>
+    <div class="filters" style="margin:0 0 12px;align-items:flex-end;gap:12px;flex-wrap:wrap">
+      <div class="field" id="mpClientWrap"><label>Client</label><select id="mpClient" onchange="renderMtgPrep()"></select></div>
+      <div class="seg" id="mpWeekSeg"><button class="on" onclick="setMpWeek('this')">This week</button><button onclick="setMpWeek('last')">Last week</button></div>
+      <span id="mpWeekLbl" class="tag" style="align-self:flex-end;margin-bottom:2px"></span>
+      <div style="flex:1"></div>
+      <button class="btn ghost sm" onclick="mtgPrepPrint()">&#128424;&#65039; Print / Save PDF</button>
+      <button class="btn ghost sm" onclick="mtgPrepCopy()">Copy summary for Slack</button>
+    </div>
+    <div id="mpSheet"></div>
   </section>
 
   <!-- ===== TIME OFF ===== -->
@@ -2974,10 +2990,10 @@ function startApp(){
 // base tabs a login TIER can see; per-account responsibilities add to this in applyNavAccess()
 function baseAllow(role){
   return ({
-    admin:['dash','halloffame','master','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dialer','dailyreport','dayreports','hotlist','adminreport','recruiting','messages','invoicing','payouts','contracts','onbaudit','ghlmap','pcfields','data','users','integrations','settings','reprequests','playbook','resources','faq','kickoff','webinarsop'],
-    director:['dash','halloffame','master','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','dialer','dailyreport','dayreports','hotlist','recruiting','messages','adminreport','contracts','onbaudit','ghlmap','pcfields','reprequests','playbook','resources','faq','kickoff','webinarsop'],
-    manager:['dash','halloffame','master','mydeals','reps','scorecards','clients','onboarding','meeting','promises','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','speedtolead','dialer','dailyreport','dayreports','hotlist','adminreport','recruiting','messages','reprequests','playbook','resources','faq','kickoff','webinarsop'],
-    founder:['dash','hotlist','faq'],
+    admin:['dash','halloffame','master','mydeals','reps','scorecards','clients','onboarding','meeting','promises','mtgprep','timeoff','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dialer','dailyreport','dayreports','hotlist','adminreport','recruiting','messages','invoicing','payouts','contracts','onbaudit','ghlmap','pcfields','data','users','integrations','settings','reprequests','playbook','resources','faq','kickoff','webinarsop'],
+    director:['dash','halloffame','master','mydeals','reps','scorecards','clients','onboarding','meeting','promises','mtgprep','timeoff','users','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','dialer','dailyreport','dayreports','hotlist','recruiting','messages','adminreport','contracts','onbaudit','ghlmap','pcfields','reprequests','playbook','resources','faq','kickoff','webinarsop'],
+    manager:['dash','halloffame','master','mydeals','reps','scorecards','clients','onboarding','meeting','promises','mtgprep','timeoff','users','postcall','sod','eod','training','mgreod','webinar','calllog','speedtolead','dialer','dailyreport','dayreports','hotlist','adminreport','recruiting','messages','reprequests','playbook','resources','faq','kickoff','webinarsop'],
+    founder:['dash','mtgprep','hotlist','faq'],
     recruiter:['dash','recruiting','messages','timeoff','reprequests','playbook','resources','faq','kickoff','webinarsop'],
     webinarteam:['dash','meeting','promises','timeoff','webinar','playbook','resources','faq','kickoff','webinarsop'],
     closer:['dash','halloffame','mydeals','postcall','sod','eod','training','timeoff','calllog','reps','hotlist','playbook','resources','faq','kickoff','webinarsop'],
@@ -3125,9 +3141,9 @@ function showTab(t){
   document.querySelectorAll('#tabs button[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
   document.querySelectorAll('#tabs .navgroup').forEach(g=>{ if(g.querySelector('button[data-tab="'+t+'"]')) g.classList.remove('collapsed'); }); // reveal the active tab's group
 
-  ['dash','halloffame','master','mydeals','reps','clients','onboarding','meeting','promises','timeoff','deal','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dialer','dailyreport','dayreports','hotlist','adminreport','reprequests','recruiting','messages','invoicing','payouts','contracts','onbaudit','ghlmap','pcfields','data','users','integrations','settings','playbook','resources','faq','kickoff','webinarsop','scorecards'].forEach(x=>{ const el=document.getElementById('tab-'+x); if(el) el.hidden = (x!==t); });
+  ['dash','halloffame','master','mydeals','reps','clients','onboarding','meeting','promises','mtgprep','timeoff','deal','postcall','sod','eod','training','mgreod','mgreodview','webinar','calllog','calendar','speedtolead','dialer','dailyreport','dayreports','hotlist','adminreport','reprequests','recruiting','messages','invoicing','payouts','contracts','onbaudit','ghlmap','pcfields','data','users','integrations','settings','playbook','resources','faq','kickoff','webinarsop','scorecards'].forEach(x=>{ const el=document.getElementById('tab-'+x); if(el) el.hidden = (x!==t); });
   // stale-while-revalidate: render instantly from the cached records, then refresh in the background
-  const render={dash:renderDash, halloffame:renderHallOfFame, master:renderMaster, mydeals:renderMyDeals, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, promises:renderPromisesTab, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, mgreodview:renderMgrEodView, contracts:renderContracts, faq:renderFaq, playbook:renderPlaybook, scorecards:renderScorecards, webinar:renderWebinars, calllog:renderCallLog, calendar:renderCalendar, speedtolead:renderSpeedToLead, dialer:renderDialer, dailyreport:renderDailyReport, dayreports:renderDayReports, hotlist:renderHotList, adminreport:renderAdminReport, payouts:renderPayouts, reprequests:renderRepRequests, recruiting:renderRecruiting, messages:renderMessages, training:renderTraining, invoicing:renderInvoicing, data:renderAll}[t];
+  const render={dash:renderDash, halloffame:renderHallOfFame, master:renderMaster, mydeals:renderMyDeals, reps:renderReps, clients:renderClientOverview, onboarding:renderOnboarding, meeting:renderMeeting, promises:renderPromisesTab, mtgprep:renderMtgPrep, timeoff:renderTimeOffTab, eod:renderEodTab, mgreod:renderMgrEod, mgreodview:renderMgrEodView, contracts:renderContracts, faq:renderFaq, playbook:renderPlaybook, scorecards:renderScorecards, webinar:renderWebinars, calllog:renderCallLog, calendar:renderCalendar, speedtolead:renderSpeedToLead, dialer:renderDialer, dailyreport:renderDailyReport, dayreports:renderDayReports, hotlist:renderHotList, adminreport:renderAdminReport, payouts:renderPayouts, reprequests:renderRepRequests, recruiting:renderRecruiting, messages:renderMessages, training:renderTraining, invoicing:renderInvoicing, data:renderAll}[t];
   if(render){ render(); hqApplyTooltips(); syncRecords().then(()=>{ if(currentTab()===t){ render(); hqApplyTooltips(); } buildGlobalClientSelect(); buildViewAsUserSelect(); updateNavBadges(); renderReminders(); }); }
   updateNavBadges();
   setTimeout(hqApplyTooltips,0); // catch tabs whose render runs outside the map above
@@ -4935,6 +4951,61 @@ function saveMeeting(){
   Promise.all(jobs).then(()=>{ toast('Saved '+jobs.length+' update'+(jobs.length>1?'s':'')+' for '+usDate(date)); renderMeeting(); })
     .catch(err=>toast((err&&err.message)||'Save failed - try again',true));
 }
+/* ===== T-668: Monday Meeting Prep Sheet - running Mon-Sun, auto last-week numbers, founder + TSA topics ===== */
+let __mpWeek='this';
+function setMpWeek(w){ __mpWeek=w; const bs=document.querySelectorAll('#mpWeekSeg button'); bs.forEach((b,i)=>b.classList.toggle('on', i===(w==='this'?0:1))); renderMtgPrep(); }
+function mpWeekRange(){ const w=(__mpWeek==='last')?billingWeek():currentWeek(); return {from:w.from,to:w.to,weekStart:w.from,label:usDate(w.from)+' – '+usDate(w.to)}; }
+function mtgPrepItemsAll(){ const m={}; (RECORDS||[]).forEach(x=>{ if(x.type!=='mtgprep'||!x.id) return; if(!m[x.id]||(x.submittedAt||'')>(m[x.id].submittedAt||'')) m[x.id]=x; }); return Object.values(m); }
+function mtgPrepItems(client,weekStart){ return mtgPrepItemsAll().filter(x=>!x.deleted && nrmName(x.client)===nrmName(client) && String(x.weekStart||'')===String(weekStart)); }
+function mtgPrepNumbers(client,from,to){
+  const pcs=collapsePostcall(RECORDS).filter(x=>nrmName(x.client)===nrmName(client)&&inRange(x.date,from,to));
+  const closes=pcs.filter(x=>x.role==='Closer'&&/^Won/.test(x.outcome||'')).length;
+  const connects=pcs.filter(x=>x.role==='Closer').length;
+  const sets=pcs.filter(x=>x.role==='Setter'&&/^(Booked|Follow-up booked|Callback)/i.test(x.outcome||'')).length;
+  let cash=0; try{ cash=conCashFor(client,from,to)||0; }catch(e){}
+  return {closes,cash,connects,sets};
+}
+function mpClientList(){ if(SESSION&&SESSION.role==='founder'){ let c=(teamsFor(SESSION.username)||[]).filter(Boolean); if(!c.length&&SESSION.name) c=[SESSION.name]; return c; } const sc=dashScopeClients(); return sc?sc.filter(c=>c!==' none'):clientNames(); }
+function renderMtgPrep(){
+  const host=document.getElementById('mpSheet'); if(!host) return;
+  const founder=SESSION&&SESSION.role==='founder';
+  const sel=document.getElementById('mpClient'), clist=mpClientList();
+  if(sel){ const prev=preferGlobal(clist, sel.value||''); sel.innerHTML=clist.map(c=>`<option>${esc(c)}</option>`).join(''); sel.value=prev||clist[0]||''; }
+  const wrap=document.getElementById('mpClientWrap'); if(wrap) wrap.style.display=(founder&&clist.length<=1)?'none':'';
+  const client=(sel&&sel.value)||clist[0]||'';
+  const wk=mpWeekRange(); const lbl=document.getElementById('mpWeekLbl'); if(lbl) lbl.textContent='Week of '+wk.label;
+  if(!client){ host.innerHTML='<p class="muted" style="padding:12px">No client to show a prep sheet for.</p>'; return; }
+  const nums=mtgPrepNumbers(client, wk.from, wk.to);
+  const card=(l,v)=>`<div class="kpi" style="flex:1;min-width:130px"><div class="lbl">${l}</div><div class="val">${v}</div></div>`;
+  const numHtml=`<div class="panel" style="padding:12px 14px"><div style="font-weight:600;margin-bottom:8px">Last week's numbers <span class="muted" style="font-weight:400;font-size:12px">- ${esc(wk.label)}</span></div><div style="display:flex;flex-wrap:wrap;gap:12px">${card('Closes',nums.closes)+card('Cash collected',money(nums.cash))+card('Calls taken',nums.connects)+card('Calls set',nums.sets)}</div></div>`;
+  const items=mtgPrepItems(client, wk.weekStart);
+  const open=items.filter(x=>x.status!=='done').sort((a,b)=>(a.addedAt||'').localeCompare(b.addedAt||''));
+  const done=items.filter(x=>x.status==='done');
+  const isMgr=SESSION&&['admin','director','manager'].includes(SESSION.role);
+  const sideBadge=s=>`<span class="pill" style="font-size:10px">${s==='Founder'?'Founder':'TSA'}</span>`;
+  const row=x=>`<label class="offrow" style="display:flex;align-items:flex-start;gap:10px;padding:9px 12px;border:1px solid var(--border);border-radius:9px;margin-bottom:6px;cursor:pointer"><input type="checkbox" ${x.status==='done'?'checked':''} onchange="mtgPrepToggle('${x.id}')" style="margin-top:3px;flex:0 0 auto"><span style="flex:1"><span style="${x.status==='done'?'text-decoration:line-through;opacity:.6':''}">${esc(x.text)}</span> ${sideBadge(x.side)} <span class="muted" style="font-size:11px">${esc(x.by||'')}</span>${isMgr?` <a class="linklike" style="cursor:pointer;color:var(--warn);font-size:11px" onclick="event.preventDefault();mtgPrepDel('${x.id}')">remove</a>`:''}</span></label>`;
+  host.innerHTML=numHtml
+   +`<div class="panel"><h3 style="margin:0 0 8px">Topics, announcements &amp; questions <span style="font-weight:400;color:var(--muted);font-size:12px">- ${founder?'add anything you want covered on Monday':'team + founder items, running Mon-Sun'}</span></h3>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px"><input id="mpAddText" placeholder="${founder?'What would you like covered on Monday?':'Add a topic, number, change, or announcement'}" style="flex:1;min-width:220px" onkeydown="if(event.key==='Enter'){event.preventDefault();mtgPrepAdd();}"><button class="btn gold sm" onclick="mtgPrepAdd()">Add</button></div>
+      ${open.length?open.map(row).join(''):'<p class="muted" style="margin:0 0 6px">Nothing added yet for this week.</p>'}
+      ${done.length?`<div style="margin-top:12px"><div class="muted" style="font-size:12px;margin-bottom:5px">Covered / closed out</div>${done.map(row).join('')}</div>`:''}
+    </div>`;
+}
+function mtgPrepAdd(){ const sel=document.getElementById('mpClient'), client=(sel&&sel.value)||''; if(!client){ toast('Pick a client first',true); return; } const el=document.getElementById('mpAddText'), t=(el&&el.value||'').trim(); if(!t){ toast('Type something to add',true); return; } const founder=SESSION&&SESSION.role==='founder', wk=mpWeekRange();
+  addRecord({type:'mtgprep',id:uid(),client,weekStart:wk.weekStart,text:t,side:founder?'Founder':'TSA',by:(SESSION&&SESSION.name)||'',status:'open',addedAt:new Date().toISOString()}).then(()=>{ if(el) el.value=''; toast('Added to the prep sheet'); renderMtgPrep(); }); }
+function mtgPrepToggle(id){ const cur=mtgPrepItemsAll().find(x=>x.id===id); if(!cur) return; addRecord(Object.assign({},cur,{status:cur.status==='done'?'open':'done'})).then(renderMtgPrep); }
+function mtgPrepDel(id){ if(!(SESSION&&['admin','director','manager'].includes(SESSION.role))){ toast('Managers / admins only',true); return; } const cur=mtgPrepItemsAll().find(x=>x.id===id); if(!cur) return; if(!confirm('Remove this item from the prep sheet?')) return; addRecord(Object.assign({},cur,{deleted:true})).then(renderMtgPrep); }
+function mtgPrepSummaryText(){ const sel=document.getElementById('mpClient'), client=(sel&&sel.value)||'', wk=mpWeekRange(); const nums=mtgPrepNumbers(client,wk.from,wk.to); const items=mtgPrepItems(client,wk.weekStart);
+  const lines=[`*${client} - Monday Prep Sheet*`, `Week of ${wk.label}`, ``, `Last week: ${nums.closes} closes | ${money(nums.cash)} collected | ${nums.connects} calls taken | ${nums.sets} calls set`, ``, `Topics for Monday:`];
+  const open=items.filter(x=>x.status!=='done'); const done=items.filter(x=>x.status==='done');
+  if(open.length) open.forEach(x=>lines.push(`- ${x.text} (${x.side||'TSA'}${x.by?', '+x.by:''})`)); else lines.push('- (none added yet)');
+  if(done.length){ lines.push('', 'Covered:'); done.forEach(x=>lines.push(`- ${x.text}`)); }
+  return lines.join('\n'); }
+function mtgPrepCopy(){ const txt=mtgPrepSummaryText(); const done=()=>toast('Prep summary copied - paste into the client’s Slack'); try{ navigator.clipboard.writeText(txt).then(done,()=>{ mpFallbackCopy(txt); done(); }); }catch(e){ mpFallbackCopy(txt); done(); } }
+function mpFallbackCopy(txt){ try{ const ta=document.createElement('textarea'); ta.value=txt; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }catch(e){} }
+function mtgPrepPrint(){ const sheet=document.getElementById('mpSheet'); const sel=document.getElementById('mpClient'), client=(sel&&sel.value)||'', wk=mpWeekRange(); if(!sheet) return; const w=window.open('','_blank'); if(!w){ toast('Allow pop-ups to print / save the PDF',true); return; }
+  w.document.write('<html><head><title>Prep sheet - '+esc(client)+'</title><style>body{font-family:system-ui,Arial,sans-serif;padding:26px;color:#111}h1{font-size:19px;margin:0 0 2px}.sub{color:#666;margin-bottom:14px}.kpi{display:inline-block;border:1px solid #ccc;border-radius:8px;padding:8px 14px;margin:0 8px 8px 0}.lbl{font-size:11px;color:#666}.val{font-size:18px;font-weight:700}h3{font-size:14px;margin:16px 0 6px}.offrow{display:block;padding:6px 0;border-bottom:1px solid #eee}.pill{font-size:10px;border:1px solid #999;border-radius:10px;padding:1px 6px;color:#444}input,button,.linklike{display:none !important}.panel{border:none;padding:0}.muted{color:#888;font-size:12px}</style></head><body><h1>'+esc(client)+' – Monday Prep Sheet</h1><div class="sub">Week of '+esc(wk.label)+'</div>'+sheet.innerHTML+'</body></html>');
+  w.document.close(); setTimeout(()=>{ try{ w.focus(); w.print(); }catch(e){} }, 350); }
 function fmtEntry(x){ return `<div class="agentry">${esc(x.text||'')} <span class="agby">- ${esc(x.by||'')}</span></div>`; }
 // The activity days a meeting reviews: the PRIOR day, except a Monday meeting reviews Fri+Sat+Sun
 // (no TakeOver meetings on Sat/Sun), so the morning SOD always shows the previous day's production.
