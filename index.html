@@ -7470,6 +7470,14 @@ async function manualPayoutMarkGroup(sec,rep,paid){ if(!poCanEdit()){ toast('Sup
   if(!items.length){ renderPayouts(); return; }
   try{ for(const m of items){ await addRecord(Object.assign({},m,{paid:!!paid, paidAt:paid?new Date().toISOString():''})); } toast(paid?'Marked paid':'Marked unpaid'); renderPayouts(); }
   catch(e){ toast('Could not update',true); } }
+// mark a manager's merged pay (computed override + their one-time payouts) paid/unpaid in one click
+async function markMgrMerged(rep, compAmt, paid){ if(!poCanEdit()){ toast('Super Admin only',true); return; }
+  try{ const c=poCycleObj();
+    if(compAmt>0.0001) await addRecord({type:'payout', cycle:poKey(c), payDate:c.pay, rep, role:'manager', amount:compAmt, paid:!!paid, paidAt:paid?new Date().toISOString():'', by:(SESSION&&SESSION.name)||''});
+    const items=manualPayouts().filter(m=>mpoSectionFor(m)==='manager' && nrmName(m.rep)===nrmName(rep) && (paid? !m.paid : !!m.paid));
+    for(const m of items){ await addRecord(Object.assign({},m,{paid:!!paid, paidAt:paid?new Date().toISOString():''})); }
+    toast(paid?'Marked paid':'Marked unpaid'); renderPayouts();
+  }catch(e){ toast('Could not update',true); } }
 async function poMarkAll(role){ if(!poCanEdit()){ toast('Super Admin only',true); return; }
   const c=poCycleObj(), map=poStatusMap(), ck=poKey(c);
   const list=(role==='manager')?poManagerData(c.from,c.to):(role==='webinar')?poWebinarData(c.from,c.to):(function(){ const data=repCommData(c.from,c.to,''); return role==='closer'?data.closers:data.setters; })();
@@ -7525,7 +7533,30 @@ function renderPayouts(){
   }).join('');
   const ct=document.getElementById('poCloserTable'); if(ct){ const cr=rowsFor(data.closers,'closer'), cm=manualPersonRows('closer'); ct.innerHTML=head+`<tbody>${cr}${cm}${(!cr&&!cm)?emptyRow(6,'No closer commissions this cycle.'):''}</tbody>`; }
   const stt=document.getElementById('poSetterTable'); if(stt){ const sr=rowsFor(data.setters,'setter'), sm=manualPersonRows('setter'); stt.innerHTML=head+`<tbody>${sr}${sm}${(!sr&&!sm)?emptyRow(6,'No setter commissions this cycle.'):''}</tbody>`; }
-  const mgt=document.getElementById('poMgrTable'); if(mgt){ const mm=manualPersonRows('manager'); mgt.innerHTML=mgrHead+`<tbody>${mgrRows}${mm}${(!mgrRows&&!mm)?emptyRow(6,"No manager overrides this cycle. Set each manager's override % on Rep Commission Breakdown."):''}</tbody>`; }
+  // Managers: ONE row per person merging their computed override + any one-time payouts (so we never show/pay a manager twice); dropdown itemizes both
+  const mgt=document.getElementById('poMgrTable'); if(mgt){
+    const mgrDataArr=poManagerData(c.from,c.to).filter(o=>o.commission>0.0001), mgrPersons={};
+    mgrDataArr.forEach(o=>{ mgrPersons[nrmName(o.rep)]={rep:o.rep, comp:o}; });
+    Object.values(manBySec.manager||{}).forEach(g=>{ const k=nrmName(g.rep); (mgrPersons[k]=mgrPersons[k]||{rep:g.rep}).manual=g.items; });
+    const mgrMerged=Object.values(mgrPersons).map((p,idx)=>{ const rid='manager-'+idx, comp=p.comp, manItems=p.manual||[];
+      const compAmt=comp?comp.commission:0, manAmt=manItems.reduce((s,m)=>s+(Number(m.amount)||0),0), total=compAmt+manAmt;
+      const hasComp=compAmt>0.0001, hasMan=manItems.length>0;
+      const compPaid = comp ? !!((poStatus(map,ck,p.rep,'manager')||{}).paid) : true, manAllPaid=manItems.every(m=>m.paid);
+      const allPaid=(!hasComp||compPaid)&&(!hasMan||manAllPaid), anyPaid=(hasComp&&compPaid)||manItems.some(m=>m.paid);
+      const badge=allPaid?`<span class="pill good">Paid</span>`:(anyPaid?`<span class="pill warn">Part-paid</span>`:`<span class="pill warn">Unpaid</span>`);
+      const act=allPaid?`<button class="btn ghost sm" onclick="markMgrMerged('${jsStr(p.rep)}',${compAmt},false)">Undo</button>`:`<button class="btn gold sm" onclick="markMgrMerged('${jsStr(p.rep)}',${compAmt},true)">Mark paid</button>`;
+      const dealLines=[]; if(comp)(comp.items||[]).forEach(it=>(it.lines||[]).forEach(ln=>dealLines.push(Object.assign({},ln,{client:it.client,rate:it.rate})))); dealLines.sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+      const salesRows=dealLines.map(ln=>`<tr><td style="padding:5px 8px;white-space:nowrap">${ln.date?esc(usDate(ln.date)):'-'}</td><td style="padding:5px 8px">${esc(ln.lead||'-')}${ln.setter?` <span class="muted" style="font-size:10px">· set ${esc(ln.setter)}</span>`:''}${ln.kind==='payment'?` <span class="muted" style="font-size:10px">(payment${ln.method?' · '+esc(ln.method):''})</span>`:''}</td><td style="padding:5px 8px">${esc(ln.client||'-')}</td><td class="num" style="padding:5px 8px">${money(ln.amount)}${(ln.raw!=null&&Math.abs(ln.raw-ln.amount)>0.001)?` <span class="muted" style="text-decoration:line-through">${money(ln.raw)}</span>`:''}</td><td class="num" style="padding:5px 8px">${(ln.rate||0)}%</td><td class="num" style="padding:5px 8px;font-weight:600">${money((ln.amount||0)*(ln.rate||0)/100)}</td></tr>`).join('');
+      const oneRows=manItems.slice().sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))).map(m=>`<tr><td style="padding:5px 8px;white-space:nowrap">${m.date?esc(usDate(m.date)):'-'}</td><td style="padding:5px 8px">${esc(m.note||'')} <span class="muted" style="font-size:10px">(${esc(m.role||'one-time')})</span></td><td class="num" style="padding:5px 8px;font-weight:600">${money(Number(m.amount)||0)}</td><td style="padding:5px 8px">${m.paid?'<span class="pill good">Paid</span>':'<span class="pill warn">Unpaid</span>'}</td><td class="mpoAct" style="padding:5px 8px;white-space:nowrap">${manualActions(m)}</td></tr>`).join('');
+      const detail=`<tr class="poDetail" id="pod-${rid}" hidden><td colspan="6" style="padding:0 10px 12px;background:rgba(255,255,255,.02)">`
+        +(dealLines.length?`<div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:8px 0 4px">Override sales counted (${dealLines.length})</div><table style="width:100%;border-collapse:collapse;font-size:12.5px"><thead><tr style="color:var(--muted);border-bottom:1px solid var(--border)"><th style="text-align:left;padding:4px 8px">Date</th><th style="text-align:left;padding:4px 8px">Prospect</th><th style="text-align:left;padding:4px 8px">Account</th><th style="text-align:right;padding:4px 8px">Cash</th><th style="text-align:right;padding:4px 8px">Rate</th><th style="text-align:right;padding:4px 8px">Override</th></tr></thead><tbody>${salesRows}</tbody></table>`:'')
+        +(manItems.length?`<div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:12px 0 4px">One-time payouts (${manItems.length})</div><table style="width:100%;border-collapse:collapse;font-size:12.5px"><thead><tr style="color:var(--muted);border-bottom:1px solid var(--border)"><th style="text-align:left;padding:4px 8px">Date</th><th style="text-align:left;padding:4px 8px">For</th><th style="text-align:right;padding:4px 8px">Amount</th><th style="text-align:left;padding:4px 8px">Status</th><th></th></tr></thead><tbody>${oneRows}</tbody></table>`:'')
+        +`</td></tr>`;
+      const teamCashCell=comp?money(comp.cash):'&ndash;', rateCell=comp?(comp.rate+'%'):'&ndash;';
+      return `<tr><td><button class="linklike" onclick="poToggle('pod-${rid}')" title="Show what's behind this pay">${esc(p.rep)}${hasMan?' <span class="pill" style="font-size:9px">+ one-time</span>':''} <span style="font-size:9px;opacity:.7">&#9660;</span></button></td><td class="num">${teamCashCell}</td><td class="num">${rateCell}</td><td class="num" style="font-weight:700">${money(total)}</td><td>${badge}</td><td>${act}</td></tr>`+detail;
+    }).join('');
+    mgt.innerHTML=mgrHead+`<tbody>${mgrMerged||emptyRow(6,"No manager overrides or one-time payouts this cycle. Set each manager's override % under Client Overview > Edit client > Commission on this offer.")}</tbody>`;
+  }
   // Webinar hosts: their per-account webinar % on webinar-lead deals' cash this cycle
   const webHead=`<thead><tr><th>Webinar host</th><th class="num">Basis</th><th class="num">Rate / fee</th><th class="num">Webinar pay</th><th>Status</th><th></th></tr></thead>`;
   const webRows=poWebinarData(c.from,c.to).filter(o=>o.commission>0.0001).map((o,idx)=>{
