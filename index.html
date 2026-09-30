@@ -999,6 +999,7 @@
         <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px;padding:0;background:none;border:0;box-shadow:none;margin-top:14px">
           <div class="field"><label>Monthly retainer ($) <span class="fieldhelp" style="margin:0;font-weight:400">- optional</span></label><input type="number" id="invRetainer" min="0" step="0.01" placeholder="e.g. 3000"><span class="fieldhelp">A fixed <b>Retention Payment</b> billed once a month on top of rev-share. Leave blank for none.</span></div>
           <div class="field"><label>Bills on day of month</label><input type="number" id="invRetainerDay" min="1" max="31" step="1" placeholder="e.g. 1"><span class="fieldhelp">The retainer lands on the invoice whose week contains this day, so it recurs monthly on the same day.</span></div>
+          <div class="field"><label>Duration (months) <span class="fieldhelp" style="margin:0;font-weight:400">- optional</span></label><input type="number" id="invRetainerMonths" min="0" step="1" placeholder="blank = ongoing"><span class="fieldhelp">How many months it recurs (e.g. <b>3</b>). Blank or 0 = ongoing. Counts from the client's first activity.</span></div>
         </div>
         <div class="row-actions" style="margin-top:10px"><button class="btn gold sm" onclick="saveClientBilling()">Save</button></div>
       </div>
@@ -1952,6 +1953,7 @@ If they did not watch: No problem at all, I will send it right over. Can you wat
         <div class="field"><label>Back-end rev share (%)</label><input name="beRate" type="number" min="0" max="100" step="0.5" placeholder="e.g. 25"><span class="fieldhelp">On back-end / recurring cash. Blank = TBD.</span></div>
         <div class="field"><label>Monthly retainer ($)</label><input name="retainer" type="number" min="0" step="100" placeholder="e.g. 3000"><span class="fieldhelp">Full net to Sales HQ, re-billed every cycle. Blank = none.</span></div>
         <div class="field"><label>Retainer bills on day</label><input name="retainerDay" type="number" min="1" max="31" step="1" placeholder="1-31"><span class="fieldhelp">Day of the month the retainer recurs.</span></div>
+        <div class="field"><label>Retainer duration (months)</label><input name="retainerMonths" type="number" min="0" step="1" placeholder="blank = ongoing"><span class="fieldhelp">How many months the retainer recurs (e.g. <b>3</b>). Leave blank or 0 for ongoing/indefinite. Counts from the client's first activity.</span></div>
         <div class="field full" id="ccCommHead" style="border-top:1px solid var(--border);padding-top:12px;margin-top:2px"><label style="font-size:13px;font-weight:700;color:var(--gold)">Commission on this offer</label><span class="fieldhelp">The per-account comp used for payouts and net margin - set it here once. Blank % = fall back to the default rate.</span></div>
         <div class="field full"><label>Setter manager</label>
           <div style="display:flex;gap:8px;align-items:center">
@@ -4142,6 +4144,8 @@ function conPendingByMonth(app){ const m={}; conClientDeals(app).forEach(d=>{ (t
 // This is COMPANY money (no rep commission on it), so it flows into Actual TSA + Net as pure profit. (T-667)
 // earliest date we have any activity/invoice for a client - the floor for counting retainers (don't credit retainers before they onboarded)
 function conClientStart(client){ const n=nrmName(client); let min=''; (RECORDS||[]).forEach(x=>{ if((x.type==='invoiceapproval'||x.type==='deal'||x.type==='eod'||!x.type) && nrmName(x.client)===n){ const d=String(x.from||x.date||'').slice(0,10); if(d && (!min||d<min)) min=d; } }); return min||''; }
+// The last date a retainer is due, given an optional duration (retainerMonths). '' = indefinite. Duration counts from the client's first activity.
+function retainerCapFor(client,cfg){ const months=parseInt(cfg&&cfg.retainerMonths,10); if(!(months>0)) return ''; const start=conClientStart(client)||''; if(!start) return ''; const d=new Date(start+'T00:00:00'); d.setMonth(d.getMonth()+months); return isoLocal(new Date(d.getTime()-86400000)); }
 function conRetainerFor(client,from,to){
   const cfg=clientBillingCfg(client); const amt=Number(cfg&&cfg.retainer)||0, day=parseInt(cfg&&cfg.retainerDay,10);
   if(!amt||!day||day<1) return 0;
@@ -4149,6 +4153,7 @@ function conRetainerFor(client,from,to){
   const floor=conClientStart(client)||'2025-01-01';
   let f=from||floor, t=to||today;
   if(f<floor) f=floor; if(t>today) t=today; // clamp: don't count retainers before the client's first activity, or after today (retainers actually due)
+  const cap=retainerCapFor(client,cfg); if(cap && t>cap) t=cap; // duration cap: stop after retainerMonths months
   if(f>t) return 0;
   let count=0, y=Number(f.slice(0,4)), m=Number(f.slice(5,7))-1; const endY=Number(t.slice(0,4)), endM=Number(t.slice(5,7))-1, guard=Math.max(0,(endY-y)*12+(endM-m))+1;
   for(let i=0;i<guard && i<600;i++){ const dim=new Date(y,m+1,0).getDate(); const dd=Math.min(day,dim); const iso=`${y}-${String(m+1).padStart(2,'0')}-${String(dd).padStart(2,'0')}`; if(iso>=f && iso<=t) count++; m++; if(m>11){m=0;y++;} }
@@ -6539,6 +6544,7 @@ function invLoadCfg(){
   const fe=document.getElementById('invFrontEndOnly'); if(fe) fe.checked=!!cfg.frontEndOnly;
   const r=document.getElementById('invRetainer'); if(r) r.value=(cfg.retainer!=null?cfg.retainer:'');
   const rd=document.getElementById('invRetainerDay'); if(rd) rd.value=(cfg.retainerDay!=null?cfg.retainerDay:'');
+  const rm=document.getElementById('invRetainerMonths'); if(rm) rm.value=(cfg.retainerMonths!=null?cfg.retainerMonths:'');
 }
 async function saveClientBilling(){
   if(!invAllowed()){ toast('Super Admin only',true); return; }
@@ -6548,7 +6554,8 @@ async function saveClientBilling(){
   const prev=clientBillingCfg(client)||{};
   // keep any legacy rep-comp fields on the record so old data isn't lost; this UI only edits the fallback flat rate + front-end-only
   const retDay=(function(){ const v=parseInt((document.getElementById('invRetainerDay')||{}).value,10); return isNaN(v)?null:Math.min(31,Math.max(1,v)); })();
-  const rec={type:'clientbilling',client,mode:'flat',flatRate:num('invFlatRate'),closerRate:prev.closerRate!=null?prev.closerRate:null,setterRate:prev.setterRate!=null?prev.setterRate:null,overrideRate:prev.overrideRate!=null?prev.overrideRate:null,frontEndOnly:document.getElementById('invFrontEndOnly').checked,retainer:num('invRetainer'),retainerDay:retDay,by:(SESSION&&SESSION.name)||''};
+  const retMonths=(function(){ const el=document.getElementById('invRetainerMonths'); const raw=el?String(el.value||'').trim():''; if(raw==='') return null; const v=parseInt(raw,10); return isNaN(v)?null:Math.max(0,v); })();
+  const rec={type:'clientbilling',client,mode:'flat',flatRate:num('invFlatRate'),closerRate:prev.closerRate!=null?prev.closerRate:null,setterRate:prev.setterRate!=null?prev.setterRate:null,overrideRate:prev.overrideRate!=null?prev.overrideRate:null,frontEndOnly:document.getElementById('invFrontEndOnly').checked,retainer:num('invRetainer'),retainerDay:retDay,retainerMonths:retMonths,by:(SESSION&&SESSION.name)||''};
   try{ await addRecord(rec); toast('Saved for '+client); invPreview(); }
   catch(e){ toast('Save failed: '+(e&&e.message||e),true); }
 }
@@ -6760,11 +6767,11 @@ async function invSendToBilling(){
   finally{ btnBusy(btn,false); }
 }
 // Monthly retainer ("Retention Payment"): if the client's retainer billing day falls within this invoice period, the retainer is due once for that month.
-function retainerDueInPeriod(cfg, from, to){
+function retainerDueInPeriod(cfg, from, to, cap){
   const amt=Number(cfg&&cfg.retainer)||0, day=parseInt(cfg&&cfg.retainerDay,10);
   if(!amt || !day || day<1 || !from || !to) return null;
   let d=new Date(from+'T00:00:00'); const end=new Date(to+'T00:00:00');
-  while(d<=end){ const dim=new Date(d.getFullYear(),d.getMonth()+1,0).getDate(); if(d.getDate()===Math.min(day,dim)) return {amt, date:isoLocal(new Date(d))}; d.setDate(d.getDate()+1); }
+  while(d<=end){ const dim=new Date(d.getFullYear(),d.getMonth()+1,0).getDate(); if(d.getDate()===Math.min(day,dim)){ const iso=isoLocal(new Date(d)); if(cap && iso>cap) return null; return {amt, date:iso}; } d.setDate(d.getDate()+1); }
   return null;
 }
 // Pure, side-effect-free founder-invoice math. Returns every intermediate the invoice HTML and the
@@ -6818,7 +6825,7 @@ function founderInvoiceCalc(client,from,to){
     rateDesc=`${pct}% of ${(overridden&&!anyLineOv)||anyLineOv?'the billed amount':'cash collected'}${mode==='repcomp'?' (rep comp + override)':''}`;
     noCfg=!pct;
   } else { noCfg=true; }
-  const retInfo=retainerDueInPeriod(cfg,from,to), retainerDue=retInfo?retInfo.amt:0, grandTotal=amountDue+retainerDue; // recurring monthly retention payment
+  const retInfo=retainerDueInPeriod(cfg,from,to,retainerCapFor(client,cfg)), retainerDue=retInfo?retInfo.amt:0, grandTotal=amountDue+retainerDue; // recurring monthly retention payment (capped by duration)
   return {ck,inPeriod,uniqDeals,activity,s,callsOffered,callsSet,newOut,fuOut,cashCollected,totalRevenue,recPays,con,cfg,ov,overridden,billBase,feCash,beCash,anyLineOv,billedTotal,amountDue,rateDesc,noCfg,retInfo,retainerDue,grandTotal,excludedDeals,excludedPays};
 }
 function genFounderInvoice(client,from,to){
@@ -10718,6 +10725,7 @@ function editClient(name){
   const bc=clientBillingCfg(c.name)||{};
   if(g('retainer')) g('retainer').value=(bc.retainer!=null?bc.retainer:'');
   if(g('retainerDay')) g('retainerDay').value=(bc.retainerDay!=null?bc.retainerDay:'');
+  if(g('retainerMonths')) g('retainerMonths').value=(bc.retainerMonths!=null?bc.retainerMonths:'');
   // pre-fill the per-account commission (managers, offer rep rates) + exceptions - one place to manage comp
   const gi=id=>document.getElementById(id), av=fn=>{ const r=acctFnRate(c.name,fn); return r!=null?r:''; };
   if(gi('ccSetMgrPct')) gi('ccSetMgrPct').value=av('set');
@@ -10738,8 +10746,8 @@ async function saveClient(e){
   o.webMin=(String(o.webMin||'').trim()===''?null:(parseInt(o.webMin,10)||0));
   const name=String(o.name||'').trim();
   // the contract + retainer fields ride on the client form for one-shot onboarding; pull them off so the client record stays clean
-  const feRaw=o.feRate, beRaw=o.beRate, retRaw=o.retainer, retDayRaw=o.retainerDay;
-  delete o.feRate; delete o.beRate; delete o.retainer; delete o.retainerDay;
+  const feRaw=o.feRate, beRaw=o.beRate, retRaw=o.retainer, retDayRaw=o.retainerDay, retMonthsRaw=o.retainerMonths;
+  delete o.feRate; delete o.beRate; delete o.retainer; delete o.retainerDay; delete o.retainerMonths;
   await addRecord(o);
   const numOr=v=>{ v=String(v==null?'':v).trim(); return v===''?null:(parseFloat(v)||0); };
   // 1) stand up (or refresh) the contract so the account shows on Contracts + bills the right rev share. appClient = the client name (TSA logs deals under the client name).
@@ -10753,9 +10761,10 @@ async function saveClient(e){
   }
   // 2) stand up (or refresh) the monthly retainer (full net to Sales HQ; not commissionable). Preserve any legacy rep-comp fields.
   const ret=numOr(retRaw), retDay=(function(){ const v=parseInt(String(retDayRaw==null?'':retDayRaw),10); return isNaN(v)?null:Math.min(31,Math.max(1,v)); })();
-  if(name && (ret!=null || retDay!=null)){
+  const retMonths=(function(){ const raw=String(retMonthsRaw==null?'':retMonthsRaw).trim(); if(raw==='') return null; const v=parseInt(raw,10); return isNaN(v)?null:Math.max(0,v); })();
+  if(name && (ret!=null || retDay!=null || retMonths!=null)){
     const pb=clientBillingCfg(name)||{};
-    await addRecord({type:'clientbilling', client:name, mode:'flat', flatRate:pb.flatRate!=null?pb.flatRate:null, closerRate:pb.closerRate!=null?pb.closerRate:null, setterRate:pb.setterRate!=null?pb.setterRate:null, overrideRate:pb.overrideRate!=null?pb.overrideRate:null, frontEndOnly:!!pb.frontEndOnly, retainer:ret, retainerDay:retDay, by:(SESSION&&SESSION.name)||''});
+    await addRecord({type:'clientbilling', client:name, mode:'flat', flatRate:pb.flatRate!=null?pb.flatRate:null, closerRate:pb.closerRate!=null?pb.closerRate:null, setterRate:pb.setterRate!=null?pb.setterRate:null, overrideRate:pb.overrideRate!=null?pb.overrideRate:null, frontEndOnly:!!pb.frontEndOnly, retainer:ret, retainerDay:retDay, retainerMonths:(retMonths!=null?retMonths:(pb.retainerMonths!=null?pb.retainerMonths:null)), by:(SESSION&&SESSION.name)||''});
   }
   // 3) per-account commission (acctrate): the 3 manager fns + this-offer setter/closer rate. Same records the Rep Commission net-margin panel reads.
   if(name){ const acctPairs=[['ccSetMgrPct','set'],['ccCloMgrPct','clo'],['ccWebMgrPct','web'],['ccRepSetPct','rep_set'],['ccRepCloPct','rep_clo']];
