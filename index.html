@@ -1348,7 +1348,7 @@
     </div>
     <div id="poKpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin:12px 0"></div>
     <div class="panel" id="poOwePanel" style="margin:0 0 14px;border-color:var(--gold-soft)"><div style="display:flex;justify-content:space-between;align-items:baseline;padding:12px 14px 0;gap:8px;flex-wrap:wrap"><h3 style="margin:0">Who we owe <span class="muted" style="font-weight:400;font-size:12px">- summary of everyone still unpaid this payday, most owed first. Mark paid on the role lines below.</span></h3></div><div class="tablewrap"><table id="poOweTable"></table></div></div>
-    <div class="panel" id="poManualPanel" style="margin:0 0 14px">
+    <div class="panel" id="poManualPanel" style="margin:0 0 14px;overflow:visible;position:relative;z-index:40">
       <div style="padding:12px 14px 0"><h3 style="margin:0">Manual / one-time payouts <span class="muted" style="font-weight:400;font-size:12px">- ad-hoc pay the engine doesn't compute (overrides, good-faith, webinar/faceless, bonuses). These roll into "Who we owe".</span></h3></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;padding:12px 14px 4px">
         <div class="field" style="margin:0;min-width:180px"><label>Person</label><select id="mpoRep"><option value="">- pick a person -</option></select></div>
