@@ -8939,23 +8939,30 @@ function pfRenderBody(){
   h+= fromSaved
     ? `<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:4px"><div style="font-weight:700">Post-call questions for ${esc(client)}</div><button class="btn ghost sm" onclick="pfFetch()">Refresh / add fields from GHL</button></div><div class="muted" style="font-size:11.5px;margin-bottom:10px">Showing your saved questions. Pull from GHL to add more fields or refresh options.</div>`
     : `<div style="font-weight:700;margin-bottom:4px">Choose which GHL fields become post-call questions</div><div class="muted" style="font-size:11.5px;margin-bottom:10px">Tick a field to add it to the Post-Call Checkout for ${esc(client)}. Its answer writes back to that GHL field on submit.</div>`;
-  list.forEach(f=>{ const sv=savedMap[f.id]; const on=fromSaved?true:!!sv; const label=(sv&&sv.label)||f.name||f.key||f.id; const role=(sv&&sv.role)||'Setter'; const opts=Array.isArray(f.options)&&f.options.length?f.options:((sv&&sv.options)||[]); const req=sv?(sv.required!==false):true;
+  list.forEach(f=>{ const sv=savedMap[f.id]; const on=fromSaved?true:!!sv; const label=(sv&&sv.label)||f.name||f.key||f.id; const role=(sv&&sv.role)||'Both'; const opts=Array.isArray(f.options)&&f.options.length?f.options:((sv&&sv.options)||[]); const req=sv?(sv.required!==false):true;
     h+=`<div class="panel" style="margin:0 0 8px;padding:10px 12px" data-pffield="${esc(f.id)}" data-pfkey="${esc(f.key||'')}" data-pfname="${esc(f.name||'')}" data-pfdtype="${esc(f.dataType||'')}" data-pfopts="${esc(JSON.stringify(opts))}">
       <label style="display:flex;align-items:center;gap:8px;font-weight:600;font-size:13.5px"><input type="checkbox" class="pfInc" ${on?'checked':''} style="width:16px;height:16px;flex:0 0 auto"> ${esc(f.name||f.key||f.id)}</label>
       <div class="muted" style="font-size:11px;margin:2px 0 8px">${esc(f.dataType||'field')}${opts.length?(' - options: '+esc(opts.slice(0,6).join(', '))+(opts.length>6?'...':'')):' - free text'}</div>
       <div class="filters" style="margin:0"><div class="field" style="flex:2"><label>Question label on the form</label><input class="pfLabel" value="${esc(label)}"></div><div class="field" style="max-width:150px"><label>Who answers</label><select class="pfRole">${['Setter','Closer','Both'].map(r=>`<option${role===r?' selected':''}>${r}</option>`).join('')}</select></div><div class="field" style="max-width:120px"><label>Required</label><label style="display:inline-flex;align-items:center;gap:7px;font-weight:500;padding:8px 0"><input type="checkbox" class="pfReq" ${req?'checked':''} style="width:16px;height:16px;flex:0 0 auto"> Required</label></div></div>
     </div>`; });
-  h+=`<div class="row-actions" style="margin-top:10px"><button class="btn gold sm" onclick="pfSave()">Save questions</button></div><p class="fieldhelp" style="margin-top:8px">Reps see only the ticked questions for their role. On submit the answers write to the lead's GHL custom fields (the client's GHL must be connected under Integrations > CRM push).</p></div>`;
+  h+=`<div class="row-actions" style="margin-top:10px;align-items:center;gap:10px"><button class="btn gold sm" onclick="pfSave()">Save questions</button><span id="pfSaveState" class="muted" style="font-size:12px"></span></div><p class="fieldhelp" style="margin-top:8px">Changes <b>auto-save</b> as you edit. Reps see only the ticked questions for their role (default <b>Both</b> = setters and closers). On submit the answers write to the lead's GHL custom fields (the client's GHL must be connected under Integrations > CRM push).</p></div>`;
   body.innerHTML=h;
+  // auto-save: persist edits to the questions without needing the Save button (T-688)
+  body.oninput=pfAutoSaveDebounced; body.onchange=pfAutoSaveDebounced;
 }
-async function pfSave(){
-  const client=(document.getElementById('pfClient')||{}).value||''; if(!client){ toast('Pick a client',true); return; }
+let PF_SAVE_T=null;
+function pfAutoSaveDebounced(){ if(PF_SAVE_T) clearTimeout(PF_SAVE_T); const st=document.getElementById('pfSaveState'); if(st){ st.textContent='Saving...'; st.style.color='var(--muted)'; } PF_SAVE_T=setTimeout(()=>{ pfSave(true); }, 700); }
+async function pfSave(silent){
+  const client=(document.getElementById('pfClient')||{}).value||''; if(!client){ if(!silent) toast('Pick a client',true); return; }
   const out=[];
   document.querySelectorAll('#pfBody [data-pffield]').forEach(card=>{ const inc=card.querySelector('.pfInc'); if(!inc||!inc.checked) return;
     let opts=[]; try{ opts=JSON.parse(card.getAttribute('data-pfopts')||'[]'); }catch(e){}
-    out.push({ id:card.getAttribute('data-pffield'), key:card.getAttribute('data-pfkey')||'', name:card.getAttribute('data-pfname')||'', dataType:card.getAttribute('data-pfdtype')||'', options:opts, label:(card.querySelector('.pfLabel')||{}).value||'', role:(card.querySelector('.pfRole')||{}).value||'Setter', required:!!((card.querySelector('.pfReq')||{}).checked) }); });
-  await addRecord({type:'pcfields',client,fields:out});
-  toast('Saved '+out.length+' post-call question'+(out.length===1?'':'s')+' for '+client);
+    out.push({ id:card.getAttribute('data-pffield'), key:card.getAttribute('data-pfkey')||'', name:card.getAttribute('data-pfname')||'', dataType:card.getAttribute('data-pfdtype')||'', options:opts, label:(card.querySelector('.pfLabel')||{}).value||'', role:(card.querySelector('.pfRole')||{}).value||'Both', required:!!((card.querySelector('.pfReq')||{}).checked) }); });
+  const st=document.getElementById('pfSaveState');
+  try{ await addRecord({type:'pcfields',client,fields:out});
+    if(silent){ if(st){ st.textContent='Saved '+out.length+' question'+(out.length===1?'':'s'); st.style.color='var(--good)'; } }
+    else toast('Saved '+out.length+' post-call question'+(out.length===1?'':'s')+' for '+client);
+  }catch(e){ if(st){ st.textContent='Save failed'; st.style.color='var(--warn)'; } if(!silent) toast('Save failed',true); }
 }
 async function renderOnbAudit(){
   const wrap=document.getElementById('onbAuditBody'); if(!wrap) return;
