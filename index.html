@@ -988,6 +988,7 @@
         </div>
         <p class="fieldhelp" style="margin-top:10px">Need to bill a different amount than cash collected? Generate the invoice, then use the <b>edit / override</b> link on the invoice's service line.</p>
       </div>
+      <div id="invManualLines" style="margin-top:18px"></div>
       <div id="invoiceOut" style="margin-top:18px"></div>
     </div>
     <div id="invSettings" hidden>
@@ -4331,6 +4332,7 @@ async function expenseDel(id){ if(!(SESSION&&['admin','director'].includes(SESSI
 // total TSA revenue (Actual TSA) earned in a period = rev-share on billed cash + retainers, across active clients (mirrors Contracts)
 function tsaActualForPeriod(from,to){ let billed={}; try{ billed=acctBilledCash(from||'0000-01-01',to||'9999-12-31'); }catch(e){} let total=0;
   contractsEffective().filter(c=>c.active!==false).forEach(c=>{ const app=(typeof conMatchClient==='function'?conMatchClient(c):null)||c.client; const feR=(c.feTBD||c.feRate==null)?null:(Number(c.feRate)||0); let cash=0; Object.keys(billed).forEach(cn=>{ if(nrmName(cn)===nrmName(app)) cash+=billed[cn]; }); const rev=(feR!=null)?cash*feR/100:0; let ret=0; try{ ret=conRetainerFor(app,from||'0000-01-01',to||'9999-12-31'); }catch(e){} total+=rev+ret; });
+  try{ total+=invoiceLinesTotalInPeriod(from||'0000-01-01',to||'9999-12-31'); }catch(e){} // white-label manual lines bill at full value (T-678)
   return total; }
 function renderArAp(){
   const kpiW=document.getElementById('arapKpis')||document.getElementById('ldgPnl'); if(!kpiW) return;
@@ -5300,12 +5302,33 @@ function mpWeekRange(){ const w=(__mpWeek==='last')?billingWeek():currentWeek();
 function mtgPrepItemsAll(){ const m={}; (RECORDS||[]).forEach(x=>{ if(x.type!=='mtgprep'||!x.id) return; if(!m[x.id]||(x.submittedAt||'')>(m[x.id].submittedAt||'')) m[x.id]=x; }); return Object.values(m); }
 function mtgPrepItems(client,weekStart){ return mtgPrepItemsAll().filter(x=>!x.deleted && nrmName(x.client)===nrmName(client) && String(x.weekStart||'')===String(weekStart)); }
 function mtgPrepNumbers(client,from,to){
+  // Pull the exact same figures the invoice's "Performance stats for this period" panel shows,
+  // so the Monday sheet mirrors the invoice for the past week (T-668).
+  let C=null; try{ C=founderInvoiceCalc(client,from,to); }catch(e){}
+  if(C){
+    const s=C.s||{};
+    const closes=(C.uniqDeals||[]).length;
+    return {
+      closes,
+      cash:C.cashCollected||0,
+      revenue:C.totalRevenue||0,
+      deposits:s.depositCollected||0,
+      connects:s.connectedMeetings||0,
+      showRate:s.showRate||0,
+      callsOffered:C.callsOffered||0,
+      callsSet:C.callsSet||0,
+      newOut:C.newOut||0,
+      fuOut:C.fuOut||0,
+      sets:C.callsSet||0 // legacy key
+    };
+  }
+  // Fallback (invoice calc unavailable): derive from post-call log + cash helper
   const pcs=collapsePostcall(RECORDS).filter(x=>nrmName(x.client)===nrmName(client)&&inRange(x.date,from,to));
   const closes=pcs.filter(x=>x.role==='Closer'&&/^Won/.test(x.outcome||'')).length;
   const connects=pcs.filter(x=>x.role==='Closer').length;
   const sets=pcs.filter(x=>x.role==='Setter'&&/^(Booked|Follow-up booked|Callback)/i.test(x.outcome||'')).length;
   let cash=0; try{ cash=conCashFor(client,from,to)||0; }catch(e){}
-  return {closes,cash,connects,sets};
+  return {closes,cash,revenue:0,deposits:0,connects,showRate:0,callsOffered:0,callsSet:sets,newOut:0,fuOut:0,sets};
 }
 function mpClientList(){ if(SESSION&&SESSION.role==='founder'){ let c=(teamsFor(SESSION.username)||[]).filter(Boolean); if(!c.length&&SESSION.name) c=[SESSION.name]; return c; } const sc=dashScopeClients(); return sc?sc.filter(c=>c!==' none'):clientNames(); }
 function renderMtgPrep(){
@@ -5319,7 +5342,19 @@ function renderMtgPrep(){
   if(!client){ host.innerHTML='<p class="muted" style="padding:12px">No client to show a prep sheet for.</p>'; return; }
   const nums=mtgPrepNumbers(client, wk.from, wk.to);
   const card=(l,v)=>`<div class="kpi" style="flex:1;min-width:130px"><div class="lbl">${l}</div><div class="val">${v}</div></div>`;
-  const numHtml=`<div class="panel" style="padding:12px 14px"><div style="font-weight:600;margin-bottom:8px">Last week's numbers <span class="muted" style="font-weight:400;font-size:12px">- ${esc(wk.label)}</span></div><div style="display:flex;flex-wrap:wrap;gap:12px">${card('Closes',nums.closes)+card('Cash collected',money(nums.cash))+card('Calls taken',nums.connects)+card('Calls set',nums.sets)}</div></div>`;
+  const tiles=[
+    card('Closed deals',(nums.closes||0).toLocaleString()),
+    card('Cash collected',money(nums.cash||0)),
+    card('Revenue contracted',money(nums.revenue||0)),
+    card('Deposits collected',money(nums.deposits||0)),
+    card('Connected meetings',(nums.connects||0).toLocaleString()),
+    card('Show rate',Math.round((nums.showRate||0)*100)+'%'),
+    card('Sales calls offered',(nums.callsOffered||0).toLocaleString()),
+    card('Calls set',(nums.callsSet||0).toLocaleString()),
+    card('New outreach',(nums.newOut||0).toLocaleString()),
+    card('Follow-up outreach',(nums.fuOut||0).toLocaleString())
+  ].join('');
+  const numHtml=`<div class="panel" style="padding:12px 14px"><div style="font-weight:600;margin-bottom:8px">Last week's numbers <span class="muted" style="font-weight:400;font-size:12px">- ${esc(wk.label)}</span> <span class="muted" style="font-weight:400;font-size:11px">(same figures as the invoice performance stats)</span></div><div style="display:flex;flex-wrap:wrap;gap:12px">${tiles}</div></div>`;
   const items=mtgPrepItems(client, wk.weekStart);
   const open=items.filter(x=>x.status!=='done').sort((a,b)=>(a.addedAt||'').localeCompare(b.addedAt||''));
   const done=items.filter(x=>x.status==='done');
@@ -5349,7 +5384,19 @@ function mtgPrepReply(id){ const cur=mtgPrepItemsAll().find(x=>x.id===id); if(!c
   comments.push({text:t, side:founder?'Founder':'TSA', by:(SESSION&&SESSION.name)||'', at:new Date().toISOString()});
   addRecord(Object.assign({},cur,{comments})).then(()=>{ toast('Reply added'); if(founder){ try{ slackNotify('Monday prep-sheet reply from '+((SESSION&&SESSION.name)||'a founder')+' ('+(cur.client||'')+'): '+t); }catch(e){} } renderMtgPrep(); try{ renderNotifBell(); }catch(e){} }); }
 function mtgPrepSummaryText(){ const sel=document.getElementById('mpClient'), client=(sel&&sel.value)||'', wk=mpWeekRange(); const nums=mtgPrepNumbers(client,wk.from,wk.to); const items=mtgPrepItems(client,wk.weekStart);
-  const lines=[`*${client} - Monday Prep Sheet*`, `Week of ${wk.label}`, ``, `Last week: ${nums.closes} closes | ${money(nums.cash)} collected | ${nums.connects} calls taken | ${nums.sets} calls set`, ``, `Topics for Monday:`];
+  const lines=[`*${client} - Monday Prep Sheet*`, `Week of ${wk.label}`, ``,
+    `Last week's numbers:`,
+    `- Closed deals: ${nums.closes||0}`,
+    `- Cash collected: ${money(nums.cash||0)}`,
+    `- Revenue contracted: ${money(nums.revenue||0)}`,
+    `- Deposits collected: ${money(nums.deposits||0)}`,
+    `- Connected meetings: ${nums.connects||0}`,
+    `- Show rate: ${Math.round((nums.showRate||0)*100)}%`,
+    `- Sales calls offered: ${nums.callsOffered||0}`,
+    `- Calls set: ${nums.callsSet||0}`,
+    `- New outreach: ${nums.newOut||0}`,
+    `- Follow-up outreach: ${nums.fuOut||0}`,
+    ``, `Topics for Monday:`];
   const open=items.filter(x=>x.status!=='done'); const done=items.filter(x=>x.status==='done');
   const withReplies=x=>{ lines.push(`- ${x.text} (${x.side||'TSA'}${x.by?', '+x.by:''})`); (Array.isArray(x.comments)?x.comments:[]).forEach(c=>lines.push(`    > ${c.side||'TSA'}: ${c.text}`)); };
   if(open.length) open.forEach(withReplies); else lines.push('- (none added yet)');
@@ -6921,8 +6968,72 @@ function invPreview(){
   const oc=document.getElementById('invOverrideCash'), on=document.getElementById('invOverrideNote');
   if(oc) oc.value=(ov&&ov.billedCash!=null)?ov.billedCash:'';
   if(on) on.value=(ov&&ov.note)||'';
+  try{ renderInvManualLines(client,from,to); }catch(e){}
   out.innerHTML=genFounderInvoice(client,from,to);
 }
+// ---- Manual invoice lines UI (white-label billing, e.g. Imagine AI Bots) ----
+function renderInvManualLines(client,from,to){
+  const host=document.getElementById('invManualLines'); if(!host) return;
+  if(!client){ host.innerHTML=''; return; }
+  const inPeriod=invoiceLinesInPeriod(client,from,to);
+  const total=inPeriod.reduce((a,l)=>a+(Number(l.amount)||0),0);
+  const rows=inPeriod.map(l=>`<tr class="ledrow">
+    <td style="padding:9px 12px;color:var(--muted);white-space:nowrap">${esc(usDate(l.date))}</td>
+    <td style="padding:9px 12px;color:var(--ink)">${esc(l.description||'Invoice line')}</td>
+    <td style="padding:9px 12px;text-align:right;font-variant-numeric:tabular-nums;font-weight:700;color:var(--ink)">${money(Number(l.amount)||0)}</td>
+    <td style="padding:9px 12px;text-align:right;white-space:nowrap"><a class="linklike" style="cursor:pointer;color:var(--gold-2)" onclick="invLineOpen('${l.id}')">&#9998;</a> &nbsp; <a class="linklike" style="cursor:pointer;color:var(--warn)" onclick="invLineDel('${l.id}')">&#10005;</a></td>
+  </tr>`).join('');
+  host.innerHTML=`<div class="panel" style="padding:16px">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px">
+      <div><div style="font-weight:700;color:var(--ink)">Manual invoice lines <span class="muted" style="font-weight:400;font-size:12px">- white-label / off-platform billing</span></div>
+      <div class="muted" style="font-size:12px;margin-top:3px">Bills at the <b>full amount</b> (100% TSA revenue, no rev-share). Adds to this invoice's total and to the manager override (full amount, no setter needed).</div></div>
+      <button class="btn gold sm" onclick="invLineOpen()">+ Add invoice line</button>
+    </div>
+    ${inPeriod.length?`<div style="overflow-x:auto;margin-top:12px"><table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead><tr style="text-align:left;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.04em"><th style="padding:8px 12px">Date</th><th style="padding:8px 12px">Description</th><th style="padding:8px 12px;text-align:right">Amount</th><th style="padding:8px 12px"></th></tr></thead>
+      <tbody>${rows}</tbody>
+      <tfoot><tr><td></td><td style="padding:9px 12px;text-align:right;font-weight:700;color:var(--muted)">Total</td><td style="padding:9px 12px;text-align:right;font-variant-numeric:tabular-nums;font-weight:800;color:var(--gold-2)">${money(total)}</td><td></td></tr></tfoot>
+    </table></div>`:'<p class="muted" style="margin:10px 0 0">No manual lines for this client in this period.</p>'}
+  </div>`;
+}
+let INV_LINE_EDIT_ID=null;
+function invLineOpen(id){ if(!invAllowed()){ toast('Super Admin only',true); return; }
+  const client=(document.getElementById('invClient')||{}).value||'';
+  if(!client){ toast('Pick a client first',true); return; }
+  const l=id?invoiceLinesAll().find(x=>x.id===id):null; if(id&&!l) return; INV_LINE_EDIT_ID=id||null;
+  let m=document.getElementById('invLineModal');
+  if(!m){ m=document.createElement('div'); m.className='modal'; m.id='invLineModal'; m.hidden=true; m.onclick=ev=>{ if(ev.target===m) invLineClose(); };
+    m.innerHTML=`<div class="modalcard" style="width:min(460px,96vw)"><h3 id="invlTitle" style="margin:0 0 4px">Add invoice line</h3>
+      <p class="muted" id="invlClient" style="margin:0 0 10px;font-size:12px"></p>
+      <div class="field" style="position:relative"><label>Date</label><div class="rangewrap"><input type="text" id="invlDate_txt" readonly placeholder="Pick a day" onclick="dayPopToggle('invlDate',event)"><input type="hidden" id="invlDate"><div class="rangepop" id="invlDate_pop" hidden onclick="event.stopPropagation()"></div></div></div>
+      <div class="field"><label>Description</label><input id="invlDesc" placeholder="e.g. Imagine AI Bots - white-label monthly"></div>
+      <div class="field"><label>Amount ($) <span class="muted" style="font-weight:400">- full amount TSA bills</span></label><input id="invlAmt" type="number" min="0" step="0.01" placeholder="0.00"></div>
+      <div class="row-actions" style="margin-top:12px"><button class="btn gold sm" onclick="invLineSave()">Save</button><button class="btn ghost sm" onclick="invLineClose()">Cancel</button></div></div>`;
+    document.body.appendChild(m);
+  }
+  document.getElementById('invlTitle').textContent=l?'Edit invoice line':'Add invoice line';
+  document.getElementById('invlClient').textContent='For '+client;
+  const hd=document.getElementById('invlDate'); if(hd) hd.value=(l&&l.date)||(document.getElementById('invTo')||{}).value||todayLocal();
+  const sv=(i,v)=>{ const el=document.getElementById(i); if(el) el.value=v; };
+  sv('invlDesc',(l&&l.description)||''); sv('invlAmt',(l&&l.amount!=null)?l.amount:'');
+  try{ dayPickAttach('invlDate', function(){}); dayPickSync('invlDate'); }catch(_){}
+  m.hidden=false;
+}
+function invLineClose(){ const m=document.getElementById('invLineModal'); if(m) m.hidden=true; INV_LINE_EDIT_ID=null; }
+async function invLineSave(){ if(!invAllowed()){ toast('Super Admin only',true); return; }
+  const client=(document.getElementById('invClient')||{}).value||'';
+  const date=(document.getElementById('invlDate')||{}).value||todayLocal();
+  const desc=((document.getElementById('invlDesc')||{}).value||'').trim();
+  const amt=parseFloat((document.getElementById('invlAmt')||{}).value);
+  if(!client){ toast('Pick a client first',true); return; }
+  if(!(amt>0)){ toast('Enter a valid amount',true); return; }
+  try{
+    if(INV_LINE_EDIT_ID){ const cur=invoiceLinesAll().find(x=>x.id===INV_LINE_EDIT_ID)||{id:INV_LINE_EDIT_ID}; await addRecord(Object.assign({},cur,{type:'invoiceline',id:INV_LINE_EDIT_ID,client,date,description:desc,amount:Math.round(amt*100)/100,by:(SESSION&&SESSION.name)||''})); toast('Invoice line updated'); }
+    else { await addRecord({type:'invoiceline',id:uid(),client,date,description:desc,amount:Math.round(amt*100)/100,by:(SESSION&&SESSION.name)||''}); toast('Invoice line added'); }
+    invLineClose(); invPreview();
+  }catch(e){ toast('Could not save the line',true); }
+}
+async function invLineDel(id){ if(!invAllowed()){ toast('Super Admin only',true); return; } const cur=invoiceLinesAll().find(x=>x.id===id); if(!cur) return; if(!confirm('Remove this invoice line?')) return; try{ await addRecord(Object.assign({},cur,{deleted:true})); toast('Removed'); invPreview(); }catch(e){ toast('Could not remove',true); } }
 // Per-invoice billed-amount override (admin): bill on a set figure instead of auto cash collected. Keyed by client+period, append-only latest-wins.
 function invoiceOverrideFor(client,from,to){
   const ck=String(client||'').trim().toLowerCase(); let best=null;
@@ -7041,6 +7152,18 @@ function retainerDueInPeriod(cfg, from, to, cap){
 }
 // Pure, side-effect-free founder-invoice math. Returns every intermediate the invoice HTML and the
 // outstanding-invoices ledger both need, so the two never drift. Does NOT touch LAST_INVOICE or the DOM.
+/* ===== Manual invoice lines (white-label / off-platform billing, e.g. Imagine AI Bots) =====
+   Lets Super Admin add invoice line items that bypass the post-call / close-report flow. The line
+   amount is the FULL amount TSA bills (100% TSA revenue - no rev-share split). It flows into:
+     - the client's founder invoice (its own line + the Total due)
+     - the manager override basis at FULL value with NO setter gate (so Keithan's 3% applies even
+       with no setter/closer on the offer)
+     - Actual TSA revenue (Ledger / P&L)
+   Records: {type:'invoiceline', id, client, date, description, amount, by, deleted} */
+function invoiceLinesAll(){ const m={}; (RECORDS||[]).forEach(x=>{ if(x.type!=='invoiceline'||!x.id) return; if(!m[x.id]||(x.submittedAt||'')>(m[x.id].submittedAt||'')) m[x.id]=x; }); return Object.values(m).filter(x=>!x.deleted); }
+function invoiceLines(client){ return invoiceLinesAll().filter(x=>nrmName(x.client)===nrmName(client)).sort((a,b)=>String(a.date).localeCompare(String(b.date))); }
+function invoiceLinesInPeriod(client,from,to){ return invoiceLines(client).filter(l=>{ const d=String(l.date||'').slice(0,10); return d && (!from||d>=from) && (!to||d<=to); }); }
+function invoiceLinesTotalInPeriod(from,to){ let t=0; invoiceLinesAll().forEach(l=>{ const d=String(l.date||'').slice(0,10); if(d && (!from||d>=from) && (!to||d<=to)) t+=Number(l.amount)||0; }); return t; }
 function founderInvoiceCalc(client,from,to){
   const ck=String(client).trim().toLowerCase();
   const inPeriod=d=>{ d=String(d||'').slice(0,10); return d&&d>=from&&d<=to; };
@@ -7090,13 +7213,20 @@ function founderInvoiceCalc(client,from,to){
     rateDesc=`${pct}% of ${(overridden&&!anyLineOv)||anyLineOv?'the billed amount':'cash collected'}${mode==='repcomp'?' (rep comp + override)':''}`;
     noCfg=!pct;
   } else { noCfg=true; }
-  const retInfo=retainerDueInPeriod(cfg,from,to,retainerCapFor(client,cfg)), retainerDue=retInfo?retInfo.amt:0, grandTotal=amountDue+retainerDue; // recurring monthly retention payment (capped by duration)
-  return {ck,inPeriod,uniqDeals,activity,s,callsOffered,callsSet,newOut,fuOut,cashCollected,totalRevenue,recPays,con,cfg,ov,overridden,billBase,feCash,beCash,anyLineOv,billedTotal,amountDue,rateDesc,noCfg,retInfo,retainerDue,grandTotal,excludedDeals,excludedPays};
+  const retInfo=retainerDueInPeriod(cfg,from,to,retainerCapFor(client,cfg)), retainerDue=retInfo?retInfo.amt:0; // recurring monthly retention payment (capped by duration)
+  // Manual invoice lines (white-label, full-amount TSA revenue). Excluded if already billed on another invoice. (T-678)
+  const manualLinesAll=invoiceLinesInPeriod(client,from,to);
+  const manualLines=manualLinesAll.filter(l=>!alreadyBilled(l.date));
+  const excludedLines=manualLinesAll.length-manualLines.length;
+  const manualTotal=manualLines.reduce((a,l)=>a+(Number(l.amount)||0),0);
+  const grandTotal=amountDue+retainerDue+manualTotal;
+  return {ck,inPeriod,uniqDeals,activity,s,callsOffered,callsSet,newOut,fuOut,cashCollected,totalRevenue,recPays,con,cfg,ov,overridden,billBase,feCash,beCash,anyLineOv,billedTotal,amountDue,rateDesc,noCfg,retInfo,retainerDue,manualLines,manualTotal,excludedLines,grandTotal,excludedDeals,excludedPays};
 }
 function genFounderInvoice(client,from,to){
   const C=founderInvoiceCalc(client,from,to);
-  const {uniqDeals,s,callsOffered,callsSet,newOut,fuOut,cashCollected,totalRevenue,recPays,ov,overridden,billBase,anyLineOv,billedTotal,amountDue,rateDesc,noCfg,retInfo,retainerDue,grandTotal,excludedDeals,excludedPays}=C;
-  const excludedNote=((excludedDeals||0)+(excludedPays||0))>0 ? `<div style="margin-top:10px;padding:9px 13px;border:1px solid #2f8f5b;background:#e8f5ee;border-radius:9px;color:#1f6b45;font-size:12.5px">&#10003; ${(excludedDeals||0)+(excludedPays||0)} ${((excludedDeals||0)+(excludedPays||0))===1?'deal/payment was':'deals/payments were'} already billed on a prior invoice for this client and ${((excludedDeals||0)+(excludedPays||0))===1?'is':'are'} excluded here, so no one is billed twice.</div>` : '';
+  const {uniqDeals,s,callsOffered,callsSet,newOut,fuOut,cashCollected,totalRevenue,recPays,ov,overridden,billBase,anyLineOv,billedTotal,amountDue,rateDesc,noCfg,retInfo,retainerDue,manualLines,manualTotal,excludedLines,grandTotal,excludedDeals,excludedPays}=C;
+  const excTot=(excludedDeals||0)+(excludedPays||0)+(excludedLines||0);
+  const excludedNote=excTot>0 ? `<div style="margin-top:10px;padding:9px 13px;border:1px solid #2f8f5b;background:#e8f5ee;border-radius:9px;color:#1f6b45;font-size:12.5px">&#10003; ${excTot} ${excTot===1?'item was':'items were'} already billed on a prior invoice for this client and ${excTot===1?'is':'are'} excluded here, so nothing is billed twice.</div>` : '';
   const canOv=(typeof invAllowed==='function' && invAllowed()); // Super Admin can edit the billed amount inline on the line
   const payRef='TSA - '+client; // dynamic per-company wire reference so an incoming wire is matchable to this client (T-607)
   // Net terms + late fee (T-608): issue today, due after netDays, late fee after the grace window. Shown on the invoice.
@@ -7132,8 +7262,15 @@ function genFounderInvoice(client,from,to){
   const allRows=dealRowHtml.concat(payRowHtml).join('') || `<tr><td colspan="6" style="text-align:center;color:#8a93a6;padding:18px">No deals or payments in this billing period.</td></tr>`;
   const wireLine = bi && (bi.bank||bi.acct||bi.routing) ? remitBlockHtml(bi) : '';
   const card=inner=>`<div style="background:#fff;border:1px solid #e6e9ef;border-radius:16px;padding:26px 30px;box-shadow:0 1px 3px rgba(20,30,60,.05);margin-bottom:20px">${inner}</div>`;
+  // manual invoice lines rendered as their own line items (full amount = TSA revenue, no rev-share)
+  const manualLineRows=(manualLines||[]).map(l=>`<tr>
+          <td style="padding:12px 8px;color:#6b7488;border-bottom:1px solid #eef1f6">Service</td>
+          <td style="padding:12px 8px;color:#2b3242;border-bottom:1px solid #eef1f6">${esc(l.description||'Invoice line')} <span style="color:#8a93a6">(${esc(usDate(l.date))})</span></td>
+          <td style="padding:12px 8px;text-align:right;color:#6b7488;border-bottom:1px solid #eef1f6">1</td>
+          <td style="padding:12px 8px;text-align:right;font-weight:700;color:#1a2b4a;border-bottom:1px solid #eef1f6;font-variant-numeric:tabular-nums">${money(Number(l.amount)||0)}</td>
+        </tr>`).join('');
   // no sales this period = no services line (don't bill a $0 service). Still show it if there's an override, or if there's nothing else on the invoice (so the invoice isn't blank / the override link stays reachable).
-  const showServices = (amountDue>0) || overridden || anyLineOv || !(retainerDue>0);
+  const showServices = (amountDue>0) || overridden || anyLineOv || !(retainerDue>0 || (manualTotal||0)>0);
   return `<div id="invoiceDoc" style="background:#eef1f6;padding:22px;border-radius:14px;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.5;color:#2b3242;max-width:900px;margin:0 auto">
     <style>#invoiceDoc tbody tr:hover td{background:#f7f9fc}</style>
     ${card(`
@@ -7165,7 +7302,7 @@ function genFounderInvoice(client,from,to){
           <td style="padding:12px 8px;color:#2b3242;border-bottom:1px solid #eef1f6">Retention Payment &ndash; monthly retainer${retInfo&&retInfo.date?` (${esc(usDate(retInfo.date))})`:''}</td>
           <td style="padding:12px 8px;text-align:right;color:#6b7488;border-bottom:1px solid #eef1f6">1</td>
           <td style="padding:12px 8px;text-align:right;font-weight:700;color:#1a2b4a;border-bottom:1px solid #eef1f6;font-variant-numeric:tabular-nums">${money(retainerDue)}</td>
-        </tr>`:''}</tbody>
+        </tr>`:''}${manualLineRows}</tbody>
       </table>
       <div style="display:flex;justify-content:flex-end;align-items:baseline;gap:18px;margin-top:14px">
         <div style="font-size:13px;font-weight:700;color:#c9a227;text-transform:uppercase;letter-spacing:.04em">Total due</div>
@@ -7542,6 +7679,8 @@ function acctBilledLinesSince(client, from, to, since, setterOnly){ const f=(sin
   const lines=[]; let cash=0; const seen={};
   (RECORDS||[]).filter(x=>x.type==='deal'&&nrmName(x.client)===nrmName(client)&&inP(x.date)).forEach(d=>{ const id=String(d.id||''); if(id&&seen[id])return; if(id)seen[id]=1; if(!hasSetter(d))return; const raw=Number(d.cashCollected)||0, c=lineBilled('d:'+id,raw); if(!c)return; cash+=c; lines.push({date:String(d.date||'').slice(0,10), lead:d.lead||d.product||'Deal', amount:c, raw, setter:(typeof effSetterOf==='function'?effSetterOf(d):d.setter)||'', kind:'close'}); });
   paymentsCollapsed().filter(p=>p.status==='confirmed'&&nrmName(p.client)===nrmName(client)&&inP(p.date)).forEach(p=>{ if(!hasSetter(p))return; const raw=Number(p.amount)||0, c=lineBilled('p:'+String(p.pid||p.id||''),raw); if(!c)return; cash+=c; lines.push({date:String(p.date||'').slice(0,10), lead:(p.lead||'Payment'), amount:c, raw, setter:(typeof effSetterOf==='function'?effSetterOf(p):p.setter)||'', kind:'payment', method:p.method||''}); });
+  // Manual invoice lines (white-label): full amount counts for the manager override with NO setter gate. (T-678)
+  try{ invoiceLinesInPeriod(client,f,to).forEach(l=>{ const c=Number(l.amount)||0; if(!c)return; cash+=c; lines.push({date:String(l.date||'').slice(0,10), lead:(l.description||'Invoice line'), amount:c, raw:c, setter:'', kind:'invoiceline'}); }); }catch(e){}
   lines.sort((a,b)=>String(a.date).localeCompare(String(b.date)));
   return {cash, lines}; }
 function poManagerData(from,to){
