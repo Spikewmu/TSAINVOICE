@@ -1385,7 +1385,7 @@
       <div class="tablewrap" style="margin-top:8px"><table id="ldgExpTable"></table></div>
     </div>
     <div class="panel"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap"><h3 style="margin:0">Accounts receivable <span class="muted" style="font-weight:400;font-size:12px">- owed to TSA, most owed first</span></h3><a class="linklike" style="cursor:pointer;font-size:12px" onclick="conExpectedDetail('__all__')">Full reconciliation &rarr;</a></div><div class="tablewrap" style="margin-top:10px"><table id="arapArTable"></table></div></div>
-    <div class="panel"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap"><h3 style="margin:0">Accounts payable <span class="muted" style="font-weight:400;font-size:12px">- owed by TSA on the upcoming payday</span></h3><a class="linklike" style="cursor:pointer;font-size:12px" onclick="showTab('payouts')">Go to Payouts &rarr;</a></div><div class="tablewrap" style="margin-top:10px"><table id="arapApTable"></table></div></div>
+    <div class="panel"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap"><h3 style="margin:0">Accounts payable <span class="muted" id="arapApSub" style="font-weight:400;font-size:12px">- owed by TSA on the upcoming payday</span></h3><a class="linklike" style="cursor:pointer;font-size:12px" onclick="showTab('payouts')">Go to Payouts &rarr;</a></div><div class="tablewrap" style="margin-top:10px"><table id="arapApTable"></table></div></div>
   </section>
 
   <section id="tab-contracts" hidden>
@@ -4357,8 +4357,8 @@ function renderArAp(){
     +card('NET PROFIT',money(netProfit),netProfit>=0?'var(--good)':'var(--bad)','The bottom line: revenue minus comp minus operating expenses for '+esc(rng.label)+'.');
   // ---- expenses table ----
   const et=document.getElementById('ldgExpTable');
-  if(et){ const rows=exps.map(x=>{ const e=x.e, rc=expenseRecur(e), per=rc==='yearly'?'/yr':(rc==='monthly'?'/mo':''); return `<tr><td style="white-space:nowrap;padding:6px 8px">${e.date?esc(usDate(e.date)):'-'}</td><td style="padding:6px 8px">${esc(e.category||'Other')}</td><td style="padding:6px 8px">${esc(e.vendor||'')}${rc!=='none'?` <span class="pill" style="font-size:9px">${rc}</span>`:''}${e.note?`<div class="muted" style="font-size:11px;white-space:normal">${esc(e.note)}</div>`:''}</td><td class="num" style="padding:6px 8px;font-weight:600">${money(x.amt)}${rc!=='none'&&Math.abs(x.amt-(Number(e.amount)||0))>0.001?` <span class="muted" style="font-size:10px">(${money(Number(e.amount)||0)}${per})</span>`:''}</td><td style="padding:6px 8px;white-space:nowrap"><button class="btn ghost sm" style="padding:2px 9px" title="Edit" onclick="expenseEdit('${e.id}')">&#9998;</button> <button class="btn ghost sm" style="color:var(--warn);border-color:var(--warn);padding:2px 9px" title="Delete" onclick="expenseDel('${e.id}')">&times;</button></td></tr>`; }).join('');
-    et.innerHTML=`<thead><tr><th style="text-align:left">Date</th><th style="text-align:left">Category</th><th style="text-align:left">Vendor / description</th><th class="num">Amount</th><th></th></tr></thead><tbody>${rows||'<tr><td colspan="5" class="muted" style="padding:14px">No expenses logged for this period. Add software, tools, contractors, etc. above.</td></tr>'}${exps.length?`<tr style="border-top:2px solid var(--gold);font-weight:800"><td>Total expenses</td><td></td><td></td><td class="num">${money(opex)}</td><td></td></tr>`:''}</tbody>`;
+  if(et){ const rows=exps.map(x=>{ const e=x.e, rc=expenseRecur(e), per=rc==='yearly'?'/yr':(rc==='monthly'?'/mo':''); return `<tr><td style="white-space:nowrap;padding:6px 8px">${e.date?esc(usDate(e.date)):'-'}</td><td style="padding:6px 8px">${esc(e.category||'Other')}</td><td style="padding:6px 8px">${esc(e.vendor||'')}${rc!=='none'?` <span class="pill" style="font-size:9px">${rc}</span>`:''}</td><td class="num" style="padding:6px 8px;font-weight:600">${money(x.amt)}${rc!=='none'&&Math.abs(x.amt-(Number(e.amount)||0))>0.001?` <span class="muted" style="font-size:10px">(${money(Number(e.amount)||0)}${per})</span>`:''}</td><td style="padding:6px 8px;color:var(--muted);font-size:12px">${e.note?esc(e.note):''}</td><td style="padding:6px 8px;white-space:nowrap"><button class="btn ghost sm" style="padding:2px 9px" title="Edit" onclick="expenseEdit('${e.id}')">&#9998;</button> <button class="btn ghost sm" style="color:var(--warn);border-color:var(--warn);padding:2px 9px" title="Delete" onclick="expenseDel('${e.id}')">&times;</button></td></tr>`; }).join('');
+    et.innerHTML=`<thead><tr><th style="text-align:left">Date</th><th style="text-align:left">Category</th><th style="text-align:left">Vendor</th><th class="num">Amount</th><th style="text-align:left">Notes</th><th></th></tr></thead><tbody>${rows||'<tr><td colspan="6" class="muted" style="padding:14px">No expenses logged for this period. Add software, tools, contractors, etc. above.</td></tr>'}${exps.length?`<tr style="border-top:2px solid var(--gold);font-weight:800"><td>Total expenses</td><td></td><td></td><td class="num">${money(opex)}</td><td></td><td></td></tr>`:''}</tbody>`;
   }
   // AR = what clients owe TSA (unpaid invoices + rev-share on uncollected deal balances)
   const arList=contractsEffective().filter(c=>c.active!==false).map(c=>{ try{ return conClientExpected(c.client); }catch(e){ return null; } }).filter(x=>x&&x.expTotal>0.005).sort((a,b)=>b.expTotal-a.expTotal);
@@ -4377,8 +4377,11 @@ function renderArAp(){
   if(art){ const rows=arList.map(x=>`<tr><td><b>${esc(x.client)}</b></td><td class="num">${x.arTotal>0?money(x.arTotal):'<span class="muted">-</span>'}</td><td class="num">${x.eoOS>0?money(x.eoOS):'<span class="muted">-</span>'}</td><td class="num" style="font-weight:700"><a onclick="conExpectedDetail('${jsStr(x.client)}')" style="cursor:pointer;color:var(--gold-2);text-decoration:underline">${money(x.expTotal)}</a></td></tr>`).join('');
     art.innerHTML=`<thead><tr><th>Client</th><th class="num" title="Invoices sent but not yet paid">Invoiced (unpaid)</th><th class="num" title="TSA rev-share on the client's uncollected deal balances">Rev-share on o/s</th><th class="num">Total owed to us</th></tr></thead><tbody>${rows||'<tr><td colspan="4" class="muted" style="padding:14px">Nothing outstanding - everything invoiced has been collected.</td></tr>'}${arList.length?`<tr style="border-top:2px solid var(--gold);font-weight:800"><td>Total AR</td><td></td><td></td><td class="num">${money(arTotal)}</td></tr>`:''}</tbody>`; }
   const apt=document.getElementById('arapApTable');
+  const payDateLabel=(function(){ try{ return usDate(c.pay); }catch(_){ return ''; } })();
+  const apSub=document.getElementById('arapApSub'); if(apSub) apSub.textContent = payDateLabel? '- owed by TSA on '+payDateLabel : '- owed by TSA on the upcoming payday';
   if(apt){ const rows=apList.map(x=>`<tr><td><b>${esc(x.rep)}</b></td><td>${esc(x.role)}</td><td class="num" style="font-weight:700">${money(x.amt)}</td></tr>`).join('');
-    apt.innerHTML=`<thead><tr><th>Person</th><th>Role</th><th class="num">We owe</th></tr></thead><tbody>${rows||'<tr><td colspan="3" class="muted" style="padding:14px">Nothing owed for the upcoming payday.</td></tr>'}${apList.length?`<tr style="border-top:2px solid var(--gold);font-weight:800"><td>Total AP</td><td></td><td class="num">${money(apTotal)}</td></tr>`:''}</tbody>`; }
+    const totLbl=payDateLabel?`Owed by TSA on ${esc(payDateLabel)}`:'Total AP';
+    apt.innerHTML=`<thead><tr><th>Person</th><th>Role</th><th class="num">We owe</th></tr></thead><tbody>${rows||'<tr><td colspan="3" class="muted" style="padding:14px">Nothing owed for the upcoming payday.</td></tr>'}${apList.length?`<tr style="border-top:2px solid var(--gold);font-weight:800"><td>${totLbl}</td><td></td><td class="num">${money(apTotal)}</td></tr>`:''}</tbody>`; }
 }
 function renderContracts(){
   const host=document.getElementById('tab-contracts'); if(!host) return;
@@ -5308,13 +5311,24 @@ function mtgPrepNumbers(client,from,to){
   if(C){
     const s=C.s||{};
     const closes=(C.uniqDeals||[]).length;
+    // deposits as units + amount; total meetings (connected + no-shows); connection rate; speed-to-lead avg (T-687)
+    const depositsUnits=(C.uniqDeals||[]).filter(d=>Number(d.depositCollected)>0).length;
+    const totalMeetings=(s.connectedMeetings||0)+(s.noShows||0);
+    let connCalls=0, spdSum=0, spdN=0;
+    (C.activity||[]).forEach(x=>{ if(x.type==='eod'||!x.type){ connCalls+=x.connectedCalls||0; const sp=Number(x.speedToLead); if(sp>0){ spdSum+=sp; spdN++; } } });
+    const connectionRate = (C.callsOffered>0) ? connCalls/C.callsOffered : 0;
+    const speedToLead = spdN ? spdSum/spdN : null;
     return {
       closes,
       cash:C.cashCollected||0,
       revenue:C.totalRevenue||0,
       deposits:s.depositCollected||0,
+      depositsUnits,
+      totalMeetings,
       connects:s.connectedMeetings||0,
       showRate:s.showRate||0,
+      connectionRate,
+      speedToLead,
       callsOffered:C.callsOffered||0,
       callsSet:C.callsSet||0,
       newOut:C.newOut||0,
@@ -5328,8 +5342,28 @@ function mtgPrepNumbers(client,from,to){
   const connects=pcs.filter(x=>x.role==='Closer').length;
   const sets=pcs.filter(x=>x.role==='Setter'&&/^(Booked|Follow-up booked|Callback)/i.test(x.outcome||'')).length;
   let cash=0; try{ cash=conCashFor(client,from,to)||0; }catch(e){}
-  return {closes,cash,revenue:0,deposits:0,connects,showRate:0,callsOffered:0,callsSet:sets,newOut:0,fuOut:0,sets};
+  return {closes,cash,revenue:0,deposits:0,depositsUnits:0,totalMeetings:connects,connects,showRate:0,connectionRate:0,speedToLead:null,callsOffered:0,callsSet:sets,newOut:0,fuOut:0,sets};
 }
+// Monday prep sheet metric catalog (id, label, formatter). Admin can hide any + mark internal-only (hidden from founders). (T-687)
+const MP_METRICS=[
+  ['closes','Closed deals', n=>(n.closes||0).toLocaleString()],
+  ['cash','Cash collected', n=>money(n.cash||0)],
+  ['revenue','Revenue contracted', n=>money(n.revenue||0)],
+  ['deposits','Deposits collected', n=>`${money(n.deposits||0)} <span class="muted" style="font-size:12px;font-weight:600">(${(n.depositsUnits||0)})</span>`],
+  ['totalMeetings','Total meetings', n=>(n.totalMeetings||0).toLocaleString()],
+  ['connects','Connected meetings', n=>(n.connects||0).toLocaleString()],
+  ['showRate','Show rate', n=>Math.round((n.showRate||0)*100)+'%'],
+  ['callsSet','Calls set', n=>(n.callsSet||0).toLocaleString()],
+  ['connectionRate','Connection rate', n=>Math.round((n.connectionRate||0)*100)+'%'],
+  ['speedToLead','Speed to lead (avg)', n=>n.speedToLead!=null?(Math.round(n.speedToLead*10)/10+' min'):'n/a'],
+  ['newOut','New outreach', n=>(n.newOut||0).toLocaleString()],
+  ['fuOut','Follow-up outreach', n=>(n.fuOut||0).toLocaleString()]
+];
+function mpMetricLabel(id){ const m=MP_METRICS.find(x=>x[0]===id); return m?m[1]:id; }
+// latest mtgprefs for a client (per-client, falling back to a global '' default): {hidden:[],internal:[],structure}
+function mtgPrefsFor(client){ let best=null, glob=null; const cn=nrmName(client);
+  (RECORDS||[]).forEach(x=>{ if(x.type!=='mtgprefs') return; if(nrmName(x.client||'')===cn){ if(!best||(x.submittedAt||'')>(best.submittedAt||'')) best=x; } else if(!x.client){ if(!glob||(x.submittedAt||'')>(glob.submittedAt||'')) glob=x; } });
+  return best||glob||null; }
 function mpClientList(){ if(SESSION&&SESSION.role==='founder'){ let c=(teamsFor(SESSION.username)||[]).filter(Boolean); if(!c.length&&SESSION.name) c=[SESSION.name]; return c; } const sc=dashScopeClients(); return sc?sc.filter(c=>c!==' none'):clientNames(); }
 function renderMtgPrep(){
   const host=document.getElementById('mpSheet'); if(!host) return;
@@ -5342,19 +5376,20 @@ function renderMtgPrep(){
   if(!client){ host.innerHTML='<p class="muted" style="padding:12px">No client to show a prep sheet for.</p>'; return; }
   const nums=mtgPrepNumbers(client, wk.from, wk.to);
   const card=(l,v)=>`<div class="kpi" style="flex:1;min-width:130px"><div class="lbl">${l}</div><div class="val">${v}</div></div>`;
-  const tiles=[
-    card('Closed deals',(nums.closes||0).toLocaleString()),
-    card('Cash collected',money(nums.cash||0)),
-    card('Revenue contracted',money(nums.revenue||0)),
-    card('Deposits collected',money(nums.deposits||0)),
-    card('Connected meetings',(nums.connects||0).toLocaleString()),
-    card('Show rate',Math.round((nums.showRate||0)*100)+'%'),
-    card('Sales calls offered',(nums.callsOffered||0).toLocaleString()),
-    card('Calls set',(nums.callsSet||0).toLocaleString()),
-    card('New outreach',(nums.newOut||0).toLocaleString()),
-    card('Follow-up outreach',(nums.fuOut||0).toLocaleString())
-  ].join('');
-  const numHtml=`<div class="panel" style="padding:12px 14px"><div style="font-weight:600;margin-bottom:8px">Last week's numbers <span class="muted" style="font-weight:400;font-size:12px">- ${esc(wk.label)}</span> <span class="muted" style="font-weight:400;font-size:11px">(same figures as the invoice performance stats)</span></div><div style="display:flex;flex-wrap:wrap;gap:12px">${tiles}</div></div>`;
+  const isMgrRole=SESSION&&['admin','director','manager'].includes(SESSION.role);
+  const prefs=mtgPrefsFor(client)||{}; const hidden=Array.isArray(prefs.hidden)?prefs.hidden:[]; const internal=Array.isArray(prefs.internal)?prefs.internal:[];
+  // founders never see hidden or internal metrics; the team sees everything except hidden (internal ones get an "internal" tag)
+  const visMetrics=MP_METRICS.filter(m=>!hidden.includes(m[0]) && !(founder && internal.includes(m[0])));
+  const tiles=visMetrics.map(m=>card(m[1]+((!founder && internal.includes(m[0]))?' <span class="pill" style="font-size:9px;color:var(--gold-2);border:1px solid var(--gold-soft)">internal</span>':''), m[2](nums))).join('');
+  const custBtn=isMgrRole?`<button class="btn ghost sm" style="margin-left:auto" onclick="mpCustomizeToggle()">Customize</button>`:'';
+  const custPanel=isMgrRole?`<div id="mpCustomize" hidden style="margin-top:12px;padding:12px;border:1px solid var(--border);border-radius:10px;background:var(--surface-2)">
+    <div class="muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.03em;margin-bottom:8px">Customize metrics (admin) - Show = on the sheet, Internal = hidden from the founder</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:6px">${MP_METRICS.map(m=>`<label style="display:flex;align-items:center;gap:7px;font-size:12.5px"><input type="checkbox" class="mpShow" data-id="${m[0]}" ${hidden.includes(m[0])?'':'checked'}> ${esc(m[1])} <label style="margin-left:auto;display:flex;align-items:center;gap:4px;font-size:11px;color:var(--muted)"><input type="checkbox" class="mpInt" data-id="${m[0]}" ${internal.includes(m[0])?'checked':''}> internal</label></label>`).join('')}</div>
+    <div class="field" style="margin-top:10px"><label>Meeting structure <span class="muted" style="font-weight:400">- shown to the founder under Announcements (the flow we walk into)</span></label><textarea id="mpStructure" rows="3" placeholder="e.g. 1) Wins  2) Announcements  3) Per-account review  4) Marketing numbers  5) Action items">${esc(prefs.structure||'')}</textarea></div>
+    <div class="row-actions" style="margin-top:8px"><button class="btn gold sm" onclick="mpPrefsSave()">Save</button><button class="btn ghost sm" onclick="mpCustomizeToggle()">Close</button></div>
+  </div>`:'';
+  const structHtml=(prefs.structure&&String(prefs.structure).trim())?`<div class="panel" style="padding:12px 14px"><div style="font-weight:600;margin-bottom:6px">Meeting structure <span class="muted" style="font-weight:400;font-size:12px">- how Monday's meeting runs</span></div><div style="white-space:pre-wrap;font-size:13px;color:var(--ink)">${esc(prefs.structure)}</div></div>`:'';
+  const numHtml=`<div class="panel" style="padding:12px 14px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="font-weight:600">Last week's numbers</span> <span class="muted" style="font-weight:400;font-size:12px">- ${esc(wk.label)}</span> <span class="muted" style="font-weight:400;font-size:11px">(same figures as the invoice)</span>${custBtn}</div><div style="display:flex;flex-wrap:wrap;gap:12px">${tiles}</div>${custPanel}</div>`;
   const items=mtgPrepItems(client, wk.weekStart);
   const open=items.filter(x=>x.status!=='done').sort((a,b)=>(a.addedAt||'').localeCompare(b.addedAt||''));
   const done=items.filter(x=>x.status==='done');
@@ -5368,6 +5403,7 @@ function renderMtgPrep(){
       <div style="display:flex;gap:8px;margin:8px 0 0 28px"><input id="mpr_${x.id}" placeholder="${founder?'Reply / add detail':'Respond to this'}" style="flex:1;min-width:160px;font-size:12px" onkeydown="if(event.key==='Enter'){event.preventDefault();mtgPrepReply('${x.id}');}"><button class="btn ghost sm" onclick="mtgPrepReply('${x.id}')">Reply</button></div>
     </div>`; };
   host.innerHTML=numHtml
+   +structHtml
    +`<div class="panel"><h3 style="margin:0 0 8px">Topics, announcements &amp; questions <span style="font-weight:400;color:var(--muted);font-size:12px">- ${founder?'add anything you want covered on Monday':'team + founder items, running Mon-Sun'}</span></h3>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px"><input id="mpAddText" placeholder="${founder?'What would you like covered on Monday?':'Add a topic, number, change, or announcement'}" style="flex:1;min-width:220px" onkeydown="if(event.key==='Enter'){event.preventDefault();mtgPrepAdd();}"><button class="btn gold sm" onclick="mtgPrepAdd()">Add</button></div>
       ${open.length?open.map(row).join(''):'<p class="muted" style="margin:0 0 6px">Nothing added yet for this week.</p>'}
@@ -5378,25 +5414,27 @@ function mtgPrepAdd(){ const sel=document.getElementById('mpClient'), client=(se
   addRecord({type:'mtgprep',id:uid(),client,weekStart:wk.weekStart,text:t,side:founder?'Founder':'TSA',by:(SESSION&&SESSION.name)||'',status:'open',addedAt:new Date().toISOString()}).then(()=>{ if(el) el.value=''; toast('Added to the prep sheet'); if(founder){ try{ slackNotify('New Monday prep-sheet question from '+((SESSION&&SESSION.name)||'a founder')+' ('+client+'): '+t); }catch(e){} } renderMtgPrep(); try{ renderNotifBell(); }catch(e){} }); }
 function mtgPrepToggle(id){ const cur=mtgPrepItemsAll().find(x=>x.id===id); if(!cur) return; addRecord(Object.assign({},cur,{status:cur.status==='done'?'open':'done'})).then(renderMtgPrep); }
 function mtgPrepDel(id){ if(!(SESSION&&['admin','director','manager'].includes(SESSION.role))){ toast('Managers / admins only',true); return; } const cur=mtgPrepItemsAll().find(x=>x.id===id); if(!cur) return; if(!confirm('Remove this item from the prep sheet?')) return; addRecord(Object.assign({},cur,{deleted:true})).then(renderMtgPrep); }
+function mpCustomizeToggle(){ const el=document.getElementById('mpCustomize'); if(el) el.hidden=!el.hidden; }
+function mpPrefsSave(){ if(!(SESSION&&['admin','director','manager'].includes(SESSION.role))){ toast('Managers / admins only',true); return; }
+  const sel=document.getElementById('mpClient'), client=(sel&&sel.value)||''; if(!client){ toast('Pick a client first',true); return; }
+  const hidden=[], internal=[];
+  document.querySelectorAll('#mpCustomize .mpShow').forEach(c=>{ if(!c.checked) hidden.push(c.getAttribute('data-id')); });
+  document.querySelectorAll('#mpCustomize .mpInt').forEach(c=>{ if(c.checked) internal.push(c.getAttribute('data-id')); });
+  const structure=((document.getElementById('mpStructure')||{}).value||'').trim();
+  addRecord({type:'mtgprefs',client,hidden,internal,structure,by:(SESSION&&SESSION.name)||''}).then(()=>{ toast('Prep-sheet settings saved for '+client); renderMtgPrep(); }); }
 // founder submits a question/topic; the team (or the founder) replies to it - a running thread on each item
 function mtgPrepReply(id){ const cur=mtgPrepItemsAll().find(x=>x.id===id); if(!cur) return; const el=document.getElementById('mpr_'+id), t=(el&&el.value||'').trim(); if(!t){ toast('Type a reply first',true); return; }
   const founder=SESSION&&SESSION.role==='founder'; const comments=Array.isArray(cur.comments)?cur.comments.slice():[];
   comments.push({text:t, side:founder?'Founder':'TSA', by:(SESSION&&SESSION.name)||'', at:new Date().toISOString()});
   addRecord(Object.assign({},cur,{comments})).then(()=>{ toast('Reply added'); if(founder){ try{ slackNotify('Monday prep-sheet reply from '+((SESSION&&SESSION.name)||'a founder')+' ('+(cur.client||'')+'): '+t); }catch(e){} } renderMtgPrep(); try{ renderNotifBell(); }catch(e){} }); }
 function mtgPrepSummaryText(){ const sel=document.getElementById('mpClient'), client=(sel&&sel.value)||'', wk=mpWeekRange(); const nums=mtgPrepNumbers(client,wk.from,wk.to); const items=mtgPrepItems(client,wk.weekStart);
-  const lines=[`*${client} - Monday Prep Sheet*`, `Week of ${wk.label}`, ``,
-    `Last week's numbers:`,
-    `- Closed deals: ${nums.closes||0}`,
-    `- Cash collected: ${money(nums.cash||0)}`,
-    `- Revenue contracted: ${money(nums.revenue||0)}`,
-    `- Deposits collected: ${money(nums.deposits||0)}`,
-    `- Connected meetings: ${nums.connects||0}`,
-    `- Show rate: ${Math.round((nums.showRate||0)*100)}%`,
-    `- Sales calls offered: ${nums.callsOffered||0}`,
-    `- Calls set: ${nums.callsSet||0}`,
-    `- New outreach: ${nums.newOut||0}`,
-    `- Follow-up outreach: ${nums.fuOut||0}`,
-    ``, `Topics for Monday:`];
+  const founder=SESSION&&SESSION.role==='founder'; const prefs=mtgPrefsFor(client)||{}; const hidden=Array.isArray(prefs.hidden)?prefs.hidden:[]; const internal=Array.isArray(prefs.internal)?prefs.internal:[];
+  const vis=MP_METRICS.filter(m=>!hidden.includes(m[0]) && !(founder && internal.includes(m[0])));
+  const stripTags=s=>String(s).replace(/<[^>]*>/g,'').replace(/\s+/g,' ').trim();
+  const lines=[`*${client} - Monday Prep Sheet*`, `Week of ${wk.label}`, ``, `Last week's numbers:`];
+  vis.forEach(m=>lines.push(`- ${m[1]}: ${stripTags(m[2](nums))}`));
+  if(prefs.structure&&String(prefs.structure).trim()){ lines.push(``, `Meeting structure:`, String(prefs.structure).trim()); }
+  lines.push(``, `Topics for Monday:`);
   const open=items.filter(x=>x.status!=='done'); const done=items.filter(x=>x.status==='done');
   const withReplies=x=>{ lines.push(`- ${x.text} (${x.side||'TSA'}${x.by?', '+x.by:''})`); (Array.isArray(x.comments)?x.comments:[]).forEach(c=>lines.push(`    > ${c.side||'TSA'}: ${c.text}`)); };
   if(open.length) open.forEach(withReplies); else lines.push('- (none added yet)');
@@ -7034,7 +7072,7 @@ function invLineOpen(id){ if(!invAllowed()){ toast('Super Admin only',true); ret
   if(!m){ m=document.createElement('div'); m.className='modal'; m.id='invLineModal'; m.hidden=true; m.onclick=ev=>{ if(ev.target===m) invLineClose(); };
     m.innerHTML=`<div class="modalcard" style="width:min(460px,96vw)"><h3 id="invlTitle" style="margin:0 0 4px">Add invoice line</h3>
       <p class="muted" id="invlClient" style="margin:0 0 10px;font-size:12px"></p>
-      <div class="field" style="position:relative"><label>Date</label><div class="rangewrap"><input type="text" id="invlDate_txt" readonly placeholder="Pick a day" onclick="dayPopToggle('invlDate',event)"><input type="hidden" id="invlDate"><div class="rangepop" id="invlDate_pop" hidden onclick="event.stopPropagation()"></div></div></div>
+      <div class="field" style="position:relative"><label>Invoice date</label><div class="rangewrap"><input type="text" id="invlDate_txt" readonly placeholder="Pick a day" onclick="dayPopToggle('invlDate',event)"><input type="hidden" id="invlDate"><div class="rangepop" id="invlDate_pop" hidden onclick="event.stopPropagation()"></div></div><span class="fieldhelp">The date this is billed out. It decides which billing period / AR window the line falls into, so set it to when you actually invoice the partner.</span></div>
       <div class="field"><label>Description</label><input id="invlDesc" placeholder="e.g. Imagine AI Bots - white-label monthly"></div>
       <div class="field"><label>Amount ($) <span class="muted" style="font-weight:400">- full amount TSA bills</span></label><input id="invlAmt" type="number" min="0" step="0.01" placeholder="0.00"></div>
       <div class="row-actions" style="margin-top:12px"><button class="btn gold sm" onclick="invLineSave()">Save</button><button class="btn ghost sm" onclick="invLineClose()">Cancel</button></div></div>`;
