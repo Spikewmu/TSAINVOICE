@@ -6573,9 +6573,25 @@ function myPayoutHtml(){
     <td class="num" style="padding:6px 8px;font-weight:600">${money(it.amt||0)}</td></tr>`).join('');
   const off=MY_PAY_OFFSET, upOn=off===0, nextOn=off===1;
   const todayIso=(typeof todayLocal==='function'?todayLocal():new Date().toISOString().slice(0,10));
-  const paid = cyc.pay < todayIso; // pay date already passed -> this was a prior (paid) paycheck
+  // Real paid status: only "Paid" when every component of this paycheck is actually marked paid on the
+  // Payouts page (payout records keyed cycle|rep|role; one-time payouts carry their own paid flag).
+  // Do NOT infer paid from the pay date having passed - a past cycle can still be unpaid. (fix)
+  let paid=false, somePaid=false, anyComp=false;
+  try{ const map=poStatusMap(), ck=poKey(cyc), comps=[];
+    if((data.closers||[]).some(o=>nrmName(o.rep)===nrmName(me)&&o.commission>0.0001)) comps.push(!!((poStatus(map,ck,me,'closer')||{}).paid));
+    if((data.setters||[]).some(o=>nrmName(o.rep)===nrmName(me)&&o.commission>0.0001)) comps.push(!!((poStatus(map,ck,me,'setter')||{}).paid));
+    if((mgrPay||[]).some(o=>o.commission>0.0001)) comps.push(!!((poStatus(map,ck,me,'manager')||{}).paid));
+    if((webPay||[]).some(o=>o.commission>0.0001)) comps.push(!!((poStatus(map,ck,me,'webinar')||{}).paid));
+    (myManual||[]).forEach(m=>comps.push(!!m.paid));
+    anyComp=comps.length>0; paid=anyComp&&comps.every(Boolean); somePaid=comps.some(Boolean);
+  }catch(e){}
+  const payDatePassed = cyc.pay < todayIso;
   const payLbl = paid ? 'Paid' : (off<=0 ? 'Payday' : 'Following payday');
-  const paidChip = paid ? `<span class="pill" style="font-size:10px;color:var(--good);border:1px solid var(--good);margin-left:8px">Paid</span>` : (off===0?`<span class="pill" style="font-size:10px;color:var(--gold-2);border:1px solid var(--gold-soft);margin-left:8px">Next out</span>`:'');
+  let paidChip='';
+  if(paid) paidChip=`<span class="pill" style="font-size:10px;color:var(--good);border:1px solid var(--good);margin-left:8px">Paid</span>`;
+  else if(somePaid) paidChip=`<span class="pill" style="font-size:10px;color:var(--warn);border:1px solid var(--warn);margin-left:8px">Partially paid</span>`;
+  else if(anyComp && payDatePassed) paidChip=`<span class="pill" style="font-size:10px;color:var(--warn);border:1px solid var(--warn);margin-left:8px">Unpaid</span>`;
+  else if(off===0) paidChip=`<span class="pill" style="font-size:10px;color:var(--gold-2);border:1px solid var(--gold-soft);margin-left:8px">Next out</span>`;
   return `<div class="panel" style="margin:0 0 14px;padding:0;overflow:hidden">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;padding:14px 16px 0">
       <div class="muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.03em">My payouts</div>
