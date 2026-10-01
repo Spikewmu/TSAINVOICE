@@ -1379,17 +1379,9 @@
       <div class="field" style="position:relative;margin:0;min-width:230px"><div class="rangewrap"><input type="text" id="ldgRange_txt" readonly placeholder="Custom range" onclick="rpToggle('ldgRange',event)"><input type="hidden" id="ldgRange_from"><input type="hidden" id="ldgRange_to"><div class="rangepop" id="ldgRange_pop" hidden onclick="event.stopPropagation()"></div></div></div>
     </div>
     <div id="ldgPnl" style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:16px"></div>
-    <div class="panel" id="ldgExpPanel" style="overflow:visible;position:relative;z-index:10">
-      <div style="padding:12px 14px 0"><h3 style="margin:0">Operating expenses <span class="muted" style="font-weight:400;font-size:12px">- software, tools, contractors, ads, anything that comes out of the business</span></h3></div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;padding:12px 14px 4px">
-        <div class="field" style="margin:0;position:relative;min-width:150px"><label>Date</label><div class="rangewrap"><input type="text" id="expDate_txt" readonly placeholder="Pick a day" onclick="dayPopToggle('expDate',event)"><input type="hidden" id="expDate"><div class="rangepop" id="expDate_pop" hidden onclick="event.stopPropagation()"></div></div></div>
-        <div class="field" style="margin:0;min-width:150px"><label>Category</label><select id="expCat"><option>Software / Tools</option><option>Contractors / Payroll</option><option>Advertising</option><option>Subscriptions</option><option>Office / Admin</option><option>Fees / Processing</option><option>Other</option></select></div>
-        <div class="field" style="margin:0;flex:1;min-width:180px"><label>Vendor / description</label><input id="expVendor" placeholder="e.g. GoHighLevel, Zoom, contractor name"></div>
-        <div class="field" style="margin:0;width:120px"><label>Amount ($)</label><input id="expAmt" type="number" min="0" step="0.01" placeholder="0.00"></div>
-        <div class="field" style="margin:0;min-width:120px"><label>Recurs</label><select id="expRecur"><option value="none">One-time</option><option value="monthly">Monthly</option><option value="yearly">Yearly</option></select></div>
-        <button class="btn gold sm" id="expAddBtn" style="margin-bottom:2px" onclick="addExpense()">Add expense</button>
-      </div>
-      <div class="tablewrap"><table id="ldgExpTable"></table></div>
+    <div class="panel" id="ldgExpPanel">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap;padding:12px 14px 0"><h3 style="margin:0">Operating expenses <span class="muted" style="font-weight:400;font-size:12px">- software, tools, contractors, ads, anything that comes out of the business</span></h3><button class="btn gold sm" onclick="expenseOpen()">&#43; Add expense</button></div>
+      <div class="tablewrap" style="margin-top:8px"><table id="ldgExpTable"></table></div>
     </div>
     <div class="panel"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap"><h3 style="margin:0">Accounts receivable <span class="muted" style="font-weight:400;font-size:12px">- owed to TSA, most owed first</span></h3><a class="linklike" style="cursor:pointer;font-size:12px" onclick="conExpectedDetail('__all__')">Full reconciliation &rarr;</a></div><div class="tablewrap" style="margin-top:10px"><table id="arapArTable"></table></div></div>
     <div class="panel"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap"><h3 style="margin:0">Accounts payable <span class="muted" style="font-weight:400;font-size:12px">- owed by TSA on the upcoming payday</span></h3><a class="linklike" style="cursor:pointer;font-size:12px" onclick="showTab('payouts')">Go to Payouts &rarr;</a></div><div class="tablewrap" style="margin-top:10px"><table id="arapApTable"></table></div></div>
@@ -4299,49 +4291,41 @@ function expenseInPeriod(e, from, to){ const amt=Number(e.amount)||0; if(!amt) r
   return amt*n;
 }
 let EXP_EDIT_ID=null;
-async function addExpense(){ if(!(SESSION&&['admin','director'].includes(SESSION.role))){ toast('Admins only',true); return; }
-  const date=(document.getElementById('expDate')||{}).value||todayLocal();
-  const cat=(document.getElementById('expCat')||{}).value||'Other';
-  const vendor=((document.getElementById('expVendor')||{}).value||'').trim();
-  const amt=parseFloat((document.getElementById('expAmt')||{}).value);
-  const recur=((document.getElementById('expRecur')||{}).value)||'none';
-  if(!(amt>0)){ toast('Enter a valid amount',true); return; }
-  try{
-    await addRecord({type:'expense',id:uid(),date,category:cat,vendor,amount:Math.round(amt*100)/100,recur,recurring:recur==='monthly',by:(SESSION&&SESSION.name)||''}); toast('Expense added');
-    ['expVendor','expAmt'].forEach(id=>{ const e=document.getElementById(id); if(e) e.value=''; }); const rc=document.getElementById('expRecur'); if(rc) rc.value='none';
-    renderArAp();
-  }catch(e){ toast('Could not save the expense',true); }
-}
-function expenseEdit(id){ const e=expenseRecords().find(x=>x.id===id); if(!e) return;
-  if(!(SESSION&&['admin','director'].includes(SESSION.role))){ toast('Admins only',true); return; }
-  EXP_EDIT_ID=id;
+function expenseOpen(id){ if(!(SESSION&&['admin','director'].includes(SESSION.role))){ toast('Admins only',true); return; }
+  const e=id?expenseRecords().find(x=>x.id===id):null; if(id&&!e) return; EXP_EDIT_ID=id||null;
   let m=document.getElementById('expEditModal');
   if(!m){ m=document.createElement('div'); m.className='modal'; m.id='expEditModal'; m.hidden=true; m.onclick=ev=>{ if(ev.target===m) expEditClose(); };
-    m.innerHTML=`<div class="modalcard" style="width:min(460px,96vw)"><h3 style="margin:0 0 10px">Edit expense</h3>
+    m.innerHTML=`<div class="modalcard" style="width:min(460px,96vw)"><h3 id="expmTitle" style="margin:0 0 10px">Add expense</h3>
       <div class="field" style="position:relative"><label>Date</label><div class="rangewrap"><input type="text" id="expmDate_txt" readonly placeholder="Pick a day" onclick="dayPopToggle('expmDate',event)"><input type="hidden" id="expmDate"><div class="rangepop" id="expmDate_pop" hidden onclick="event.stopPropagation()"></div></div></div>
       <div class="field"><label>Category</label><select id="expmCat"><option>Software / Tools</option><option>Contractors / Payroll</option><option>Advertising</option><option>Subscriptions</option><option>Office / Admin</option><option>Fees / Processing</option><option>Other</option></select></div>
-      <div class="field"><label>Vendor / description</label><input id="expmVendor"></div>
-      <div class="grid2"><div class="field"><label>Amount ($)</label><input id="expmAmt" type="number" min="0" step="0.01"></div><div class="field"><label>Recurs</label><select id="expmRecur"><option value="none">One-time</option><option value="monthly">Monthly</option><option value="yearly">Yearly</option></select></div></div>
-      <div class="row-actions" style="margin-top:12px"><button class="btn gold sm" onclick="expEditSave()">Save changes</button><button class="btn ghost sm" onclick="expEditClose()">Cancel</button></div></div>`;
+      <div class="field"><label>Vendor / description</label><input id="expmVendor" placeholder="e.g. GoHighLevel, Zoom, contractor name"></div>
+      <div class="grid2"><div class="field"><label>Amount ($)</label><input id="expmAmt" type="number" min="0" step="0.01" placeholder="0.00"></div><div class="field"><label>Recurs</label><select id="expmRecur"><option value="none">One-time</option><option value="monthly">Monthly</option><option value="yearly">Yearly</option></select></div></div>
+      <div class="field"><label>Notes <span class="muted" style="font-weight:400">- optional</span></label><textarea id="expmNote" rows="2" placeholder="anything useful - plan, seats, who approved it, renewal notes"></textarea></div>
+      <div class="row-actions" style="margin-top:12px"><button class="btn gold sm" onclick="expEditSave()">Save</button><button class="btn ghost sm" onclick="expEditClose()">Cancel</button></div></div>`;
     document.body.appendChild(m);
   }
   const sv=(i,v)=>{ const el=document.getElementById(i); if(el) el.value=v; };
-  const hd=document.getElementById('expmDate'); if(hd) hd.value=e.date||todayLocal();
-  sv('expmCat',e.category||'Other'); sv('expmVendor',e.vendor||''); sv('expmAmt',e.amount!=null?e.amount:''); sv('expmRecur',expenseRecur(e));
-  try{ dayPickAttach('expmDate', function(){}); }catch(_){}
+  document.getElementById('expmTitle').textContent=e?'Edit expense':'Add expense';
+  const hd=document.getElementById('expmDate'); if(hd) hd.value=(e&&e.date)||todayLocal();
+  sv('expmCat',(e&&e.category)||'Software / Tools'); sv('expmVendor',(e&&e.vendor)||''); sv('expmAmt',(e&&e.amount!=null)?e.amount:''); sv('expmRecur',e?expenseRecur(e):'none'); sv('expmNote',(e&&e.note)||'');
+  try{ dayPickAttach('expmDate', function(){}); dayPickSync('expmDate'); }catch(_){}
   m.hidden=false;
 }
+function expenseEdit(id){ expenseOpen(id); } // back-compat
 function expEditClose(){ const m=document.getElementById('expEditModal'); if(m) m.hidden=true; EXP_EDIT_ID=null; }
-async function expEditSave(){ if(!EXP_EDIT_ID) return; if(!(SESSION&&['admin','director'].includes(SESSION.role))){ toast('Admins only',true); return; }
-  const cur=expenseRecords().find(x=>x.id===EXP_EDIT_ID)||{id:EXP_EDIT_ID};
+async function expEditSave(){ if(!(SESSION&&['admin','director'].includes(SESSION.role))){ toast('Admins only',true); return; }
   const date=(document.getElementById('expmDate')||{}).value||todayLocal();
   const cat=(document.getElementById('expmCat')||{}).value||'Other';
   const vendor=((document.getElementById('expmVendor')||{}).value||'').trim();
   const amt=parseFloat((document.getElementById('expmAmt')||{}).value);
   const recur=((document.getElementById('expmRecur')||{}).value)||'none';
+  const note=((document.getElementById('expmNote')||{}).value||'').trim();
   if(!(amt>0)){ toast('Enter a valid amount',true); return; }
-  try{ await addRecord(Object.assign({},cur,{type:'expense',id:EXP_EDIT_ID,date,category:cat,vendor,amount:Math.round(amt*100)/100,recur,recurring:recur==='monthly',by:(SESSION&&SESSION.name)||''})); toast('Expense updated'); expEditClose(); renderArAp(); }
-  catch(e){ toast('Could not save the expense',true); }
+  try{
+    if(EXP_EDIT_ID){ const cur=expenseRecords().find(x=>x.id===EXP_EDIT_ID)||{id:EXP_EDIT_ID}; await addRecord(Object.assign({},cur,{type:'expense',id:EXP_EDIT_ID,date,category:cat,vendor,amount:Math.round(amt*100)/100,recur,recurring:recur==='monthly',note,by:(SESSION&&SESSION.name)||''})); toast('Expense updated'); }
+    else { await addRecord({type:'expense',id:uid(),date,category:cat,vendor,amount:Math.round(amt*100)/100,recur,recurring:recur==='monthly',note,by:(SESSION&&SESSION.name)||''}); toast('Expense added'); }
+    expEditClose(); renderArAp();
+  }catch(e){ toast('Could not save the expense',true); }
 }
 async function expenseDel(id){ if(!(SESSION&&['admin','director'].includes(SESSION.role))){ toast('Admins only',true); return; } const cur=expenseRecords().find(x=>x.id===id); if(!cur) return; if(!confirm('Remove this expense?')) return; try{ await addRecord(Object.assign({},cur,{deleted:true})); toast('Removed'); renderArAp(); }catch(e){ toast('Could not remove',true); } }
 // total TSA revenue (Actual TSA) earned in a period = rev-share on billed cash + retainers, across active clients (mirrors Contracts)
@@ -4371,9 +4355,8 @@ function renderArAp(){
     +card('NET PROFIT',money(netProfit),netProfit>=0?'var(--good)':'var(--bad)','The bottom line: revenue minus comp minus operating expenses for '+esc(rng.label)+'.');
   // ---- expenses table ----
   const et=document.getElementById('ldgExpTable');
-  if(et){ const rows=exps.map(x=>{ const e=x.e, rc=expenseRecur(e), per=rc==='yearly'?'/yr':(rc==='monthly'?'/mo':''); return `<tr><td style="white-space:nowrap;padding:6px 8px">${e.date?esc(usDate(e.date)):'-'}</td><td style="padding:6px 8px">${esc(e.category||'Other')}</td><td style="padding:6px 8px">${esc(e.vendor||'')}${rc!=='none'?` <span class="pill" style="font-size:9px">${rc}</span>`:''}</td><td class="num" style="padding:6px 8px;font-weight:600">${money(x.amt)}${rc!=='none'&&Math.abs(x.amt-(Number(e.amount)||0))>0.001?` <span class="muted" style="font-size:10px">(${money(Number(e.amount)||0)}${per})</span>`:''}</td><td style="padding:6px 8px;white-space:nowrap"><button class="btn ghost sm" style="padding:2px 9px" title="Edit" onclick="expenseEdit('${e.id}')">&#9998;</button> <button class="btn ghost sm" style="color:var(--warn);border-color:var(--warn);padding:2px 9px" title="Delete" onclick="expenseDel('${e.id}')">&times;</button></td></tr>`; }).join('');
+  if(et){ const rows=exps.map(x=>{ const e=x.e, rc=expenseRecur(e), per=rc==='yearly'?'/yr':(rc==='monthly'?'/mo':''); return `<tr><td style="white-space:nowrap;padding:6px 8px">${e.date?esc(usDate(e.date)):'-'}</td><td style="padding:6px 8px">${esc(e.category||'Other')}</td><td style="padding:6px 8px">${esc(e.vendor||'')}${rc!=='none'?` <span class="pill" style="font-size:9px">${rc}</span>`:''}${e.note?`<div class="muted" style="font-size:11px;white-space:normal">${esc(e.note)}</div>`:''}</td><td class="num" style="padding:6px 8px;font-weight:600">${money(x.amt)}${rc!=='none'&&Math.abs(x.amt-(Number(e.amount)||0))>0.001?` <span class="muted" style="font-size:10px">(${money(Number(e.amount)||0)}${per})</span>`:''}</td><td style="padding:6px 8px;white-space:nowrap"><button class="btn ghost sm" style="padding:2px 9px" title="Edit" onclick="expenseEdit('${e.id}')">&#9998;</button> <button class="btn ghost sm" style="color:var(--warn);border-color:var(--warn);padding:2px 9px" title="Delete" onclick="expenseDel('${e.id}')">&times;</button></td></tr>`; }).join('');
     et.innerHTML=`<thead><tr><th style="text-align:left">Date</th><th style="text-align:left">Category</th><th style="text-align:left">Vendor / description</th><th class="num">Amount</th><th></th></tr></thead><tbody>${rows||'<tr><td colspan="5" class="muted" style="padding:14px">No expenses logged for this period. Add software, tools, contractors, etc. above.</td></tr>'}${exps.length?`<tr style="border-top:2px solid var(--gold);font-weight:800"><td>Total expenses</td><td></td><td></td><td class="num">${money(opex)}</td><td></td></tr>`:''}</tbody>`;
-    try{ dayPickAttach('expDate', function(){}); const ed=document.getElementById('expDate'); if(ed&&!ed.value){ ed.value=todayLocal(); dayPickSync('expDate'); } }catch(e){}
   }
   // AR = what clients owe TSA (unpaid invoices + rev-share on uncollected deal balances)
   const arList=contractsEffective().filter(c=>c.active!==false).map(c=>{ try{ return conClientExpected(c.client); }catch(e){ return null; } }).filter(x=>x&&x.expTotal>0.005).sort((a,b)=>b.expTotal-a.expTotal);
