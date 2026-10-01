@@ -1096,7 +1096,7 @@
       <div class="field"><label id="pcRepLabel">Closer *</label><select name="rep" data-list="closers" required></select><span class="fieldhelp">You (locked to your login).</span></div>
       <div class="field"><label>Lead / prospect name *</label><input type="text" name="lead" required placeholder="who the call was with"></div>
       <div class="field"><label id="pcEmailLabel">Lead email</label><input type="email" name="leadEmail" placeholder="name@email.com"><span class="fieldhelp">Required on a Won close - matches the lead to their GHL/CRM contact (more reliable than name).</span></div>
-      <div class="field closerPc"><label>Setter (who set the call)</label><select name="setter" data-list="setters"></select><span class="fieldhelp">Leave blank if it was inbound / you set it yourself.</span></div>
+      <div class="field closerPc"><label>Setter (who set the call)</label><select name="setter" data-list="setters"></select><span class="fieldhelp"><b>Set this call yourself (hybrid)?</b> Pick your own name here <b>and file a separate Setter report</b> for it (same-day is fine) so the set, speed-to-lead and your 3% setter credit all register. Leave blank only for inbound / auto-booked leads - those don't count as a set.</span></div>
       <div class="field"><label>Lead source</label><select name="source"><option value="">-</option><option>Paid ads</option><option>Organic</option><option>Webinar</option></select><span class="fieldhelp"><b>Paid ads</b> = we paid for the lead; <b>Organic</b> = free/audience. Drives paid-vs-organic attribution for the marketing team.</span></div>
       <div class="field"><label>Call outcome *</label><select name="outcome" required onchange="postcallOutcomeChanged()"></select><span class="fieldhelp">What happened on this call.</span></div>
       <div class="field"><label>Call type</label><select name="callType"><option value="">-</option><option>First call</option><option>Second call</option><option>Follow-up</option></select></div>
@@ -1380,6 +1380,7 @@
       <div class="field" style="position:relative;margin:0;min-width:230px"><div class="rangewrap"><input type="text" id="ldgRange_txt" readonly placeholder="Custom range" onclick="rpToggle('ldgRange',event)"><input type="hidden" id="ldgRange_from"><input type="hidden" id="ldgRange_to"><div class="rangepop" id="ldgRange_pop" hidden onclick="event.stopPropagation()"></div></div></div>
     </div>
     <div id="ldgPnl" style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:16px"></div>
+    <div id="ldgSavings" style="margin-bottom:16px"></div>
     <div class="panel" id="ldgExpPanel">
       <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap;padding:12px 14px 0"><h3 style="margin:0">Operating expenses <span class="muted" style="font-weight:400;font-size:12px">- software, tools, contractors, ads, anything that comes out of the business</span></h3><button class="btn gold sm" onclick="expenseOpen()">&#43; Add expense</button></div>
       <div class="tablewrap" style="margin-top:8px"><table id="ldgExpTable"></table></div>
@@ -1700,6 +1701,7 @@ If they did not watch: No problem at all, I will send it right over. Can you wat
   <section id="tab-recruiting" hidden>
     <h2 class="section">Recruiting</h2>
     <p class="hint">Search the candidate pool, let AI rank best fit, then tag a group for a GHL SMS/email blast. Tags write to the recruiting Airtable ("Campaign Tags"); the GHL send is wired off those tags.</p>
+    <div id="repNeedPanel" style="margin-bottom:16px"></div>
     <div id="recReqQueue" style="margin-bottom:16px"></div>
     <div id="rcNotice"></div>
     <div class="seg" id="rcViewSeg" style="margin:0 0 12px"><button class="on" data-view="search" onclick="recSetView('search')">Search</button><button data-view="pipeline" onclick="recSetView('pipeline')">Pipeline</button><button data-view="interview" onclick="recSetView('interview')">Interview panel</button></div>
@@ -4355,6 +4357,8 @@ function renderArAp(){
     +card('Gross (after comp)',money(gross),gross>=0?'var(--good)':'var(--bad)','Revenue minus team comp - before operating expenses.')
     +card('Operating expenses',money(opex),'var(--warn)','Software, tools, contractors, ads and other business expenses logged below.')
     +card('NET PROFIT',money(netProfit),netProfit>=0?'var(--good)':'var(--bad)','The bottom line: revenue minus comp minus operating expenses for '+esc(rng.label)+'.');
+  // ---- profit-savings plan (T-691): suggest a 50% transfer, track progress to the goal ----
+  try{ renderLdgSavings(netProfit, rng.label); }catch(e){}
   // ---- expenses table ----
   const et=document.getElementById('ldgExpTable');
   if(et){ const rows=exps.map(x=>{ const e=x.e, rc=expenseRecur(e), per=rc==='yearly'?'/yr':(rc==='monthly'?'/mo':''); return `<tr><td style="white-space:nowrap;padding:6px 8px">${e.date?esc(usDate(e.date)):'-'}</td><td style="padding:6px 8px">${esc(e.category||'Other')}</td><td style="padding:6px 8px">${esc(e.vendor||'')}${rc!=='none'?` <span class="pill" style="font-size:9px">${rc}</span>`:''}</td><td class="num" style="padding:6px 8px;font-weight:600">${money(x.amt)}${rc!=='none'&&Math.abs(x.amt-(Number(e.amount)||0))>0.001?` <span class="muted" style="font-size:10px">(${money(Number(e.amount)||0)}${per})</span>`:''}</td><td style="padding:6px 8px;color:var(--muted);font-size:12px">${e.note?esc(e.note):''}</td><td style="padding:6px 8px;white-space:nowrap"><button class="btn ghost sm" style="padding:2px 9px" title="Edit" onclick="expenseEdit('${e.id}')">&#9998;</button> <button class="btn ghost sm" style="color:var(--warn);border-color:var(--warn);padding:2px 9px" title="Delete" onclick="expenseDel('${e.id}')">&times;</button></td></tr>`; }).join('');
@@ -4382,6 +4386,56 @@ function renderArAp(){
   if(apt){ const rows=apList.map(x=>`<tr><td><b>${esc(x.rep)}</b></td><td>${esc(x.role)}</td><td class="num" style="font-weight:700">${money(x.amt)}</td></tr>`).join('');
     const totLbl=payDateLabel?`Owed by TSA on ${esc(payDateLabel)}`:'Total AP';
     apt.innerHTML=`<thead><tr><th>Person</th><th>Role</th><th class="num">We owe</th></tr></thead><tbody>${rows||'<tr><td colspan="3" class="muted" style="padding:14px">Nothing owed for the upcoming payday.</td></tr>'}${apList.length?`<tr style="border-top:2px solid var(--gold);font-weight:800"><td>${totLbl}</td><td></td><td class="num">${money(apTotal)}</td></tr>`:''}</tbody>`; }
+}
+/* ===== Profit -> savings plan (T-691): 50% of profit to a 2nd savings account, build toward the goal ===== */
+const SAVINGS_GOAL_DEFAULT=360000; // Robb's target by January
+function savingsTransfers(){ const m={}; (RECORDS||[]).forEach(x=>{ if(x.type!=='savingstransfer'||!x.id) return; if(!m[x.id]||(x.submittedAt||'')>(m[x.id].submittedAt||'')) m[x.id]=x; }); return Object.values(m).filter(x=>!x.deleted); }
+function savingsGoal(){ let g=SAVINGS_GOAL_DEFAULT,best=''; (RECORDS||[]).forEach(x=>{ if(x.type==='savingsgoal'&&(x.submittedAt||'')>best){ best=x.submittedAt||''; if(Number(x.amount)>0) g=Number(x.amount); } }); return g; }
+function renderLdgSavings(netProfit, periodLabel){
+  const host=document.getElementById('ldgSavings'); if(!host) return;
+  const admin=SESSION&&['admin','director'].includes(SESSION.role);
+  const suggest=netProfit>0?Math.round(netProfit*0.5*100)/100:0;
+  const saved=savingsTransfers().reduce((s,t)=>s+(Number(t.amount)||0),0);
+  const goal=savingsGoal(); const pct=goal>0?Math.min(100,Math.round(saved/goal*100)):0;
+  const kpi=(l,v,c)=>`<div class="kpi" style="flex:1;min-width:150px"><div class="lbl">${l}</div><div class="val"${c?` style="color:${c}"`:''}>${v}</div></div>`;
+  host.innerHTML=`<div class="panel" style="padding:16px">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px">
+      <div><div style="font-weight:700;color:var(--ink)">Profit savings plan <span class="muted" style="font-weight:400;font-size:12px">- set aside 50% of profit toward ${money(goal)}</span></div>
+      <div class="muted" style="font-size:12px;margin-top:3px">Net profit for ${esc(periodLabel||'this period')}: <b style="color:${netProfit>=0?'var(--good)':'var(--bad)'}">${money(netProfit)}</b>. ${suggest>0?`Suggested transfer to savings: <b style="color:var(--gold-2)">${money(suggest)}</b> (50%).`:'No profit to transfer this period.'}</div></div>
+      ${admin?`<button class="btn gold sm" onclick="savingsLogOpen(${suggest})">Log a transfer</button>`:''}
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:12px">
+      ${kpi('Suggested transfer (50%)',money(suggest),'var(--gold-2)')}
+      ${kpi('Saved to date',money(saved),'var(--good)')}
+      ${kpi('Goal',money(goal))}
+      ${kpi('Progress',pct+'%')}
+    </div>
+    <div style="height:8px;border-radius:5px;background:var(--surface-2);margin-top:10px;overflow:hidden"><div style="height:100%;width:${pct}%;background:linear-gradient(90deg,var(--gold),var(--gold-2))"></div></div>
+  </div>`;
+}
+function savingsLogOpen(suggest){ if(!(SESSION&&['admin','director'].includes(SESSION.role))){ toast('Admins only',true); return; }
+  let m=document.getElementById('savingsModal');
+  if(!m){ m=document.createElement('div'); m.className='modal'; m.id='savingsModal'; m.hidden=true; m.onclick=ev=>{ if(ev.target===m) savingsClose(); };
+    m.innerHTML=`<div class="modalcard" style="width:min(420px,96vw)"><h3 style="margin:0 0 10px">Log a savings transfer</h3>
+      <div class="field" style="position:relative"><label>Date</label><div class="rangewrap"><input type="text" id="svDate_txt" readonly placeholder="Pick a day" onclick="dayPopToggle('svDate',event)"><input type="hidden" id="svDate"><div class="rangepop" id="svDate_pop" hidden onclick="event.stopPropagation()"></div></div></div>
+      <div class="field"><label>Amount moved to savings ($)</label><input id="svAmt" type="number" min="0" step="0.01" placeholder="0.00"></div>
+      <div class="field"><label>Note <span class="muted" style="font-weight:400">- optional</span></label><input id="svNote" placeholder="e.g. 50% of September profit"></div>
+      <div class="row-actions" style="margin-top:12px"><button class="btn gold sm" onclick="savingsSave()">Save</button><button class="btn ghost sm" onclick="savingsClose()">Cancel</button></div></div>`;
+    document.body.appendChild(m);
+  }
+  const hd=document.getElementById('svDate'); if(hd) hd.value=todayLocal();
+  const am=document.getElementById('svAmt'); if(am) am.value=(suggest>0?suggest:'');
+  const nt=document.getElementById('svNote'); if(nt) nt.value='';
+  try{ dayPickAttach('svDate', function(){}); dayPickSync('svDate'); }catch(_){}
+  m.hidden=false;
+}
+function savingsClose(){ const m=document.getElementById('savingsModal'); if(m) m.hidden=true; }
+function savingsSave(){ if(!(SESSION&&['admin','director'].includes(SESSION.role))){ toast('Admins only',true); return; }
+  const date=(document.getElementById('svDate')||{}).value||todayLocal();
+  const amt=parseFloat((document.getElementById('svAmt')||{}).value);
+  const note=((document.getElementById('svNote')||{}).value||'').trim();
+  if(!(amt>0)){ toast('Enter an amount',true); return; }
+  addRecord({type:'savingstransfer',id:uid(),date,amount:Math.round(amt*100)/100,note,by:(SESSION&&SESSION.name)||''}).then(()=>{ toast('Transfer logged'); savingsClose(); renderArAp(); });
 }
 function renderContracts(){
   const host=document.getElementById('tab-contracts'); if(!host) return;
@@ -5020,10 +5074,14 @@ Talk track: "All we're doing right now is walking around the house to see where 
 ## 7. Set expectations
 - **TSA is autonomous on people** - we hire, onboard (every rep learns HQ, GHL, Slack cadences on day one), and offboard (remove from G Suite, Slack, GHL). The owner doesn't manage any of it.
 - **We don't do marketing** (but Steve/Robb can help with integrations).
+- **3rd-party dialer / non-standard software = an owner video within 24h.** If their team uses a 3rd-party dialer or any tool that isn't our standard stack, the owner records a short how-to video within 24 hours of this call so we add it to the HQ training modules and new reps can self-serve. Capture the tool + access on this call (see below).
 - **Week 1 is heavier** on communication (going through their material, personnel review by stats, filling gaps, connecting software). Week 2 onward is lighter once everything is mapped.
 
 ## 8. Schedule the weekly meeting
 - Lock the recurring Monday 30-minute meeting (stats, updates, marketing-vs-sales congruency; often 15 min, first one is 30). Mind time zones - confirm the client's working hours.
+
+## 8b. Schedule the handoff call
+- Book a dedicated **handoff call** where TSA's team meets the client's whole team and runs the actual handoff: introductions, who owns what, where work happens (Slack + HQ), and a walkthrough of their dialer/tools. Put it on the calendar on this call or for the next day, right after access is confirmed.
 
 ## 9. Close + next steps
 - Confirm the client is added to the leadership channel.
@@ -9376,7 +9434,69 @@ function renderRepReqQueue(){
     ${open.sort((a,b)=>((a.neededBy||'9999-99-99')<(b.neededBy||'9999-99-99')?-1:1)).map(rrqCard).join('')}
   </div>`;
 }
+/* ===== Reps needed per account -> recruiter queue (T-682) ===== */
+function repNeedRecords(){ const m={}; (RECORDS||[]).forEach(x=>{ if(x.type!=='repneed'||!x.id) return; if(!m[x.id]||(x.submittedAt||'')>(m[x.id].submittedAt||'')) m[x.id]=x; }); return Object.values(m).filter(x=>!x.deleted); }
+function repNeedCanEdit(){ return !!(SESSION && ['admin','director','manager'].includes(SESSION.role)); }
+function renderRepNeeds(){
+  const host=document.getElementById('repNeedPanel'); if(!host) return;
+  const all=repNeedRecords();
+  const open=all.filter(r=>r.status!=='filled').sort((a,b)=>String(a.client||'').localeCompare(String(b.client||''))||String(a.role||'').localeCompare(String(b.role||'')));
+  const filled=all.filter(r=>r.status==='filled');
+  const totalOpenRoles=open.reduce((s,r)=>s+(Number(r.count)||0),0);
+  const accts=new Set(open.map(r=>nrmName(r.client))).size;
+  const roleRow=r=>`<tr>
+    <td style="padding:7px 10px"><b>${esc(r.client||'-')}</b></td>
+    <td style="padding:7px 10px">${esc(r.role||'-')}</td>
+    <td class="num" style="padding:7px 10px;font-weight:700">${Number(r.count)||0}</td>
+    <td style="padding:7px 10px;color:var(--muted);font-size:12px">${esc(r.note||'')}</td>
+    <td style="padding:7px 10px;white-space:nowrap">${repNeedCanEdit()?`<a class="linklike" style="cursor:pointer;color:var(--good)" onclick="repNeedToggle('${r.id}')" title="Mark filled">&#10003;</a> &nbsp; <a class="linklike" style="cursor:pointer;color:var(--gold-2)" onclick="repNeedOpen('${r.id}')">&#9998;</a> &nbsp; <a class="linklike" style="cursor:pointer;color:var(--warn)" onclick="repNeedDel('${r.id}')">&#10005;</a>`:''}</td>
+  </tr>`;
+  host.innerHTML=`<div class="panel" style="padding:16px">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px">
+      <div><div style="font-weight:700;color:var(--ink)">Reps needed per account <span class="muted" style="font-weight:400;font-size:12px">- the recruiter queue</span></div>
+      <div class="muted" style="font-size:12px;margin-top:3px">${totalOpenRoles?`<b style="color:var(--gold-2)">${totalOpenRoles}</b> open role${totalOpenRoles===1?'':'s'} across <b>${accts}</b> account${accts===1?'':'s'}`:'No open roles logged. Add what each account needs so the recruiter can work the queue.'}</div></div>
+      ${repNeedCanEdit()?`<button class="btn gold sm" onclick="repNeedOpen()">+ Add need</button>`:''}
+    </div>
+    ${open.length?`<div class="tablewrap" style="margin-top:12px"><table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead><tr style="text-align:left;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.04em"><th style="padding:7px 10px">Account</th><th style="padding:7px 10px">Role</th><th class="num" style="padding:7px 10px"># needed</th><th style="padding:7px 10px">Note</th><th style="padding:7px 10px"></th></tr></thead>
+      <tbody>${open.map(roleRow).join('')}</tbody>
+    </table></div>`:''}
+    ${filled.length?`<div class="muted" style="font-size:11px;margin-top:8px">${filled.length} filled / closed</div>`:''}
+  </div>`;
+}
+let REPNEED_EDIT_ID=null;
+function repNeedOpen(id){ if(!repNeedCanEdit()){ toast('Managers / admins only',true); return; }
+  const r=id?repNeedRecords().find(x=>x.id===id):null; if(id&&!r) return; REPNEED_EDIT_ID=id||null;
+  let m=document.getElementById('repNeedModal');
+  if(!m){ m=document.createElement('div'); m.className='modal'; m.id='repNeedModal'; m.hidden=true; m.onclick=ev=>{ if(ev.target===m) repNeedClose(); };
+    m.innerHTML=`<div class="modalcard" style="width:min(440px,96vw)"><h3 id="rnTitle" style="margin:0 0 10px">Add a rep need</h3>
+      <div class="field"><label>Account</label><select id="rnClient"></select></div>
+      <div class="grid2"><div class="field"><label>Role</label><select id="rnRole"><option>Setter</option><option>Closer</option><option>Manager</option><option>Webinar host</option><option>Other</option></select></div><div class="field"><label>How many</label><input id="rnCount" type="number" min="1" step="1" value="1"></div></div>
+      <div class="field"><label>Note <span class="muted" style="font-weight:400">- optional</span></label><input id="rnNote" placeholder="e.g. full-time, comfortable with the offer; start ASAP"></div>
+      <div class="row-actions" style="margin-top:12px"><button class="btn gold sm" onclick="repNeedSave()">Save</button><button class="btn ghost sm" onclick="repNeedClose()">Cancel</button></div></div>`;
+    document.body.appendChild(m);
+  }
+  document.getElementById('rnTitle').textContent=r?'Edit rep need':'Add a rep need';
+  const cs=document.getElementById('rnClient'); if(cs){ const names=(typeof clientNames==='function'?clientNames():[]); cs.innerHTML=names.map(n=>`<option>${esc(n)}</option>`).join(''); cs.value=(r&&r.client)||preferGlobal(names,'')||names[0]||''; }
+  const sv=(i,v)=>{ const el=document.getElementById(i); if(el) el.value=v; };
+  sv('rnRole',(r&&r.role)||'Setter'); sv('rnCount',(r&&r.count!=null)?r.count:1); sv('rnNote',(r&&r.note)||'');
+  m.hidden=false;
+}
+function repNeedClose(){ const m=document.getElementById('repNeedModal'); if(m) m.hidden=true; REPNEED_EDIT_ID=null; }
+function repNeedSave(){ if(!repNeedCanEdit()){ toast('Managers / admins only',true); return; }
+  const client=(document.getElementById('rnClient')||{}).value||'';
+  const role=(document.getElementById('rnRole')||{}).value||'Setter';
+  const count=parseInt((document.getElementById('rnCount')||{}).value,10);
+  const note=((document.getElementById('rnNote')||{}).value||'').trim();
+  if(!client){ toast('Pick an account',true); return; }
+  if(!(count>0)){ toast('Enter how many',true); return; }
+  const base=REPNEED_EDIT_ID?(repNeedRecords().find(x=>x.id===REPNEED_EDIT_ID)||{id:REPNEED_EDIT_ID}):{id:uid(),status:'open'};
+  addRecord(Object.assign({},base,{type:'repneed',client,role,count,note,by:(SESSION&&SESSION.name)||''})).then(()=>{ toast('Saved'); repNeedClose(); renderRepNeeds(); });
+}
+function repNeedToggle(id){ if(!repNeedCanEdit()) return; const cur=repNeedRecords().find(x=>x.id===id); if(!cur) return; addRecord(Object.assign({},cur,{status:cur.status==='filled'?'open':'filled'})).then(renderRepNeeds); }
+function repNeedDel(id){ if(!repNeedCanEdit()) return; const cur=repNeedRecords().find(x=>x.id===id); if(!cur) return; if(!confirm('Remove this rep need?')) return; addRecord(Object.assign({},cur,{deleted:true})).then(renderRepNeeds); }
 function renderRecruiting(){
+  try{ renderRepNeeds(); }catch(e){} // needed-reps-per-account queue (T-682)
   renderRepReqQueue(); // fold the open hiring queue in above the candidate search
   if(REC_LOADED){ recRender(); return; }
   const cache=recCacheLoad();
