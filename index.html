@@ -5438,7 +5438,7 @@ function renderMtgPrep(){
   const prefs=mtgPrefsFor(client)||{}; const hidden=Array.isArray(prefs.hidden)?prefs.hidden:[]; const internal=Array.isArray(prefs.internal)?prefs.internal:[];
   // founders never see hidden or internal metrics; the team sees everything except hidden (internal ones get an "internal" tag)
   const visMetrics=MP_METRICS.filter(m=>!hidden.includes(m[0]) && !(founder && internal.includes(m[0])));
-  const tiles=visMetrics.map(m=>card(m[1]+((!founder && internal.includes(m[0]))?' <span class="pill" style="font-size:9px;color:var(--gold-2);border:1px solid var(--gold-soft)">internal</span>':''), m[2](nums))).join('');
+  const tiles=visMetrics.map(m=>{ const lbl=m[1]+((!founder && internal.includes(m[0]))?' <span class="pill" style="font-size:9px;color:var(--gold-2);border:1px solid var(--gold-soft)">internal</span>':''); return `<div class="kpi" style="flex:1;min-width:130px"><div class="lbl">${lbl}</div><div class="val" id="mpval_${m[0]}">${m[2](nums)}</div></div>`; }).join('');
   const custBtn=isMgrRole?`<button class="btn ghost sm" style="margin-left:auto" onclick="mpCustomizeToggle()">Customize</button>`:'';
   const custPanel=isMgrRole?`<div id="mpCustomize" hidden style="margin-top:12px;padding:12px;border:1px solid var(--border);border-radius:10px;background:var(--surface-2)">
     <div class="muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.03em;margin-bottom:8px">Customize metrics (admin) - Show = on the sheet, Internal = hidden from the founder</div>
@@ -5467,6 +5467,46 @@ function renderMtgPrep(){
       ${open.length?open.map(row).join(''):'<p class="muted" style="margin:0 0 6px">Nothing added yet for this week.</p>'}
       ${done.length?`<div style="margin-top:12px"><div class="muted" style="font-size:12px;margin-bottom:5px">Covered / closed out</div>${done.map(row).join('')}</div>`:''}
     </div>`;
+  try{ mpLoadLiveMetrics(client, wk.from, wk.to); }catch(e){} // pull Speed-to-lead (GHL) + Connection rate (WAVV) live for the week (T-687)
+}
+// Fill the Speed-to-lead (avg) + Connection rate tiles from the live APIs for the selected week.
+// Speed to lead = GHL speed-to-lead avg (splApi); Connection rate = WAVV connects/dials (integApi). Leaves the tile's
+// existing value if the client has no GHL/WAVV connection or the call fails. (T-687 follow-up)
+let __mpLiveSeq=0;
+async function mpLoadLiveMetrics(client, from, to){
+  if(!client) return; const seq=++__mpLiveSeq;
+  const stale=()=>seq!==__mpLiveSeq; // a newer render superseded this fetch
+  // ---- Speed to lead (GHL) ----
+  const slEl=document.getElementById('mpval_speedToLead');
+  if(slEl && typeof splApi==='function'){
+    const orig=slEl.innerHTML;
+    try{
+      if(!(Array.isArray(__splClients)&&__splClients.length)){ try{ const r=await splApi({action:'speedToLeadClients'}); __splClients=(r&&r.clients)||[]; __splLoaded=true; }catch(e){} }
+      const m=(__splClients||[]).find(c=>nrmName(c.client)===nrmName(client));
+      if(m && !stale()){
+        slEl.innerHTML='<span class="muted" style="font-size:12px">loading...</span>';
+        const res=await splApi({action:'speedToLead', locationId:m.locationId, fromDate:from, toDate:to, targetMin:1, tzOffset:new Date().getTimezoneOffset()});
+        if(stale()) return;
+        if(res&&res.ok){ const st=dashSpeedStats(res.leads||[]); slEl.innerHTML = (st.avgMin!=null) ? esc(splFmtMin(Math.round(st.avgMin))) : 'n/a'; }
+        else slEl.innerHTML=orig;
+      }
+    }catch(e){ if(!stale()) slEl.innerHTML=orig; }
+  }
+  // ---- Connection rate (WAVV dialer) ----
+  const crEl=document.getElementById('mpval_connectionRate');
+  if(crEl && typeof integApi==='function'){
+    const orig=crEl.innerHTML;
+    try{
+      let hasWavv=true; try{ if(typeof loadIntegCfgsOnce==='function') await loadIntegCfgsOnce(); if(typeof clientHasWavv==='function') hasWavv=clientHasWavv(client); }catch(e){}
+      if(hasWavv && !stale()){
+        crEl.innerHTML='<span class="muted" style="font-size:12px">loading...</span>';
+        const r=await integApi('wavvStats',{key:'tsa:'+client, ws:'tsa', from, to});
+        if(stale()) return;
+        if(r&&r.ok){ const dials=Number(r.dials)||0, connects=Number(r.connects)||0; crEl.innerHTML = dials ? Math.round(connects/dials*100)+'%' : '0%'; }
+        else crEl.innerHTML=orig;
+      }
+    }catch(e){ if(!stale()) crEl.innerHTML=orig; }
+  }
 }
 function mtgPrepAdd(){ const sel=document.getElementById('mpClient'), client=(sel&&sel.value)||''; if(!client){ toast('Pick a client first',true); return; } const el=document.getElementById('mpAddText'), t=(el&&el.value||'').trim(); if(!t){ toast('Type something to add',true); return; } const founder=SESSION&&SESSION.role==='founder', wk=mpWeekRange();
   addRecord({type:'mtgprep',id:uid(),client,weekStart:wk.weekStart,text:t,side:founder?'Founder':'TSA',by:(SESSION&&SESSION.name)||'',status:'open',addedAt:new Date().toISOString()}).then(()=>{ if(el) el.value=''; toast('Added to the prep sheet'); if(founder){ try{ slackNotify('New Monday prep-sheet question from '+((SESSION&&SESSION.name)||'a founder')+' ('+client+'): '+t); }catch(e){} } renderMtgPrep(); try{ renderNotifBell(); }catch(e){} }); }
