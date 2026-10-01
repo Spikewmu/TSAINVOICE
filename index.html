@@ -6541,11 +6541,15 @@ function myDealsForecastHtml(){
 }
 // Rep-facing payout view (T-606): what THIS rep will be paid on the upcoming payday vs the one after, with the deals behind it.
 let MY_PAYCHECK='upcoming';
-function setMyPaycheck(w){ MY_PAYCHECK=w; renderMyDeals(); }
+let MY_PAY_OFFSET=0; // 0 = upcoming payout (next money out); +1 = following cycle (still earning); negative = past/paid cycles
+function setMyPaycheck(w){ MY_PAY_OFFSET = (w==='next') ? 1 : 0; MY_PAYCHECK=w; renderMyDeals(); }
+function myPaycheckStep(n){ MY_PAY_OFFSET += n; MY_PAYCHECK = MY_PAY_OFFSET>=1?'next':'upcoming'; renderMyDeals(); }
+// walk pay cycles from the upcoming payout: 0=upcoming, +n=future, -n=past (paid) cycles
+function myPayCycleAt(off){ let c=nextPayoutCycle(); if(off>0){ for(let i=0;i<off;i++) c=payCycleNext(c.from); } else if(off<0){ for(let i=0;i<-off;i++) c=payCyclePrev(c.from); } return c; }
 function myPayoutHtml(){
   const me=String((SESSION&&SESSION.name)||'').trim(); if(!me) return '';
   if(SESSION && ['admin','director'].includes(SESSION.role)) return ''; // leaders use the full Payouts page
-  const cyc = MY_PAYCHECK==='next' ? payCycle() : nextPayoutCycle();
+  const cyc = myPayCycleAt(MY_PAY_OFFSET);
   let data; try{ data=repCommData(cyc.from,cyc.to,''); }catch(e){ data={closers:[],setters:[]}; }
   const mine=[...data.closers.filter(o=>nrmName(o.rep)===nrmName(me)), ...data.setters.filter(o=>nrmName(o.rep)===nrmName(me))];
   // include a manager's override, a host's webinar pay, and any one-time payouts dated in this cycle - so managers see their real paycheck
@@ -6567,15 +6571,24 @@ function myPayoutHtml(){
     <td class="num" style="padding:6px 8px">${it.cash==null?'&ndash;':money(it.cash)}${(it.raw!=null&&Math.abs(it.raw-it.cash)>0.001)?` <span class="muted" style="text-decoration:line-through">${money(it.raw)}</span>`:''}</td>
     <td class="num" style="padding:6px 8px">${it.rate==null?'&ndash;':(it.rate||0)+'%'}</td>
     <td class="num" style="padding:6px 8px;font-weight:600">${money(it.amt||0)}</td></tr>`).join('');
-  const upOn=MY_PAYCHECK==='upcoming';
+  const off=MY_PAY_OFFSET, upOn=off===0, nextOn=off===1;
+  const todayIso=(typeof todayLocal==='function'?todayLocal():new Date().toISOString().slice(0,10));
+  const paid = cyc.pay < todayIso; // pay date already passed -> this was a prior (paid) paycheck
+  const payLbl = paid ? 'Paid' : (off<=0 ? 'Payday' : 'Following payday');
+  const paidChip = paid ? `<span class="pill" style="font-size:10px;color:var(--good);border:1px solid var(--good);margin-left:8px">Paid</span>` : (off===0?`<span class="pill" style="font-size:10px;color:var(--gold-2);border:1px solid var(--gold-soft);margin-left:8px">Next out</span>`:'');
   return `<div class="panel" style="margin:0 0 14px;padding:0;overflow:hidden">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;padding:14px 16px 0">
       <div class="muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.03em">My payouts</div>
-      <div class="seg"><button class="${upOn?'on':''}" onclick="setMyPaycheck('upcoming')">Upcoming paycheck</button><button class="${!upOn?'on':''}" onclick="setMyPaycheck('next')">Next paycheck</button></div>
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+        <button class="btn ghost sm" onclick="myPaycheckStep(-1)" title="Previous paycheck">&#8592; Previous</button>
+        <div class="seg"><button class="${upOn?'on':''}" onclick="setMyPaycheck('upcoming')">Upcoming paycheck</button><button class="${nextOn?'on':''}" onclick="setMyPaycheck('next')">Next paycheck</button></div>
+        <button class="btn ghost sm" onclick="myPaycheckStep(1)" title="Following paycheck">Later &#8594;</button>
+      </div>
     </div>
+    ${off<0?`<div class="muted" style="padding:8px 16px 0;font-size:12px">Viewing a past paycheck. Use <b>Upcoming paycheck</b> to jump back to your next payday.</div>`:''}
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin:12px 16px;padding:14px 18px;border-radius:12px;background:linear-gradient(180deg,var(--surface-2),var(--surface));border:1px solid var(--gold-soft)">
-      <div><div class="muted" style="font-size:10px;text-transform:uppercase;letter-spacing:.05em">${upOn?'Payday':'Following payday'}</div><div style="font-family:var(--serif);font-size:24px;color:var(--gold-2);line-height:1.1">${fmtLong(cyc.pay)}</div><div class="muted" style="font-size:12px">Earnings ${usDate(cyc.from)} - ${usDate(cyc.to)}</div></div>
-      <div style="text-align:right"><div class="muted" style="font-size:10px;text-transform:uppercase;letter-spacing:.05em">You get paid</div><div style="font-size:30px;font-weight:900;color:var(--gold-2);font-variant-numeric:tabular-nums">${money(total)}</div></div>
+      <div><div class="muted" style="font-size:10px;text-transform:uppercase;letter-spacing:.05em">${payLbl}${paidChip}</div><div style="font-family:var(--serif);font-size:24px;color:var(--gold-2);line-height:1.1">${fmtLong(cyc.pay)}</div><div class="muted" style="font-size:12px">Earnings ${usDate(cyc.from)} - ${usDate(cyc.to)}</div></div>
+      <div style="text-align:right"><div class="muted" style="font-size:10px;text-transform:uppercase;letter-spacing:.05em">${paid?'You were paid':'You get paid'}</div><div style="font-size:30px;font-weight:900;color:var(--gold-2);font-variant-numeric:tabular-nums">${money(total)}</div></div>
     </div>
     ${items.length?`<div class="tablewrap" style="padding:0 6px 8px"><table style="width:100%;border-collapse:collapse;font-size:12.5px"><thead><tr style="color:var(--muted);border-bottom:1px solid var(--border)"><th style="text-align:left;padding:6px 8px">Date</th><th style="text-align:left;padding:6px 8px">Prospect</th><th style="text-align:left;padding:6px 8px">Role</th><th style="text-align:right;padding:6px 8px">Cash</th><th style="text-align:right;padding:6px 8px">Rate</th><th style="text-align:right;padding:6px 8px">Commission</th></tr></thead><tbody>${rows}</tbody></table></div>`:'<p class="muted" style="padding:4px 18px 16px;margin:0">Nothing on this paycheck yet. Cash you collect this cycle shows here.</p>'}
   </div>`;
