@@ -5374,8 +5374,10 @@ function mtgPrepNumbers(client,from,to){
     const totalMeetings=(s.connectedMeetings||0)+(s.noShows||0);
     let connCalls=0, spdSum=0, spdN=0;
     (C.activity||[]).forEach(x=>{ if(x.type==='eod'||!x.type){ connCalls+=x.connectedCalls||0; const sp=Number(x.speedToLead); if(sp>0){ spdSum+=sp; spdN++; } } });
-    const connectionRate = (C.callsOffered>0) ? connCalls/C.callsOffered : 0;
-    const speedToLead = spdN ? spdSum/spdN : null;
+    let connectionRate = (C.callsOffered>0) ? connCalls/C.callsOffered : 0;
+    let speedToLead = spdN ? spdSum/spdN : null;
+    // completed week: serve the frozen GHL/WAVV snapshot so it renders instantly (no live API wait) (T-687 caching)
+    if(mpWeekCompleted(to)){ const cc=mpMetricsCache(client, from); if(cc){ if(cc.speedMin!=null) speedToLead=cc.speedMin; if(cc.connRate!=null) connectionRate=cc.connRate; } }
     return {
       closes,
       cash:C.cashCollected||0,
@@ -5413,11 +5415,16 @@ const MP_METRICS=[
   ['showRate','Show rate', n=>Math.round((n.showRate||0)*100)+'%'],
   ['callsSet','Calls set', n=>(n.callsSet||0).toLocaleString()],
   ['connectionRate','Connection rate', n=>Math.round((n.connectionRate||0)*100)+'%'],
-  ['speedToLead','Speed to lead (avg)', n=>n.speedToLead!=null?(Math.round(n.speedToLead*10)/10+' min'):'n/a'],
+  ['speedToLead','Speed to lead (avg)', n=>n.speedToLead!=null?(typeof splFmtMin==='function'?splFmtMin(Math.round(n.speedToLead)):Math.round(n.speedToLead*10)/10+' min'):'n/a'],
   ['newOut','New outreach', n=>(n.newOut||0).toLocaleString()],
   ['fuOut','Follow-up outreach', n=>(n.fuOut||0).toLocaleString()]
 ];
 function mpMetricLabel(id){ const m=MP_METRICS.find(x=>x[0]===id); return m?m[1]:id; }
+// Frozen snapshot of the slow live metrics (speed-to-lead avg + connection rate) for a COMPLETED week, so a past
+// week loads instantly instead of re-hitting the GHL/WAVV APIs every time. (T-687 caching)
+function mpCacheId(client, weekStart){ return 'mpm_'+String(nrmName(client)).replace(/[^a-z0-9]+/g,'')+'_'+weekStart; }
+function mpMetricsCache(client, weekStart){ let best=null; const cn=nrmName(client); (RECORDS||[]).forEach(x=>{ if(x.type!=='mpmetricscache'||x.deleted) return; if(nrmName(x.client)===cn && String(x.weekStart||'')===String(weekStart)){ if(!best||(x.submittedAt||'')>(best.submittedAt||'')) best=x; } }); return best; }
+function mpWeekCompleted(to){ const today=(typeof todayLocal==='function'?todayLocal():new Date().toISOString().slice(0,10)); return String(to||'')<today; }
 // latest mtgprefs for a client (per-client, falling back to a global '' default): {hidden:[],internal:[],structure}
 function mtgPrefsFor(client){ let best=null, glob=null; const cn=nrmName(client);
   (RECORDS||[]).forEach(x=>{ if(x.type!=='mtgprefs') return; if(nrmName(x.client||'')===cn){ if(!best||(x.submittedAt||'')>(best.submittedAt||'')) best=x; } else if(!x.client){ if(!glob||(x.submittedAt||'')>(glob.submittedAt||'')) glob=x; } });
@@ -5469,44 +5476,46 @@ function renderMtgPrep(){
     </div>`;
   try{ mpLoadLiveMetrics(client, wk.from, wk.to); }catch(e){} // pull Speed-to-lead (GHL) + Connection rate (WAVV) live for the week (T-687)
 }
-// Fill the Speed-to-lead (avg) + Connection rate tiles from the live APIs for the selected week.
-// Speed to lead = GHL speed-to-lead avg (splApi); Connection rate = WAVV connects/dials (integApi). Leaves the tile's
-// existing value if the client has no GHL/WAVV connection or the call fails. (T-687 follow-up)
-let __mpLiveSeq=0;
-async function mpLoadLiveMetrics(client, from, to){
-  if(!client) return; const seq=++__mpLiveSeq;
-  const stale=()=>seq!==__mpLiveSeq; // a newer render superseded this fetch
-  // ---- Speed to lead (GHL) ----
-  const slEl=document.getElementById('mpval_speedToLead');
-  if(slEl && typeof splApi==='function'){
-    const orig=slEl.innerHTML;
+// Fetch the two slow live metrics for a client+week. Returns {speedMin, connRate, got}. Values are `undefined` when the
+// client has no GHL/WAVV connection (so callers leave the tile alone), or `null` when connected but there's no data.
+async function mpFetchLiveMetrics(client, from, to){
+  let speedMin, connRate, got=false;
+  if(typeof splApi==='function'){
     try{
       if(!(Array.isArray(__splClients)&&__splClients.length)){ try{ const r=await splApi({action:'speedToLeadClients'}); __splClients=(r&&r.clients)||[]; __splLoaded=true; }catch(e){} }
       const m=(__splClients||[]).find(c=>nrmName(c.client)===nrmName(client));
-      if(m && !stale()){
-        slEl.innerHTML='<span class="muted" style="font-size:12px">loading...</span>';
-        const res=await splApi({action:'speedToLead', locationId:m.locationId, fromDate:from, toDate:to, targetMin:1, tzOffset:new Date().getTimezoneOffset()});
-        if(stale()) return;
-        if(res&&res.ok){ const st=dashSpeedStats(res.leads||[]); slEl.innerHTML = (st.avgMin!=null) ? esc(splFmtMin(Math.round(st.avgMin))) : 'n/a'; }
-        else slEl.innerHTML=orig;
-      }
-    }catch(e){ if(!stale()) slEl.innerHTML=orig; }
+      if(m){ const res=await splApi({action:'speedToLead', locationId:m.locationId, fromDate:from, toDate:to, targetMin:1, tzOffset:new Date().getTimezoneOffset()}); if(res&&res.ok){ const st=dashSpeedStats(res.leads||[]); speedMin=(st.avgMin!=null)?st.avgMin:null; got=true; } }
+    }catch(e){}
   }
-  // ---- Connection rate (WAVV dialer) ----
-  const crEl=document.getElementById('mpval_connectionRate');
-  if(crEl && typeof integApi==='function'){
-    const orig=crEl.innerHTML;
-    try{
-      let hasWavv=true; try{ if(typeof loadIntegCfgsOnce==='function') await loadIntegCfgsOnce(); if(typeof clientHasWavv==='function') hasWavv=clientHasWavv(client); }catch(e){}
-      if(hasWavv && !stale()){
-        crEl.innerHTML='<span class="muted" style="font-size:12px">loading...</span>';
-        const r=await integApi('wavvStats',{key:'tsa:'+client, ws:'tsa', from, to});
-        if(stale()) return;
-        if(r&&r.ok){ const dials=Number(r.dials)||0, connects=Number(r.connects)||0; crEl.innerHTML = dials ? Math.round(connects/dials*100)+'%' : '0%'; }
-        else crEl.innerHTML=orig;
-      }
-    }catch(e){ if(!stale()) crEl.innerHTML=orig; }
+  if(typeof integApi==='function'){
+    try{ let hasWavv=true; try{ if(typeof loadIntegCfgsOnce==='function') await loadIntegCfgsOnce(); if(typeof clientHasWavv==='function') hasWavv=clientHasWavv(client); }catch(e){}
+      if(hasWavv){ const r=await integApi('wavvStats',{key:'tsa:'+client, ws:'tsa', from, to}); if(r&&r.ok){ const dials=Number(r.dials)||0, connects=Number(r.connects)||0; connRate=dials?connects/dials:0; got=true; } }
+    }catch(e){}
   }
+  return {speedMin, connRate, got};
+}
+function mpSaveMetricsCache(client, from, to, r){ if(!r||!r.got) return; try{ addRecord({type:'mpmetricscache', id:mpCacheId(client,from), client, weekStart:from, weekTo:to, speedMin:(r.speedMin===undefined?null:r.speedMin), connRate:(r.connRate===undefined?null:r.connRate), savedAt:new Date().toISOString()}); }catch(e){} }
+// Update the Speed-to-lead (avg) + Connection rate tiles. A COMPLETED week is served from a frozen cache (instant, no API)
+// and cached on first fetch; the CURRENT in-progress week always loads live. While viewing this week we also pre-warm last
+// week's cache in the background, so Monday's review opens instantly instead of waiting ~10s on the APIs. (T-687 caching)
+let __mpLiveSeq=0;
+async function mpLoadLiveMetrics(client, from, to){
+  if(!client) return; const seq=++__mpLiveSeq; const stale=()=>seq!==__mpLiveSeq;
+  const completed=mpWeekCompleted(to);
+  const slEl=document.getElementById('mpval_speedToLead'), crEl=document.getElementById('mpval_connectionRate');
+  const cached = completed ? mpMetricsCache(client, from) : null;
+  if(!cached){ // in-progress week, or completed-but-not-yet-cached -> fetch live now
+    const slOrig=slEl?slEl.innerHTML:'', crOrig=crEl?crEl.innerHTML:'';
+    if(slEl) slEl.innerHTML='<span class="muted" style="font-size:12px">loading...</span>';
+    if(crEl) crEl.innerHTML='<span class="muted" style="font-size:12px">loading...</span>';
+    const r=await mpFetchLiveMetrics(client, from, to);
+    if(stale()) return;
+    if(slEl) slEl.innerHTML = (r.speedMin!==undefined) ? (r.speedMin!=null?splFmtMin(Math.round(r.speedMin)):'n/a') : slOrig;
+    if(crEl) crEl.innerHTML = (r.connRate!==undefined) ? (Math.round(r.connRate*100)+'%') : crOrig;
+    if(completed) mpSaveMetricsCache(client, from, to, r); // freeze the finished week so next time is instant
+  }
+  // pre-warm last completed week's cache in the background so the Monday review opens instantly
+  if(!completed && typeof billingWeek==='function'){ try{ const bw=billingWeek(); if(bw && bw.from && !mpMetricsCache(client, bw.from)){ mpFetchLiveMetrics(client, bw.from, bw.to).then(r=>mpSaveMetricsCache(client, bw.from, bw.to, r)); } }catch(e){} }
 }
 function mtgPrepAdd(){ const sel=document.getElementById('mpClient'), client=(sel&&sel.value)||''; if(!client){ toast('Pick a client first',true); return; } const el=document.getElementById('mpAddText'), t=(el&&el.value||'').trim(); if(!t){ toast('Type something to add',true); return; } const founder=SESSION&&SESSION.role==='founder', wk=mpWeekRange();
   addRecord({type:'mtgprep',id:uid(),client,weekStart:wk.weekStart,text:t,side:founder?'Founder':'TSA',by:(SESSION&&SESSION.name)||'',status:'open',addedAt:new Date().toISOString()}).then(()=>{ if(el) el.value=''; toast('Added to the prep sheet'); if(founder){ try{ slackNotify('New Monday prep-sheet question from '+((SESSION&&SESSION.name)||'a founder')+' ('+client+'): '+t); }catch(e){} } renderMtgPrep(); try{ renderNotifBell(); }catch(e){} }); }
